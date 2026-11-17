@@ -6,7 +6,11 @@ import { sidebarRow } from "./web-sidebar-live";
 const DURATION_MS = 150;
 
 declare global {
-	interface Window { controlMotion?: Animation[] }
+	interface Window {
+		controlMotion?: Animation[];
+		/** Whether the followed property started a transition in an `instant` check. */
+		controlMotionRan?: boolean;
+	}
 }
 
 type Target = {
@@ -65,8 +69,8 @@ const TARGETS = {
 		},
 	},
 	// TabsTrigger.svelte: the line's `after:transition-[translate,scale]` from the last active tab.
-	// The new tab's line starts offset onto the old tab, so the page shows the active tab's left
-	// edge plus that offset.
+	// The new tab's line starts offset and scaled onto the old tab, so the page shows the line's
+	// left edge and width: the active tab's padding box moved by that offset and scaled.
 	tab: {
 		moving: (page) => page.getByRole("tab", { name: "Events", exact: true }),
 		pseudo: "::after",
@@ -74,10 +78,27 @@ const TARGETS = {
 		shown: (page) => page.getByRole("tab", { name: "Events", exact: true }).evaluate((tab) => {
 			const active = tab.closest("[role='tablist']")?.querySelector("[role='tab'][data-state='active']");
 			if (!active) throw new Error("No active tab");
-			const offset = Number.parseFloat(getComputedStyle(active, "::after").translate);
+			const line = getComputedStyle(active, "::after");
+			const [x = 0] = line.translate === "none" ? [] : line.translate.split(" ").map(Number.parseFloat);
+			const [w = 1] = line.scale === "none" ? [] : line.scale.split(" ").map(Number.parseFloat);
+			const box = active.getBoundingClientRect();
+			const style = getComputedStyle(active);
+			const [left, right] = [style.borderLeftWidth, style.borderRightWidth].map(Number.parseFloat);
 			// Hundredths of a pixel: the sum of two edges does not round as one edge does.
-			return (active.getBoundingClientRect().left + (Number.isNaN(offset) ? 0 : offset)).toFixed(2);
+			return `${(box.left + left + x).toFixed(2)} ${((box.width - left - right) * w).toFixed(2)}`;
 		}),
+		// At rest only the active tab shows its line, unmoved and unscaled under it.
+		fits: async (page) => {
+			const fitted = await page.getByRole("tab", { name: "Events", exact: true }).evaluate((tab) => {
+				const tabs = [...(tab.closest("[role='tablist']")?.querySelectorAll("[role='tab']") ?? [])];
+				const lined = tabs.filter((item) => getComputedStyle(item, "::after").opacity !== "0");
+				const [only] = lined;
+				if (lined.length !== 1 || only?.getAttribute("data-state") !== "active") return false;
+				const line = getComputedStyle(only, "::after");
+				return ["none", "0px", "0px 0px"].includes(line.translate) && ["none", "1", "1 1"].includes(line.scale);
+			});
+			if (!fitted) throw new Error("At rest, not exactly the active tab shows its line in place");
+		},
 		act: (page) => page.getByRole("tab", { name: "Events", exact: true }).click(),
 		// The line then runs on the first tab, from where the second tab's line is shown.
 		back: {
@@ -178,6 +199,8 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
  * state and expects its computed value unchanged at time 0; `midway` expects a value between the
  * ends at half of DURATION_MS; `settled` expects the end value. After `midway`, `back` chooses the
  * first state again and expects the value unchanged, and `returned` expects the value at rest.
+ * `instant`, run under reduced motion, changes the state and expects no transition of the
+ * followed property and the indicator at rest on the new state.
  *
  * A CSS transition runs on the document timeline, which the page clock does not move. So `start`
  * pauses the control's transitions in their `transitionrun` event, and the later phases seek
@@ -187,6 +210,24 @@ export async function checkControlMotion(page: Page, check: string) {
 	const [, name, phase] = check.split(":");
 	const target = targetOf(name);
 	if (!target) throw new Error(`Unknown motion target in ${check}`);
+	if (phase === "instant") {
+		const moving = target.moving(page);
+		await moving.waitFor({ state: "attached" });
+		const rest = await read(page, target);
+		await moving.evaluate((element, { pseudo, property }) => {
+			window.controlMotionRan = false;
+			element.addEventListener("transitionrun", (event) => {
+				if (event instanceof TransitionEvent && event.target === element && event.pseudoElement === pseudo && event.propertyName === property) window.controlMotionRan = true;
+			});
+		}, { pseudo: target.pseudo ?? "", property: target.property });
+		await target.act(page);
+		// A transition's `transitionrun` reaches the page with the next frame.
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		if (await page.evaluate(() => window.controlMotionRan)) throw new Error(`${name} moved ${target.property} under reduced motion`);
+		if ((await read(page, target)) === rest) throw new Error(`${name} did not change under reduced motion`);
+		await target.fits?.(page);
+		return;
+	}
 	if (phase === "start") {
 		const moving = target.moving(page);
 		// The segmented control's pill is hidden at rest, so this waits for the element only.
