@@ -137,8 +137,10 @@ impl Fixture {
     /// Rows and version are read under separate locks of the live script, and
     /// a script that lands between them on another thread would pair old rows
     /// with a newer version, so the watch would skip that change. Every
-    /// scripted row change raises the revision, so an unchanged version across
-    /// the reads proves they saw the same script state; otherwise read again.
+    /// replayed live script raises the revision, so an unchanged version
+    /// across the reads proves no such script landed between them; otherwise
+    /// read again. Health bursts and the shell read phase change rows without
+    /// a version, so this check does not cover them.
     fn listed_snapshot(
         &self,
         resources: &[ResourceSummary],
