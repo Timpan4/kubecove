@@ -233,6 +233,16 @@ impl Inspector {
         });
     }
 
+    /// The last frame's dash phase and pulse phase, and when the dashes' next
+    /// step wakes. None while no edge moves. No element shows the clock, so its
+    /// tests ask here.
+    #[doc(hidden)]
+    pub fn map_edge_clock(&self) -> Option<(f32, Option<f32>, Option<Instant>)> {
+        let clock = &self.map.edge_clock;
+        let wake = clock.wake.as_ref().map(|(at, _)| *at);
+        clock.motion.map(|motion| (motion.flow, motion.pulse, wake))
+    }
+
     /// Whether the dashes of the edge from the topology node `source` to `target`
     /// are moving, which is the last frame drawing them at a phase with their next
     /// frame arranged, and whether a pulse travels along it. Edges are painted,

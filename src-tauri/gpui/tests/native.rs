@@ -29,6 +29,8 @@ mod live_motion;
 mod loading_motion;
 #[path = "native/map_live.rs"]
 mod map_live;
+#[path = "native/map_motion.rs"]
+mod map_motion;
 #[path = "native/overview.rs"]
 mod overview;
 #[path = "native/page_reads.rs"]
