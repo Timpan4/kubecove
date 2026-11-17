@@ -184,10 +184,10 @@ impl Inspector {
     /// moves. Runs after `rebuild_map`, before the map renders.
     pub(in crate::inspector) fn sync_map_edge_motion(
         &mut self,
+        live: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let live = self.map_updates_current();
         let view = self.map.cache.clone().filter(|view| {
             self.map_is_open()
                 && window.is_window_active()

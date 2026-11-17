@@ -162,9 +162,14 @@ export function createWatchRefreshThrottle(refresh: () => Promise<void>) {
 }
 
 /** Throttled refresh of the reads `match()` selects, read at each refresh. A change seen while one of them runs refreshes them again once it ends. */
-function createReadRefresh(queryClient: QueryClient, match: () => QueryMatch, beforeRefresh?: () => void) {
+function createReadRefresh(queryClient: QueryClient, read: () => Pick<LiveRead, "match" | "refetch">, beforeRefresh?: () => void) {
 	const throttle = createWatchRefreshThrottle(async () => {
-		const filter = { predicate: match() };
+		const { match, refetch } = read();
+		const filter = { predicate: match };
+		if (refetch === false) {
+			await queryClient.invalidateQueries({ ...filter, refetchType: "none" });
+			return;
+		}
 		const alreadyFetching = queryClient.isFetching({ ...filter, type: "active" }) > 0;
 		beforeRefresh?.();
 		await queryClient.invalidateQueries(filter, { cancelRefetch: false });
@@ -175,7 +180,18 @@ function createReadRefresh(queryClient: QueryClient, match: () => QueryMatch, be
 
 /** Throttled refresh of the reads `match` selects. A change seen while one of them runs refreshes them again once it ends. */
 export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatch, beforeRefresh?: () => void) {
-	const refresh = createReadRefresh(queryClient, () => match, beforeRefresh);
+	const refresh = createReadRefresh(queryClient, () => ({ match }), beforeRefresh);
+	const recovery = recoverFailedRead(queryClient, match, refresh.notify);
+	return {
+		notify: refresh.notify,
+		dispose() {
+			recovery.dispose();
+			refresh.dispose();
+		},
+	};
+}
+
+function recoverFailedRead(queryClient: QueryClient, match: QueryMatch, notify: () => void) {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let disposed = false;
 	const failedRead = () => queryClient.getQueryCache().getAll().some((query) =>
@@ -188,7 +204,7 @@ export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatc
 		} else if (timer === undefined) {
 			timer = setTimeout(() => {
 				timer = undefined;
-				if (!disposed && failedRead()) refresh.notify();
+				if (!disposed && failedRead()) notify();
 			}, RESOURCE_RECOVERY_INTERVAL);
 		}
 	}
@@ -197,12 +213,11 @@ export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatc
 	});
 	checkRecovery();
 	return {
-		notify: refresh.notify,
+		check: checkRecovery,
 		dispose() {
 			disposed = true;
 			if (timer !== undefined) clearTimeout(timer);
 			unsubscribe();
-			refresh.dispose();
 		},
 	};
 }
@@ -241,21 +256,26 @@ function watchGroup(key: WatchResourceKey): string {
 /** A declared read's refresh. The throttle outlives read-set changes, so a pending refresh still runs for what the view shows now. */
 function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 	let read = initial;
-	const throttle = initial.recoverSeparately
-		? createLiveReadRefresh(queryClient, (query) => read.refetch !== false && read.match(query))
-		: createReadRefresh(queryClient, () => read.match);
+	const throttle = createReadRefresh(queryClient, () => read);
+	const recovery = initial.recoverSeparately
+		? recoverFailedRead(queryClient, (query) => read.refetch !== false && read.match(query), throttle.notify)
+		: null;
 	return {
 		get read() {
 			return read;
 		},
 		set(next: LiveRead) {
 			read = next;
+			recovery?.check();
 		},
 		notify() {
 			if (read.refetch === false) void queryClient.invalidateQueries({ predicate: read.match, refetchType: "none" });
 			else throttle.notify();
 		},
-		dispose: () => throttle.dispose(),
+		dispose() {
+			recovery?.dispose();
+			throttle.dispose();
+		},
 	};
 }
 
@@ -301,7 +321,7 @@ export function bindLiveView({
 			namespaces: [...current.namespaces],
 			reads: matches,
 			cancelRefetch,
-			ignoreReadErrors: cancelRefetch ? undefined : refetched().filter((read) => read.recoverSeparately).map((read) => read.match),
+			independentReads: cancelRefetch ? undefined : current.reads.filter((read) => read.recoverSeparately).map((read) => read.match),
 		});
 	// One handler set for the binding's lifetime; it reads the current view when it runs.
 	const handlers: ResourceScopeHandlers = {

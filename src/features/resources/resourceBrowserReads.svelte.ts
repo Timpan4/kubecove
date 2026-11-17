@@ -190,16 +190,12 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	// The map can show its context's topology before that context's rows arrive.
 	const map = $derived(live.stateOf([mapContext]));
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
-	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData
-		&& map.status === "connected" && !map.catchingUp && !map.reloadError);
+	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData && !topology.isFetching
+		&& map.status === "connected");
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const notice = $derived({
-		live: live.stateOf([
-			...(tableShown ? scope.shownContexts : []),
-			...(mapShown ? [mapContext] : []),
-		]),
-		current: (!tableShown || tableCurrent) && (!mapShown || mapCurrent),
-		mapReloadFailed: mapShown && topology.isError,
+		table: tableShown ? { status: shown.status, current: tableCurrent, error: shown.reloadError } : null,
+		map: mapShown ? { status: map.status, current: mapCurrent, failed: topology.isError } : null,
 	});
 	const freshness = {
 		get tableCurrent() { return tableCurrent; },

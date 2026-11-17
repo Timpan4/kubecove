@@ -143,6 +143,16 @@ impl LiveData {
         )
     }
 
+    pub fn map_watch_status(&self, context: &str) -> LiveStatus {
+        watch_status::aggregate(
+            false,
+            self.watches
+                .values()
+                .filter(|watch| watch.context == context)
+                .map(|watch| WatchSummary::from(watch.summary().link)),
+        )
+    }
+
     pub fn messages(&self) -> impl Iterator<Item = &String> {
         self.refresh_error
             .iter()
@@ -424,7 +434,12 @@ impl Inspector {
                             timer.as_mut().await;
                             timer = Box::pin(cx.background_executor().timer(RECOVERY));
                             let recycled = this
-                                .update(cx, |this, _| this.live.take_buffer(&id))
+                                .update(cx, |this, cx| {
+                                    if this.live.owner == owner {
+                                        this.invalidate_topology(&scope, cx);
+                                    }
+                                    this.live.take_buffer(&id)
+                                })
                                 .unwrap_or_default();
                             let mut recycled = Some(recycled);
                             let retry_backend = backend.clone();
@@ -573,6 +588,9 @@ impl Inspector {
                                     }
                                 }
                                 w.catching_up = reload && names.is_none();
+                                if reload {
+                                    this.invalidate_topology(&scope, cx);
+                                }
                                 if names.is_none() || !reload {
                                     cx.notify();
                                 }
@@ -686,9 +704,6 @@ impl Inspector {
         patch: super::resource_observation::Patch,
         cx: &mut Context<Self>,
     ) {
-        if patch.watch.is_some() {
-            self.invalidate_topology(&patch.scope, cx);
-        }
         self.observation.queue(patch);
         cx.notify();
     }

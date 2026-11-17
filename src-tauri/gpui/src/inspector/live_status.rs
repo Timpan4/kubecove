@@ -15,6 +15,31 @@ use gpui_kit::{AnyElement, Context, Div, MouseButton, deferred, div, prelude::*,
 /// The notice for watches that open, recover or catch up.
 const STALE: &str =
     "Showing last observed state. Activity indicators are paused until live updates recover.";
+const MAP_STALE: &str =
+    "Showing last observed graph. Map activity indicators are paused until the map refreshes.";
+
+fn notice_text(status: LiveStatus, stale: bool) -> Option<&'static str> {
+    match status {
+        LiveStatus::RefreshFailed => Some(
+            "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.",
+        ),
+        LiveStatus::PollingLimited => Some(
+            "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.",
+        ),
+        LiveStatus::LiveLimited => Some(
+            "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.",
+        ),
+        _ if stale => Some(STALE),
+        _ => None,
+    }
+}
+
+fn waiting_for_watch(status: Option<LiveStatus>) -> bool {
+    matches!(
+        status,
+        Some(LiveStatus::Connecting | LiveStatus::Reconnecting | LiveStatus::CatchingUp)
+    )
+}
 
 const REFRESH_HINT: &str =
     "Clear cached data for this view and fetch it again. Filters and selection are preserved.";
@@ -287,88 +312,111 @@ impl Inspector {
         &self,
         freshness: NoticeFreshness,
         cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let status = freshness.status;
-        // Watches that connect or recover within the show delay show no notice,
-        // and a shown notice stays for the minimum visible time, as loading
-        // indicators do. Failed and limited states are not transient.
-        let stale = self.loading.phase(
-            "live-notice",
-            matches!(
-                status,
-                LiveStatus::Connecting | LiveStatus::Reconnecting | LiveStatus::CatchingUp
-            ),
-        );
-        let failed = status == LiveStatus::RefreshFailed;
-        let label = match status {
-            LiveStatus::RefreshFailed => {
-                "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover."
+    ) -> Vec<AnyElement> {
+        let table_stale = self
+            .loading
+            .phase("table-live-notice", waiting_for_watch(freshness.table));
+        let map_stale = self
+            .loading
+            .phase("map-live-notice", waiting_for_watch(freshness.map));
+        let table = freshness
+            .table
+            .and_then(|status| notice_text(status, table_stale.shown()));
+        let map = freshness.map.and_then(|status| {
+            if status == LiveStatus::RefreshFailed {
+                Some(MAP_STALE)
+            } else {
+                notice_text(status, map_stale.shown())
             }
-            LiveStatus::PollingLimited => {
-                "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused."
-            }
-            LiveStatus::LiveLimited => {
-                "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused."
-            }
-            _ if freshness.map_reload_failed => {
-                "Showing last observed graph. Map activity indicators are paused until the map refreshes."
-            }
-            _ if stale.shown() => STALE,
-            _ => return None,
-        };
-        Some(
-            div()
-                .id("live-notice")
-                .test_support()
-                .aria_label(label)
-                .role(gpui_kit::Role::Status)
-                .flex()
-                .flex_col()
-                .flex_none()
-                .rounded(px(6.))
-                .border_1()
-                .border_color(Palette::amber500(0.3))
-                .text_color(Palette::amber300())
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .px(px(12.))
-                        .py(px(8.))
-                        .when(failed, |row| {
-                            row.child(ui::icon(
-                                if self.live.error_open {
-                                    "chevron-down"
-                                } else {
-                                    "chevron-right"
-                                },
-                                12.,
-                                Palette::amber300(),
-                            ))
-                        })
-                        .child(ui::xs(label)),
+        });
+        let mut notices = Vec::new();
+        if let Some(label) = table {
+            let label = if freshness.map.is_some() && map != table {
+                label.replace("Activity indicators", "Table activity indicators")
+            } else {
+                label.to_owned()
+            };
+            notices.push(self.live_notice_panel(
+                "live-notice",
+                label,
+                freshness.table == Some(LiveStatus::RefreshFailed),
+                cx,
+            ));
+        }
+        if let Some(label) = map.filter(|_| map != table) {
+            let label = if freshness.table.is_some() {
+                label.replace("Activity indicators", "Map activity indicators")
+            } else {
+                label.to_owned()
+            };
+            let id = if table.is_some() {
+                "map-live-notice"
+            } else {
+                "live-notice"
+            };
+            notices.push(self.live_notice_panel(id, label, false, cx));
+        }
+        notices
+    }
+
+    fn live_notice_panel(
+        &self,
+        id: &'static str,
+        label: String,
+        failed: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        div()
+            .id(id)
+            .test_support()
+            .aria_label(label.clone())
+            .role(gpui_kit::Role::Status)
+            .flex()
+            .flex_col()
+            .flex_none()
+            .rounded(px(6.))
+            .border_1()
+            .border_color(Palette::amber500(0.3))
+            .text_color(Palette::amber300())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .px(px(12.))
+                    .py(px(8.))
+                    .when(failed, |row| {
+                        row.child(ui::icon(
+                            if self.live.error_open {
+                                "chevron-down"
+                            } else {
+                                "chevron-right"
+                            },
+                            12.,
+                            Palette::amber300(),
+                        ))
+                    })
+                    .child(ui::xs(label)),
+            )
+            .when(failed, |notice| {
+                notice
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.live.error_open = !this.live.error_open;
+                        cx.notify();
+                    }))
+            })
+            .when(failed && self.live.error_open, |notice| {
+                notice.child(
+                    div().px(px(12.)).pb(px(12.)).children(
+                        self.live
+                            .messages()
+                            .next()
+                            .map(|message| ui::xs(message.clone())),
+                    ),
                 )
-                .when(failed, |notice| {
-                    notice
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.live.error_open = !this.live.error_open;
-                            cx.notify();
-                        }))
-                })
-                .when(failed && self.live.error_open, |notice| {
-                    notice.child(
-                        div().px(px(12.)).pb(px(12.)).children(
-                            self.live
-                                .messages()
-                                .next()
-                                .map(|message| ui::xs(message.clone())),
-                        ),
-                    )
-                })
-                .into_any_element(),
-        )
+            })
+            .into_any_element()
     }
 }
 impl Inspector {

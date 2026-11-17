@@ -326,7 +326,6 @@
 	const updatesCurrent = $derived(reads.freshness.tableCurrent);
 	const mapUpdatesCurrent = $derived(reads.freshness.mapCurrent);
 	const notice = $derived(reads.freshness.notice);
-	const noticeLive = $derived(notice.live);
 
 	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(
@@ -472,8 +471,26 @@
 	const contextsLoadingText = $derived(contextsLoadingNotice(resourcesQuery.loadingContexts));
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
-	const staleNotice = loadingDelay(() => !notice.current && !notice.mapReloadFailed && !noticeLive.reloadError
-		&& noticeLive.status !== "partial" && noticeLive.status !== "polling");
+	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
+		&& notice.table.status !== "partial" && notice.table.status !== "polling");
+	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed
+		&& notice.map.status !== "partial" && notice.map.status !== "polling");
+	const tableNotice = $derived(notice.table && (notice.table.error
+		? "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover."
+		: liveNoticeText(notice.table.status, tableStale.shown)));
+	const mapNotice = $derived(notice.map && (notice.map.failed
+		? "Showing last observed graph. Map activity indicators are paused until the map refreshes."
+		: liveNoticeText(notice.map.status, mapStale.shown)));
+
+	function liveNoticeText(status: string, stale: boolean) {
+		if (status === "partial") return "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.";
+		if (status === "polling") return "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.";
+		return stale ? "Showing last observed state. Activity indicators are paused until live updates recover." : null;
+	}
+
+	function scopeNotice(label: string, panel: "Table" | "Map") {
+		return label.replace("Activity indicators", `${panel} activity indicators`);
+	}
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
 			? workspaceReadContext.sourceError
@@ -779,22 +796,20 @@
 			{/if}
 		</div>
 	{:else}
-		{#if noticeLive.reloadError}
-			<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
-				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>
-				<div class="px-3 pb-3"><FriendlyError error={noticeLive.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
-			</details>
-		{:else if notice.mapReloadFailed || noticeLive.status === "partial" || noticeLive.status === "polling" || staleNotice.shown}
+		{#if tableNotice}
+			{@const label = notice.map && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
+			{#if notice.table?.error}
+				<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
+					<summary class="cursor-pointer px-3 py-2"><span role="status">{label}</span></summary>
+					<div class="px-3 pb-3"><FriendlyError error={notice.table.error} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
+				</details>
+			{:else}
+				<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{label}</p>
+			{/if}
+		{/if}
+		{#if mapNotice && mapNotice !== tableNotice}
 			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-				{#if noticeLive.status === "partial"}
-					Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.
-				{:else if noticeLive.status === "polling"}
-					Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.
-				{:else if notice.mapReloadFailed}
-					Showing last observed graph. Map activity indicators are paused until the map refreshes.
-				{:else}
-					Showing last observed state. Activity indicators are paused until live updates recover.
-				{/if}
+				{notice.table ? scopeNotice(mapNotice, "Map") : mapNotice}
 			</p>
 		{/if}
 		<div

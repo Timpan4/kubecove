@@ -236,6 +236,13 @@
 		</div>
 	</div>
 
+	{#if topology && error}
+		<details class="px-3 py-2 text-xs text-muted-foreground">
+			<summary class="cursor-pointer">Map refresh failed</summary>
+			<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} />
+		</details>
+	{/if}
+
 	{#if loading.active}
 		<div class="flex min-h-80 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
 			{#if loading.shown}

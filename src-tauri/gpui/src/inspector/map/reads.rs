@@ -21,6 +21,10 @@ pub(in crate::inspector) struct ReadState {
 }
 
 impl ReadState {
+    pub(in crate::inspector) fn refreshing(&self) -> bool {
+        self.read.is_some()
+    }
+
     pub(in crate::inspector) fn cancel(&mut self) {
         *self = Self::default();
     }
@@ -56,7 +60,7 @@ impl Inspector {
 
     fn start_topology_read(&mut self, mut delayed: bool, cx: &mut Context<Self>) {
         let scope = Scope {
-            context: self.map_context(),
+            context: self.map_context().to_owned(),
             namespace: self.scope.namespace.clone(),
         };
         let request = self.request.clone();

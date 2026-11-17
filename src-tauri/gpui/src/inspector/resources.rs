@@ -474,13 +474,13 @@ impl Inspector {
     ) -> impl IntoElement {
         let width = self.section_width(window);
         let freshness = self.notice_freshness();
-        if freshness.status != LiveStatus::RefreshFailed {
+        if freshness.table != Some(LiveStatus::RefreshFailed) {
             self.live.error_open = false;
         }
         let stacked = !matches!(self.detail, Detail::Closed);
         self.rebuild_map();
         self.sync_map_motion(window, cx);
-        self.sync_map_edge_motion(window, cx);
+        self.sync_map_edge_motion(freshness.map == Some(LiveStatus::Live), window, cx);
         self.sync_map_focus(window, cx);
         let loading = self
             .loading

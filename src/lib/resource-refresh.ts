@@ -15,7 +15,7 @@ export async function refreshCurrentView({
 	namespaces,
 	reads,
 	cancelRefetch = true,
-	ignoreReadErrors = [],
+	independentReads = [],
 }: {
 	client: TauriClient;
 	queryClient: QueryClient;
@@ -27,8 +27,8 @@ export async function refreshCurrentView({
 	reads?: readonly QueryMatch[];
 	/** Automatic recovery waits for running reads before clearing caches. */
 	cancelRefetch?: boolean;
-	/** Errors owned by independently recovering reads. */
-	ignoreReadErrors?: readonly QueryMatch[];
+	/** Reads refreshed after eviction without holding up watch catch-up. */
+	independentReads?: readonly QueryMatch[];
 }): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
 	const inCurrentView = queryMatchers.currentView(clusterContext, kubeconfigEnvVar);
@@ -40,8 +40,9 @@ export async function refreshCurrentView({
 			}),
 	);
 	const predicate = (query: Query) => queries.has(query);
+	const shared = [...queries].filter((query) => !independentReads.some((match) => match(query)));
 	if (!cancelRefetch) {
-		await Promise.allSettled([...queries].map((query) => query.promise));
+		await Promise.allSettled(shared.map((query) => query.promise));
 	} else await queryClient.cancelQueries({ predicate });
 	await refreshResourceCache(
 		client,
@@ -51,12 +52,17 @@ export async function refreshCurrentView({
 		kubeconfigEnvVar,
 	);
 	// Keep the last displayed data while making every selected cache entry stale.
-	const results = await Promise.allSettled([...queries].map((query) =>
+	const invalidate = (query: Query, throwOnError: boolean) =>
 		queryClient.invalidateQueries(
 			{ predicate: (current) => current === query, refetchType: "active" },
-			{ throwOnError: !ignoreReadErrors.some((match) => match(query)), cancelRefetch },
-		),
-	));
+			{ throwOnError, cancelRefetch },
+		);
+	for (const query of queries) {
+		if (independentReads.some((match) => match(query))) {
+			void Promise.allSettled([query.promise]).then(() => invalidate(query, false));
+		}
+	}
+	const results = await Promise.allSettled(shared.map((query) => invalidate(query, true)));
 	const warnings: string[] = [];
 	for (const result of results) {
 		if (result.status !== "rejected") continue;
