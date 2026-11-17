@@ -10,6 +10,8 @@ declare global {
 		controlMotion?: Animation[];
 		/** Whether the followed property started a transition in an `instant` check. */
 		controlMotionRan?: boolean;
+		/** Puts back the `Element.prototype.animate` that an `animated` target's capture replaced. */
+		controlMotionRestore?: () => void;
 	}
 }
 
@@ -202,9 +204,13 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
 	if (target.animated) {
 		// Svelte starts its animation with `element.animate` a frame after the change. A busy page
 		// can run the whole animation between two polls, so this pauses it as it is created.
+		// The page's own `animate` is put back once this has run, whatever happened.
 		await target.animated(page).evaluate((under) => {
 			window.controlMotion = undefined;
 			const original = Element.prototype.animate;
+			window.controlMotionRestore = () => {
+				Element.prototype.animate = original;
+			};
 			Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
 				const animation = original.apply(this, args);
 				// Svelte's first animation is an empty one that lasts the delay.
@@ -217,8 +223,12 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
 				return animation;
 			};
 		});
-		await act(page);
-		await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error("The control changed without an animation"); });
+		try {
+			await act(page);
+			await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error("The control changed without an animation"); });
+		} finally {
+			await page.evaluate(() => window.controlMotionRestore?.());
+		}
 		return;
 	}
 	await moving.evaluate((element, { pseudo, property }) => {
