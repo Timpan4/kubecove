@@ -130,8 +130,10 @@ impl Inspector {
                     None,
                     cx,
                 ))
+                // `Button variant="outline" size="sm" class="w-fit"`.
                 .child(
-                    ui::outline_button()
+                    button(Variant::Outline, 24., false)
+                        .self_start()
                         .id("retry-launcher-contexts")
                         .test_support()
                         .aria_label("Retry")
@@ -298,7 +300,7 @@ impl Inspector {
                         cx,
                     ))
                     .child(
-                        ui::outline_button()
+                        button(Variant::Outline, 24., false)
                             .id("retry-launcher-namespaces")
                             .test_support()
                             .aria_label("Retry")

@@ -29,7 +29,7 @@
       "steps": [
         { "action": "configureShellRead", "phase": "contexts-failed" },
         { "action": "openLauncher" },
-        { "action": "expectLauncherRetry", "read": "contexts" },
+        { "action": "expectLauncherRetry", "read": "contexts", "height": 24 },
         { "action": "expectFriendlyError", "title": "Failed to load contexts", "next": "Copy the detail if this needs debugging." },
         { "action": "expectPageText", "text": "Select context" },
         { "action": "expectNoPageText", "text": "Cluster group" },
@@ -44,7 +44,7 @@
         { "action": "configureShellRead", "phase": "namespaces-failed" },
         { "action": "openLauncher" },
         { "action": "nameWorkspace", "value": "Namespace failure" },
-        { "action": "expectLauncherRetry", "read": "namespaces" },
+        { "action": "expectLauncherRetry", "read": "namespaces", "height": 24 },
         { "action": "expectPageText", "text": "Retry namespace discovery before creating this workspace." },
         { "action": "copyErrorDetail", "error": "namespaces", "expected": "Scripted namespaces read failure" },
         { "action": "configureShellRead", "phase": "ready" },
