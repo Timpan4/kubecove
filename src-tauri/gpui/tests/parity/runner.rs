@@ -367,6 +367,15 @@ pub(super) fn run_scenario(
                 .unwrap();
             cx.run_until_parked();
         }
+        if step["action"] == "setWindowActive" {
+            if step["active"] == true {
+                cx.update_window(handle, |_, window, _| window.activate_window())
+                    .unwrap();
+            } else {
+                gpui_kit::VisualTestContext::from_window(handle, cx).deactivate_window();
+            }
+            cx.run_until_parked();
+        }
         if step["action"] == "completeArgoOperation" {
             backend.complete_argo_operation();
             cx.background_executor
