@@ -20,8 +20,8 @@ use crate::{
     targets,
 };
 use gpui_kit::{
-    AnyElement, App, DispatchPhase, KeyDownEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ScrollEvent, Window, canvas, prelude::*,
+    AnyElement, App, Context, DispatchPhase, EntityId, KeyDownEvent, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ScrollEvent, Window, canvas, prelude::*,
 };
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
@@ -70,12 +70,26 @@ fn hovered(window: &Window) -> String {
     targets::hovered(window).unwrap_or_else(|| UNATTRIBUTED.to_owned())
 }
 
+/// Requests a frame for a measured input, so its input-to-paint time resolves
+/// even when the input changes nothing. Re-rendering the Inspector paints the
+/// probe; a window refresh would also re-render every cached view.
+fn request_paint(recorder: &Recorder, inspector: EntityId, cx: &mut App) {
+    if recorder.awaiting_paint() {
+        cx.notify(inspector);
+    }
+}
+
 /// Window-level input listeners for the frame being painted, in the capture
 /// phase so a control that stops propagation is still recorded.
-fn listen(recorder: &Rc<RefCell<Recorder>>, timings: Option<Timings>, window: &mut Window) {
+fn listen(
+    recorder: &Rc<RefCell<Recorder>>,
+    timings: Option<Timings>,
+    inspector: EntityId,
+    window: &mut Window,
+) {
     let down = recorder.clone();
     let down_timings = timings.clone();
-    window.on_mouse_event(move |_: &MouseDownEvent, phase, window, _| {
+    window.on_mouse_event(move |_: &MouseDownEvent, phase, window, cx| {
         if phase == DispatchPhase::Capture {
             let mut recorder = down.borrow_mut();
             recorder.pointer(true);
@@ -87,14 +101,16 @@ fn listen(recorder: &Rc<RefCell<Recorder>>, timings: Option<Timings>, window: &m
                 Instant::now(),
                 down_timings.as_ref(),
             );
+            request_paint(&recorder, inspector, cx);
         }
     });
     let up = recorder.clone();
-    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, _| {
+    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
         if phase == DispatchPhase::Capture {
             let mut recorder = up.borrow_mut();
             recorder.pointer(false);
             recorder.measure("click");
+            request_paint(&recorder, inspector, cx);
         }
     });
     let moved = recorder.clone();
@@ -104,7 +120,7 @@ fn listen(recorder: &Rc<RefCell<Recorder>>, timings: Option<Timings>, window: &m
         }
     });
     let wheel = recorder.clone();
-    window.on_mouse_event(move |_: &ScrollEvent, phase, window, _| {
+    window.on_mouse_event(move |_: &ScrollEvent, phase, window, cx| {
         if phase != DispatchPhase::Capture {
             return;
         }
@@ -118,6 +134,7 @@ fn listen(recorder: &Rc<RefCell<Recorder>>, timings: Option<Timings>, window: &m
                 Instant::now(),
                 timings.as_ref(),
             );
+            request_paint(&recorder, inspector, cx);
         }
     });
 }
@@ -170,7 +187,7 @@ impl Inspector {
     }
 
     /// Records a key press on the focused element. Never the key itself.
-    pub(super) fn record_key(&self, event: &KeyDownEvent, window: &Window, cx: &App) {
+    pub(super) fn record_key(&self, event: &KeyDownEvent, window: &Window, cx: &mut Context<Self>) {
         let mut recorder = self.presentation.recorder.borrow_mut();
         if !recorder.recording() || event.is_held && recorder.current_kind() == Some(Kind::Key) {
             return;
@@ -183,11 +200,24 @@ impl Inspector {
             Instant::now(),
             self.diagnostics_timings().as_ref(),
         );
+        request_paint(&recorder, cx.entity_id(), cx);
+    }
+
+    /// The interaction report's JSON lines, with commands that finished after
+    /// their entry ended.
+    pub(super) fn interaction_lines(&self) -> (String, usize) {
+        let mut recorder = self.presentation.recorder.borrow_mut();
+        (recorder.json_lines(&self.timings), recorder.len())
     }
 
     /// Counts this render, starts spans for a changed view and returns the
     /// probe when this frame's paint ends a measurement or recording runs.
-    pub(super) fn presentation_frame(&mut self, render_started: Instant) -> Option<AnyElement> {
+    /// `inspector` is the Inspector entity that measured inputs re-render.
+    pub(super) fn presentation_frame(
+        &mut self,
+        render_started: Instant,
+        inspector: EntityId,
+    ) -> Option<AnyElement> {
         let tab = match &self.detail {
             Detail::Ready(detail) => Some(detail.tab),
             _ => None,
@@ -247,7 +277,7 @@ impl Inspector {
                     }
                     recorder.borrow_mut().painted();
                     if recording {
-                        listen(&recorder, timings, window);
+                        listen(&recorder, timings, inspector, window);
                     }
                 },
             )

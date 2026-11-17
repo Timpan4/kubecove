@@ -238,10 +238,13 @@ function step<Value>(value: Value): Step {
         case "runTopologySpike": return { action: item.action };
         case "expectTopologySpikeText": return { action: item.action, value: string(item.value) };
         case "expectInteractionCopy": {
-            if (item.contains === undefined && item.excludes === undefined) throw new Error("Expected contains or excludes");
+            if (item.contains === undefined && item.excludes === undefined && item.succeededCommand === undefined) {
+                throw new Error("Expected contains, excludes or succeededCommand");
+            }
             const copy: Extract<Step, { action: "expectInteractionCopy" }> = { action: item.action };
             if (item.contains !== undefined) copy.contains = string(item.contains);
             if (item.excludes !== undefined) copy.excludes = string(item.excludes);
+            if (item.succeededCommand !== undefined) copy.succeededCommand = string(item.succeededCommand);
             return copy;
         }
         case "typeSettingsField": return { action: item.action, field: oneOf(["Server token"], item.field, "a typed settings field"), value: string(item.value) };

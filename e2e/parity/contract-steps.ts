@@ -191,7 +191,8 @@ export type Step =
     | { action: "expectLatencyReportCopy"; contains: string }
     | { action: "expectViewTiming"; view: "resources" }
     | { action: "copyInteractions" | "clearInteractions" }
-    | { action: "expectInteractionCopy"; contains?: string; excludes?: string }
+    // succeededCommand: some entry lists this command with ok: true.
+    | { action: "expectInteractionCopy"; contains?: string; excludes?: string; succeededCommand?: string }
     | { action: "typeSettingsField"; field: "Server token"; value: string }
     | { action: "runTopologySpike" }
     | { action: "expectTopologySpikeText"; value: string }

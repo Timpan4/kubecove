@@ -49,7 +49,7 @@ export { getDesktopRemoteTauriClient, isDesktopRemoteSelected } from "./remote-r
 export { kubeconfigArg } from "./tauri-args";
 export * from "./tauri-argo";
 export * from "./tauri-streams";
-import { isBrowserRuntime, shouldUseBrowserDevMocks } from "./tauri-runtime";
+import { isBrowserRuntime, shouldUseBrowserDevMocks, traceInvoke } from "./tauri-runtime";
 import type { TauriClient } from "./tauri-runtime";
 
 const inFlightInvokes = new WeakMap<TauriClient, Map<string, Promise<unknown>>>();
@@ -113,13 +113,15 @@ export function createTauriClient(): TauriClient {
 	if (IS_DEV_BUILD && shouldUseBrowserDevMocks()) {
 		if (!createDevMockClient) throw new Error("Browser dev mocks must initialize before mounting the app");
 		// The mocks answer a selected remote's commands directly, so they apply the remote client's disconnected refusal here.
+		// Diagnostics trace mock commands as the native client and the GPUI fixture trace theirs.
 		const mockClient = createDevMockClient();
 		return {
 			...mockClient,
-			invoke: async <T, Args extends object = object>(cmd: string, args?: Args, options?: InvokeOptions) => {
-				assertSelectedRemoteConnected();
-				return mockClient.invoke<T, Args>(cmd, args, options);
-			},
+			invoke: <T, Args extends object = object>(cmd: string, args?: Args, options?: InvokeOptions) =>
+				traceInvoke(cmd, args, async () => {
+					assertSelectedRemoteConnected();
+					return mockClient.invoke<T, Args>(cmd, args, options);
+				}),
 		};
 	}
 	return {
