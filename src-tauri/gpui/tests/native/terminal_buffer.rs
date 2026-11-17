@@ -246,6 +246,17 @@ fn clear_ignores_and_keeps_scroll_margins_and_origin_mode() {
     }
 }
 
+// Failure mode: the margins path places the cursor with CUP, which clamps the
+// column, so the next character overwrites the last cell instead of wrapping.
+#[test]
+fn clear_with_scroll_margins_keeps_a_pending_wrap() {
+    let mut terminal = parser(5, 8);
+    terminal.process(b"a\r\n\x1b[2;4r\x1b[3;1Habcdefgh");
+    terminal.clear();
+    terminal.process(b"X");
+    assert_eq!(terminal.screen().contents(), "abcdefghX");
+}
+
 fn newline() -> &'static str {
     if cfg!(target_os = "windows") {
         "\r\n"

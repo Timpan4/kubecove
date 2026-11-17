@@ -78,23 +78,8 @@ impl Parser {
         if screen.row_wrapped(row) {
             // The row below is gone, so the kept row must not wrap into it.
             // Erasing the last cell clears vt100's flag; then rewrite that cell.
-            let last = cols.get() - 1;
-            let at = if last > 0
-                && screen
-                    .cell(row, last)
-                    .is_some_and(vt100::Cell::is_wide_continuation)
-            {
-                last - 1
-            } else {
-                last
-            };
-            write!(bytes, "\x1b[1;{}H\x1b[K", at + 1).unwrap();
-            if let Some(value) = screen.cell(row, at).filter(|c| c.has_contents()) {
-                let mut encoded = String::new();
-                cell(&mut encoded, value);
-                bytes.push_str(&encoded);
-            }
-            write!(bytes, "\x1b[1;{}H", col.min(last) + 1).unwrap();
+            redraw_last_cell(&mut bytes, screen, row, true);
+            write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
         }
         if let Some((top, bottom, origin)) = margins {
             write!(bytes, "\x1b[{};{}r", top + 1, bottom + 1).unwrap();
@@ -105,7 +90,13 @@ impl Parser {
             // above the region, so the cursor lands on the region's top row.
             // Only DECRC could place it there, and that overwrites the app's
             // saved cursor.
-            write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
+            if col >= cols.get() {
+                // CUP clamps the column. Redrawing the last cell restores
+                // the pending autowrap, so the next character wraps.
+                redraw_last_cell(&mut bytes, screen, row, false);
+            } else {
+                write!(bytes, "\x1b[1;{}H", col + 1).unwrap();
+            }
         }
         bytes.push_str(&screen.attributes_formatted());
         let alternate = screen.alternate_screen();
@@ -183,6 +174,31 @@ impl Parser {
                 self.wraps.pop_first();
             }
         }
+    }
+}
+
+/// Move to row 0 and write `row`'s last cell from `screen` again, which leaves
+/// the cursor in the pending-wrap state. With `erase`, EL first clears the
+/// cell, which also clears vt100's wrap flag for the row.
+fn redraw_last_cell(bytes: &mut String, screen: &vt100::Screen, row: u16, erase: bool) {
+    let last = screen.size().1.get() - 1;
+    let at = if last > 0
+        && screen
+            .cell(row, last)
+            .is_some_and(vt100::Cell::is_wide_continuation)
+    {
+        last - 1
+    } else {
+        last
+    };
+    write!(bytes, "\x1b[1;{}H", at + 1).unwrap();
+    if erase {
+        bytes.push_str("\x1b[K");
+    }
+    if let Some(value) = screen.cell(row, at).filter(|c| c.has_contents()) {
+        let mut encoded = String::new();
+        cell(&mut encoded, value);
+        bytes.push_str(&encoded);
     }
 }
 
