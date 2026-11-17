@@ -139,8 +139,8 @@
 	 * slide's animation starts right after this event, and is ended as it starts.
 	 */
 	function settleUntoggled(event: Event) {
-		if (foldDuration() !== 0) return;
-		const wrapper = event.currentTarget as HTMLElement;
+		const wrapper = event.currentTarget;
+		if (foldDuration() !== 0 || !(wrapper instanceof Element)) return;
 		queueMicrotask(() => {
 			for (const animation of wrapper.getAnimations()) animation.finish();
 		});
