@@ -10,6 +10,7 @@ use super::*;
 use gpui_kit::ElementId;
 use gpui_kit::test::TestEventExt;
 use kubecove_gpui::control_motion::Moving;
+use kubecove_gpui::theme::Tokens;
 use std::cell::RefCell;
 
 const SETTING: &str = "Show exact timestamps";
@@ -37,7 +38,6 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
     let mut parts = check.split(':').skip(1);
     let (target, phase) = (parts.next().unwrap(), parts.next().unwrap());
     if phase == "instant" {
-        let before = paint(window, cx, target);
         let moving = change(window, cx, target);
         window.render_frame(cx);
         assert_eq!(
@@ -45,10 +45,29 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             None,
             "{target} moves under reduced motion"
         );
-        assert_ne!(
-            paint(window, cx, target),
-            before,
-            "{target} did not change under reduced motion"
+        // The indicator's color, and where it rests under the chosen option: the
+        // option's box for a pill, a 2 px line 2 px under it for the tab line, as
+        // `inspector/detail.rs` and `inspector/controls.rs` build them.
+        let (option, color, line) = match target {
+            "segment" => ("gitops-view:List", Tokens::card(), false),
+            "tab" => ("show-events", Tokens::foreground(), true),
+            other => panic!("{other} has no reduced-motion check"),
+        };
+        let mut rest = window.find(option).bounds();
+        if line {
+            rest.origin.y += rest.size.height + gpui_kit::px(2.);
+            rest.size.height = gpui_kit::px(2.);
+        }
+        let rest = format!("{:?}", rest.scale(window.scale_factor()));
+        let indicators: Vec<_> = quads(window, cx, target)
+            .into_iter()
+            .filter(|quad| quad.background == color.into())
+            .map(|quad| format!("{:?}", quad.bounds))
+            .collect();
+        assert_eq!(
+            indicators,
+            [rest],
+            "{target} does not show one indicator at rest under its chosen option"
         );
         return;
     }
@@ -161,18 +180,35 @@ fn paint(
     cx: &mut gpui_kit::App,
     target: &str,
 ) -> Option<Vec<String>> {
-    // A pill or a line slides from the option that was active to the chosen one.
-    let (id, from): (ElementId, Option<&'static str>) = match target {
-        "switch" => (ElementId::Name(format!("setting:{SETTING}").into()), None),
-        "segment" => ("gitops-view:List".into(), Some("gitops-view:Cards")),
-        "tab" => ("show-events".into(), Some("show-details")),
-        "tab-actions" => ("show-actions".into(), Some("show-details")),
+    match target {
         "chevron" => return None,
         // A fold paints nothing of its own. The row under the branch shows it.
         "branch" => {
             let below = window.find("nav:Network").bounds().origin.y;
             return Some(vec![format!("{below:?}")]);
         }
+        _ => {}
+    }
+    Some(
+        quads(window, cx, target)
+            .into_iter()
+            .map(|quad| format!("{:?} {:?}", quad.bounds, quad.background))
+            .collect(),
+    )
+}
+
+/// The quads painted inside the target.
+fn quads(
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::App,
+    target: &str,
+) -> Vec<gpui_kit::Quad> {
+    // A pill or a line slides from the option that was active to the chosen one.
+    let (id, from): (ElementId, Option<&'static str>) = match target {
+        "switch" => (ElementId::Name(format!("setting:{SETTING}").into()), None),
+        "segment" => ("gitops-view:List".into(), Some("gitops-view:Cards")),
+        "tab" => ("show-events".into(), Some("show-details")),
+        "tab-actions" => ("show-actions".into(), Some("show-details")),
         _ => (transition(window, cx, target), None),
     };
     let mut area = window.find(id).bounds();
@@ -182,22 +218,19 @@ fn paint(
     // The tab's line sits 4 px under its trigger.
     let area = area.dilate(gpui_kit::px(4.)).scale(window.scale_factor());
     let edge = area.bottom_right();
-    Some(
-        window
-            .painted_quads()
-            .into_iter()
-            .filter(|quad| {
-                // The line's lower edge lies on the area's, which
-                // `is_contained_within` leaves out.
-                let (start, end) = (quad.bounds.origin, quad.bounds.bottom_right());
-                start.x >= area.origin.x
-                    && start.y >= area.origin.y
-                    && end.x <= edge.x
-                    && end.y <= edge.y
-            })
-            .map(|quad| format!("{:?} {:?}", quad.bounds, quad.background))
-            .collect(),
-    )
+    window
+        .painted_quads()
+        .into_iter()
+        .filter(|quad| {
+            // The line's lower edge lies on the area's, which
+            // `is_contained_within` leaves out.
+            let (start, end) = (quad.bounds.origin, quad.bounds.bottom_right());
+            start.x >= area.origin.x
+                && start.y >= area.origin.y
+                && end.x <= edge.x
+                && end.y <= edge.y
+        })
+        .collect()
 }
 
 /// The switch thumb's left edge, or 0 for a target without a moving element.

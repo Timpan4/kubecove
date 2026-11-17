@@ -58,17 +58,20 @@
 	}
 
 	/**
-	 * Where the trigger's line lies along its list: its start and length on the list's axis. A
-	 * slide's offsets go stale only when this changes. A change across the axis, such as the list
-	 * growing taller as a tab panel opens, moves every trigger alike.
+	 * Where the trigger's line lies in its list: its start and length along the list, and its row
+	 * or column across it. A slide's offsets go stale only when this changes. The row is measured
+	 * from the list's first trigger, so a change that moves every trigger alike across the list,
+	 * such as the list growing taller as a tab panel opens, leaves it alone.
 	 */
 	function linePlace(trigger: HTMLElement): string {
 		const list = trigger.closest("[data-slot='tabs-list']");
+		const first = list?.querySelector<HTMLElement>("[data-slot='tabs-trigger']");
 		const box = paddingBox(trigger);
 		const origin = list?.getBoundingClientRect() ?? { left: 0, top: 0 };
+		const row = first ? paddingBox(first) : box;
 		return list?.getAttribute("data-orientation") === "vertical"
-			? `${box.top - origin.top} ${box.height}`
-			: `${box.left - origin.left} ${box.width}`;
+			? `${box.top - origin.top} ${box.height} ${box.left - row.left}`
+			: `${box.left - origin.left} ${box.width} ${box.top - row.top}`;
 	}
 
 	/** Moves the trigger's line home at once, ending its slide. */
