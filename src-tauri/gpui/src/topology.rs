@@ -58,6 +58,9 @@ pub struct FlowEdge {
     pub source: usize,
     pub target: usize,
     pub state: EdgeState,
+    /// The target resource is still in progress, the state that shows the
+    /// activity icon on its card. `buildFlowTopologyPulses` reads the same.
+    pub progress: bool,
 }
 
 pub struct View {
@@ -365,6 +368,7 @@ pub fn view(
         .enumerate()
         .filter_map(|(at, _)| {
             let source = flow_index[graph.endpoints[at].0]?;
+            let resource = graph.nodes[graph.endpoints[at].1];
             let target = flow_index[graph.endpoints[at].1]?;
             Some((
                 at,
@@ -372,6 +376,8 @@ pub fn view(
                     source,
                     target,
                     state: EdgeState::Idle,
+                    progress: node::lifecycle(&resource.kind, resource.status.as_deref())
+                        .is_some_and(|lifecycle| lifecycle.progress),
                 },
             ))
         })
@@ -417,6 +423,7 @@ pub fn view(
                         source: remap[edge.source]?,
                         target: remap[edge.target]?,
                         state: edge.state,
+                        progress: edge.progress,
                     },
                 ))
             })

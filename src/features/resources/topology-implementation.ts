@@ -24,14 +24,16 @@ import {
 	topologyLayoutOrder,
 } from "./topology-layout";
 import { buildStandaloneGroups } from "./topology-standalone-groups";
-import type {
-	BuildFlowTopologyOptions,
-	FlowTopology,
-	FlowTopologyBounds,
-	FlowTopologyEdge,
-	FlowTopologyNode,
-	FlowTopologySelectionIndex,
-	OwnershipMapViewportSize,
+import {
+	ACTIVE_EDGE_CLASS,
+	type BuildFlowTopologyOptions,
+	type FlowTopology,
+	type FlowTopologyBounds,
+	type FlowTopologyEdge,
+	type FlowTopologyNode,
+	type FlowTopologySelectionIndex,
+	INACTIVE_EDGE_CLASS,
+	type OwnershipMapViewportSize,
 } from "./topology-types";
 
 export { resourceTopologyNodeId } from "./topology-graph";
@@ -382,6 +384,7 @@ export function applyFlowTopologySelectionWithIndex(
 			return {
 				...edge,
 				animated: false,
+				class: active ? ACTIVE_EDGE_CLASS : INACTIVE_EDGE_CLASS,
 				markerEnd: {
 					type: MarkerType.ArrowClosed,
 					width: active ? 18 : 14,

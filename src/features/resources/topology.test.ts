@@ -58,7 +58,7 @@ function view(
 }
 
 describe("topology selection", () => {
-	test("marks only selected ownership path edges without continuous animation", () => {
+	test("marks only selected ownership path edges as active", () => {
 		const topology: ResourceTopology = {
 			nodes: [
 				node("Deployment", "argocd-redis"),
@@ -97,8 +97,11 @@ describe("topology selection", () => {
 			(edge) => edge.id === "deployment-to-secret",
 		);
 
+		// Svelte Flow's own `animated` dash stays off; App.css moves the dashes of the active class.
 		expect(activeEdge?.animated).toBe(false);
 		expect(inactiveEdge?.animated).toBe(false);
+		expect(activeEdge?.class).toBe("ownership-map-edge-active");
+		expect(inactiveEdge?.class).toBe("ownership-map-edge-inactive");
 		expect(activeEdge?.style?.includes("stroke-dasharray: 8 8")).toBe(true);
 		expect(inactiveEdge?.style?.includes("stroke-dasharray: none")).toBe(true);
 
