@@ -66,10 +66,9 @@ export async function yamlEditorAction(page: Page, step: Step) {
 }
 
 /**
- * The editor's whole document, from the accessor `YamlCodeEditor.svelte` adds in development
- * builds. The editor mounts after its extensions load, so this waits for it.
+ * The whole document of the page's one YAML editor, from the accessor `YamlCodeEditor.svelte`
+ * adds in development builds. The editor mounts after its extensions load, so this waits for it.
  */
-/** The whole document of the page's one YAML editor, waiting for the editor to mount. */
 async function yamlDocument(page: Page): Promise<string> {
 	const handle = await page.waitForFunction(() => {
 		const hosts = [...document.querySelectorAll<HTMLElement & { yamlDocument?: () => string }>(".yaml-code-editor")];
