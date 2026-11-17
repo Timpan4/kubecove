@@ -83,7 +83,7 @@
     },
     {
       "id": "live-data.activity",
-      "title": "A rolling-out row animates while live, pauses while reconnecting and leaves when its watch deletes it",
+      "title": "A rolling-out row animates while live, rests while reconnecting once its change highlight has ended, and leaves when its watch deletes it",
       "steps": [
         { "action": "openResources" },
         { "action": "expectLiveState", "label": "Live" },
@@ -92,6 +92,7 @@
         { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" },
         { "action": "replayLiveData", "script": "reconnecting" },
         { "action": "expectLiveState", "label": "Reconnecting" },
+        { "action": "advanceClock", "ms": 1000 },
         { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "paused" },
         { "action": "replayLiveData", "script": "connected" },
         { "action": "expectLiveState", "label": "Live" },
