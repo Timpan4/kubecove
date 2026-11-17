@@ -190,8 +190,9 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	// The map can show its context's topology before that context's rows arrive.
 	const map = $derived(live.stateOf([mapContext]));
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
+	// Catch-up can be clearing caches before the topology query starts.
 	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData && !topology.isFetching
-		&& map.status === "connected");
+		&& map.status === "connected" && !map.catchingUp);
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const notice = $derived({
 		table: tableShown ? { status: shown.status, current: tableCurrent, error: shown.reloadError } : null,
