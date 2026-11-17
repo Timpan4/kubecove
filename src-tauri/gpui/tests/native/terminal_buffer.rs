@@ -209,6 +209,19 @@ fn saved_cursor_at_a_wrap_boundary_restores_on_the_continuation_row() {
     assert_eq!(terminal.screen().contents(), "abcdefX\nok");
 }
 
+// Failure mode: a wide character wraps with one column still free, so the
+// saved cell stays in the gap it leaves on the previous row.
+#[test]
+fn saved_cursor_follows_a_wide_character_that_wraps_early() {
+    let mut terminal = parser(4, 8);
+    terminal.process("ab\x1b7界c\r\nok".as_bytes());
+    resize(&mut terminal, n(4), n(3));
+    terminal.process(b"\x1b8X");
+    let screen = terminal.screen();
+    assert_eq!(screen.cell(1, 0).unwrap().contents(), "X");
+    assert_eq!(screen.cell(0, 2).unwrap().contents(), "");
+}
+
 // Failure mode: SU and CUU honor a DECSTBM region and DECOM, so rows above the
 // region survive Clear and the app's margins or origin mode are lost.
 #[test]

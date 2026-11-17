@@ -103,6 +103,8 @@ impl Parser {
             }
             // DECSTBM homes the cursor. Under DECOM, CUP cannot reach rows
             // above the region, so the cursor lands on the region's top row.
+            // Only DECRC could place it there, and that overwrites the app's
+            // saved cursor.
             write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
         }
         bytes.push_str(&screen.attributes_formatted());
@@ -343,12 +345,17 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
             if index == saved_index && col == saved_col.min(end) {
                 // A saved column past the row's content keeps its offset
                 // instead of writing blank cells that copy would include.
-                let (mut row, mut at) = position(&next);
-                // With autowrap pending, the next replayed cell starts the next row.
-                if at >= cols.get() && col < end {
-                    (row, at) = (row + 1, 0);
+                // A cell that does not fit, such as a wide character with one
+                // column left, starts the next row when it is replayed.
+                let width = old
+                    .cell(row, col)
+                    .filter(|c| col < end && !c.is_wide_continuation())
+                    .map_or(0, |c| if c.is_wide() { 2 } else { 1 });
+                let (mut next_row, mut at) = position(&next);
+                if width > 0 && at.saturating_add(width) > cols.get() {
+                    (next_row, at) = (next_row + 1, 0);
                 }
-                saved = Some((row, at.saturating_add(saved_col - col)));
+                saved = Some((next_row, at.saturating_add(saved_col - col)));
             }
             if col == end {
                 break;
