@@ -471,10 +471,15 @@ function step<Value>(value: Value): Step {
 		case "expectResourceColumns": return { action: item.action, columns: strings(item.columns, false).map((column) => oneOf(TABLE_COLUMNS, column, "a table column")) };
 		case "expectResourceActivity": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), state: oneOf(["active", "paused"] as const, item.state, "an activity state") };
 		case "openLiveSessionPopover": return { action: item.action };
-		case "expectLiveSessionRow": return { action: item.action, target: string(item.target), status: string(item.status), controls: strings(item.controls, false) };
+		case "expectLiveSessionRow": {
+            const row: Extract<Step, { action: "expectLiveSessionRow" }> = { action: item.action, target: string(item.target), status: string(item.status), controls: strings(item.controls, false) };
+            if (item.local !== undefined) row.local = string(item.local);
+            return row;
+        }
 		case "liveSessionControl": {
             const control: Extract<Step, { action: "liveSessionControl" }> = { action: item.action, operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control") };
             if (item.target !== undefined) control.target = string(item.target);
+            if (item.local !== undefined) control.local = string(item.local);
             return control;
         }
 		case "expectHealthTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), state: string(item.state), source: string(item.source), statuses: strings(item.statuses, true), partial: boolean(item.partial) };

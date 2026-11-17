@@ -6,6 +6,7 @@ import type { PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummar
 export async function exportSessionControls(client: TauriClient, resources: ResourceSummary[]) {
     const forwardRequests: PortForwardRequest[] = [
         { clusterContext: "mock-dev", namespace: "payments", targetKind: "Pod", targetName: "payments-api-7d9c9b7f8d-k2r9p", remotePort: 9090, localPort: 19090 },
+        { clusterContext: "mock-dev", namespace: "payments", targetKind: "Pod", targetName: "payments-api-7d9c9b7f8d-k2r9p", remotePort: 9090, localPort: 19091 },
         { clusterContext: "mock-dev", namespace: "payments", targetKind: "Service", targetName: "payments-api", remotePort: 80, localPort: 18081 },
         { clusterContext: "mock-dev", namespace: "payments", targetKind: "Service", targetName: "payments-api", remotePort: 80, localPort: 18082 },
     ];
