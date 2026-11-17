@@ -124,11 +124,12 @@ jobs:
               // are separate workspaces that both depend on the desktop crates.
               { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop, passInputs: desktopPass },
               { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiPass },
-              { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiTestPass },
-              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: desktop, passInputs: backendPass },
-              { task: 'server', scope: 'server', workspace: 'src-tauri/server', inputs: server, passInputs: serverPass },
+              // Frontend changes select gpui-test too: text_fit reads the browser-mock fixture.
+              { task: 'gpui-test', scope: 'frontend-or-rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiTestPass },
+              { task: 'server-backend', scope: 'frontend-or-rust', workspace: 'src-tauri', inputs: desktop, passInputs: backendPass },
+              { task: 'server', scope: 'frontend-or-rust', workspace: 'src-tauri/server', inputs: server, passInputs: serverPass },
             ];
-            const include = tasks.filter(({ scope }) => scope === 'server'
+            const include = tasks.filter(({ scope }) => scope === 'frontend-or-rust'
               ? required.frontend || required.rust : required[scope]);
             core.setOutput('matrix', JSON.stringify({ include }));
 

@@ -292,7 +292,7 @@ test("fast-forward pushes use before and after SHAs", async () => {
 // takes a runner slot from the other workflows under GitHub's limit of 20 concurrent jobs.
 const tasksByScope = {
   docs: ["docs"],
-  frontend: ["frontend-e2e", "server-backend", "server"],
+  frontend: ["frontend-e2e", "gpui-test", "server-backend", "server"],
   rust: ["rust", "gpui-clippy", "gpui-test", "server-backend", "server"],
   nix: [],
 };
@@ -304,6 +304,11 @@ test("change detection selects every required task without duplicate jobs", asyn
     for (const task of matrix.include) {
       if (task.workspace) assert.ok(["src-tauri", "src-tauri/server", "src-tauri/gpui"].includes(task.workspace));
     }
+  }
+  // text_fit reads the fixture exported from the browser mocks, so changes to either run it.
+  for (const path of ["e2e/parity/visual/export-fixture.ts", "src/lib/tauri-dev-mocks.ts"]) {
+    const { matrix } = await detect([path]);
+    assert.ok(matrix.include.some(({ task }) => task === "gpui-test"), path);
   }
   // A limit below the task count starts the last tasks only after the first ones finish.
   assert.doesNotMatch(job("checks"), /max-parallel/);

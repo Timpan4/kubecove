@@ -324,8 +324,9 @@ one cache:
 - `gpui-clippy` and `gpui-test`: GPUI Clippy, and library, native and text-fit
   tests. Text fit (`src-tauri/gpui/tests/text_fit.rs`) lays out the browser-mock
   fixture with the bundled fonts, so `gpui-test` installs Bun, exports the
-  fixture, and keys its pass on `src` and `e2e/parity/visual` too. A pull request
-  that changes only those frontend files does not select the task;
+  fixture, and keys its pass on `src` and `e2e/parity/visual` too. Frontend
+  changes select `gpui-test` as well as Rust changes, as they do for the server
+  tasks;
 - `server-backend`: GUI-free backend tests and dependency-tree verification;
 - `server`: API-only server tests and Clippy, then the browser UI build,
   default-feature server tests and Clippy, the server build and HTTP/WebSocket
