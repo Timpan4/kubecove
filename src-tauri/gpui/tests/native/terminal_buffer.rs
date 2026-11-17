@@ -198,6 +198,41 @@ fn saved_cursor_and_attributes_survive_a_width_change() {
     );
 }
 
+// Failure mode: the saved cell starts a continuation row, and the replay is
+// still at the end of the previous row with autowrap pending.
+#[test]
+fn saved_cursor_at_a_wrap_boundary_restores_on_the_continuation_row() {
+    let mut terminal = parser(4, 6);
+    terminal.process(b"abcdefg\x08\x1b7\r\nok");
+    resize(&mut terminal, n(4), n(3));
+    terminal.process(b"\x1b8X");
+    assert_eq!(terminal.screen().contents(), "abcdefX\nok");
+}
+
+// Failure mode: SU and CUU honor a DECSTBM region and DECOM, so rows above the
+// region survive Clear and the app's margins or origin mode are lost.
+#[test]
+fn clear_ignores_and_keeps_scroll_margins_and_origin_mode() {
+    for origin in [false, true] {
+        let mut terminal = parser(5, 8);
+        terminal.process(b"a\r\nb\r\nc\r\n\x1b[2;4r");
+        if origin {
+            terminal.process(b"\x1b[?6h");
+        }
+        terminal.process(b"\x1b[3;1H$ ");
+        terminal.clear();
+        assert_eq!(terminal.screen().contents(), "$ ", "origin {origin}");
+        terminal.process(b"\x1b[H");
+        let home = terminal.screen().cursor_position();
+        assert_eq!(home, (u16::from(origin), 0), "origin {origin}: DECOM kept");
+        terminal.process(b"\x1b[?6h\x1b[H");
+        let top = terminal.screen().cursor_position().0;
+        terminal.process(b"\x1b[999H");
+        let bottom = terminal.screen().cursor_position().0;
+        assert_eq!((top, bottom), (1, 3), "origin {origin}: margins kept");
+    }
+}
+
 fn newline() -> &'static str {
     if cfg!(target_os = "windows") {
         "\r\n"

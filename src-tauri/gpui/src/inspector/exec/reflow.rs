@@ -62,7 +62,12 @@ impl Parser {
             return;
         }
         let (rows, cols) = screen.size();
+        let margins = margins(screen);
         let mut bytes = String::from("\x1b[0m");
+        if margins.is_some() {
+            // xterm's clear ignores DECSTBM and DECOM; SU and CUU would not.
+            write!(bytes, "\x1b[?6l\x1b[r\x1b[{};{}H", row + 1, col + 1).unwrap();
+        }
         if row + 1 < rows.get() {
             // xterm pushes default blank rows: CUD, ED 0, EL 1, CUU keep the column.
             bytes.push_str("\x1b[B\x1b[J\x1b[1K\x1b[A");
@@ -90,6 +95,15 @@ impl Parser {
                 bytes.push_str(&encoded);
             }
             write!(bytes, "\x1b[1;{}H", col.min(last) + 1).unwrap();
+        }
+        if let Some((top, bottom, origin)) = margins {
+            write!(bytes, "\x1b[{};{}r", top + 1, bottom + 1).unwrap();
+            if origin {
+                bytes.push_str("\x1b[?6h");
+            }
+            // DECSTBM homes the cursor. Under DECOM, CUP cannot reach rows
+            // above the region, so the cursor lands on the region's top row.
+            write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
         }
         bytes.push_str(&screen.attributes_formatted());
         let alternate = screen.alternate_screen();
@@ -168,6 +182,26 @@ impl Parser {
             }
         }
     }
+}
+
+/// The DECSTBM region rows and the DECOM flag, or `None` when both are the
+/// defaults. vt100 keeps them private, so read them from where CUP lands on a copy.
+fn margins(screen: &vt100::Screen) -> Option<(u16, u16, bool)> {
+    let (rows, cols) = screen.size();
+    let mut probe = vt100::Parser::new(rows, cols, 0);
+    *probe.screen_mut() = screen.clone();
+    let mut land = |bytes: &[u8]| {
+        probe.process(bytes);
+        probe.screen().cursor_position().0
+    };
+    let (home, end) = (land(b"\x1b[H"), land(b"\x1b[999H"));
+    let origin = home != 0 || end != rows.get() - 1;
+    let (top, bottom) = if origin {
+        (home, end)
+    } else {
+        (land(b"\x1b[?6h\x1b[H"), land(b"\x1b[999H"))
+    };
+    (origin || top != 0 || bottom != rows.get() - 1).then_some((top, bottom, origin))
 }
 
 fn color(output: &mut String, color: vt100::Color, foreground: bool) {
@@ -309,7 +343,11 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
             if index == saved_index && col == saved_col.min(end) {
                 // A saved column past the row's content keeps its offset
                 // instead of writing blank cells that copy would include.
-                let (row, at) = position(&next);
+                let (mut row, mut at) = position(&next);
+                // With autowrap pending, the next replayed cell starts the next row.
+                if at >= cols.get() && col < end {
+                    (row, at) = (row + 1, 0);
+                }
                 saved = Some((row, at.saturating_add(saved_col - col)));
             }
             if col == end {
