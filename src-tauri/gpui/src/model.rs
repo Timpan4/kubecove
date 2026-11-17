@@ -10,7 +10,8 @@ use kubecove_lib::models::{
 };
 pub use rows::Visible;
 pub(crate) use rows::{
-    Added, KindFilter, ObservedNames, PreparedRows, RowsId, identity_hash, reconcile,
+    Added, KindFilter, ObservedNames, PreparedRows, RowsId, identity_hash, identity_hash_of,
+    reconcile,
 };
 use std::collections::{HashMap, HashSet};
 

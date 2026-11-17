@@ -360,9 +360,19 @@ impl PreparedRows {
 /// ownership map matches its nodes to rows by. Equal hashes still compare the
 /// fields.
 pub(crate) fn identity_hash(row: &ResourceSummary) -> u64 {
+    identity_hash_of(&row.cluster, &row.kind, &row.namespace, &row.name)
+}
+
+/// `identity_hash` of the row with these names.
+pub(crate) fn identity_hash_of(
+    cluster: &str,
+    kind: &str,
+    namespace: &Option<String>,
+    name: &str,
+) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::hash::DefaultHasher::new();
-    (&row.cluster, &row.kind, &row.namespace, &row.name).hash(&mut hasher);
+    (cluster, kind, namespace, name).hash(&mut hasher);
     hasher.finish()
 }
 
