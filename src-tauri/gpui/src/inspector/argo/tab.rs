@@ -502,7 +502,6 @@ fn argo_tab(
         )
         .child(super::options::controls(
             state,
-            &summary.name,
             loading || selected.busy,
             selected.unavailable.is_some(),
             &inspector.overlay_motion,

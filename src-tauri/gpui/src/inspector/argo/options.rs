@@ -169,65 +169,67 @@ fn choice(
         .into_any_element()
 }
 
-pub(super) fn panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) -> Div {
+/// The advanced-sync confirmation. Like `panel`, it does not depend on the
+/// open flags, because a closed overlay draws its content until its exit ends.
+fn confirm_panel(state: &ArgoTab, name: &str, cx: &mut Context<Inspector>) -> Div {
     let mut panel = super::panels::panel().flex().flex_col().gap(px(8.));
-    if !state.options.open {
-        return panel;
-    }
-    if state.options.confirming {
-        let revision = state.options.revision.read(cx).value();
-        let revision = if revision.is_empty() {
-            state.configured_revision()
-        } else {
-            revision.as_str()
-        };
-        let enabled = |value| if value { "Enabled" } else { "Disabled" };
-        panel = panel
-            .child(ui::sm("Confirm advanced sync"))
-            .child(ui::xs(
-                "These choices go beyond Application defaults. Type Application name to continue.",
-            ))
-            .child(ui::xs(format!(
-                "Revision: {}. Prune: {}. Dry run: {}. Force: {}.",
-                revision,
-                enabled(state.options.prune.unwrap_or(state.options.default_prune)),
-                enabled(state.options.dry_run),
-                enabled(state.options.force)
-            )))
-            .child(ui::xs(format!("Type {name} to confirm advanced sync")))
-            .child(
-                Input::new(&state.options.name)
-                    .id("argo-sync-name")
-                    .aria_label("Application name confirmation"),
+    let revision = state.options.revision.read(cx).value();
+    let revision = if revision.is_empty() {
+        state.configured_revision()
+    } else {
+        revision.as_str()
+    };
+    let enabled = |value| if value { "Enabled" } else { "Disabled" };
+    panel = panel
+        .child(ui::sm("Confirm advanced sync"))
+        .child(ui::xs(
+            "These choices go beyond Application defaults. Type Application name to continue.",
+        ))
+        .child(ui::xs(format!(
+            "Revision: {}. Prune: {}. Dry run: {}. Force: {}.",
+            revision,
+            enabled(state.options.prune.unwrap_or(state.options.default_prune)),
+            enabled(state.options.dry_run),
+            enabled(state.options.force)
+        )))
+        .child(ui::xs(format!("Type {name} to confirm advanced sync")))
+        .child(
+            Input::new(&state.options.name)
+                .id("argo-sync-name")
+                .aria_label("Application name confirmation"),
+        )
+        .child(
+            button(
+                Variant::Default,
+                24.,
+                state.options.name.read(cx).value().as_str() != name,
             )
-            .child(
-                button(
-                    Variant::Default,
-                    24.,
-                    state.options.name.read(cx).value().as_str() != name,
-                )
-                .id("argo-sync-confirm")
+            .id("argo-sync-confirm")
+            .test_support()
+            .child("Confirm sync")
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.review_argo_operation("Advanced Sync", window, cx)
+            })),
+        )
+        .child(
+            button(Variant::Outline, 24., false)
+                .id("argo-sync-back")
                 .test_support()
-                .child("Confirm sync")
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.review_argo_operation("Advanced Sync", window, cx)
+                .child("Cancel")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.argo_tab_state() {
+                        s.options.confirming = false;
+                        s.options.open = false;
+                        cx.notify();
+                    }
                 })),
-            )
-            .child(
-                button(Variant::Outline, 24., false)
-                    .id("argo-sync-back")
-                    .test_support()
-                    .child("Cancel")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(s) = this.argo_tab_state() {
-                            s.options.confirming = false;
-                            s.options.open = false;
-                            cx.notify();
-                        }
-                    })),
-            );
-        return panel;
-    }
+        );
+    panel
+}
+
+/// The sync options form.
+pub(super) fn panel(state: &ArgoTab, cx: &mut Context<Inspector>) -> Div {
+    let mut panel = super::panels::panel().flex().flex_col().gap(px(8.));
     panel = panel
         .child(ui::sm("Sync with options"))
         .child(ui::xs(
@@ -316,7 +318,7 @@ impl Inspector {
                     .role(gpui_kit::Role::Dialog)
                     .aria_label("Confirm advanced sync")
                     .w(px(512.))
-                    .child(panel(state, &detail.data.summary.name, cx)),
+                    .child(confirm_panel(state, &detail.data.summary.name, cx)),
             );
         Some(shown.surface(overlay).into_any_element())
     }
@@ -407,7 +409,6 @@ impl Inspector {
 /// It disables Sync and Refresh and their option triggers; Rollback stays available, as on the web.
 pub(super) fn controls(
     state: &ArgoTab,
-    name: &str,
     pending: bool,
     unavailable: bool,
     motion: &OverlayMotion,
@@ -498,7 +499,7 @@ pub(super) fn controls(
         .child(div().relative().flex()
             .child(operation("Sync", Variant::Default, cx))
             .child(trigger(busy || unavailable, state.options.open, sync_focus_on_open, sync_trigger, cx))
-            .when_some(motion.sample(Overlay::ArgoSyncOptions, state.options.open && !state.options.confirming), |group, shown| group.child(gpui_kit::deferred(shown.surface(panel(state, name, cx).id("argo-sync-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()
+            .when_some(motion.sample(Overlay::ArgoSyncOptions, state.options.open && !state.options.confirming), |group, shown| group.child(gpui_kit::deferred(shown.surface(panel(state, cx).id("argo-sync-panel").test_support().occlude().absolute().top(px(28.)).right_0().w(px(320.)).shadow_lg()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                     if let Some(s) = this.argo_tab_state() { s.options.open = false; }
                     cx.notify();
