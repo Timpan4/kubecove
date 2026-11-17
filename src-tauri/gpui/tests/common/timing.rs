@@ -42,14 +42,15 @@ struct Waiter {
 
 impl Drop for Waiter {
     fn drop(&mut self) {
-        // Close this waiter's channel first, so its sender reads as closed below.
-        drop(self.receiver.take());
         // A scenario assertion that failed under this lock poisoned it; a
         // waiter dropped while that panic unwinds must not panic again.
         let mut rules = self
             .rules
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Close this waiter's channel under the lock, so its sender reads as
+        // closed below and no caller joins the abandoned load in between.
+        drop(self.receiver.take());
         let Some(rule) = rules.get_mut(&self.rule) else {
             return;
         };
