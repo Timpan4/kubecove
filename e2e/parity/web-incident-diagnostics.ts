@@ -17,7 +17,7 @@ export async function incidentDiagnosticsAction(page: Page, step: Step): Promise
         case "updateStatusControl": {
             const dialog = page.getByRole("dialog", { name: "App updates", exact: true });
             if (step.control === "Open") {
-                await page.getByRole("button", { name: /^(Check for updates|Update available|Checking for updates|Update check failed)$/ }).click();
+                await page.getByRole("button", { name: /^(Check for updates|Update available|Checking for updates|Update check failed|Restart to finish update)$/ }).click();
             } else if (step.control === "Escape") {
                 await page.keyboard.press("Escape");
             } else {

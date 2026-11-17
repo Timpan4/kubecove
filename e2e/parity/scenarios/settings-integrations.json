@@ -290,6 +290,34 @@
       ]
     },
     {
+      "id": "settings-updates.relaunch-keeps-unsaved-draft",
+      "title": "Relaunch after an installed update refuses while a YAML draft has unsaved changes, and relaunches once the draft is discarded",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-installs" },
+        { "action": "restartClient" },
+        { "action": "expectSettingsText", "value": "KubeCove 0.14.0 is available." },
+        { "action": "updateStatusControl", "control": "Install" },
+        { "action": "expectUpdateControl", "label": "Restart to finish update" },
+        { "action": "updateStatusControl", "control": "Escape" },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "showYaml" },
+        { "action": "editYaml" },
+        { "action": "replaceYamlDraft", "value": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: payments-api\n  namespace: payments\n  labels:\n    draft: kept\n" },
+        { "action": "updateStatusControl", "control": "Open" },
+        { "action": "updateStatusControl", "control": "Relaunch" },
+        { "action": "expectYamlNotice", "title": "This local draft has unsaved changes. Discard the local draft before changing target or closing." },
+        { "action": "expectNoSettingsText", "value": "Relaunch failed." },
+        { "action": "updateStatusControl", "control": "Escape" },
+        { "action": "expectYamlDocument", "value": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"payments-api\",\"namespace\":\"payments\",\"labels\":{\"draft\":\"kept\"}}}" },
+        { "action": "cancelYamlEdit" },
+        { "action": "updateStatusControl", "control": "Open" },
+        { "action": "updateStatusControl", "control": "Relaunch" },
+        { "action": "expectSettingsText", "value": "Relaunch failed." }
+      ]
+    },
+    {
       "id": "settings-remote.disconnected-selected",
       "title": "A selected remote that drops shows a disconnected header, tooltip and Settings status",
       "steps": [
