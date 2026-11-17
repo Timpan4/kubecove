@@ -317,13 +317,19 @@ pub(super) fn resolve_resource(
     target: &str,
     cx: &mut gpui_kit::App,
 ) -> Option<String> {
+    // A target that names its context, `resource:{kind}:{namespace}:{name}:{context}`,
+    // is one row's whole ID, since kinds, namespaces and names hold no `:`.
+    let names_context = target.splitn(5, ':').count() == 5;
     // The Context filter shows only for a workspace with several contexts.
-    // With one, an identity names at most one row, so the first match is that
-    // row, and the page keeps its scroll position when the row is in view.
-    if window.try_find("context-picker").is_none() {
+    // With one, or with a target that names its context, an identity names at
+    // most one row, so the first match is that row, and the page keeps its
+    // scroll position when the row is in view.
+    if names_context || window.try_find("context-picker").is_none() {
         let mut found = None;
         scan_table(window, cx, |window| {
-            found = rendered_rows(window, target).into_iter().next();
+            found = rendered_rows(window, target)
+                .into_iter()
+                .find(|id| !names_context || id == target);
             found.is_some()
         });
         return found;
