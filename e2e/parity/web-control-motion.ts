@@ -149,7 +149,10 @@ function seek(page: Page, ms: number | "end") {
 	}, ms);
 }
 
-/** Pauses the next transition of the target's property on `moving` at time 0, once `act` starts it. */
+/**
+ * Pauses the transitions on `moving` at time 0 once `act` starts one of the target's property, so
+ * the properties that move together, such as a pill's left and width, stay at the same time.
+ */
 async function follow(page: Page, moving: Locator, target: Target, act: (page: Page) => Promise<void>) {
 	if (target.animated) {
 		// Svelte starts its animation with `element.animate` a frame after the change. A busy page
@@ -178,20 +181,22 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
 		const capture = (event: Event) => {
 			// Transitions on descendants bubble here too.
 			if (event.target !== element) return;
-			const transitions = element.getAnimations({ subtree: true }).filter((animation) => {
-				if (!(animation instanceof CSSTransition) || animation.transitionProperty !== property) return false;
+			const transitions = element.getAnimations({ subtree: true }).filter((animation): animation is CSSTransition => {
+				if (!(animation instanceof CSSTransition)) return false;
 				const effect = animation.effect;
 				return effect instanceof KeyframeEffect && effect.target === element && effect.pseudoElement === pseudo;
 			});
 			// The pointer's move onto the control can start a hover transition of another property a
 			// frame before the click starts the followed one. Keep listening until that one runs.
-			if (transitions.length === 0) return;
+			const followed = transitions.find((transition) => transition.transitionProperty === property);
+			if (!followed) return;
 			element.removeEventListener("transitionrun", capture);
 			for (const transition of transitions) {
 				transition.pause();
 				transition.currentTime = 0;
 			}
-			window.controlMotion = transitions;
+			// The timing check reads the followed transition first.
+			window.controlMotion = [followed, ...transitions.filter((transition) => transition !== followed)];
 		};
 		element.addEventListener("transitionrun", capture);
 	}, { pseudo: target.pseudo ?? null, property: target.property });

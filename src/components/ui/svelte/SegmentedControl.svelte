@@ -1,5 +1,5 @@
 <script lang="ts" generics="T extends string">
-	import type { Snippet } from "svelte";
+	import { type Snippet, untrack } from "svelte";
 	import { cnfast } from "@/lib/utils";
 
 	type Option = {
@@ -26,7 +26,8 @@
 
 	let group: HTMLDivElement | undefined = $state();
 	/** The active option's box inside the group, which the pill covers. */
-	let pill: { left: number; top: number; width: number; height: number } | undefined = $state();
+	type Box = { left: number; top: number; width: number; height: number };
+	let pill: Box | undefined = $state();
 	/**
 	 * The pill slides only to a newly chosen option. A layout change moves it at once. At rest the
 	 * active option paints its own background, because `offsetWidth` rounds the option's fractional
@@ -49,13 +50,31 @@
 
 	$effect(() => {
 		if (!group) return;
-		sliding = shownValue !== undefined && shownValue !== value;
+		const chosen = shownValue !== undefined && shownValue !== value;
 		shownValue = value;
+		const from = untrack(() => pill);
 		place();
-		const observer = new ResizeObserver(place);
-		observer.observe(group);
+		const to = untrack(() => pill);
+		// Only a move starts a transition, and only a transition's end settles the slide. So a choice
+		// without a pill to start from, or one that lands in the same box, such as in a hidden
+		// control, does not slide.
+		sliding = chosen && from !== undefined && to !== undefined && !sameBox(from, to);	});
+
+	// A layout change places the pill at once, ending a slide that is running.
+	$effect(() => {
+		if (!group) return;
+		const observer = new ResizeObserver(() => {
+			sliding = false;
+			place();
+		});
+		// The border box, because a padding change moves the options without resizing the content.
+		observer.observe(group, { box: "border-box" });
 		return () => observer.disconnect();
 	});
+
+	function sameBox(a: Box, b: Box): boolean {
+		return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+	}
 
 	// New or reordered options can move the active one without resizing the group, so the hidden
 	// pill is measured again and the next slide starts from the active option.
