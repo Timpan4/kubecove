@@ -74,7 +74,7 @@ impl Inspector {
     pub(super) fn rbac_aside(
         &self,
         data: &RbacInspectionSummary,
-        item: &CockpitItem,
+        item: Option<&CockpitItem>,
         identity: &Identity,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -85,7 +85,7 @@ impl Inspector {
             .w(gpui_kit::relative(0.34))
             .min_w(px(272.))
             .gap(px(12.))
-            .children(self.rbac_review_panel(data, item, cx))
+            .children(item.and_then(|item| self.rbac_review_panel(data, item, cx)))
             .child(self.rbac_verifier(identity, cx))
             .children(self.rbac_latest(data))
             .child(
