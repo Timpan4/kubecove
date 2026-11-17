@@ -75,27 +75,30 @@ impl Parser {
         if row > 0 {
             write!(bytes, "\x1b[{row}S\x1b[{row}A").unwrap();
         }
-        if screen.row_wrapped(row) {
+        let wrapped = screen.row_wrapped(row);
+        if wrapped {
             // The row below is gone, so the kept row must not wrap into it.
             // Erasing the last cell clears vt100's flag; then rewrite that cell.
             redraw_last_cell(&mut bytes, screen, row, true);
-            write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
         }
+        let above_region = margins.is_some_and(|(top, _, origin)| origin && top > 0);
         if let Some((top, bottom, origin)) = margins {
             write!(bytes, "\x1b[{};{}r", top + 1, bottom + 1).unwrap();
             if origin {
                 bytes.push_str("\x1b[?6h");
             }
-            // DECSTBM homes the cursor. Under DECOM, CUP cannot reach rows
-            // above the region, so the cursor lands on the region's top row.
-            // Only DECRC could place it there, and that overwrites the app's
-            // saved cursor.
-            if col >= cols.get() {
-                // CUP clamps the column. Redrawing the last cell restores
-                // the pending autowrap, so the next character wraps.
+        }
+        if wrapped || margins.is_some() {
+            // Put the cursor back on row 0 at its column. CUP clamps the
+            // column, so redrawing the last cell restores a pending autowrap.
+            // Under DECOM, CUP cannot reach rows above the region and the
+            // cursor lands on the region's top row, where a redraw would leave
+            // a stray cell. Only DECRC could place it on row 0, and that
+            // overwrites the app's saved cursor.
+            if col >= cols.get() && !above_region {
                 redraw_last_cell(&mut bytes, screen, row, false);
             } else {
-                write!(bytes, "\x1b[1;{}H", col + 1).unwrap();
+                write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
             }
         }
         bytes.push_str(&screen.attributes_formatted());
@@ -348,12 +351,20 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
                     old.cell(row, *col)
                         .is_some_and(|c| c.has_contents() || c.bgcolor() != vt100::Color::Default)
                 })
-                .map_or(0, |col| col + 1)
+                // A wide character's second column has no contents of its own.
+                .map_or(0, |col| {
+                    let wide = old.cell(row, col).is_some_and(vt100::Cell::is_wide);
+                    col + if wide { 2 } else { 1 }
+                })
                 .max(if cursor_here { cursor_col } else { 0 })
         };
         if cursor_line {
             end = end.min(cols.get());
         }
+        // The cursor line drops a wide cell that no longer fits.
+        let replayed = |value: &vt100::Cell, col: u16| {
+            !value.is_wide_continuation() && !(cursor_line && value.is_wide() && col + 1 >= end)
+        };
         for col in 0..=end {
             if cursor_here && col == cursor_col.min(end) {
                 cursor = position(&next);
@@ -365,11 +376,19 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
                 // column left, starts the next row when it is replayed.
                 let width = old
                     .cell(row, col)
-                    .filter(|c| col < end && !c.is_wide_continuation())
+                    .filter(|c| col < end && replayed(c, col))
                     .map_or(0, |c| if c.is_wide() { 2 } else { 1 });
                 let (mut next_row, mut at) = position(&next);
                 if width > 0 && at.saturating_add(width) > cols.get() {
                     (next_row, at) = (next_row + 1, 0);
+                } else if col < end
+                    && old
+                        .cell(row, col)
+                        .is_some_and(vt100::Cell::is_wide_continuation)
+                {
+                    // The wide character is already replayed; its second
+                    // column is one cell back.
+                    at = at.saturating_sub(1);
                 }
                 saved = Some((next_row, at.saturating_add(saved_col - col)));
             }
@@ -379,7 +398,7 @@ pub(super) fn resize(parser: &mut Parser, rows: NonZeroU16, cols: NonZeroU16) {
             let Some(value) = old.cell(row, col) else {
                 continue;
             };
-            if value.is_wide_continuation() || (cursor_line && value.is_wide() && col + 1 >= end) {
+            if !replayed(value, col) {
                 continue;
             }
             cell(&mut encoded, value);

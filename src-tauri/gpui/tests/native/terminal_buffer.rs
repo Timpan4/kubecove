@@ -222,6 +222,17 @@ fn saved_cursor_follows_a_wide_character_that_wraps_early() {
     assert_eq!(screen.cell(0, 2).unwrap().contents(), "");
 }
 
+// Failure mode: a wide character's second column has no contents, so a saved
+// cursor on it, at the end of a row, maps one column to the right.
+#[test]
+fn saved_cursor_on_the_second_column_of_a_trailing_wide_character() {
+    let mut terminal = parser(4, 6);
+    terminal.process("abcde漢\x1b[2;2H\x1b7\x1b[3;1Hok".as_bytes());
+    resize(&mut terminal, n(4), n(3));
+    terminal.process(b"\x1b8X");
+    assert_eq!(terminal.screen().cursor_position(), (2, 2));
+}
+
 // Failure mode: SU and CUU honor a DECSTBM region and DECOM, so rows above the
 // region survive Clear and the app's margins or origin mode are lost.
 #[test]
@@ -255,6 +266,36 @@ fn clear_with_scroll_margins_keeps_a_pending_wrap() {
     terminal.clear();
     terminal.process(b"X");
     assert_eq!(terminal.screen().contents(), "abcdefghX");
+}
+
+// Failure mode: the cursor line drops a wide cell that does not fit, but the
+// saved-cursor mapping still counts it and moves to the next line.
+#[test]
+fn saved_cursor_ignores_a_wide_cell_the_cursor_line_drops() {
+    let mut terminal = parser(4, 8);
+    terminal.process("abc\x1b7界\x1b[2;1Hzz\x1b[1;6H".as_bytes());
+    resize(&mut terminal, n(4), n(4));
+    terminal.process(b"\x1b8X");
+    assert_eq!(terminal.screen().contents(), "abcX\nzz");
+}
+
+// Failure mode: the final cursor placement clamps the column, so a pending
+// autowrap on a wrapped row is lost, or under DECOM the redraw lands on the
+// region's top row and leaves a stray copy of the last cell there.
+#[test]
+fn clear_places_a_pending_wrap_without_stray_cells() {
+    let mut terminal = parser(5, 8);
+    terminal.process(b"a\r\nabcdefghij\x1b[A\x1b[8GH");
+    terminal.clear();
+    terminal.process(b"X");
+    assert_eq!(terminal.screen().contents(), "abcdefgHX");
+
+    let mut terminal = parser(5, 8);
+    terminal.process(b"a\r\n\x1b[2;4r\x1b[?6h\x1b[2;1Habcdefgh");
+    terminal.clear();
+    terminal.process(b"X");
+    // The documented DECOM exception: the cursor ends on the region's top row.
+    assert_eq!(terminal.screen().contents(), "abcdefgh\n       X");
 }
 
 fn newline() -> &'static str {
