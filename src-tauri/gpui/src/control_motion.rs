@@ -399,7 +399,8 @@ impl Element for HoverFill {
         // The pointer crossing the edge redraws the view, which starts the fade.
         let (hitbox, view) = (hitbox.clone(), window.current_view());
         window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
-            if phase == DispatchPhase::Capture && hitbox.is_hovered(window) != hovered {
+            let hovers = hitbox.is_hovered(window) && !cx.has_active_drag();
+            if phase == DispatchPhase::Capture && hovers != hovered {
                 cx.notify(view);
             }
         });
