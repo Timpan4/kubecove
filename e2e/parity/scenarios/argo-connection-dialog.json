@@ -380,7 +380,7 @@
     },
     {
       "id": "argo-connection.keeps-older-profile-id",
-      "title": "A profile saved by an older build, whose id lowercased its whole URL, does not take the id of a server that differs only in path case, and a new connection to its own server with another host case updates it",
+      "title": "A profile saved by an older build, whose id lowercased its whole URL, does not take the id of a server that differs only in path case, and a new connection to its own server typed with another host case, its default port and a trailing slash updates it",
       "steps": [
         { "action": "openPage", "page": "GitOps" },
         { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
@@ -394,8 +394,8 @@
         { "action": "connectArgoProfile", "url": "https://argocd.example.test/argo", "remember": true },
         { "action": "expectSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
         { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/argo" },
-        { "action": "connectArgoProfile", "url": "https://argocd.example.test/Argo", "remember": true },
-        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/Argo" },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test:443/Argo/", "remember": true },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test:443/Argo/" },
         { "action": "expectNoSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
         { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/argo" }
       ]

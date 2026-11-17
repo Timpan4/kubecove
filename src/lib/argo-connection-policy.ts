@@ -43,15 +43,28 @@ function lowercaseSchemeAndHost(url: string): string {
 }
 
 /**
- * The id of a saved profile, from the caller's scope, with this endpoint. A new connection
+ * The id of a saved profile, from the caller's scope, for this endpoint's server. A new connection
  * reuses it, so retyping a saved server's URL updates that profile whichever rule made its id.
  */
 export function savedArgoProfileId(
 	profiles: readonly { id: string; endpoint: ArgoServerEndpoint }[],
 	endpoint: ArgoServerEndpoint,
 ): string | undefined {
-	const identity = argoEndpointIdentity(endpoint);
-	return profiles.find((profile) => argoEndpointIdentity(profile.endpoint) === identity)?.id;
+	const server = argoServerKey(endpoint);
+	return profiles.find((profile) => argoServerKey(profile.endpoint) === server)?.id;
+}
+
+/**
+ * The endpoint identity of the URL the backend saves (`normalize_endpoint`): parsed, without query
+ * or fragment, and without a trailing slash. A profile saves that URL, while its id came from the
+ * URL as typed, which may have had a trailing slash or a default port. GPUI's `server_key` matches.
+ */
+function argoServerKey(endpoint: ArgoServerEndpoint): string {
+	if (endpoint.kind !== "externalHttps" || !URL.canParse(endpoint.url.trim())) return argoEndpointIdentity(endpoint);
+	const url = new URL(endpoint.url.trim());
+	url.search = "";
+	url.hash = "";
+	return argoEndpointIdentity({ kind: "externalHttps", url: url.href.replace(/\/+$/, "") });
 }
 
 interface ArgoConnectionStatusPolicyInput {

@@ -87,3 +87,23 @@ fn a_new_connection_reuses_the_saved_profile_with_its_endpoint() {
         Some("tunnel")
     );
 }
+
+#[test]
+fn matches_a_saved_profile_by_the_url_the_backend_saved() {
+    // The backend saves the canonical URL: no trailing slash, default port, query or fragment.
+    let id = "argo:w:c:global:https://argocd.example.com:443/argo/";
+    let saved = [profile(id, external("https://argocd.example.com/Argo"))];
+    let typed = |url: &str| saved_profile_id(&saved, &external(url));
+    assert_eq!(
+        typed(" https://ArgoCD.example.com:443/Argo/ ").as_deref(),
+        Some(id)
+    );
+    assert_eq!(
+        typed("https://argocd.example.com/Argo?x=1#y").as_deref(),
+        Some(id)
+    );
+    // Canonical URLs keep path case, so the other server still gets its own profile.
+    assert_eq!(typed("https://argocd.example.com:443/argo/"), None);
+    // A URL the backend cannot parse matches by its typed identity only.
+    assert_eq!(typed("argocd.example.com/Argo"), None);
+}

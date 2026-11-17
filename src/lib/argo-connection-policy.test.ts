@@ -192,6 +192,20 @@ describe("Argo connection policy", () => {
 		expect(savedArgoProfileId(saved, { kind: "serviceTunnel", namespace: "ArgoCD", serviceName: "argocd-server", servicePort: 443, scheme: "https" })).toBe("tunnel");
 	});
 
+	test("matches a saved profile by the URL the backend saved, not the URL typed for it", () => {
+		// The backend saves the canonical URL: no trailing slash, default port, query or fragment.
+		const saved: { id: string; endpoint: ArgoServerEndpoint }[] = [
+			{ id: "argo:w:c:global:https://argocd.example.com:443/argo/", endpoint: { kind: "externalHttps", url: "https://argocd.example.com/Argo" } },
+		];
+		const typed = (url: string) => savedArgoProfileId(saved, { kind: "externalHttps", url });
+		expect(typed(" https://ArgoCD.example.com:443/Argo/ ")).toBe(saved[0]?.id);
+		expect(typed("https://argocd.example.com/Argo?x=1#y")).toBe(saved[0]?.id);
+		// Canonical URLs keep path case, so the other server still gets its own profile.
+		expect(typed("https://argocd.example.com:443/argo/")).toBeUndefined();
+		// A URL the backend cannot parse matches by its typed identity only.
+		expect(typed("argocd.example.com/Argo")).toBeUndefined();
+	});
+
 	test("identifies private service endpoints as before", () => {
 		expect(
 			argoEndpointIdentity({

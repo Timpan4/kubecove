@@ -110,17 +110,33 @@ fn lowercase_scheme_and_host(url: &str) -> String {
         .map_or(url.len(), |length| host_start + length);
     format!("{}{}", url[..host_end].to_lowercase(), &url[host_end..])
 }
-/// The web's `savedArgoProfileId`: the id of a profile in `profiles` with this endpoint, which
-/// a new connection reuses whichever rule made that id.
+/// The web's `savedArgoProfileId`: the id of a profile in `profiles` for this endpoint's server,
+/// which a new connection reuses whichever rule made that id.
 pub(super) fn saved_profile_id<'a>(
     profiles: impl IntoIterator<Item = &'a ArgoConnectionProfile>,
     endpoint: &ArgoServerEndpoint,
 ) -> Option<String> {
-    let identity = endpoint_identity(endpoint);
+    let server = server_key(endpoint);
     profiles
         .into_iter()
-        .find(|p| endpoint_identity(&p.endpoint) == identity)
+        .find(|p| server_key(&p.endpoint) == server)
         .map(|p| p.id.clone())
+}
+/// The web's `argoServerKey`: the identity of the URL the backend saves (`normalize_endpoint`),
+/// parsed, without query or fragment, and without a trailing slash. A profile saves that URL,
+/// while its id came from the URL as typed, which may have had a trailing slash or default port.
+fn server_key(endpoint: &ArgoServerEndpoint) -> String {
+    let ArgoServerEndpoint::ExternalHttps { url } = endpoint else {
+        return endpoint_identity(endpoint);
+    };
+    let Ok(mut url) = reqwest::Url::parse(url.trim()) else {
+        return endpoint_identity(endpoint);
+    };
+    url.set_query(None);
+    url.set_fragment(None);
+    endpoint_identity(&ArgoServerEndpoint::ExternalHttps {
+        url: url.as_str().trim_end_matches('/').to_owned(),
+    })
 }
 impl From<Endpoint> for ArgoServerEndpoint {
     fn from(value: Endpoint) -> Self {
