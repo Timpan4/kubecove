@@ -171,7 +171,7 @@
 
 <svelte:window onfocus={() => (windowActive = true)} onblur={() => (windowActive = false)} />
 
-<div class="flex h-full min-h-[400px] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm">
+<div class="relative flex h-full min-h-[400px] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm">
 	<div class="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
 		<div class="flex min-w-0 items-center gap-2">
 			{#if onMapToggle}
@@ -237,7 +237,7 @@
 	</div>
 
 	{#if topology && error}
-		<details class="px-3 py-2 text-xs text-muted-foreground">
+		<details class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
 			<summary class="cursor-pointer">Map refresh failed</summary>
 			<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} />
 		</details>

@@ -10,7 +10,9 @@ use super::{
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::{AnyElement, Context, Div, MouseButton, deferred, div, prelude::*, px};
+use gpui_kit::{
+    AnyElement, Context, Div, MouseButton, SharedString, deferred, div, prelude::*, px,
+};
 
 /// The notice for watches that open, recover or catch up.
 const STALE: &str =
@@ -332,9 +334,11 @@ impl Inspector {
         let mut notices = Vec::new();
         if let Some(label) = table {
             let label = if freshness.map.is_some() && map != table {
-                label.replace("Activity indicators", "Table activity indicators")
+                SharedString::from(
+                    label.replace("Activity indicators", "Table activity indicators"),
+                )
             } else {
-                label.to_owned()
+                SharedString::from(label)
             };
             notices.push(self.live_notice_panel(
                 "live-notice",
@@ -345,9 +349,9 @@ impl Inspector {
         }
         if let Some(label) = map.filter(|_| map != table) {
             let label = if freshness.table.is_some() {
-                label.replace("Activity indicators", "Map activity indicators")
+                SharedString::from(label.replace("Activity indicators", "Map activity indicators"))
             } else {
-                label.to_owned()
+                SharedString::from(label)
             };
             let id = if table.is_some() {
                 "map-live-notice"
@@ -362,7 +366,7 @@ impl Inspector {
     fn live_notice_panel(
         &self,
         id: &'static str,
-        label: String,
+        label: SharedString,
         failed: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {

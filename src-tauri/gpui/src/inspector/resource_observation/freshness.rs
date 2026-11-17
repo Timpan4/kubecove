@@ -35,8 +35,15 @@ impl Inspector {
                 if self.map.read.error.is_some() {
                     LiveStatus::RefreshFailed
                 } else {
-                    let status = self.live.map_watch_status(self.map_context());
-                    if status == LiveStatus::Live && self.map.read.refreshing() {
+                    let context = self.map_context();
+                    let status = self.live.watch_status_where(|watched| watched == context);
+                    // The graph is filtered by this context's rows.
+                    if status == LiveStatus::RefreshFailed
+                        || (status == LiveStatus::Live
+                            && (self.map.read.refreshing()
+                                || (self.observation.shows(context)
+                                    && self.observation.context_loading(context))))
+                    {
                         LiveStatus::CatchingUp
                     } else {
                         status
