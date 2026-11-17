@@ -21,11 +21,16 @@ struct Track {
     /// The shown share when the run started: 0 is closed and 1 is open.
     from: f32,
     start: Instant,
-    /// The branch's height in pixels, measured on the run's first frame, as
-    /// the web's `slide` measures it when it starts. A child that folds inside
-    /// the branch, or rows that arrive while it runs, change only what shows
-    /// inside that height.
+    /// A closing run's height in pixels, measured on its first frame. A child
+    /// that opens inside the branch then cannot grow it while it closes. An
+    /// opening run follows its rows' height instead, which only grows it, so
+    /// it ends at the height its rows reach.
     height: Option<f32>,
+    /// The pixels the branch showed on the last frame.
+    shown: Option<f32>,
+    /// The pixels the branch showed when the user turned it back. The run's
+    /// first frame moves `from` to them, so the branch turns from where it is.
+    turned: Option<f32>,
     /// Whether this frame rendered the branch.
     seen: bool,
 }
@@ -64,12 +69,10 @@ impl Folds {
             return;
         }
         let now = cx.background_executor().now();
-        // A run that turns back keeps the height the last run measured, so the
-        // branch turns from the height it shows.
-        let (from, height) = tracks
+        let (from, turned) = tracks
             .get(path)
             .map_or((if open { 0. } else { 1. }, None), |track| {
-                (track.at(now).0, track.height)
+                (track.at(now).0, track.shown)
             });
         tracks.insert(
             path.to_owned(),
@@ -77,20 +80,35 @@ impl Folds {
                 open,
                 from,
                 start: now,
-                height,
+                height: None,
+                shown: None,
+                turned,
                 seen: true,
             },
         );
     }
 
-    /// The height of the folding branch at `path`: the one its run measured,
-    /// or `measured`, which becomes the run's height on its first frame.
-    fn height(&self, path: &str, measured: f32) -> f32 {
+    /// The pixels the folding branch at `path` shows at `now`, whose rows lay
+    /// out `measured` high this frame.
+    fn reached(&self, path: &str, measured: f32, now: Instant) -> f32 {
         let mut tracks = self.tracks.borrow_mut();
         let Some(track) = tracks.get_mut(path) else {
             return measured;
         };
-        *track.height.get_or_insert(measured)
+        if let Some(turned) = track.turned.take()
+            && measured > 0.
+        {
+            track.from = (turned / measured).clamp(0., 1.);
+        }
+        let height = if track.open {
+            measured
+        } else {
+            *track.height.get_or_insert(measured)
+        };
+        // Whole pixels, so the rows below the branch stay on the pixel grid.
+        let shown = (height * track.at(now).0).round();
+        track.shown = Some(shown);
+        shown
     }
 
     /// Whether the branch at `path` is folding.
@@ -118,7 +136,8 @@ impl Folds {
         let Some(track) = tracks.get_mut(path) else {
             return settled;
         };
-        let (share, running) = track.at(cx.background_executor().now());
+        let now = cx.background_executor().now();
+        let (share, running) = track.at(now);
         // Reduced motion turned on during a fold ends it, as it does any transition.
         if track.open != open || !running || Moving::finishing(cx) || cx.reduce_motion() {
             tracks.remove(path);
@@ -127,7 +146,7 @@ impl Folds {
         track.seen = true;
         Moving::record(&ElementId::Name(format!("fold:{path}").into()), share, cx);
         Some(Fold(Some(Running {
-            share,
+            now,
             path: path.to_owned(),
             folds: self,
         })))
@@ -146,8 +165,8 @@ impl Folds {
 pub(super) struct Fold<'a>(Option<Running<'a>>);
 
 struct Running<'a> {
-    /// The share of the branch's height the fold has reached.
-    share: f32,
+    /// The frame's time.
+    now: Instant,
     path: String,
     folds: &'a Folds,
 }
@@ -160,9 +179,7 @@ impl Fold<'_> {
             return rows;
         };
         let measured: f32 = rows.iter_mut().map(|row| *shown(row)).sum();
-        let height = run.folds.height(&run.path, measured);
-        // Whole pixels, so the rows below the branch stay on the pixel grid.
-        let mut left = (height * run.share).round();
+        let mut left = run.folds.reached(&run.path, measured, run.now);
         rows.retain_mut(|row| {
             let height = shown(row);
             *height = height.min(left);
@@ -210,18 +227,22 @@ pub(super) fn cut(row: AnyElement, height: f32, shown: f32) -> AnyElement {
 
 #[cfg(test)]
 mod tests {
-    //! Failure mode: a fold that sizes its branch from the rows' heights on
-    //! every frame lets a child that opens inside a closing branch grow the
-    //! branch, so the rows below it move down before they move up.
+    //! Failure modes of a fold with a child folding inside it:
+    //! - a closing branch sized from its rows on every frame grows while a
+    //!   child opens, so the rows below it move down before they move up;
+    //! - a branch turned back mid-fold jumps at the turn, or reopens to a
+    //!   height measured before its child opened and then jumps at the end.
     use super::*;
     use gpui_kit::TestAppContext;
 
     /// `sidebar_tree::ROW_HEIGHT`.
     const ROW: f32 = 26.;
+    /// Ten-millisecond frames, so the first frames of a run are seen.
+    const FRAMES: u32 = 15;
 
-    /// The height a namespace branch shows this frame: four group rows, the
-    /// first of which, Workloads, holds seven kind rows.
-    fn namespace(folds: &Folds, cx: &mut TestAppContext) -> f32 {
+    /// The height a namespace branch, toggled to `open`, shows this frame:
+    /// four group rows, the first of which, Workloads, holds seven kind rows.
+    fn namespace(folds: &Folds, open: bool, cx: &mut TestAppContext) -> f32 {
         cx.update(|cx| {
             let kinds = folds
                 .branch("ns/Workloads", true, cx)
@@ -230,27 +251,35 @@ mod tests {
             rows.extend(kinds);
             rows.extend([ROW; 3]);
             let shown = folds
-                .branch("ns", false, cx)
+                .branch("ns", open, cx)
                 .map_or(0., |fold| fold.clip(rows, |row| row).iter().sum());
             folds.end_frame();
             shown
         })
     }
 
-    #[gpui_kit::test]
-    fn a_closing_branch_does_not_grow_while_a_child_opens(cx: &mut TestAppContext) {
-        let folds = Folds::default();
+    /// Opens the namespace's Workloads and closes the namespace in one frame.
+    fn close_while_a_child_opens(folds: &Folds, cx: &mut TestAppContext) {
         cx.update(|cx| {
             folds.start("ns/Workloads", true, cx);
             folds.start("ns", false, cx);
         });
-        let mut last = namespace(&folds, cx);
+    }
+
+    fn frame(cx: &mut TestAppContext) {
+        cx.background_executor
+            .advance_clock(control_motion::DURATION / FRAMES);
+    }
+
+    #[gpui_kit::test]
+    fn a_closing_branch_does_not_grow_while_a_child_opens(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        let mut last = namespace(&folds, false, cx);
         assert_eq!(last, 4. * ROW);
-        // Frames 10 ms apart, so the first frames of the run are seen.
-        for _ in 0..15 {
-            cx.background_executor
-                .advance_clock(control_motion::DURATION / 15);
-            let shown = namespace(&folds, cx);
+        for _ in 0..FRAMES {
+            frame(cx);
+            let shown = namespace(&folds, false, cx);
             assert!(
                 shown <= last,
                 "the closing branch grew from {last} to {shown}"
@@ -258,5 +287,42 @@ mod tests {
             last = shown;
         }
         assert_eq!(last, 0.);
+    }
+
+    #[gpui_kit::test]
+    fn a_branch_turned_back_while_a_child_opens_moves_without_a_jump(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        let mut last = namespace(&folds, false, cx);
+        for _ in 0..FRAMES / 2 {
+            frame(cx);
+            last = namespace(&folds, false, cx);
+        }
+        cx.update(|cx| folds.start("ns", true, cx));
+        assert_eq!(
+            namespace(&folds, true, cx),
+            last,
+            "the branch jumped at the turn"
+        );
+        let mut steps = Vec::new();
+        while folds.folding("ns") {
+            frame(cx);
+            let shown = namespace(&folds, true, cx);
+            assert!(
+                shown >= last,
+                "the opening branch shrank from {last} to {shown}"
+            );
+            steps.push(shown - last);
+            last = shown;
+        }
+        assert_eq!(last, 11. * ROW);
+        // The frame the fold ends on moves the rows below no further than a
+        // frame of the run did.
+        let (end, run) = steps.split_last().unwrap();
+        let largest = run.iter().copied().fold(0., f32::max);
+        assert!(
+            *end <= largest,
+            "the branch jumped {end} px as its fold ended"
+        );
     }
 }
