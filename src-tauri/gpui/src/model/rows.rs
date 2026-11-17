@@ -9,7 +9,7 @@ mod search;
 mod sort;
 use crate::collate::Key;
 use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary};
-pub(crate) use patch::{ObservedNames, reconcile};
+pub(crate) use patch::{Added, ObservedNames, reconcile};
 pub(crate) use search::SearchMatches;
 use std::{
     collections::HashMap,

@@ -196,6 +196,7 @@ impl Inspector {
             self.loading
                 .phase("surface-sessions", self.sessions.load.pending()),
         );
+        let reveal = self.loading.reveal("surface-sessions");
         let body: AnyElement = match (self.sessions.load.settled(), pending) {
             (_, Some(slot)) => slot,
             (None, None) => div().into_any_element(),
@@ -211,6 +212,7 @@ impl Inspector {
                     .flex()
                     .flex_col()
                     .gap(px(16.))
+                    .when_some(reveal, |body, opacity| body.opacity(opacity))
                     // `SurfaceFrame` shows a failed refetch above the data it keeps.
                     .when_some(self.sessions.load.refresh_error().cloned(), |body, error| {
                         body.child(self.page_read_failure(

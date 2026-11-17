@@ -265,7 +265,8 @@ fn an_empty_read_of_one_context_keeps_the_other_contexts_rows() {
         "mock-dev",
         &key(),
         Vec::new(),
-        None
+        None,
+        &mut Vec::new()
     ));
     assert_eq!(row_contexts(&cluster_rows), expected);
 }

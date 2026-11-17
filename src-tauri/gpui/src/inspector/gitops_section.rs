@@ -284,6 +284,9 @@ impl Inspector {
                 )
                 .into_any_element(),
         };
-        body.child(content)
+        body.when_some(self.loading.reveal("overview-gitops"), |body, opacity| {
+            body.opacity(opacity)
+        })
+        .child(content)
     }
 }

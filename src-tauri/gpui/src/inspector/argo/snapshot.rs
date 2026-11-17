@@ -384,6 +384,7 @@ pub(super) fn snapshot(
     state: &ArgoTab,
     failed: bool,
     loading: Phase,
+    reveal: Option<f32>,
     cx: &mut Context<Inspector>,
 ) -> Div {
     let focused = state
@@ -448,7 +449,12 @@ pub(super) fn snapshot(
                 })
                 .child(segmented(state.view, cx)),
         );
-    let body = div().mt(px(12.)).flex().flex_col().gap(px(16.));
+    let body = div()
+        .mt(px(12.))
+        .flex()
+        .flex_col()
+        .gap(px(16.))
+        .when_some(reveal, |body, opacity| body.opacity(opacity));
     let body = match view {
         // ArgoApplicationDetails.svelte checks the loading state first.
         _ if loading.shown() => body.child(

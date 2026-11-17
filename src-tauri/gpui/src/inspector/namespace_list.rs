@@ -81,6 +81,9 @@ impl Inspector {
             .max_w(px(1024.))
             .mx_auto()
             .p(px(16.))
+            .when_some(self.loading.reveal("namespace-list"), |page, opacity| {
+                page.opacity(opacity)
+            })
             .when_some(count, |page, count| {
                 page.child(
                     div()

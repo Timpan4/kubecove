@@ -702,6 +702,7 @@ impl Inspector {
         self.visible.release_source();
         self.row_index.invalidate();
         for patch in pending {
+            self.row_changes.patched |= patch.watch.is_some();
             let rows = self.patch_kind(
                 &patch.scope,
                 &patch.key,

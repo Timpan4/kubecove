@@ -51,6 +51,8 @@ pub(super) struct GitOpsPage {
     /// The inventory's loading phase. List items render after the frame, so
     /// `gitops_page_view` observes it during render.
     status: Phase,
+    /// The opacity of the items that replaced the indicator, observed with `status`.
+    reveal: Option<f32>,
 }
 
 impl GitOpsPage {
@@ -71,6 +73,7 @@ impl GitOpsPage {
             target_application: None,
             selected: None,
             status: Phase::Ready,
+            reveal: None,
         }
     }
 
@@ -249,6 +252,7 @@ impl Inspector {
             "surface-gitops",
             self.gitops.inventory().is_none() && self.gitops.error().is_none(),
         );
+        self.gitops_page.reveal = self.loading.reveal("surface-gitops");
         self.sync_gitops_rows();
         let items = self
             .gitops
@@ -312,6 +316,11 @@ impl Inspector {
 
     fn gitops_list_item(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let last = index + 1 == self.gitops_items();
+        // The header stays while the inventory loads; the rest replaces the indicator.
+        let reveal = self
+            .gitops_page
+            .reveal
+            .filter(|_| !matches!(self.gitops_item(index), Item::Header));
         let item = match self.gitops_item(index) {
             Item::Header => self.gitops_header(cx).pt(px(20.)),
             Item::Status => self.gitops_status(cx).pt(px(16.)),
@@ -322,6 +331,7 @@ impl Inspector {
         item.w_full()
             .px(px(20.))
             .when(last, |item| item.pb(px(20.)))
+            .when_some(reveal, |item, opacity| item.opacity(opacity))
             .into_any_element()
     }
 

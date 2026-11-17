@@ -408,6 +408,7 @@ impl Inspector {
             self.loading
                 .phase("surface-incidents", self.incidents.load.pending()),
         );
+        let reveal = self.loading.reveal("surface-incidents");
         let body: AnyElement = match (self.incidents.load.settled(), pending) {
             (_, Some(slot)) => slot,
             (None, None) => div().into_any_element(),
@@ -460,6 +461,7 @@ impl Inspector {
                     .flex_col()
                     .min_w_0()
                     .gap(px(12.))
+                    .when_some(reveal, |body, opacity| body.opacity(opacity))
                     .child(self.overview_section(cx))
                     .when_some(
                         self.incidents.load.refresh_error().cloned(),

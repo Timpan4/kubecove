@@ -13,6 +13,8 @@ impl Bezier {
     pub const EASE: Self = Self(0.25, 0.1, 0.25, 1.);
     /// The CSS keyword `ease-in-out`.
     pub const EASE_IN_OUT: Self = Self(0.42, 0., 0.58, 1.);
+    /// The CSS keyword `ease-out`.
+    pub const EASE_OUT: Self = Self(0., 0., 0.58, 1.);
 
     /// The eased progress at `progress` of the duration, both from 0 to 1.
     pub fn ease(self, progress: f32) -> f32 {
@@ -35,6 +37,21 @@ impl Timing {
         duration: Duration::from_millis(150),
         easing: Bezier(0.4, 0., 0.2, 1.),
     };
+
+    /// `animate-in fade-in duration-150`: tw-animate-css runs it with `ease`.
+    pub const FADE_IN: Self = Self {
+        duration: Duration::from_millis(150),
+        easing: Bezier::EASE,
+    };
+
+    /// The eased progress `elapsed` after the start, from 0 to 1.
+    pub fn progress(self, elapsed: Duration) -> f32 {
+        if elapsed >= self.duration {
+            return 1.;
+        }
+        self.easing
+            .ease(elapsed.as_secs_f32() / self.duration.as_secs_f32())
+    }
 
     /// A one-shot GPUI animation with this timing. It renders its end state
     /// under reduced motion.

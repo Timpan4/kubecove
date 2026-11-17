@@ -488,6 +488,7 @@ impl Inspector {
         let loading = self
             .loading
             .phase("resources", matches!(self.page_load(), Load::Loading));
+        let reveal = self.loading.reveal("resources");
         let body: AnyElement = match self.empty_scope() {
             Some(empty) => empty,
             None => match self.page_load() {
@@ -534,6 +535,7 @@ impl Inspector {
                         .flex_col()
                         .when(!stacked, |body| body.flex_1().min_h_0())
                         .gap(px(12.))
+                        .when_some(reveal, |body, opacity| body.opacity(opacity))
                         .child(self.top_bar(width, cx))
                         .children(self.live_notice(cx))
                         .children(self.contexts_waiting_notice())
