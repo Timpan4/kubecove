@@ -2,6 +2,7 @@
 	import { Download, RefreshCw } from "lucide-svelte";
 	import { Badge, Button, FieldGroup } from "@/components/ui/svelte";
 	import { canCheckForUpdates } from "@/features/app-updates/store";
+	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import SettingsRow from "./SettingsRow.svelte";
 	import { appUpdateActions, appUpdateStore } from "./appUpdateStore";
@@ -89,7 +90,10 @@
 			<Button
 				type="button"
 				size="sm"
-				onclick={() => void appUpdateActions.relaunchApp()}
+				onclick={() => {
+					// The restart ends the process without a window close event, so the close guard never runs.
+					if (canLeaveYamlDraft()) void appUpdateActions.relaunchApp();
+				}}
 			>
 				<RefreshCw data-icon="inline-start" />
 				Relaunch

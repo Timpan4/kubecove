@@ -71,6 +71,15 @@ fn milliseconds(from: Instant, to: Instant) -> f64 {
 }
 
 impl Inspector {
+    /// The display frames the harness's run still waits for, or `None` without
+    /// a run. A stored run is waiting on one frame already taken from its queue.
+    /// The parity driver bounds its frame loop with this.
+    pub fn topology_spike_frames_left(&self) -> Option<usize> {
+        let run = self.spike.as_ref()?.run.as_ref()?;
+        let queued = run.ops.iter().filter(|op| matches!(op, Op::Frame)).count();
+        Some(queued + 1)
+    }
+
     /// `firstRender`: the time from opening to the first settled frame. With
     /// `autorun`, the run starts then.
     pub(super) fn measure_spike_first_render(

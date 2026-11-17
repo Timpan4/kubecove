@@ -5,35 +5,16 @@ use super::*;
 
 /// The contexts of every row with the step's identity on the current table
 /// page, top to bottom. Row IDs end in their context
-/// (`table_columns::resource_id`). The table mounts only the rows near its
-/// viewport, so the same rows of another context can sit below the first
-/// one's viewport: the whole page is scanned from the top.
+/// (`table_columns::resource_id`).
 fn row_contexts(
     window: &mut gpui_kit::Window,
     step: &Value,
     cx: &mut gpui_kit::App,
 ) -> Vec<String> {
     let identity = row(step);
-    let mut ids: Vec<String> = Vec::new();
-    // `None` until the first visit, which is at the current scroll position
-    // before the scan resets to the top, so only the top-down visits count.
-    let mut previous: Option<Option<Vec<String>>> = None;
-    detail::scan_table(window, cx, |window| {
-        let rendered = detail::rendered_rows(window, "resource");
-        let Some(last) = previous.replace(Some(rendered.clone())) else {
-            previous = Some(None);
-            return false;
-        };
-        for id in detail::rendered_rows(window, &identity) {
-            if !ids.contains(&id) {
-                ids.push(id);
-            }
-        }
-        // Scrolling no longer moves the rows: the bottom of the page.
-        last.is_some_and(|last| last == rendered)
-    });
     let prefix = format!("{identity}:");
-    ids.into_iter()
+    detail::table_rows(window, &identity, cx)
+        .into_iter()
         .map(|id| {
             id.strip_prefix(&prefix)
                 .unwrap_or_else(|| panic!("row {id} has no context"))

@@ -2,6 +2,7 @@
 //! external server is contacted and no credential is written or printed.
 use futures_util::StreamExt;
 use kubecove_gpui::backend::{Backend, DesktopBackend, NativeBackend, Scope, WatchTarget};
+use kubecove_lib::commands::REQUEST_READ_TIMEOUT;
 use kubecove_lib::models::{AppErrorKind, ArgoApplicationRef, WatchResourceKey, WatchResourceKind};
 use serde_json::json;
 use tokio::{
@@ -11,6 +12,16 @@ use tokio::{
 };
 
 type Requests = tokio::sync::mpsc::UnboundedReceiver<(String, serde_json::Value)>;
+
+/// The next command the controlled server received. The server keeps its
+/// sender open, so a request that never arrives would wait forever; it fails
+/// after the backend's stalled-request bound instead.
+async fn next_request(requests: &mut Requests) -> (String, serde_json::Value) {
+    tokio::time::timeout(REQUEST_READ_TIMEOUT, requests.recv())
+        .await
+        .expect("the controlled server received no request within REQUEST_READ_TIMEOUT")
+        .expect("the controlled server stopped")
+}
 
 /// The saved sources a controlled server returns for one kubeconfig edit.
 fn saved_sources(command: &str, arguments: &serde_json::Value) -> serde_json::Value {
@@ -319,7 +330,7 @@ fn remote_reads_carry_list_versions_to_watch_starts() {
             .unwrap();
         drop(stream);
         loop {
-            let (command, args) = requests.recv().await.unwrap();
+            let (command, args) = next_request(&mut requests).await;
             if command == "start_resource_watch" {
                 assert_eq!(args["keys"][0]["resourceVersion"], "4242");
                 break;
@@ -391,15 +402,15 @@ fn remote_delivery_dynamic_refresh_and_stream_requests_follow_the_shared_contrac
         backend.connect_remote(url, "controlled-test-credential".into()).await.unwrap();
         let release = serde_json::from_value(json!({"cluster":"controlled-host","name":"release","namespace":"payments","age":"1d","storageKind":"Secret","storageName":"sh.helm.release.v1.release.v1"})).unwrap();
         assert_eq!(backend.helm_release(release).await.unwrap_err().kind, AppErrorKind::Serialization);
-        let (command, args) = requests.recv().await.unwrap();
+        let (command, args) = next_request(&mut requests).await;
         assert_eq!(command, "get_helm_release_details");
         assert_eq!(args["storageKind"], "Secret");
         let application = ArgoApplicationRef { name: "payments".into(), context: Some("controlled-host".into()), ..Default::default() };
         assert_eq!(backend.argo_inspector(application).await.unwrap_err().kind, AppErrorKind::Serialization);
-        let (_, args) = requests.recv().await.unwrap();
+        let (_, args) = next_request(&mut requests).await;
         assert_eq!(args["clusterContext"], "controlled-host");
         assert_eq!(backend.deployment_revisions(super::resource("controlled-host")).await.unwrap_err().kind, AppErrorKind::Serialization);
-        let (command, args) = requests.recv().await.unwrap();
+        let (command, args) = next_request(&mut requests).await;
         assert_eq!(command, "list_deployment_revisions");
         assert!(args.get("kind").is_none());
         let mut dynamic = super::resource("controlled-host");
@@ -409,14 +420,14 @@ fn remote_delivery_dynamic_refresh_and_stream_requests_follow_the_shared_contrac
         dynamic.version = Some("v1".into());
         dynamic.plural = Some("deployments".into());
         assert_eq!(backend.details(dynamic).await.unwrap_err().kind, AppErrorKind::Serialization);
-        let (command, args) = requests.recv().await.unwrap();
+        let (command, args) = next_request(&mut requests).await;
         assert_eq!(command, "get_dynamic_resource_details");
         assert!(args.get("kind").is_none());
         let scope = Scope { context: "controlled-host".into(), namespace: Some("payments".into()) };
         backend.resources(scope.clone(), true).await.unwrap();
-        let (command, _) = requests.recv().await.unwrap();
+        let (command, _) = next_request(&mut requests).await;
         assert_eq!(command, "list_resource_kinds");
-        let (command, args) = requests.recv().await.unwrap();
+        let (command, args) = next_request(&mut requests).await;
         assert_eq!(command, "refresh_resource_cache");
         assert!(!args["keys"].as_array().unwrap().is_empty());
         assert_eq!(args["namespaces"], json!(["payments"]));
@@ -424,7 +435,7 @@ fn remote_delivery_dynamic_refresh_and_stream_requests_follow_the_shared_contrac
         let stream = backend.watch(WatchTarget::Resource { scope, key: Box::new(key), resource_version: Some("7".into()) }).await.unwrap();
         drop(stream);
         loop {
-            let (command, args) = requests.recv().await.unwrap();
+            let (command, args) = next_request(&mut requests).await;
             if command == "start_resource_watch" {
                 assert_eq!(args["keys"][0]["resourceVersion"], "7");
             }
