@@ -310,7 +310,8 @@ describe("resource browser presentation helpers", () => {
     const resource = { ...baseResource, kind: "ConfigMap", argoApp: "argocd" };
 
     expect(resourceGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd (partial evidence)");
-    expect(resourceTypeGroupCollapseKey(resource)).toBe("group:Owned by Argo CD: argocd (partial evidence)::type:ConfigMaps");
+    expect(resourceTypeGroupCollapseKey(resource, true)).toBe("group:Owned by Argo CD: argocd (partial evidence)::type:ConfigMaps");
+    expect(resourceTypeGroupCollapseKey(resource, false)).toBe("group:::type:ConfigMaps");
   });
 
 });

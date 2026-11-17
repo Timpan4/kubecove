@@ -11,7 +11,8 @@ import {
 } from "./resourceTableModel";
 
 // Failure modes: collation options or tie order drift, unstable equal keys,
-// missing metrics changing order, and off-page selection failing to expand a group.
+// missing metrics changing order, off-page selection failing to expand a group, and
+// an ungrouped kind group row counting only its first row's Helm release.
 const rows: ResourceSummary[] = [
 	"pod-10",
 	"Pod-2",
