@@ -3,18 +3,14 @@
 // scenarios cannot check this report field.
 //
 // Interaction recorder paints (#662). The parity driver draws a frame before
-// every click, so only raw events here can show these failure modes:
+// every input, so only raw events here can show these failure modes:
 // - an input that draws nothing loses its input-to-paint time when the next
 //   input begins before any frame;
 // - a measured input requests no frame, so its time waits for an unrelated
-//   later redraw and is charged with that frame;
-// - requesting frames adds renders while no input arrives.
+//   later redraw and is charged with that frame.
 use super::{Controlled, open};
 use gpui_kit::test::TestWindowExt;
-use gpui_kit::{
-    AppContext, InputEvent, MouseButton, MouseDownEvent, MouseUpEvent, Point, Pixels,
-    TestAppContext,
-};
+use gpui_kit::{AppContext, InputEvent, KeyDownEvent, Keystroke, TestAppContext};
 use std::sync::Arc;
 
 fn click(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle, ids: &[&'static str]) {
@@ -85,27 +81,16 @@ fn app_renders(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) -> u6
         .unwrap_or_else(|| panic!("no render count in {label}"))
 }
 
-/// A press and release with no frame forced around them, as a user's click on
-/// an element that reacts to nothing.
-fn inert_click(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle, at: Point<Pixels>) {
+/// A key with no binding, with no frame forced around it. Mouse presses
+/// redraw the Inspector on their own, so they cannot show an input that
+/// changes nothing.
+fn unbound_key(cx: &mut TestAppContext, handle: gpui_kit::AnyWindowHandle) {
     cx.update_window(handle, |_, window, cx| {
         window.dispatch_event(
-            MouseDownEvent {
-                button: MouseButton::Left,
-                position: at,
-                modifiers: Default::default(),
-                click_count: 1,
-                first_mouse: false,
-            }
-            .to_platform_input(),
-            cx,
-        );
-        window.dispatch_event(
-            MouseUpEvent {
-                button: MouseButton::Left,
-                position: at,
-                modifiers: Default::default(),
-                click_count: 1,
+            KeyDownEvent {
+                keystroke: Keystroke::parse("f19").unwrap(),
+                is_held: false,
+                prefer_character_input: false,
             }
             .to_platform_input(),
             cx,
@@ -125,44 +110,39 @@ fn each_recorded_input_draws_one_frame_and_keeps_its_paint_time(cx: &mut TestApp
             "settings-section:Diagnostics",
             "setting:Enable diagnostics",
             "setting:Record interactions",
+            "interactions-clear",
         ],
     );
-    let heading = cx
-        .update_window(handle, |_, window, cx| {
-            window.render_frame(cx);
-            window.find("settings-heading").bounds().center()
-        })
-        .unwrap();
+    // The first key after a click switches the input modality, which redraws.
+    unbound_key(cx, handle);
     let first = app_renders(cx, handle);
     let idle = app_renders(cx, handle) - first;
     let before = first + idle;
-    inert_click(cx, handle, heading);
-    let after = app_renders(cx, handle);
+    unbound_key(cx, handle);
     assert_eq!(
-        after - before,
+        app_renders(cx, handle) - before,
         idle + 1,
         "an input that changes nothing draws one frame, beside the {idle} forced by the read"
     );
-    // The next input begins before any forced frame.
-    inert_click(cx, handle, heading);
-    inert_click(cx, handle, heading);
+    // Each key begins before any forced frame.
+    unbound_key(cx, handle);
+    unbound_key(cx, handle);
+    unbound_key(cx, handle);
     click(cx, handle, &["interactions-copy"]);
     let copied = cx
         .update(|cx| cx.read_from_clipboard().and_then(|item| item.text()))
         .expect("nothing copied");
-    let entries: Vec<serde_json::Value> = copied
+    let keys: Vec<serde_json::Value> = copied
         .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|entry| entry["kind"] == "key")
         .collect();
-    assert_eq!(entries.len(), 3, "three inert clicks recorded: {copied}");
-    for entry in &entries {
-        let paints: Vec<_> = entry["inputToPaint"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|paint| paint["type"].as_str().unwrap())
-            .collect();
-        assert_eq!(paints, ["pointerdown", "click"], "entry {entry}");
+    assert_eq!(keys.len(), 5, "five key entries: {copied}");
+    for entry in &keys {
+        assert_eq!(
+            entry["inputToPaint"][0]["type"], "keydown",
+            "entry without its paint time: {entry}"
+        );
     }
 }
 

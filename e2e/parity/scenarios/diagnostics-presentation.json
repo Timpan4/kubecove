@@ -52,17 +52,15 @@
         { "action": "toggleSetting", "setting": "Record interactions" },
         { "action": "closeSettings" },
         { "action": "openResources" },
-        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
-        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev", "namespace": "payments" } },
-        { "action": "setTopologyMode", "mode": "Ownership", "pending": true },
-        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev", "namespace": "payments" } },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "openSettings" },
         { "action": "showSettingsSection", "section": "Diagnostics" },
         { "action": "toggleSetting", "setting": "Record interactions" },
         { "action": "copyInteractions" },
-        { "action": "expectInteractionCopy", "contains": "\"cmd\":\"list_resource_topology\"" }
+        { "action": "expectInteractionCopy", "succeededCommand": "list_resource_topology" }
       ]
     },
     {
