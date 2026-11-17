@@ -65,30 +65,6 @@
       ]
     },
     {
-      "id": "settings-diagnostics.interaction-recorder-command-after-stop",
-      "title": "A command that finishes after recording stops stays with its interaction after the latency report is cleared",
-      "steps": [
-        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
-        { "action": "openSettings" },
-        { "action": "showSettingsSection", "section": "Diagnostics" },
-        { "action": "toggleSetting", "setting": "Enable diagnostics" },
-        { "action": "toggleSetting", "setting": "Record interactions" },
-        { "action": "closeSettings" },
-        { "action": "openResources" },
-        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
-        { "action": "openSettings" },
-        { "action": "showSettingsSection", "section": "Diagnostics" },
-        { "action": "toggleSetting", "setting": "Record interactions" },
-        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
-        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
-        { "action": "copyInteractions" },
-        { "action": "expectInteractionCopy", "succeededCommand": "list_resource_topology" },
-        { "action": "clearLatencyReport" },
-        { "action": "copyInteractions" },
-        { "action": "expectInteractionCopy", "succeededCommand": "list_resource_topology" }
-      ]
-    },
-    {
       "id": "settings-diagnostics.interaction-recorder-redaction",
       "title": "The interaction recorder records keys in a credential field without the typed text",
       "steps": [

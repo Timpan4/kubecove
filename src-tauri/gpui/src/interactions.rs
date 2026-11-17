@@ -443,3 +443,61 @@ impl Recorder {
             .join("\n")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Read;
+    use kubecove_lib::models::AppError;
+    use std::task::{Context, Poll, Waker};
+
+    fn commands(recorder: &mut Recorder, timings: &Timings) -> Vec<String> {
+        recorder
+            .json_lines(timings)
+            .lines()
+            .flat_map(|line| {
+                let entry: Value = serde_json::from_str(line).expect("JSON line");
+                entry["commands"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|command| command["cmd"].as_str().unwrap_or_default().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    // Failure mode (#662): a command still running when recording stops shows up
+    // in one copy, then Clear diagnostics removes it from the next, because no
+    // flush follows the stop. Browser mocks cannot reach this: the only way to
+    // stop recording is to open Settings, which cancels every held page read.
+    #[test]
+    fn a_command_finishing_after_stop_stays_after_the_trace_is_cleared() {
+        let timings = Timings::default();
+        timings.set_enabled(true);
+        let mut recorder = Recorder::default();
+        recorder.start();
+        recorder.begin(
+            Kind::Click,
+            "button".into(),
+            None,
+            Instant::now(),
+            Some(&timings),
+        );
+        let read: Read<()> = Box::pin(async { Ok::<(), AppError>(()) });
+        let mut read = timings.measure("list_resource_topology", read);
+        recorder.stop(Some(&timings));
+        let finished = read.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+        assert!(matches!(finished, Poll::Ready(Ok(()))));
+
+        assert_eq!(
+            commands(&mut recorder, &timings),
+            ["list_resource_topology"]
+        );
+        timings.clear();
+        assert_eq!(
+            commands(&mut recorder, &timings),
+            ["list_resource_topology"]
+        );
+    }
+}
