@@ -10,7 +10,7 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 window.find("live-label").label(),
                 Some(string(step, "label"))
             );
-            if string(step, "label") == "Live" {
+            if string(step, "label") == "Live" && step["notice"].is_null() {
                 assert!(window.try_find("live-notice").is_none());
             }
         }

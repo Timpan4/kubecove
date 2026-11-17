@@ -293,7 +293,7 @@
 	}));
 	const reads = resourceBrowserReads(client, () => ({
 		readContext: workspaceReadContext, fetchKeys, namespaces: selectedNamespaces, topologyMode, mapPanelOpen,
-		customResourcesEnabled, focusedApplication: gitOpsFocusApplication,
+		tablePanelOpen, customResourcesEnabled, focusedApplication: gitOpsFocusApplication,
 	}));
 	const live = reads.live;
 	// The Context column, filter and search show only when the workspace has more than one context.
@@ -325,8 +325,8 @@
 	const topologyQuery = reads.topology;
 	const updatesCurrent = $derived(reads.freshness.tableCurrent);
 	const mapUpdatesCurrent = $derived(reads.freshness.mapCurrent);
-	const noticeLive = $derived(reads.freshness.notice.live);
-	const noticeCurrent = $derived(reads.freshness.notice.current);
+	const notice = $derived(reads.freshness.notice);
+	const noticeLive = $derived(notice.live);
 
 	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(
@@ -472,7 +472,7 @@
 	const contextsLoadingText = $derived(contextsLoadingNotice(resourcesQuery.loadingContexts));
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
-	const staleNotice = loadingDelay(() => !noticeCurrent && !noticeLive.reloadError
+	const staleNotice = loadingDelay(() => !notice.current && !notice.mapReloadFailed && !noticeLive.reloadError
 		&& noticeLive.status !== "partial" && noticeLive.status !== "polling");
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
@@ -784,12 +784,14 @@
 				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>
 				<div class="px-3 pb-3"><FriendlyError error={noticeLive.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
 			</details>
-		{:else if (resourcesQuery.data || topologyQuery.data) && (noticeLive.status === "partial" || noticeLive.status === "polling" || staleNotice.shown)}
+		{:else if notice.mapReloadFailed || noticeLive.status === "partial" || noticeLive.status === "polling" || staleNotice.shown}
 			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
 				{#if noticeLive.status === "partial"}
 					Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.
 				{:else if noticeLive.status === "polling"}
 					Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.
+				{:else if notice.mapReloadFailed}
+					Showing last observed graph. Map activity indicators are paused until the map refreshes.
 				{:else}
 					Showing last observed state. Activity indicators are paused until live updates recover.
 				{/if}

@@ -132,10 +132,10 @@ impl LiveData {
         )
     }
 
-    /// [`Self::settled_status`] of the watches whose context `keep` accepts.
-    pub fn settled_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
+    /// The status of the watches whose context `keep` accepts.
+    pub fn watch_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
         watch_status::aggregate(
-            self.refresh_error.is_some(),
+            false,
             self.watches
                 .values()
                 .filter(|watch| keep(&watch.context))

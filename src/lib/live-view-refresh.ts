@@ -34,6 +34,8 @@ export interface LiveRead {
 	 * not showing or that another live view keeps fresh.
 	 */
 	refetch?: boolean;
+	/** Recover this read's errors without marking the whole view's watches stale. */
+	recoverSeparately?: boolean;
 	/**
 	 * The list version of the rows this read shows, by watch key signature, so a
 	 * watch starts at those rows. Null while the rows load. A key without an
@@ -239,7 +241,9 @@ function watchGroup(key: WatchResourceKey): string {
 /** A declared read's refresh. The throttle outlives read-set changes, so a pending refresh still runs for what the view shows now. */
 function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 	let read = initial;
-	const throttle = createReadRefresh(queryClient, () => read.match);
+	const throttle = initial.recoverSeparately
+		? createLiveReadRefresh(queryClient, (query) => read.refetch !== false && read.match(query))
+		: createReadRefresh(queryClient, () => read.match);
 	return {
 		get read() {
 			return read;
@@ -297,13 +301,14 @@ export function bindLiveView({
 			namespaces: [...current.namespaces],
 			reads: matches,
 			cancelRefetch,
+			ignoreReadErrors: cancelRefetch ? undefined : refetched().filter((read) => read.recoverSeparately).map((read) => read.match),
 		});
 	// One handler set for the binding's lifetime; it reads the current view when it runs.
 	const handlers: ResourceScopeHandlers = {
 		readError: () => {
 			const failed = queryClient.getQueryCache().findAll({
 				predicate: (query) => query.isActive() && query.state.status === "error"
-					&& refetched().some((read) => read.match(query)),
+					&& refetched().some((read) => !read.recoverSeparately && read.match(query)),
 			})[0];
 			return failed ? messageFromError(failed.state.error) : null;
 		},
@@ -328,8 +333,11 @@ export function bindLiveView({
 		current = next;
 		next.reads.forEach((read, index) => {
 			const slot = slots[index];
-			if (slot) slot.set(read);
-			else slots.push(createReadSlot(queryClient, read));
+			if (slot && slot.read.recoverSeparately === read.recoverSeparately) slot.set(read);
+			else {
+				slot?.dispose();
+				slots[index] = createReadSlot(queryClient, read);
+			}
 		});
 		for (const slot of slots.splice(next.reads.length)) slot.dispose();
 		if (next.keys.length === 0) {

@@ -187,7 +187,7 @@ impl Inspector {
                             lifecycle_status(
                                 SharedString::from(id),
                                 &lifecycle,
-                                self.updates_current(),
+                                self.table_updates_current(),
                             )
                             .into_any_element()
                         }

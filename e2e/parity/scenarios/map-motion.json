@@ -32,6 +32,32 @@
       ]
     },
     {
+      "id": "map.retained-topology-after-reload-failure",
+      "title": "A failed map reload keeps the graph and pauses live pulses while table activity continues",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "failOnce", "command": "list_resource_topology", "context": "mock-dev", "kind": "forbidden" } },
+        { "action": "expectLiveState", "label": "Live", "notice": "Showing last observed graph. Map activity indicators are paused until the map refreshes." },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" },
+        { "action": "selectTopologyNode", "id": "mock-dev:apps/v1:Deployment:payments:payments-api" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": true, "pulse": false },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": true, "pulse": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false }
+      ]
+    },
+    {
       "id": "map.rollout-pulse",
       "title": "A pulse travels toward a resource in progress while live, and stops while reconnecting",
       "steps": [

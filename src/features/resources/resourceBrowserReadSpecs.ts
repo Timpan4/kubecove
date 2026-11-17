@@ -133,7 +133,7 @@ export function resourceBrowserLiveView(
 	const topology = queryMatchers.exact(specs.topology.queryKey);
 	const reads: LiveRead[] = [
 		{ keys: resourceKeys, match: queryMatchers.exact(specs.resources.queryKey), versions: keyVersions(resourceKeys, shownVersions) },
-		mapPanelOpen ? { keys: mapKeys, match: topology } : { keys, match: topology, refetch: false },
+		{ keys: mapPanelOpen ? mapKeys : keys, match: topology, refetch: mapPanelOpen, recoverSeparately: true },
 	];
 	if (focusedApplication) {
 		// The inspection reads the Application, not lists of the kinds it manages,

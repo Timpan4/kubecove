@@ -3,6 +3,7 @@
 use super::{
     Inspector, Page,
     overlay_motion::Overlay,
+    resource_observation::NoticeFreshness,
     surface,
     watch_status::{Connection, LiveStatus, WatchLink},
 };
@@ -29,7 +30,6 @@ pub(super) struct WatchReport<'a> {
     /// Why the watch's last automatic reload failed.
     pub reload_error: Option<&'a str>,
 }
-
 /// What the status menu lists for a view, as `ResourceLiveStatusMenu.svelte`
 /// reads it from `LiveViewState`.
 #[derive(Default)]
@@ -283,8 +283,12 @@ impl Inspector {
             .child(button)
     }
 
-    pub(super) fn live_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let status = self.shown_live_status();
+    pub(super) fn live_notice(
+        &self,
+        freshness: NoticeFreshness,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let status = freshness.status;
         // Watches that connect or recover within the show delay show no notice,
         // and a shown notice stays for the minimum visible time, as loading
         // indicators do. Failed and limited states are not transient.
@@ -305,6 +309,9 @@ impl Inspector {
             }
             LiveStatus::LiveLimited => {
                 "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused."
+            }
+            _ if freshness.map_reload_failed => {
+                "Showing last observed graph. Map activity indicators are paused until the map refreshes."
             }
             _ if stale.shown() => STALE,
             _ => return None,
@@ -364,7 +371,6 @@ impl Inspector {
         )
     }
 }
-
 impl Inspector {
     /// The notice for workspace contexts still reading their rows while other
     /// contexts' rows show, delayed like other loading indicators, as
@@ -397,21 +403,5 @@ impl Inspector {
                 .child(ui::muted(ui::xs(label)))
                 .into_any_element(),
         )
-    }
-}
-
-impl Inspector {
-    /// Only contexts with shown rows contribute to table freshness.
-    pub(super) fn shown_live_status(&self) -> LiveStatus {
-        if self.observation.refreshing() {
-            LiveStatus::Refreshing
-        } else {
-            self.live
-                .settled_status_where(|context| self.observation.shows(context))
-        }
-    }
-
-    pub(super) fn updates_current(&self) -> bool {
-        !self.observation.shown_loading() && self.shown_live_status() == LiveStatus::Live
     }
 }

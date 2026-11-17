@@ -1,12 +1,15 @@
-//! Resource observation owns shown rows, list versions, and staged watch changes.
+//! Resource observation owns shown rows, list versions, staged watch changes,
+//! and the freshness of the evidence the resource browser displays.
 use super::{Load, custom_resources::CustomLoad, request::InFlight};
 use crate::backend::{ListVersions, ScopeResult, context_versions};
 use crate::model::PreparedRows;
 use std::{collections::HashMap, rc::Rc};
 
+mod freshness;
 mod snapshots;
 mod watches;
 use crate::workspaces::reads::ContextResults;
+pub(super) use freshness::NoticeFreshness;
 use gpui_kit::Task;
 use kubecove_lib::models::{AppError, NamespaceSummary, ResourceSummary};
 pub(super) use snapshots::{

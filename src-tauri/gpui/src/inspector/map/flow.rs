@@ -187,7 +187,7 @@ impl Inspector {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let live = self.updates_current();
+        let live = self.map_updates_current();
         let view = self.map.cache.clone().filter(|view| {
             self.map_is_open()
                 && window.is_window_active()

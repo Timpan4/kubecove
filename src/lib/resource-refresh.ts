@@ -15,6 +15,7 @@ export async function refreshCurrentView({
 	namespaces,
 	reads,
 	cancelRefetch = true,
+	ignoreReadErrors = [],
 }: {
 	client: TauriClient;
 	queryClient: QueryClient;
@@ -26,6 +27,8 @@ export async function refreshCurrentView({
 	reads?: readonly QueryMatch[];
 	/** Automatic recovery waits for running reads before clearing caches. */
 	cancelRefetch?: boolean;
+	/** Errors owned by independently recovering reads. */
+	ignoreReadErrors?: readonly QueryMatch[];
 }): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
 	const inCurrentView = queryMatchers.currentView(clusterContext, kubeconfigEnvVar);
@@ -52,7 +55,9 @@ export async function refreshCurrentView({
 		queryClient.invalidateQueries(
 			{ predicate: (current) => current === query, refetchType: "active" },
 			{ throwOnError: true, cancelRefetch },
-		),
+		).catch((error: unknown) => {
+			if (!ignoreReadErrors.some((match) => match(query))) throw error;
+		}),
 	));
 	const warnings: string[] = [];
 	for (const result of results) {

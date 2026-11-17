@@ -25,6 +25,7 @@ export interface ResourceBrowserReadInput {
 	namespaces: string[];
 	topologyMode: TopologyMode;
 	mapPanelOpen: boolean;
+	tablePanelOpen: boolean;
 	customResourcesEnabled: boolean;
 	focusedApplication: ArgoApplicationTarget | null;
 }
@@ -185,13 +186,21 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	// A context without shown rows has no table evidence to call stale.
 	const shown = $derived(live.stateOf(scope.shownContexts));
 	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !shown.reloadError
-		&& !scope.isError && !scope.isPlaceholderData
-		&& (!current.mapPanelOpen || (!topology.isError && !topology.isPlaceholderData)));
+		&& !scope.isError && !scope.isPlaceholderData);
 	// The map can show its context's topology before that context's rows arrive.
-	const map = $derived(live.stateOf([...scope.shownContexts, mapContext]));
-	const mapCurrent = $derived(tableCurrent && map.status === "connected" && !map.catchingUp && !map.reloadError);
+	const map = $derived(live.stateOf([mapContext]));
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
-	const notice = $derived({ live: mapShown ? map : shown, current: mapShown ? mapCurrent : tableCurrent });
+	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData
+		&& map.status === "connected" && !map.catchingUp && !map.reloadError);
+	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
+	const notice = $derived({
+		live: live.stateOf([
+			...(tableShown ? scope.shownContexts : []),
+			...(mapShown ? [mapContext] : []),
+		]),
+		current: (!tableShown || tableCurrent) && (!mapShown || mapCurrent),
+		mapReloadFailed: mapShown && topology.isError,
+	});
 	const freshness = {
 		get tableCurrent() { return tableCurrent; },
 		get mapCurrent() { return mapCurrent; },
