@@ -284,7 +284,8 @@ impl Inspector {
         Some(
             div()
                 .id("workspace-navigation")
-                .occlude()
+                // A closing drawer lets a press through to the page behind it.
+                .when(open, |container| container.occlude())
                 .test_support()
                 .aria_label("Workspace navigation")
                 .absolute()
