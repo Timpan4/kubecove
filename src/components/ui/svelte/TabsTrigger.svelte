@@ -39,6 +39,15 @@
 		void getComputedStyle(trigger, "::after").translate;
 		for (const property of LINE_PROPERTIES) trigger.style.removeProperty(property);
 	}
+
+	/** Moves the trigger's line home at once, ending its slide. */
+	function endSlide(trigger: HTMLElement) {
+		// A pseudo-element's animations are listed only with the subtree.
+		for (const animation of trigger.getAnimations({ subtree: true })) {
+			const effect = animation.effect;
+			if (effect instanceof KeyframeEffect && effect.target === trigger && effect.pseudoElement === "::after") animation.finish();
+		}
+	}
 </script>
 
 <script lang="ts">
@@ -67,7 +76,18 @@
 			if (active()) carryLine(element);
 		});
 		observer.observe(element, { attributes: true, attributeFilter: ["data-state"] });
-		return () => observer.disconnect();
+		// A resize or a wrap moves the trigger, and the slide's offsets were measured before it. So a
+		// layout change ends the slide and the line shows under the trigger at once.
+		const resized = new ResizeObserver(() => {
+			if (active()) endSlide(element);
+		});
+		const list = element.closest("[data-slot='tabs-list']");
+		if (list) resized.observe(list, { box: "border-box" });
+		resized.observe(element, { box: "border-box" });
+		return () => {
+			observer.disconnect();
+			resized.disconnect();
+		};
 	});
 </script>
 
