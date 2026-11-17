@@ -57,6 +57,20 @@
 		for (const property of LINE_PROPERTIES) trigger.style.removeProperty(property);
 	}
 
+	/**
+	 * Where the trigger's line lies along its list: its start and length on the list's axis. A
+	 * slide's offsets go stale only when this changes. A change across the axis, such as the list
+	 * growing taller as a tab panel opens, moves every trigger alike.
+	 */
+	function linePlace(trigger: HTMLElement): string {
+		const list = trigger.closest("[data-slot='tabs-list']");
+		const box = paddingBox(trigger);
+		const origin = list?.getBoundingClientRect() ?? { left: 0, top: 0 };
+		return list?.getAttribute("data-orientation") === "vertical"
+			? `${box.top - origin.top} ${box.height}`
+			: `${box.left - origin.left} ${box.width}`;
+	}
+
 	/** Moves the trigger's line home at once, ending its slide. */
 	function endSlide(trigger: HTMLElement) {
 		// A pseudo-element's animations are listed only with the subtree.
@@ -93,10 +107,13 @@
 			if (active()) carryLine(element);
 		});
 		observer.observe(element, { attributes: true, attributeFilter: ["data-state"] });
-		// A resize or a wrap moves the trigger, and the slide's offsets were measured before it. So a
-		// layout change ends the slide and the line shows under the trigger at once.
+		// A resize or a wrap can move the trigger along the list, and the slide's offsets were measured
+		// before it. So such a move ends the slide and the line shows under the trigger at once.
+		let placed = linePlace(element);
 		const resized = new ResizeObserver(() => {
-			if (active()) endSlide(element);
+			const now = linePlace(element);
+			if (now !== placed && active()) endSlide(element);
+			placed = now;
 		});
 		const list = element.closest("[data-slot='tabs-list']");
 		if (list) resized.observe(list, { box: "border-box" });
