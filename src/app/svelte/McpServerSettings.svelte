@@ -133,8 +133,10 @@
 {#if error}<p role="alert" class="mt-3 text-sm text-destructive">{error}</p>{/if}
 <!-- Without a status the host could not read its settings file. Reload re-reads it after the user fixes it. -->
 {#if error && !status}
-	<Button type="button" class="mt-3" size="sm" variant="outline" disabled={pending} onclick={() => void run(reloadMcpSettings).then(syncPort)}>
-		Reload settings
-	</Button>
+	<div class="mt-3">
+		<Button type="button" size="sm" variant="outline" disabled={pending} onclick={() => void run(reloadMcpSettings).then(syncPort)}>
+			Reload settings
+		</Button>
+	</div>
 {/if}
 <p class="mt-3 text-sm text-muted-foreground" aria-live="polite">{announcement}</p>
