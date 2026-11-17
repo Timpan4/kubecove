@@ -624,7 +624,7 @@ fn argo_tab(
             state,
             failed,
             indicator,
-            loading_delays.reveal("argo-detail"),
+            inspector.loading.reveal("argo-detail"),
             cx,
         ))
         .into_any_element()
