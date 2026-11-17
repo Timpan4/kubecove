@@ -5,7 +5,8 @@ pub mod bench_support;
 
 #[cfg(feature = "desktop")]
 pub use crate::mcp::{
-    McpHost, get_mcp_status, reveal_mcp_token, rotate_mcp_token, set_mcp_settings,
+    McpHost, get_mcp_status, reload_mcp_settings, reveal_mcp_token, rotate_mcp_token,
+    set_mcp_settings,
 };
 pub use kubecove_gitops::commands::*;
 #[cfg(feature = "desktop")]

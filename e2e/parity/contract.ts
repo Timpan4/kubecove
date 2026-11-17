@@ -49,7 +49,7 @@ export const ACTIONS = [
     "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
     "openNamespacePicker", "closeNamespacePicker", "selectAllNamespaces", "clearResourceFilters", "searchNamespacePicker", "toggleNamespace", "expectNamespaceChecked", "expectNamespaceTrigger",
     "selectHealthFilter", "expectHealthFilter", "chooseGitOpsOwner", "setHistoricalReplicaSets",
-    "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests",
+    "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests", "configureMcpSettingsFile", "expectMcpLoadError",
     "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
     "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "expectArgoPolicy", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection","argoConnectionDialog","fillArgoConnectionField","expectArgoConnectionField",
     "cancelYamlEdit",

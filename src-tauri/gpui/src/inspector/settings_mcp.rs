@@ -121,6 +121,11 @@ impl Inspector {
             self.run_mcp(self.backend.rotate_mcp_token(), false, window, cx);
         }
     }
+    fn reload_mcp(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settings.mcp.call.is_none() {
+            self.run_mcp(self.backend.reload_mcp_settings(), true, window, cx);
+        }
+    }
     fn copy_mcp(&mut self, command: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(status) = self.settings.mcp.ready() else {
             return;
@@ -274,6 +279,17 @@ impl Inspector {
                     .test_support()
                     .aria_label(error.clone())
                     .text_color(Tokens::destructive()),
+            );
+        }
+        // Without a status the host could not read its settings file. Reload re-reads it
+        // after the user fixes it.
+        if state.status.is_none() && state.error.is_some() {
+            section = section.child(
+                div().flex().child(
+                    action("Reload settings", state.call.is_some()).on_click(
+                        cx.listener(|this, _, window, cx| this.reload_mcp(window, cx)),
+                    ),
+                ),
             );
         }
         section.child(

@@ -52,6 +52,19 @@
       { "action": "mcpControl", "control": "Copy token" }, { "action": "expectMcpCopy", "kind": "token", "rotated": true },
       { "action": "mcpControl", "control": "Copy Claude Code command" }, { "action": "expectMcpCopy", "kind": "command", "rotated": true },
       { "action": "expectMcpRequests", "requests": ["status", "reveal", "set:true:47615", "reveal", "rotate", "reveal", "reveal"] }
+    ] },
+    { "id": "settings-agents.reload", "title": "An unreadable settings file recovers through Reload settings", "steps": [
+      { "action": "configureMcpSettingsFile", "file": "invalid" },
+      { "action": "openSettings" }, { "action": "showSettingsSection", "section": "AI agents" },
+      { "action": "expectMcpLoadError", "text": "Invalid MCP settings file" },
+      { "action": "mcpControl", "control": "Reload settings" },
+      { "action": "expectMcpLoadError", "text": "Invalid MCP settings file" },
+      { "action": "configureMcpSettingsFile", "file": "valid" },
+      { "action": "mcpControl", "control": "Reload settings" },
+      { "action": "expectMcpState", "enabled": false, "port": "47615", "running": false, "save": false, "command": false },
+      { "action": "mcpControl", "control": "MCP server" },
+      { "action": "expectMcpState", "enabled": true, "port": "47615", "running": true, "save": false, "command": true },
+      { "action": "expectMcpRequests", "requests": ["status", "reload", "reload", "set:true:47615"] }
     ] }
   ]
 }

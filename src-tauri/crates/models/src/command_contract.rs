@@ -336,6 +336,7 @@ macro_rules! command_contract {
                 with State<RemoteConnectionStore>;
             desktop_only async fn get_mcp_status() with State<McpHost>;
             desktop_only async fn set_mcp_settings(enabled: bool, port: u16) with State<McpHost>;
+            desktop_only async fn reload_mcp_settings() with State<McpHost>;
             desktop_only async fn reveal_mcp_token() with State<McpHost>;
             desktop_only async fn rotate_mcp_token() with State<McpHost>;
         }
