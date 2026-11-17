@@ -164,6 +164,25 @@
         { "action": "coverageCheck", "check": "motion:branch:settled" },
         { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false }
       ]
+    },
+    {
+      "id": "control-motion.sidebar-unfold-custom",
+      "title": "A custom resource group unfolds its kinds over 150 ms, moving the group under it down without passing its place",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarToggle", "path": ["Network"] },
+        { "action": "sidebarToggle", "path": ["Config"] },
+        { "action": "sidebarToggle", "path": ["Storage"] },
+        { "action": "expandNav", "page": "Custom Resources" },
+        { "action": "expectCustomGroup", "group": "argoproj.io", "visible": true },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": true },
+        { "action": "coverageCheck", "check": "motion:custom-group:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:custom-group:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:custom-group:settled" }
+      ]
     }
   ]
 }

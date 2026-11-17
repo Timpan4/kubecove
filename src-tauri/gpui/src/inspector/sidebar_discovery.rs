@@ -167,6 +167,7 @@ impl Inspector {
         if let Some(message) = message {
             return vec![Row::new(
                 div()
+                    .flex_none()
                     .pl(px(24.))
                     .h(px(ROW_HEIGHT))
                     .child(crate::ui::xs(message))

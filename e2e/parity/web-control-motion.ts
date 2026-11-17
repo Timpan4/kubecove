@@ -24,9 +24,11 @@ type Target = {
 	property: string;
 	/** What the page shows, where the followed property alone does not say it. */
 	shown?(page: Page): Promise<string>;
+	/** Whether `shown` is a number that moves one way, passing neither end on its way. */
+	between?: boolean;
 	/** The element under which Svelte runs the motion as a Web Animation, where it is no CSS transition. */
 	animated?(page: Page): Locator;
-	/** Throws unless the indicator covers the chosen option exactly once it has settled. */
+	/** Throws unless the control rests as it should once it has settled, such as an indicator covering the chosen option exactly. */
 	fits?(page: Page): Promise<void>;
 	/** Changes the control's state. */
 	act(page: Page): Promise<void>;
@@ -150,16 +152,35 @@ const TARGETS = {
 		property: "rotate",
 		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
 	},
-	// SidebarTreeNode.svelte: the `slide` transition that unfolds a branch's rows. The row under
-	// the branch shows it, by moving down. `property` names what the transition changes.
-	branch: {
-		moving: (page) => sidebarRow(page, ["Network"]),
-		property: "height",
-		shown: (page) => sidebarRow(page, ["Network"]).evaluate((row) => String(row.getBoundingClientRect().top)),
-		animated: (page) => sidebarRow(page, ["Workloads"]).locator(".."),
-		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
-	},
+	branch: fold(["Workloads"], ["Network"]),
+	"custom-group": fold(["Custom Resources", "argoproj.io"], ["Custom Resources", "helm.toolkit.fluxcd.io"]),
 } satisfies Record<string, Target>;
+
+/**
+ * SidebarTreeNode.svelte: the `slide` transition that unfolds the rows of the branch at `path`.
+ * The row at `below` shows it, by moving down. It is measured from the branch's row, so that a
+ * scroll of the sidebar, such as the one a click makes, is left out. `property` names what the
+ * transition changes.
+ */
+function fold(path: string[], below: string[]): Target {
+	return {
+		moving: (page) => sidebarRow(page, below),
+		property: "height",
+		shown: async (page) => {
+			const [top, branch] = await Promise.all([below, path].map((at) => sidebarRow(page, at).evaluate((row) => row.getBoundingClientRect().top)));
+			return String(top - branch);
+		},
+		between: true,
+		// A fold reveals rows by the height they lay out at, so a row under it keeps the sidebar's
+		// row height however long the sidebar grows.
+		fits: async (page) => {
+			const [height, row] = await Promise.all([below, ["Workloads"]].map((at) => sidebarRow(page, at).evaluate((item) => item.getBoundingClientRect().height)));
+			if (height !== row) throw new Error(`${below.join(" / ")} is ${height} px high, not a sidebar row's ${row} px`);
+		},
+		animated: (page) => sidebarRow(page, path).locator(".."),
+		act: (page) => sidebarRow(page, path).getByRole("button").click(),
+	};
+}
 
 function targetOf(name: string | undefined): Target | undefined {
 	return Object.entries(TARGETS).find(([key]) => key === name)?.[1];
@@ -339,5 +360,9 @@ export async function checkControlMotion(page: Page, check: string) {
 	await seek(page, "end");
 	const settled = await read(page, target);
 	if (settled === before.rest || settled === before.midway) throw new Error(`${name} ended at ${settled}, its value ${settled === before.rest ? "at rest" : "midway"}`);
+	if (target.between) {
+		const [rest, midway, end] = [before.rest, before.midway, settled].map(Number);
+		if (!((rest - midway) * (midway - end) > 0)) throw new Error(`${name} moved ${rest}, ${midway}, ${end}, passing an end`);
+	}
 	await target.fits?.(page);
 }

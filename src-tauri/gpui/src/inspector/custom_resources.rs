@@ -113,6 +113,8 @@ fn group_fold(group: &str) -> String {
 fn discovery_row(title: &'static str, description: Option<&str>) -> Row {
     Row::new(
         div()
+            .flex_none()
+            .h(px(MESSAGE_HEIGHT))
             .pl(px(28.))
             .py(px(4.))
             .id(title)
@@ -187,6 +189,8 @@ impl Inspector {
         if groups.is_empty() {
             rows.push(Row::new(
                 div()
+                    .flex_none()
+                    .h(px(MESSAGE_HEIGHT))
                     .pl(px(28.))
                     .py(px(4.))
                     .child(ui::xs(
@@ -215,6 +219,7 @@ impl Inspector {
                 .test_support()
                 .aria_label(group.clone())
                 .flex()
+                .flex_none()
                 .items_center()
                 .h(px(ROW_HEIGHT))
                 .pl(px(28.))
@@ -266,6 +271,7 @@ impl Inspector {
                     .aria_label(label.clone())
                     .aria_description(format!("{} / {}", kind.api_version, kind.plural))
                     .flex()
+                    .flex_none()
                     .items_center()
                     .h(px(ROW_HEIGHT))
                     .pl(px(36.))

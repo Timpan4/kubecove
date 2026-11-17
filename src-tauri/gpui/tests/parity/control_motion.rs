@@ -148,8 +148,30 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             );
             seen.paint.push(painted);
         }
+        // A fold moves the row under its branch one way: it passes no end
+        // and then snaps back to it.
+        if let ([start, midway, settled], Some(_)) = (&seen.paint[..], row_below(target)) {
+            let [start, midway, settled] =
+                [start, midway, settled].map(|paint| paint[0].parse::<f32>().unwrap());
+            assert!(
+                (start - midway) * (midway - settled) > 0.,
+                "the row under {target} moved {start}, {midway}, {settled}"
+            );
+        }
         (seen.progress, seen.thumb)
     });
+    // A fold reveals rows by the height they lay out at, so a row under it
+    // keeps the sidebar's row height however long the sidebar grows.
+    if phase == "settled"
+        && let Some((_, below)) = row_below(target)
+    {
+        let height = |id: &str| window.find(id.to_owned()).bounds().size.height;
+        assert_eq!(
+            height(below),
+            height("nav:Workloads"),
+            "{below} is not as high as a sidebar row"
+        );
+    }
     match phase {
         "midway" => {
             let progress = progress.unwrap_or_else(|| panic!("{target} settled at half time"));
@@ -180,14 +202,14 @@ fn paint(
     cx: &mut gpui_kit::App,
     target: &str,
 ) -> Option<Vec<String>> {
-    match target {
-        "chevron" => return None,
-        // A fold paints nothing of its own. The row under the branch shows it.
-        "branch" => {
-            let below = window.find("nav:Network").bounds().origin.y;
-            return Some(vec![format!("{below:?}")]);
-        }
-        _ => {}
+    if target == "chevron" {
+        return None;
+    }
+    // A fold paints nothing of its own. The row under the branch shows it,
+    // measured from the branch's row so that a scroll of the sidebar is left out.
+    if let Some((branch, below)) = row_below(target) {
+        let top = |id: &str| f32::from(window.find(id.to_owned()).bounds().origin.y);
+        return Some(vec![(top(below) - top(branch)).to_string()]);
     }
     Some(
         quads(window, cx, target)
@@ -268,15 +290,32 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
             reveal(window, "sidebar-tree", "tree-toggle:Workloads", cx);
             sidebar_live::click_sidebar(window, cx, "tree-toggle:Workloads".into());
         }
-        "branch" => {
+        "branch" | "custom-group" => {
+            let toggle = match target {
+                "branch" => "tree-toggle:Workloads",
+                _ => "custom-group:argoproj.io",
+            };
             // The runner opens branches at once in every other scenario.
             Moving::set_instant_layout(false, cx);
-            reveal(window, "sidebar-tree", "tree-toggle:Workloads", cx);
-            sidebar_live::click_sidebar(window, cx, "tree-toggle:Workloads".into());
+            reveal(window, "sidebar-tree", toggle, cx);
+            sidebar_live::click_sidebar(window, cx, toggle.into());
         }
         other => panic!("unknown motion target {other}"),
     }
     transition(window, cx, target)
+}
+
+/// A folding branch's row and the row under the branch, which moves as the
+/// branch folds.
+fn row_below(target: &str) -> Option<(&'static str, &'static str)> {
+    match target {
+        "branch" => Some(("nav:Workloads", "nav:Network")),
+        "custom-group" => Some((
+            "custom-group:argoproj.io",
+            "custom-group:helm.toolkit.fluxcd.io",
+        )),
+        _ => None,
+    }
 }
 
 /// The id the target's transition reports under: the `eased` id, the sliding
@@ -294,6 +333,7 @@ fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &st
         "button" => "edit-draft".into(),
         "chevron" => "chevron:Workloads".into(),
         "branch" => "fold:Workloads".into(),
+        "custom-group" => "fold:custom-group:argoproj.io".into(),
         other => panic!("unknown motion target {other}"),
     };
     ElementId::Name(id.into())
