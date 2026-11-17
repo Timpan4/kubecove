@@ -2,6 +2,7 @@
 //! controls, a corrupt new document silently falls back to older data, or a
 //! version 1 kind name loses the API identity its import carried, takes
 //! another document's kinds, or is dropped.
+use crate::scratch::Scratch;
 use kubecove_gpui::preferences::Store;
 use kubecove_gpui::workspaces::{ApiKind, SavedKind};
 
@@ -14,13 +15,8 @@ fn version_one_kind_names_take_their_import_identity() {
 }
 
 fn kind_names_migrate(version: Option<u32>) {
-    let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(".t")
-        .join("preferences-tests")
-        .join(format!("kinds-{}-{version:?}", std::process::id()));
-    std::fs::create_dir_all(&directory).unwrap();
+    let scratch = Scratch::new("preferences-tests", &format!("kinds-{version:?}"));
+    let directory = scratch.to_path_buf();
     let imported: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../src/lib/overview-application-workspace.json"
     ))
@@ -77,17 +73,11 @@ fn kind_names_migrate(version: Option<u32>) {
         serde_json::to_value(Store::file(directory.clone()).load().unwrap()).unwrap(),
         serde_json::to_value(&saved).unwrap()
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn session_document_migrates_without_replacing_the_original() {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(".t")
-        .join("preferences-tests")
-        .join(format!("migration-{}", std::process::id()));
+    let root = Scratch::new("preferences-tests", "migration");
     let legacy = root.join("old/live-sessions.json");
     let directory = root.join("desktop");
     std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
@@ -117,5 +107,4 @@ fn session_document_migrates_without_replacing_the_original() {
     assert!(store.load().is_err());
     assert!(store.save(saved).is_err());
     assert_eq!(std::fs::read_to_string(&legacy).unwrap(), original);
-    std::fs::remove_dir_all(root).unwrap();
 }
