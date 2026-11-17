@@ -5,10 +5,12 @@
 //! The tree stays a flat list of rows. While a branch folds, each of its rows
 //! shows the part of its height the fold has reached, and rows past that are
 //! left out. Only a toggle starts a fold. Any other change of a branch's state,
-//! such as "Collapse all", ends it at once. Time comes from the executor clock,
-//! so test drivers move it. A frame asks for the next one only while a fold
-//! runs. Reduced motion starts none, and neither does a test driver that asked
-//! for `Moving::set_instant_layout`.
+//! such as "Collapse all" on a branch folding open, ends it at once. A branch
+//! already folding closed has no change to end, so it folds on, as the web's
+//! running outro does. Time comes from the executor clock, so test drivers
+//! move it. A frame asks for the next one only while a fold runs. Reduced
+//! motion starts none, and neither does a test driver that asked for
+//! `Moving::set_instant_layout`.
 use crate::control_motion::{self, Moving};
 use gpui_kit::{AnyElement, App, ElementId, div, prelude::*, px};
 use std::cell::RefCell;
