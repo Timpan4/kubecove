@@ -314,6 +314,7 @@ impl Inspector {
                     div()
                         .id(id.clone())
                         .test_support()
+                        .aria_selected(node.selected)
                         .absolute()
                         .left(px(node.x * z + viewport.x))
                         .top(px(node.y * z + viewport.y))
