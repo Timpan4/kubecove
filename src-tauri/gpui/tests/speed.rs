@@ -330,9 +330,21 @@ struct Driver {
     /// End times of the current sample's drawn frames, in ms from its start,
     /// including frames an action draws while it runs.
     draws: Vec<f64>,
-    /// Time in the current sample spent on driver work that is not the
-    /// measured interaction, such as requests to the fixture's control server.
-    setup: Duration,
+    /// Start and end, in ms from the sample start, of driver work in the
+    /// current sample that is not the measured interaction, such as requests
+    /// to the fixture's control server.
+    setup: Vec<(f64, f64)>,
+}
+
+/// Setup time that ended by `at`, in ms from the sample start. Setup runs on
+/// the UI thread between frame turns, so a span ends before a frame or
+/// starts after it, never during it.
+fn setup_before(setup: &[(f64, f64)], at: f64) -> f64 {
+    setup
+        .iter()
+        .filter(|(_, end)| *end <= at)
+        .map(|(start, end)| end - start)
+        .sum()
 }
 
 fn window_options() -> WindowOptions {
@@ -390,7 +402,7 @@ impl Driver {
         let started = Instant::now();
         self.sample_start = started;
         self.draws.clear();
-        self.setup = Duration::ZERO;
+        self.setup.clear();
         let outcome =
             std::panic::catch_unwind(AssertUnwindSafe(|| action(self))).unwrap_or_else(|panic| {
                 Err(panic
@@ -400,8 +412,16 @@ impl Driver {
                     .unwrap_or_else(|| "panic".into()))
             });
         let timed_out = self.settle(started, quiet, http);
-        let draws = std::mem::take(&mut self.draws);
         let (settled_ns, frames, _) = self.cx.finish_sample();
+        // Setup ran inside the sample but is not the interaction, so each
+        // reported time leaves out the setup that ended before it. Setup after
+        // the last drawn frame is outside the settled time already.
+        let settled = settled_ns as f64 / 1e6;
+        let setup = setup_before(&self.setup, settled);
+        let draws: Vec<f64> = std::mem::take(&mut self.draws)
+            .into_iter()
+            .map(|end| end - setup_before(&self.setup, end))
+            .collect();
         let after = HTTP_ACTIVITY.snapshot();
         eprintln!("[speed] end {label}");
         let cpu: u64 = frames.iter().map(|frame| frame.cpu).sum();
@@ -413,9 +433,8 @@ impl Driver {
             "timedOut": timed_out,
             "startEpochMs": start_epoch,
             "endEpochMs": epoch_ms(),
-            // Setup ran inside the sample but is not the interaction.
-            "wallMs": settled_ns as f64 / 1e6 - ms(self.setup),
-            "setupMs": ms(self.setup),
+            "wallMs": settled - setup,
+            "setupMs": setup,
             "networkMs": ms(after.busy_since(http)),
             "requests": after.requests_since(http),
             "uiCpuMs": cpu as f64 / 1e6,
@@ -450,9 +469,9 @@ impl Driver {
 
     /// Runs driver work inside a sample and counts its time as setup.
     fn setup<R>(&mut self, work: impl FnOnce() -> R) -> R {
-        let started = Instant::now();
+        let start = ms(self.sample_start.elapsed());
         let result = work();
-        self.setup += started.elapsed();
+        self.setup.push((start, ms(self.sample_start.elapsed())));
         result
     }
 
@@ -588,7 +607,7 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
         actions: Vec::new(),
         sample_start: Instant::now(),
         draws: Vec::new(),
-        setup: Duration::ZERO,
+        setup: Vec::new(),
     };
     let (net, local) = (NETWORK_QUIET, LOCAL_QUIET);
     let first = contexts[0].clone();
