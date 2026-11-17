@@ -1,8 +1,8 @@
 //! A reactive boundary for navigation whose closed branches have unchanged inputs.
 use super::{Inspector, Page};
 use gpui_kit::{
-    AnyElement, AnyView, AppContext, Context, Entity, FocusHandle, Pixels, Point, Render,
-    SharedString, StyleRefinement, WeakEntity, Window, div, prelude::*, px,
+    AnyElement, AnyView, AppContext, Context, ElementId, Entity, FocusHandle, Pixels, Point,
+    Render, SharedString, StyleRefinement, WeakEntity, Window, div, prelude::*, px,
 };
 
 #[derive(Clone, PartialEq)]
@@ -49,17 +49,38 @@ impl Inspector {
         cx: &mut Context<Self>,
         width: f32,
     ) -> AnyElement {
+        let owner = cx.entity().downgrade();
+        let cache: Entity<SidebarCache> = self
+            .sidebar_tree
+            .cache
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                cx.new(|_| SidebarCache {
+                    owner,
+                    inputs: None,
+                })
+            })
+            .clone();
+        let frame = div().w(px(width)).h_full().flex_none();
         if !self.sidebar_tree.open.is_empty()
             || self.live.custom_open
             || !self.gitops_page.nav_open.is_empty()
             || self.sidebar_tree.reveal.borrow().is_some()
         {
-            if let Some(cache) = self.sidebar_tree.cache.borrow().as_ref()
-                && cache.read(cx).inputs.is_some()
-            {
+            if cache.read(cx).inputs.is_some() {
                 cache.update(cx, |cache, _| cache.inputs = None);
             }
-            return self.sidebar_contents(window, cx, width).into_any_element();
+            // Under the cached view's id, as the view puts its content. Element
+            // state, such as a chevron's turn, then stays in place when the first
+            // branch opens or the last one closes.
+            return frame
+                .child(
+                    div()
+                        .id(ElementId::View(cache.entity_id()))
+                        .size_full()
+                        .child(self.sidebar_contents(window, cx, width)),
+                )
+                .into_any_element();
         }
         let _span = crate::frame_profile::scope("sidebar", "cache_inputs");
         let inputs = Inputs {
@@ -82,18 +103,6 @@ impl Inspector {
             scroll: self.sidebar_tree.scroll.offset(),
             width,
         };
-        let owner = cx.entity().downgrade();
-        let cache: Entity<SidebarCache> = self
-            .sidebar_tree
-            .cache
-            .borrow_mut()
-            .get_or_insert_with(|| {
-                cx.new(|_| SidebarCache {
-                    owner,
-                    inputs: Some(inputs.clone()),
-                })
-            })
-            .clone();
         let changed = cache.read(cx).inputs.as_ref() != Some(&inputs);
         if changed {
             let _span = crate::frame_profile::scope("sidebar", "inputs_changed");
@@ -110,11 +119,6 @@ impl Inspector {
                 .cached(StyleRefinement::default().size_full())
                 .into_any_element()
         };
-        div()
-            .w(px(width))
-            .h_full()
-            .flex_none()
-            .child(view)
-            .into_any_element()
+        frame.child(view).into_any_element()
     }
 }

@@ -1,6 +1,6 @@
 use super::{
     Inspector,
-    controls::{Variant, button},
+    controls::{Variant, button, button_frame, segment as segment_style},
     settings_page::{settings_row, switch},
 };
 use crate::targets::TestSupportExt;
@@ -188,7 +188,7 @@ impl Inspector {
                 .border_color(Tokens::border().opacity(0.6))
                 .children(options.iter().enumerate().map(|(index, option)| {
                     let active = index == selected;
-                    button(Variant::Ghost, 28., false)
+                    let segment = button_frame(Variant::Ghost, 28., false)
                         .id(SharedString::from(format!(
                             "setting-option:{}:{option}",
                             row.title
@@ -198,7 +198,6 @@ impl Inspector {
                         .aria_selected(active)
                         .px(px(10.))
                         .rounded(px(8.))
-                        .when(active, |b| b.bg(Tokens::card()))
                         .child(ui::medium(ui::xs(*option)))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             match row.title {
@@ -237,7 +236,12 @@ impl Inspector {
                                 _ => return,
                             }
                             this.save_preferences(cx);
-                        }))
+                        }));
+                    crate::control_motion::eased(
+                        SharedString::from(format!("segment:{}:{option}", row.title)),
+                        active,
+                        move |on| segment_style(segment, on),
+                    )
                 }))
                 .into_any_element()
         } else {

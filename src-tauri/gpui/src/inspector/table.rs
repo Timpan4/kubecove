@@ -349,7 +349,14 @@ impl Inspector {
                     .flex()
                     .border_b_1()
                     .border_color(Tokens::border())
-                    .hover(|row| row.bg(Tokens::muted().opacity(0.6)))
+                    // `TableRow.svelte`: `transition-colors` to the hover color.
+                    .child(
+                        crate::control_motion::hover_fill(
+                            gpui_kit::transparent_black(),
+                            Tokens::muted().opacity(0.6),
+                        )
+                        .under_border(0., 0., 1., 0.),
+                    )
                     .children(cells)
                     .into_any_element()
             }

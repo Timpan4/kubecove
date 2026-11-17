@@ -554,6 +554,7 @@ impl Render for Inspector {
         self.loading.begin_frame(cx.background_executor().now());
         self.overlay_motion
             .begin_frame(cx.background_executor().now(), cx.reduce_motion());
+        crate::control_motion::Moving::begin_frame(cx);
         self.sync_argo_scope(window, cx);
         self.sync_scope_reread(window, cx);
         self.sync_remote_status(window, cx);

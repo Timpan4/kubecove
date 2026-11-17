@@ -14,6 +14,7 @@ use super::logs_tab::logs_tab;
 use super::revisions_tab::{RevisionsState, revisions_tab};
 use super::windowed::row_id;
 use super::yaml::{self, YamlApply, YamlMarks, yaml_tab};
+use crate::control_motion;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
@@ -478,56 +479,66 @@ impl Inspector {
             );
         // `TabsList variant="line" class="flex-wrap"`: an `h-8 p-[3px] gap-1` row of
         // 25px `px-1.5 text-xs font-medium` triggers; narrow panes wrap tabs.
-        let tabs =
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .min_h(px(32.))
-                .p(px(3.))
-                .gap(px(4.))
-                .children(
-                    TABS.iter()
-                        .filter(|(tab, ..)| {
-                            resource
-                                .as_ref()
-                                .is_none_or(|resource| available(*tab, resource))
-                        })
-                        .map(|(tab, id, label)| {
-                            let selected = active == Some(*tab);
-                            let tab = *tab;
-                            div()
-                                .id(*id)
-                                .test_support()
-                                .role(gpui_kit::Role::Tab)
-                                .aria_selected(selected)
-                                .relative()
-                                .flex()
-                                .items_center()
-                                .h(px(25.))
-                                .px(px(6.))
-                                .cursor_pointer()
-                                .child(ui::medium(ui::xs(*label)).text_color(if selected {
-                                    Tokens::foreground()
-                                } else {
-                                    Tokens::foreground().opacity(0.6)
-                                }))
-                                .when(selected, |trigger| {
-                                    trigger.child(
-                                        div()
-                                            .absolute()
-                                            .left_0()
-                                            .right_0()
-                                            .bottom(px(-4.))
-                                            .h(px(2.))
-                                            .bg(Tokens::foreground()),
-                                    )
-                                })
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.set_tab(tab, window, cx)
-                                }))
-                        }),
-                );
+        let tabs = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .min_h(px(32.))
+            .p(px(3.))
+            .gap(px(4.))
+            .children(
+                TABS.iter()
+                    .filter(|(tab, ..)| {
+                        resource
+                            .as_ref()
+                            .is_none_or(|resource| available(*tab, resource))
+                    })
+                    .map(|(tab, id, label)| {
+                        let selected = active == Some(*tab);
+                        let tab = *tab;
+                        let trigger = div()
+                            .id(*id)
+                            .test_support()
+                            .role(gpui_kit::Role::Tab)
+                            .aria_selected(selected)
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .h(px(25.))
+                            .px(px(6.))
+                            .cursor_pointer()
+                            .child(ui::medium(ui::xs(*label)))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.set_tab(tab, window, cx)
+                            }));
+                        // `TabsTrigger.svelte`: the text follows
+                        // `transition-[color,…]` and the line `after:transition-opacity`.
+                        control_motion::eased(
+                            gpui_kit::SharedString::from(format!("tab:{id}")),
+                            selected,
+                            move |on| {
+                                let foreground = Tokens::foreground();
+                                trigger
+                                    .text_color(control_motion::mix(
+                                        foreground.opacity(0.6),
+                                        foreground,
+                                        on,
+                                    ))
+                                    .when(on > 0., |trigger| {
+                                        trigger.child(
+                                            div()
+                                                .absolute()
+                                                .left_0()
+                                                .right_0()
+                                                .bottom(px(-4.))
+                                                .h(px(2.))
+                                                .bg(foreground.opacity(on)),
+                                        )
+                                    })
+                            },
+                        )
+                    }),
+            );
         let loading = self
             .loading
             .phase("detail", matches!(self.detail, Detail::Loading(_)));

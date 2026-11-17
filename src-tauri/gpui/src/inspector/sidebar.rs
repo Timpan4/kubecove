@@ -142,8 +142,9 @@ impl Inspector {
             } else {
                 Tokens::foreground().opacity(0.8)
             })
+            .child(super::sidebar_tree::row_fill(selected))
             .when(selected, |row| {
-                row.bg(Tokens::primary().opacity(0.1)).child(
+                row.child(
                     div()
                         .absolute()
                         .left_0()
@@ -154,7 +155,6 @@ impl Inspector {
                         .bg(Tokens::primary()),
                 )
             })
-            .hover(|row| row.bg(Tokens::card()))
             .child(
                 div()
                     .id(SharedString::from(toggle))
@@ -165,14 +165,10 @@ impl Inspector {
                     .size(px(18.))
                     .when(expandable, |chevron| {
                         chevron
-                            .child(ui::icon(
-                                if self.live.custom_open {
-                                    "chevron-down"
-                                } else {
-                                    "chevron-right"
-                                },
-                                12.,
-                                Tokens::muted_foreground(),
+                            .child(crate::control_motion::eased(
+                                "chevron:custom-resources",
+                                self.live.custom_open,
+                                |open| ui::chevron(12., Tokens::muted_foreground(), open),
                             ))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.stop_propagation();

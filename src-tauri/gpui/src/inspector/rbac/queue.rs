@@ -2,7 +2,7 @@
 //! `RbacView.svelte`, with the risk and review badges they share with the
 //! inspector.
 
-use super::super::controls::{Variant, button};
+use super::super::controls::{Variant, button, button_frame};
 use super::super::{Inspector, surface};
 use super::page::PAGE;
 use crate::rbac::review::{self, ReviewRecord, Status};
@@ -52,30 +52,28 @@ impl Inspector {
             .zip(state.counts)
             .map(|((bucket, label), count)| {
                 let selected = bucket == state.bucket;
-                button(
-                    if selected {
-                        Variant::Default
-                    } else {
-                        Variant::Outline
-                    },
-                    20.,
-                    false,
-                )
-                .id(SharedString::from(format!("rbac-risk-filter:{label}")))
-                .test_support()
-                .aria_label(label)
-                .aria_selected(selected)
-                // `size="xs"`: `rounded-sm px-2 text-[0.625rem]`.
-                .rounded(px(6.))
-                .text_size(px(10.))
-                .line_height(px(15.))
-                .child(label)
-                .child(div().opacity(0.75).child(count.to_string()))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.rbac.bucket = bucket;
-                    this.rbac.shown = PAGE;
-                    this.refilter_rbac(cx);
-                }))
+                let variant = if selected {
+                    Variant::Default
+                } else {
+                    Variant::Outline
+                };
+                button_frame(variant, 20., false)
+                    .id(SharedString::from(format!("rbac-risk-filter:{label}")))
+                    .test_support()
+                    .aria_label(label)
+                    .aria_selected(selected)
+                    // `size="xs"`: `rounded-sm px-2 text-[0.625rem]`.
+                    .rounded(px(6.))
+                    .child(variant.fill(6.))
+                    .text_size(px(10.))
+                    .line_height(px(15.))
+                    .child(label)
+                    .child(div().opacity(0.75).child(count.to_string()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.rbac.bucket = bucket;
+                        this.rbac.shown = PAGE;
+                        this.refilter_rbac(cx);
+                    }))
             });
         // The `size="sm"` card keeps its `py-3` and its content's `px-3`,
         // because the variant-prefixed classes outrank `py-0` and `px-2`.
@@ -337,12 +335,9 @@ fn queue_card(
     let title = format!("{}/{}", item.kind, item.name);
     let risk = rbac::risk_summary_label(&item.risks);
     let key = item.key.clone();
-    div()
-        .id(SharedString::from(format!("rbac-item:{}", item.key)))
-        .test_support()
-        .aria_label(title.clone())
-        .aria_description(risk.clone())
-        .aria_selected(selected)
+    // The card's border box clips its children to the padding box, so the
+    // background sits one level out, where it reaches under the border.
+    let card = div()
         .relative()
         .w_full()
         .p(px(12.))
@@ -354,14 +349,7 @@ fn queue_card(
         } else {
             Tokens::border()
         })
-        .bg(if selected {
-            Tokens::primary().opacity(0.05)
-        } else {
-            Tokens::card()
-        })
         .overflow_hidden()
-        .cursor_pointer()
-        .hover(|card| card.bg(Tokens::muted().opacity(0.6)))
         .child(
             surface::left_rule(if selected {
                 Tokens::primary().opacity(0.7)
@@ -379,7 +367,7 @@ fn queue_card(
                     div()
                         .flex_1()
                         .min_w_0()
-                        .child(ui::semibold(ui::sm(title)).truncate())
+                        .child(ui::semibold(ui::sm(title.clone())).truncate())
                         .child(
                             ui::muted(ui::xs(
                                 item.namespace
@@ -396,7 +384,7 @@ fn queue_card(
                         .flex_none()
                         .items_end()
                         .gap(px(4.))
-                        .child(risk_badge(&item.risks, risk))
+                        .child(risk_badge(&item.risks, risk.clone()))
                         .children(review_badge(data, records, item)),
                 ),
         )
@@ -420,7 +408,29 @@ fn queue_card(
             ui::muted(ui::xs(rbac::queue_summary(data, item)))
                 .mt(px(8.))
                 .truncate(),
+        );
+    div()
+        .id(SharedString::from(format!("rbac-item:{}", item.key)))
+        .test_support()
+        .aria_label(title)
+        .aria_description(risk)
+        .aria_selected(selected)
+        .relative()
+        .w_full()
+        .cursor_pointer()
+        // `transition-colors hover:bg-muted/60` in `RbacView.svelte`.
+        .child(
+            crate::control_motion::hover_fill(
+                if selected {
+                    Tokens::primary().opacity(0.05)
+                } else {
+                    Tokens::card()
+                },
+                Tokens::muted().opacity(0.6),
+            )
+            .rounded(px(8.)),
         )
+        .child(card)
         .on_click(cx.listener(move |this, _, _, cx| this.select_rbac_item(key.clone(), cx)))
         .into_any_element()
 }

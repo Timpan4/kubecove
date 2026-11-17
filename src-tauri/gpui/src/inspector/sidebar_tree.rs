@@ -1,7 +1,7 @@
 //! Built-in sidebar branches. Descendants are constructed only for open parents.
 use super::{Inspector, Page};
 use crate::targets::TestSupportExt;
-use crate::{model, rbac::RbacView, theme::Tokens, ui};
+use crate::{control_motion, model, rbac::RbacView, theme::Tokens, ui};
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, FocusHandle, KeyDownEvent, ScrollHandle, SharedString,
     Window, div, prelude::*, px,
@@ -14,6 +14,17 @@ use std::rc::Rc;
 /// the accessible description the web sets on the same label.
 pub(super) const CONTAINS_SELECTION: &str = "Contains the selected item";
 pub(super) const ROW_HEIGHT: f32 = 26.;
+
+/// A tree row's background in `SidebarTreeNode.svelte`: `bg-primary/10` when
+/// selected, fading to `hover:bg-surface-1` over the row's `transition-colors`.
+pub(super) fn row_fill(selected: bool) -> control_motion::HoverFill {
+    let rest = if selected {
+        Tokens::primary().opacity(0.1)
+    } else {
+        gpui_kit::transparent_black()
+    };
+    control_motion::hover_fill(rest, Tokens::card())
+}
 
 pub(super) const GROUPS: &[(&str, &[&str])] = &[
     (
@@ -364,8 +375,9 @@ impl Inspector {
             .pr(px(8.))
             .cursor_pointer()
             .text_color(Tokens::foreground().opacity(if selected { 1. } else { 0.8 }))
+            .child(row_fill(selected))
             .when(selected, |row| {
-                row.bg(Tokens::primary().opacity(0.1)).child(
+                row.child(
                     div()
                         .absolute()
                         .left_0()
@@ -376,7 +388,6 @@ impl Inspector {
                         .bg(Tokens::primary()),
                 )
             })
-            .hover(|row| row.bg(Tokens::card()))
             .child(
                 div()
                     .id(SharedString::from(format!("tree-toggle:{chevron}")))
@@ -386,14 +397,10 @@ impl Inspector {
                     .justify_center()
                     .size(px(18.))
                     .when(expandable, |row| {
-                        row.child(ui::icon(
-                            if expanded {
-                                "chevron-down"
-                            } else {
-                                "chevron-right"
-                            },
-                            12.,
-                            Tokens::muted_foreground(),
+                        row.child(control_motion::eased(
+                            SharedString::from(format!("chevron:{chevron}")),
+                            expanded,
+                            |open| ui::chevron(12., Tokens::muted_foreground(), open),
                         ))
                         .on_click(cx.listener(
                             move |this, _: &ClickEvent, _, cx| {
