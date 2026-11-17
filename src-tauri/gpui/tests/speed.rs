@@ -343,8 +343,8 @@ fn setup_before(setup: &[(f64, f64)], at: f64) -> f64 {
     setup
         .iter()
         .filter(|(_, end)| *end <= at)
-        .map(|(start, end)| end - start)
-        .sum()
+        // A float `sum` of nothing is -0.0, which the report would print.
+        .fold(0.0, |total, (start, end)| total + (end - start))
 }
 
 fn window_options() -> WindowOptions {
