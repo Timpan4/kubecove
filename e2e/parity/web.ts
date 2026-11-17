@@ -139,6 +139,7 @@ async function runScenario(browser: Browser, port: number, artifacts: string, sc
 export async function runWeb(contract: Contract, artifacts: string, signal: AbortSignal, jobs = 1) {
 	const results: WebResult[] = [];
 	const port = await freePort();
+	signal.throwIfAborted();
 	const env = { ...process.env }; delete env.KUBECONFIG; delete env.ARGV0;
 	// Coverage needs Vite's per-source inline maps; normal runs load the bundled dev app.
 	const command = process.env.PARITY_COVERAGE === "1"
