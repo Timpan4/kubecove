@@ -1,7 +1,7 @@
+import { escapeRegExp } from "./web-locators";
 import { sharedActions, type WebActions } from "./web-action";
 import type { Page } from "playwright-core";
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const healthSummary = (page: Page) => page.locator('[aria-label="Resource health summary"]');
 const healthButton = (page: Page, label: string) => healthSummary(page).getByRole("button", { name: new RegExp(`^${escapeRegExp(label)}\\b`) });
 const namespaceTrigger = (page: Page) => page.getByRole("button", { name: "Edit namespace scope", exact: true });

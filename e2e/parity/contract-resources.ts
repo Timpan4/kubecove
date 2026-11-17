@@ -1,5 +1,7 @@
+import type { JsonObject } from "../../src/lib/types";
 import { type StepParsers, boolean, count, isBoolean, isNumber, isString, oneOf, optionalBoolean, string, strings, noPayload, withOptional } from "./contract-values";
 
+const HEALTH_FILTER_LABELS = ["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"] as const;
 const TABLE_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Owner", "Age"] as const;
 const SORT_COLUMNS = ["Name", "Status", "Context", "Namespace", "Kind", "Ready", "Restarts", "CPU", "Memory", "Age"] as const;
 const PANEL_CONTROLS = [
@@ -10,13 +12,21 @@ const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End
 const MAP_CONTROLS = ["Zoom In", "Zoom Out", "Fit View"] as const;
 const DETAIL_RESIZE_KEYS = ["ArrowLeft", "ArrowRight", "Home", "End"] as const;
 
+function resourceIdentity(item: JsonObject) {
+	return { kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
+}
+
+function clusterResourceIdentity(item: JsonObject) {
+	return { kind: string(item.kind), name: string(item.name) };
+}
+
 export const resourcesSteps = {
 	expectForegroundLoading: (item) => {
 		const sliding = optionalBoolean(item.sliding);
 		return withOptional({
 			active: boolean(item.active),
 		}, {
-			sliding: sliding !== undefined ? sliding : undefined,
+			sliding,
 		});
 	},
 	expectMotion: (item) => ({ moving: boolean(item.moving) }),
@@ -33,13 +43,13 @@ export const resourcesSteps = {
 	returnToSource: noPayload,
 	dismissCopyToast: noPayload,
 	expectPermissionTarget: (item) => ({ verb: string(item.verb), resource: string(item.resource) }),
-	copyResourceName: (item) => ({ kind: string(item.kind), namespace: string(item.namespace), name: string(item.name) }),
+	copyResourceName: resourceIdentity,
 	expectCopyToast: (item) => ({ text: string(item.text) }),
 	expectTopologyDenied: noPayload,
 	expectWatchStart: (item) => ({ kind: string(item.kind), resourceVersion: item.resourceVersion === null ? null : string(item.resourceVersion) }),
 	runTopologySpike: noPayload,
 	expectTopologySpikeText: (item) => ({ value: string(item.value) }),
-	expectResourceStatus: (item) => ({ kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) }),
+	expectResourceStatus: (item) => ({ ...resourceIdentity(item), status: string(item.status) }),
 	openCustomKind: (item) => ({ kind: string(item.kind), surface: oneOf(["sidebar", "picker"], item.surface, "a kind surface") }),
 	openNamespacePicker: noPayload,
 	closeNamespacePicker: noPayload,
@@ -49,8 +59,8 @@ export const resourcesSteps = {
 	toggleNamespace: (item) => ({ namespace: string(item.namespace), checked: boolean(item.checked) }),
 	expectNamespaceChecked: (item) => ({ namespace: string(item.namespace), checked: boolean(item.checked) }),
 	expectNamespaceTrigger: (item) => ({ label: string(item.label) }),
-	selectHealthFilter: (item) => ({ label: oneOf(["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"], item.label, "a health filter") }),
-	expectHealthFilter: (item) => ({ label: oneOf(["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"], item.label, "a health filter"), pressed: boolean(item.pressed) }),
+	selectHealthFilter: (item) => ({ label: oneOf(HEALTH_FILTER_LABELS, item.label, "a health filter") }),
+	expectHealthFilter: (item) => ({ label: oneOf(HEALTH_FILTER_LABELS, item.label, "a health filter"), pressed: boolean(item.pressed) }),
 	chooseGitOpsOwner: (item) => ({ owner: string(item.owner) }),
 	setHistoricalReplicaSets: (item) => ({ checked: boolean(item.checked) }),
 	expectUsageFooter: (item) => ({ text: string(item.text) }),
@@ -78,11 +88,11 @@ export const resourcesSteps = {
 	refresh: noPayload,
 	search: (item) => ({ value: item.value === "" ? "" : string(item.value) }),
 	expectSearch: (item) => ({ value: item.value === "" ? "" : string(item.value) }),
-	expectResource: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
-	expectDetail: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
-	expectClusterResource: (item) => ({ kind: string(item.kind), name: string(item.name) }),
-	expectNoClusterResource: (item) => ({ kind: string(item.kind), name: string(item.name) }),
-	expectNoResource: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
+	expectResource: resourceIdentity,
+	expectDetail: resourceIdentity,
+	expectClusterResource: clusterResourceIdentity,
+	expectNoClusterResource: clusterResourceIdentity,
+	expectNoResource: resourceIdentity,
 	panelControl: (item) => ({ control: oneOf(PANEL_CONTROLS, item.control, "a panel control") }),
 	expectPanelControl: (item) => ({ control: oneOf(PANEL_CONTROLS, item.control, "a panel control"), present: boolean(item.present) }),
 	skipGraph: noPayload,
@@ -122,20 +132,20 @@ export const resourcesSteps = {
 		});
 	},
 	expectResourceGroup: (item) => ({ label: string(item.label), expanded: boolean(item.expanded) }),
-	openResourceRow: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") }),
-	expectResourceCell: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) }),
-	expectResourceCellFits: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text), truncated: optionalBoolean(item.truncated) ?? true }),
+	openResourceRow: (item) => ({ ...resourceIdentity(item), column: oneOf(TABLE_COLUMNS, item.column, "a table column") }),
+	expectResourceCell: (item) => ({ ...resourceIdentity(item), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) }),
+	expectResourceCellFits: (item) => ({ ...resourceIdentity(item), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text), truncated: optionalBoolean(item.truncated) ?? true }),
 	expectResourceColumns: (item) => ({ columns: strings(item.columns, false).map((column) => oneOf(TABLE_COLUMNS, column, "a table column")) }),
-	expectResourceActivity: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), state: oneOf(["active", "paused"] as const, item.state, "an activity state") }),
+	expectResourceActivity: (item) => ({ ...resourceIdentity(item), state: oneOf(["active", "paused"] as const, item.state, "an activity state") }),
 	pressResourceRow: (item) => ({ key: oneOf(["Enter", "Space"], item.key, "Enter or Space"), kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
 	openResource: (item) => {
 		return withOptional({
-			kind: string(item.kind), name: string(item.name), namespace: string(item.namespace),
+			...resourceIdentity(item),
 		}, {
 			context: item.context !== undefined ? string(item.context) : undefined,
 		});
 	},
-	expectRowContexts: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), contexts: strings(item.contexts, false) }),
+	expectRowContexts: (item) => ({ ...resourceIdentity(item), contexts: strings(item.contexts, false) }),
 	filterContexts: (item) => ({ contexts: strings(item.contexts, true) }),
 	expectResourceSummary: (item) => ({ text: string(item.text) }),
 	selectMapContext: (item) => ({ context: string(item.context) }),

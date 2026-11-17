@@ -16,8 +16,17 @@ function overviewIdentity(item: JsonObject) {
 
 function overviewActivation(item: JsonObject) {
 	return withOptional(overviewIdentity(item), {
-		key: item.key === undefined ? undefined : oneOf(["enter", "space"], item.key, "an activation key"),
+		key: item.key === undefined ? undefined : oneOf(["enter", "space"] as const, item.key, "an activation key"),
 	});
+}
+
+function workspaceEntry(item: JsonObject) {
+	return { panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
+}
+
+function paletteIdentity(item: JsonObject) {
+	if (!isString(item.namespace)) throw new Error("Expected a resource namespace, empty for cluster resources");
+	return { kind: string(item.kind), name: string(item.name), namespace: item.namespace };
 }
 
 export const overviewSteps = {
@@ -57,8 +66,8 @@ export const overviewSteps = {
 			key: item.key !== undefined ? oneOf(["Enter", "Space"] as const, item.key, "a pin key") : undefined,
 		});
 	},
-	expectWorkspaceEntry: (item) => ({ panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) }),
-	openWorkspaceEntry: (item) => ({ panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) }),
+	expectWorkspaceEntry: workspaceEntry,
+	openWorkspaceEntry: workspaceEntry,
 	reorderKindKey: (item) => ({ kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") }),
 	resetKindOrder: noPayload,
 	configureShellRead: (item) => ({ phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed", "overview-owner-chain", "overview-many"], item.phase, "a shell read phase") }),
@@ -108,18 +117,9 @@ export const overviewSteps = {
 	selectAllKinds: noPayload,
 	openPage: (item) => ({ page: string(item.page) }),
 	expectDetailTab: (item) => ({ tab: string(item.tab) }),
-	expectPaletteResource: (item) => {
-		if (!isString(item.namespace)) throw new Error("Expected a resource namespace, empty for cluster resources");
-		return { kind: string(item.kind), name: string(item.name), namespace: item.namespace };
-	},
-	expectNoPaletteResource: (item) => {
-		if (!isString(item.namespace)) throw new Error("Expected a resource namespace, empty for cluster resources");
-		return { kind: string(item.kind), name: string(item.name), namespace: item.namespace };
-	},
-	choosePaletteResource: (item) => {
-		if (!isString(item.namespace)) throw new Error("Expected a resource namespace, empty for cluster resources");
-		return { kind: string(item.kind), name: string(item.name), namespace: item.namespace };
-	},
+	expectPaletteResource: paletteIdentity,
+	expectNoPaletteResource: paletteIdentity,
+	choosePaletteResource: paletteIdentity,
 	openLauncher: noPayload,
 	createWorkspace: noPayload,
 	nameWorkspace: (item) => ({ value: string(item.value) }),

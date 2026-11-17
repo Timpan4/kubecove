@@ -2,7 +2,8 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
-import type { Action, Contract, Step } from "./contract";
+import { mergeActionMaps } from "./action-maps";
+import { type Action, type Contract, type Step, requireRegisteredActions } from "./contract";
 import type { WebActions } from "./web-action";
 import { startCodeCoverage } from "./web-coverage-map";
 import { seedsWorkspace, seedWorkspace, storeReloadHolds, shellActions } from "./web-shell";
@@ -43,45 +44,47 @@ import { workspaceActions } from "./web-workspaces";
 import { yamlEditorActions } from "./web-yaml-editor";
 import { yamlPermissionActions } from "./web-yaml-permissions";
 
-const handlers: WebActions = {
-	...adapterActions,
-	...argoActions,
-	...coverageActions,
-	...deleteReviewActions,
-	...deliveryActions,
-	...detailStatusActions,
-	...detailsActions,
-	...diagnosticsActions,
-	...feedbackActions,
-	...incidentDiagnosticsActions,
-	...kubeconfigSettingsActions,
-	...liveMenuActions,
-	...liveSessionActions,
-	...logRowAndRestoreActions,
-	...mcpActions,
-	...multiContextActions,
-	...navigationActions,
-	...overlayMotionActions,
-	...overviewActions,
-	...paletteActions,
-	...panelActions,
-	...rbacActions,
-	...remoteActions,
-	...resourceFilterActions,
-	...resourceTableActions,
-	...resourceActions,
-	...sessionHealthActions,
-	...settingsActions,
-	...shellActions,
-	...sidebarLiveActions,
-	...terminalActions,
-	...timingActions,
-	...topologySpikeActions,
-	...topologyActions,
-	...workspaceActions,
-	...yamlEditorActions,
-	...yamlPermissionActions,
-};
+const handlers: WebActions = mergeActionMaps(
+	adapterActions,
+	argoActions,
+	coverageActions,
+	deleteReviewActions,
+	deliveryActions,
+	detailStatusActions,
+	detailsActions,
+	diagnosticsActions,
+	feedbackActions,
+	incidentDiagnosticsActions,
+	kubeconfigSettingsActions,
+	liveMenuActions,
+	liveSessionActions,
+	logRowAndRestoreActions,
+	mcpActions,
+	multiContextActions,
+	navigationActions,
+	overlayMotionActions,
+	overviewActions,
+	paletteActions,
+	panelActions,
+	rbacActions,
+	remoteActions,
+	resourceFilterActions,
+	resourceTableActions,
+	resourceActions,
+	sessionHealthActions,
+	settingsActions,
+	shellActions,
+	sidebarLiveActions,
+	terminalActions,
+	timingActions,
+	topologySpikeActions,
+	topologyActions,
+	workspaceActions,
+	yamlEditorActions,
+	yamlPermissionActions,
+);
+
+requireRegisteredActions(Object.keys(handlers));
 
 export async function action<Name extends Action>(page: Page, step: Step<Name>, scenarioSteps: readonly Step[] = []) {
 	const name: Name = step.action;

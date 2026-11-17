@@ -1,3 +1,4 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 import type { Page } from "playwright-core";
 export const paletteActions = {
@@ -35,8 +36,6 @@ export const paletteActions = {
 type Identity = { kind: string; name: string; namespace: string };
 /** A palette resource result: its name, then cluster, namespace and kind. */
 function paletteResource(page: Page, step: Identity) {
-	const row = page.getByRole("option").filter({ has: page.locator("span.truncate", { hasText: new RegExp(`^${literal(step.name)}$`) }) }).filter({ has: page.getByText(step.kind, { exact: true }) });
+	const row = page.getByRole("option").filter({ has: page.locator("span.truncate", { hasText: new RegExp(`^${escapeRegExp(step.name)}$`) }) }).filter({ has: page.getByText(step.kind, { exact: true }) });
 	return step.namespace ? row.filter({ has: page.getByText(step.namespace, { exact: true }) }) : row;
 }
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

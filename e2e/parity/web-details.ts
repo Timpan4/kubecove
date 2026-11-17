@@ -1,3 +1,4 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 import { revisionButton } from "./web-delivery-helpers";
 import { expectDetailScroll, expectResourceEvent } from "./web-detail-scroll";
@@ -34,8 +35,8 @@ export const detailsActions = {
 	},
 	async expectRevisionDiff(page, step) {
 		const header = page.locator("div.border-b").filter({ hasText: "compared with" });
-		await header.locator("span.font-medium", { hasText: new RegExp(`^${literal(step.selected)}$`) }).waitFor();
-		await header.getByRole("combobox", { name: "Comparison revision" }).filter({ hasText: new RegExp(`^\\s*${literal(step.comparison)}\\s*$`) }).waitFor();
+		await header.locator("span.font-medium", { hasText: new RegExp(`^${escapeRegExp(step.selected)}$`) }).waitFor();
+		await header.getByRole("combobox", { name: "Comparison revision" }).filter({ hasText: new RegExp(`^\\s*${escapeRegExp(step.comparison)}\\s*$`) }).waitFor();
 		await containsLines(page.getByRole("tabpanel").locator("pre"), step.contains);
 	},
 	async reviewAction(page, step) {
@@ -62,7 +63,7 @@ export const detailsActions = {
 		await page.getByRole("dialog").waitFor({ state: "detached" });
 	},
 	async expectActionResult(page, step) {
-		await page.getByRole("status").filter({ hasText: new RegExp(`^${literal(step.text)}$`) }).waitFor();
+		await page.getByRole("status").filter({ hasText: new RegExp(`^${escapeRegExp(step.text)}$`) }).waitFor();
 	},
 	async expectNoActionResult(page) {
 		if (await page.locator('p[role="status"].text-emerald-300').count()) throw new Error("An action result is shown");
@@ -103,5 +104,3 @@ async function containsLines(locator: Locator, lines: string[]) {
 		return expected.every((line) => rendered.includes(line));
 	}, { element, expected: lines });
 }
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

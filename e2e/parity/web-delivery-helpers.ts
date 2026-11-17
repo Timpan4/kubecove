@@ -1,7 +1,6 @@
+import { escapeRegExp } from "./web-locators";
 import type { Locator, Page } from "playwright-core";
 import { waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /** A GitOps card or list row, by the label of its Details button. */
 export function gitOpsDetails(page: Page, item: { kind: string; name: string; namespace: string }) {
@@ -40,4 +39,4 @@ export function helmCard(page: Page, name: string, namespace: string) {
 		.filter({ has: page.locator('[data-slot="card-description"]').getByText(namespace, { exact: true }) });
 }
 /** A revision in the Revisions list; its comparison picker shows the same label. */
-export function revisionButton(page: Page, label: string) { return page.locator("button.w-full.p-3").filter({ has: page.locator("div.font-medium", { hasText: new RegExp(`^${literal(label)}$`) }) }); }
+export function revisionButton(page: Page, label: string) { return page.locator("button.w-full.p-3").filter({ has: page.locator("div.font-medium", { hasText: new RegExp(`^${escapeRegExp(label)}$`) }) }); }

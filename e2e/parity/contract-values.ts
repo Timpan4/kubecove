@@ -57,6 +57,6 @@ export type StepParsers = Record<string, (item: JsonObject) => object>;
 export function noPayload() { return {}; }
 
 /** Adds validated optional fields whose values are present. */
-export function withOptional<Fields extends object, Optional extends object>(fields: Fields, optional: Optional): Fields & Partial<Optional> {
+export function withOptional<Fields extends object, Optional extends object>(fields: Fields, optional: Optional & Partial<Record<keyof Fields, never>>): Fields & Partial<Optional> {
 	return { ...fields, ...Object.fromEntries(Object.entries(optional).filter(([, value]) => value !== undefined)) };
 }

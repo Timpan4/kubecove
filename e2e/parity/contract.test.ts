@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { loadContract, parseContract, requireActionCoverage, requireViewCoverage, validateReports } from "./contract";
+import { loadContract, parseContract, requireActionCoverage, requireRegisteredActions, requireViewCoverage, validateReports } from "./contract";
+import { mergeActionMaps } from "./action-maps";
 import { VIEWS } from "./visual/views";
 
 describe("equal GPUI and Svelte tests", () => {
@@ -19,6 +20,10 @@ const passed = { id: "one", status: "passed" };
 const withStep = <Value>(step: Value) => ({ ...contract, scenarios: [{ ...contract.scenarios[0], steps: [step] }] });
 
 describe("parity input boundaries", () => {
+	test("rejects duplicate area registrations and missing web handlers", () => {
+		expect(() => mergeActionMaps({ openResources: () => {} }, { openResources: () => {} })).toThrow("Duplicate parity action: openResources");
+		expect(() => requireRegisteredActions(["openResources"])).toThrow("typeSettingsField");
+	});
 	test("overview identities retain an API version and reject malformed discriminators", () => {
 		const step = { action: "openOverviewProblem", kind: "Deployment", name: "same", namespace: "payments", context: "mock-dev", apiVersion: "alpha.example/v1" };
 		expect(parseContract(withStep(step)).scenarios[0].steps[0]).toMatchObject({ apiVersion: "alpha.example/v1" });

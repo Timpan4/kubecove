@@ -1,8 +1,7 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 import { gitOpsDetails, helmCard, revealGitOps } from "./web-delivery-helpers";
 import type { Page } from "playwright-core";
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 /** The group headers of the GitOps list, in list order. */
 function gitOpsGroups(page: Page) { return page.locator("[data-gitops-group]"); }
@@ -18,7 +17,7 @@ export const deliveryActions = {
 	},
 	// "Healthy" is part of "Not healthy", so the label must start the header's name.
 	async toggleGitOpsGroup(page, step) {
-		const group = gitOpsGroups(page).and(page.getByRole("button", { name: new RegExp(`^${literal(step.label)} \\d+$`) }));
+		const group = gitOpsGroups(page).and(page.getByRole("button", { name: new RegExp(`^${escapeRegExp(step.label)} \\d+$`) }));
 		await revealGitOps(page, group);
 		await group.click();
 	},
@@ -48,7 +47,7 @@ export const deliveryActions = {
 		await page.getByRole("heading", { level: 2 }).filter({ hasText: step.name }).waitFor();
 	},
 	async filterArgoResources(page, step) {
-		await page.getByLabel("Argo CD resource filters").getByRole("button", { name: new RegExp(`^${literal(step.filter)} `) }).click();
+		await page.getByLabel("Argo CD resource filters").getByRole("button", { name: new RegExp(`^${escapeRegExp(step.filter)} `) }).click();
 	},
 	async expectDeliveryView(page, step) {
 		await page.getByRole("radio", { name: step.mode, exact: true }).and(page.locator('[aria-checked="true"]')).waitFor();
@@ -94,7 +93,7 @@ export const deliveryActions = {
 		await helmCard(page, step.name, step.namespace).getByRole("button", { name: "Details", exact: true }).click();
 	},
 	async selectHelmNamespace(page, step) {
-		await page.getByRole("button", { name: new RegExp(`^${literal(step.namespace)}\\s*\\d+$`) }).click();
+		await page.getByRole("button", { name: new RegExp(`^${escapeRegExp(step.namespace)}\\s*\\d+$`) }).click();
 	},
 	async searchHelm(page, step) {
 		await page.getByRole("textbox", { name: "Search Helm releases" }).fill(step.value);

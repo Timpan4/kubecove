@@ -1,6 +1,28 @@
+import type { ArgoInventoryMode, ArgoMockScript } from "../../src/lib/tauri-dev-mock-argo";
+import type { JsonObject } from "../../src/lib/types";
 import { type StepParsers, boolean, count, isBoolean, oneOf, optionalBoolean, plainString, string, strings, noPayload } from "./contract-values";
 
+const ARGO_MOCK_SCRIPTS = ["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending", "credential-error", "preview-pending"] as const satisfies readonly ArgoMockScript[];
+const ARGO_INVENTORY_MODES = ["base", "absent", "empty", "partial", "unavailable", "many", "same-name"] as const satisfies readonly ArgoInventoryMode[];
 const ARGO_OPTION_NAMES = ["Prune", "Dry run", "Force / replace"] as const;
+
+function argoConnectionField(item: JsonObject) {
+	return { field: oneOf(["url", "rootPath", "tlsServerName", "token", "password"], item.field, "an Argo connection field"), value: plainString(item.value) };
+}
+
+function connectArgoProfile(item: JsonObject) {
+	const url = string(item.url);
+	const options = {
+		remember: optionalBoolean(item.remember),
+		tunnel: optionalBoolean(item.tunnel),
+		local: optionalBoolean(item.local),
+		insecure: optionalBoolean(item.insecure),
+		customCa: item.customCa === null || item.customCa === undefined ? undefined : string(item.customCa),
+		surface: item.surface === null || item.surface === undefined ? undefined : oneOf(["page"] as const, item.surface, "an Argo connection surface"),
+	};
+	const payload: { url: string } & Partial<typeof options> = { url, ...options };
+	return payload;
+}
 
 export const integrationsSteps = {
 	controlClock: noPayload,
@@ -27,14 +49,14 @@ export const integrationsSteps = {
 	configureArgoSync: (item) => ({ revision: string(item.revision), name: string(item.name) }),
 	selectArgoHistory: (item) => ({ revision: string(item.revision) }),
 	expectArgoWorkspaceTransport: (item) => ({ text: string(item.text) }),
-	confirmArgoTunnel: (item) => ({ failure: item.failure == null ? undefined : string(item.failure) }),
+	confirmArgoTunnel: (item) => ({ failure: item.failure === null || item.failure === undefined ? undefined : string(item.failure) }),
 	completeArgoOperation: noPayload,
-	connectArgoProfile: (item) => ({ url: string(item.url), remember: optionalBoolean(item.remember), tunnel: optionalBoolean(item.tunnel), local: optionalBoolean(item.local), insecure: optionalBoolean(item.insecure), customCa: item.customCa == null ? undefined : string(item.customCa), surface: item.surface == null ? undefined : oneOf(["page"] as const, item.surface, "an Argo connection surface") }),
+		connectArgoProfile: connectArgoProfile,
 	disconnectArgoProfile: noPayload,
 	confirmArgoReview: noPayload,
 	cancelArgoReview: noPayload,
-	configureArgoMock: (item) => ({ script: oneOf(["base", "discovery-error", "target-mismatch", "preview-error", "snapshot-error", "operation-error", "lazy", "full-diff", "connect-pending", "disconnect-pending", "credential-error", "preview-pending"], item.script, "an Argo fixture script") }),
-	argoControl: (item) => ({ control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Cancel sign-in", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url == null ? undefined : string(item.url) }),
+	configureArgoMock: (item) => ({ script: oneOf(ARGO_MOCK_SCRIPTS, item.script, "an Argo fixture script") }),
+	argoControl: (item) => ({ control: oneOf(["Open connection", "Close connection", "Disconnect", "Forget", "Cancel sign-in", "Retry", "Confirm target again", "Retry operation", "Retry state refresh", "Retry snapshot", "Technical detail", "Show diff", "Show fewer lines", "All changes", "Sync options", "Sync with these options", "Refresh options"], item.control, "an Argo control"), url: item.url === null || item.url === undefined ? undefined : string(item.url) }),
 	focusArgoResource: (item) => ({ key: string(item.key), label: string(item.label) }),
 	/** Seeds a legacy profile ID before restart. */
 	ageArgoProfileId: (item) => ({ url: string(item.url) }),
@@ -42,7 +64,7 @@ export const integrationsSteps = {
 	expandArgoDiff: noPayload,
 	reconnectArgoProfile: noPayload,
 	argoProfileSignIn: (item) => ({ token: plainString(item.token), tunnel: optionalBoolean(item.tunnel), pending: optionalBoolean(item.pending), submit: optionalBoolean(item.submit) }),
-	configureArgoInventory: (item) => ({ mode: oneOf(["base", "absent", "empty", "partial", "unavailable", "many", "same-name"], item.mode, "an Argo inventory mode") }),
+	configureArgoInventory: (item) => ({ mode: oneOf(ARGO_INVENTORY_MODES, item.mode, "an Argo inventory mode") }),
 	copyArgoValue: (item) => ({ control: oneOf(["source", "revision", "repository value", "release value", "cluster target value"], item.control, "an Argo copy control"), contains: string(item.contains) }),
 	reviewArgoOperation: (item) => ({ operation: oneOf(["Refresh", "Hard refresh", "Sync", "Rollback"], item.operation, "an Argo operation") }),
 	expectArgoReview: (item) => ({ operation: string(item.operation), name: string(item.name), namespace: string(item.namespace), transport: string(item.transport) }),
@@ -54,8 +76,8 @@ export const integrationsSteps = {
 	toggleArgoOption: (item) => ({ name: oneOf(ARGO_OPTION_NAMES, item.name, "an Argo option") }),
 	expectNoArgoControl: (item) => ({ control: oneOf(["Confirm target again", "Reconnect", "Confirm and connect"], item.control, "an Argo control") }),
 	expectArgoFocusInPopover: (item) => ({ control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover") }),
-	fillArgoConnectionField: (item) => ({ field: oneOf(["url", "rootPath", "tlsServerName", "token", "password"], item.field, "an Argo connection field"), value: plainString(item.value) }),
-	expectArgoConnectionField: (item) => ({ field: oneOf(["url", "rootPath", "tlsServerName", "token", "password"], item.field, "an Argo connection field"), value: plainString(item.value) }),
+	fillArgoConnectionField: argoConnectionField,
+	expectArgoConnectionField: argoConnectionField,
 	argoConnectionDialog: (item) => ({ operation: oneOf(["open", "expectFocusIn", "tabCycle", "shiftTabCycle", "escape", "outsideClick", "expectOpen", "expectConnectForm", "expectRemember", "expectLocalLogin", "expectInsecure", "chooseLocalLogin", "chooseInsecure", "openDetail", "chooseFoundInCluster", "chooseExternalUrl", "expectFoundInCluster", "expectInWindow", "expectReachable"], item.operation, "an Argo connection dialog operation"), open: optionalBoolean(item.open) === true, checked: optionalBoolean(item.checked) === true, control: item.operation === "expectReachable" ? oneOf(["External URL", "Token", "Remember credential", "Connect"], item.control, "an Argo connection dialog control") : "" }),
 	tabArgoPopover: (item) => ({ control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options popover"), presses: count(item.presses) }),
 	expectArgoTriggerFocus: (item) => ({ control: oneOf(["Sync options", "Refresh options"], item.control, "an Argo options trigger") }),

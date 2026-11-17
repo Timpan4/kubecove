@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { JsonValue } from "../../src/lib/types";
 
+import { mergeActionMaps } from "./action-maps";
 import { coverageSteps } from "./contract-coverage";
 import { deliverySteps } from "./contract-delivery";
 import { governanceSteps } from "./contract-governance";
@@ -14,18 +15,18 @@ import { settingsSteps } from "./contract-settings";
 import { yamlSteps } from "./contract-yaml";
 import { isString, object, string } from "./contract-values";
 
-const parsers = {
-	...coverageSteps,
-	...deliverySteps,
-	...governanceSteps,
-	...integrationsSteps,
-	...overlayMotionSteps,
-	...overviewSteps,
-	...resourcesSteps,
-	...sessionsSteps,
-	...settingsSteps,
-	...yamlSteps,
-};
+const parsers = mergeActionMaps(
+	coverageSteps,
+	deliverySteps,
+	governanceSteps,
+	integrationsSteps,
+	overlayMotionSteps,
+	overviewSteps,
+	resourcesSteps,
+	sessionsSteps,
+	settingsSteps,
+	yamlSteps,
+);
 
 export type Action = keyof typeof parsers;
 export type Step<ActionName extends Action = Action> = {
@@ -43,13 +44,21 @@ export function parseStep<Value>(value: Value): Step {
 	const { action } = item;
 	if (!isAction(action)) throw new Error(`Unknown action: ${String(action)}`);
 	// SAFETY: The checked key selects both the payload parser and the Step discriminant.
-	return { action, ...parsers[action](item) } as Step;
+	return { ...parsers[action](item), action } as Step;
 }
 
 export function requireActionCoverage(contract: Contract): void {
-	const exercised = new Set(contract.scenarios.flatMap((scenario) => scenario.steps.map((step) => step.action)));
-	const missing = Object.keys(parsers).filter((action) => isAction(action) && !exercised.has(action));
+	const exercised = new Set<string>(contract.scenarios.flatMap((scenario) => scenario.steps.map((step) => step.action)));
+	const missing = Object.keys(parsers).filter((action) => !exercised.has(action));
 	if (missing.length) throw new Error(`Missing parity scenarios for actions: ${missing.join(", ")}`);
+}
+
+export function requireRegisteredActions(actions: readonly string[]): void {
+	const registered = new Set(actions);
+	const missing = Object.keys(parsers).filter((action) => !registered.has(action));
+	if (missing.length) throw new Error(`Missing web parity handlers: ${missing.join(", ")}`);
+	const unexpected = actions.filter((action) => !Object.hasOwn(parsers, action));
+	if (unexpected.length) throw new Error(`Unknown web parity handlers: ${unexpected.join(", ")}`);
 }
 
 export function parseContract<Value>(value: Value): Contract {

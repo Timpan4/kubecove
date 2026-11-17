@@ -1,3 +1,4 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 import type { Page } from "playwright-core";
 export const rbacActions = {
@@ -8,7 +9,7 @@ export const rbacActions = {
 		await rbacCategory(page, step.category).and(page.locator('[aria-pressed="true"]')).waitFor();
 	},
 	async filterRbacRisk(page, step) {
-		await page.getByRole("button", { name: new RegExp(`^${literal(step.filter)} \\d+$`) }).click();
+		await page.getByRole("button", { name: new RegExp(`^${escapeRegExp(step.filter)} \\d+$`) }).click();
 	},
 	async expectRbacItem(page, step) {
 		await rbacItem(page, step.title).getByText(step.risk, { exact: true }).waitFor();
@@ -20,7 +21,7 @@ export const rbacActions = {
 		await rbacItem(page, step.title).click();
 	},
 	async investigateRbacSubject(page, step) {
-		await page.getByRole("button").filter({ hasText: "Investigate" }).filter({ has: page.locator("span", { hasText: new RegExp(`^${literal(step.subject)}$`) }) }).click();
+		await page.getByRole("button").filter({ hasText: "Investigate" }).filter({ has: page.locator("span", { hasText: new RegExp(`^${escapeRegExp(step.subject)}$`) }) }).click();
 	},
 	async expectRbacIdentity(page, step) {
 		await rbacSection(page, "Verify exact action").getByText(step.identity, { exact: true }).waitFor();
@@ -58,17 +59,15 @@ export const rbacActions = {
 } satisfies Partial<WebActions>;
 
 function rbacCategory(page: Page, category: string) {
-	return page.locator('[aria-label="RBAC categories"]').getByRole("button", { name: new RegExp(`^${literal(category)} \\d+$`) });
+	return page.locator('[aria-label="RBAC categories"]').getByRole("button", { name: new RegExp(`^${escapeRegExp(category)} \\d+$`) });
 }
 /** A review queue card; its first line is `Kind/name`. */
 function rbacItem(page: Page, title: string) {
-	return page.locator("button[aria-pressed]").filter({ has: page.locator("p", { hasText: new RegExp(`^${literal(title)}$`) }) });
+	return page.locator("button[aria-pressed]").filter({ has: page.locator("p", { hasText: new RegExp(`^${escapeRegExp(title)}$`) }) });
 }
 function rbacSection(page: Page, heading: string) {
 	return page.locator("section").filter({ has: page.getByText(heading, { exact: true }) });
 }
 function rbacGrant(page: Page, grant: string) {
-	return rbacSection(page, "Observed RBAC grants").locator("p.font-mono", { hasText: new RegExp(`^${literal(grant)}$`) });
+	return rbacSection(page, "Observed RBAC grants").locator("p.font-mono", { hasText: new RegExp(`^${escapeRegExp(grant)}$`) });
 }
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

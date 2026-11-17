@@ -5,7 +5,6 @@ import { join, resolve } from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { chromeExecutable, freePort, readinessTimeoutMs, startIdentity, stopGroup, waitFor } from "../../../.agents/skills/verify-kubecove/scripts/processes";
 import { action } from "../web";
-import { parseStep } from "../contract";
 import { VIEWPORT, VIEWS, type View } from "./views";
 
 async function show(page: Page, view: View) {
@@ -22,7 +21,7 @@ async function show(page: Page, view: View) {
         case "argo-connected": case "argo-review": case "argo-desired":
             await action(page, { action: "openPage", page: "GitOps" });
             await action(page, { action: "openGitOpsDetails", kind: "Application", name: "tenant-ledger", namespace: "argocd" });
-            await action(page, parseStep({ action: "connectArgoProfile", url: "https://argocd.example.test" }));
+            await action(page, { action: "connectArgoProfile", url: "https://argocd.example.test" });
             await action(page, { action: "expectArgoText", text: "Connected Argo CD API" });
             if (view === "argo-review") {
                 await action(page, { action: "reviewArgoOperation", operation: "Sync" });

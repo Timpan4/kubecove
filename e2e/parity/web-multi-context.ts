@@ -1,8 +1,8 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 import type { Page } from "playwright-core";
 import { tabTo } from "./web-keyboard";
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const mapContextSelect = (page: Page) => page.getByRole("combobox", { name: "Map context", exact: true });
 // Bits UI mounts a select's listbox only while it is open, so on the map this is the Map context options.
 const mapContextOptions = (page: Page) => page.getByRole("listbox");

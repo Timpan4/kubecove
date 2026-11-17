@@ -1,7 +1,6 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 import type { Page } from "playwright-core";
-
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function forwardRows(page: Page, target: string) {
     const table = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Target", exact: true }) });

@@ -1,3 +1,4 @@
+import { escapeRegExp } from "./web-locators";
 import type { WebActions } from "./web-action";
 
 /** Incident handoffs, the header update control, and latency report copy. */
@@ -32,11 +33,9 @@ export const incidentDiagnosticsActions = {
 		await page.waitForFunction((expected) => (document.documentElement.dataset.latencyCopy ?? "").includes(expected), step.contains);
 	},
 	async filterIncidents(page, step) {
-		await page.locator('[aria-label="Filter incident signals"]').getByRole("button", { name: new RegExp(`^${literal(step.filter)} \\d+$`) }).click();
+		await page.locator('[aria-label="Filter incident signals"]').getByRole("button", { name: new RegExp(`^${escapeRegExp(step.filter)} \\d+$`) }).click();
 	},
 	async expectIncidentGuide(page, step) {
 		await page.getByRole("heading", { level: 3, name: step.title, exact: true }).waitFor();
 	},
 } satisfies Partial<WebActions>;
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

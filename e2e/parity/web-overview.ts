@@ -1,9 +1,9 @@
+import { escapeRegExp } from "./web-locators";
 import { sharedActions, type WebActions } from "./web-action";
 import { resourceKey } from "../../src/lib/resource-identity";
-const literal = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const overviewActions = {
 	async overviewHealth(page, step) {
-		await page.getByRole("button", { name: new RegExp(`^${literal(step.filter)} \\d+$`) }).click();
+		await page.getByRole("button", { name: new RegExp(`^${escapeRegExp(step.filter)} \\d+$`) }).click();
 	},
 	async overviewNamespace(page, step) {
 		await page.getByRole("button", { name: `Open namespace ${step.namespace}`, exact: true }).click();

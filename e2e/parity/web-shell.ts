@@ -1,11 +1,10 @@
+import { escapeRegExp } from "./web-locators";
 import { sharedActions, type WebActions } from "./web-action";
 import { loadDeferredPage } from "./web-deferred";
 import type { Page } from "playwright-core";
 import { STARTUP_HOLDS_KEY, type TimingControl } from "../../src/lib/tauri-dev-mock-timing";
 import type { Scenario, Step } from "./contract";
 import { tabTo } from "./web-keyboard";
-
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The web driver creates its workspace through the launcher unless a scenario starts without one. */
 export function seedsWorkspace(scenario: Scenario): boolean {
@@ -202,9 +201,7 @@ export const shellActions = {
 
 export async function openPage(page: Page, name: string) {
 	// Rows with children also name their expand toggle.
-	const label = literal(name);
+	const label = escapeRegExp(name);
 	await loadDeferredPage(page, name);
 	await page.getByRole("treeitem", { name: new RegExp(`^(?:(?:Expand|Collapse) ${label} )?${label}$`) }).click();
 }
-
-function literal(text: string) { return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }

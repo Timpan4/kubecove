@@ -1,8 +1,14 @@
+import type { JsonObject } from "../../src/lib/types";
 import { type StepParsers, isString, oneOf, string, noPayload } from "./contract-values";
 
 const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
 const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;
 const VERDICTS = ["allowed", "denied", "noOpinion"] as const;
+
+function reviewNote(item: JsonObject) {
+	if (!isString(item.value)) throw new Error("Expected review note text");
+	return { value: item.value };
+}
 
 export const governanceSteps = {
 	filterIncidents: (item) => ({ filter: string(item.filter) }),
@@ -20,14 +26,8 @@ export const governanceSteps = {
 	expectNoRbacGrant: (item) => ({ grant: string(item.grant) }),
 	verifyRbacAccess: (item) => ({ verb: string(item.verb) }),
 	expectRbacVerdict: (item) => ({ outcome: oneOf(VERDICTS, item.outcome, "an access review outcome") }),
-	editRbacReviewNote: (item) => {
-		if (!isString(item.value)) throw new Error("Expected review note text");
-		return { value: item.value };
-	},
-	expectRbacReviewNote: (item) => {
-		if (!isString(item.value)) throw new Error("Expected review note text");
-		return { value: item.value };
-	},
+	editRbacReviewNote: reviewNote,
+	expectRbacReviewNote: reviewNote,
 	saveRbacReview: (item) => ({ disposition: oneOf(["expected", "anomalous"], item.disposition, "a review disposition") }),
 	expectRbacReview: (item) => ({ label: string(item.label) }),
 	clearRbacReview: noPayload,
