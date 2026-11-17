@@ -7,9 +7,8 @@ import type { YamlEditorDiagnostic } from "./contract-steps";
 export async function yamlEditorAction(page: Page, step: Step) {
 	switch (step.action) {
 		case "expectYamlAbsent": {
-			const editor = page.locator(".cm-content");
-			await editor.waitFor();
-			for (const fragment of step.fragments) if ((await editor.textContent())?.includes(fragment)) throw new Error(`Unexpected YAML field ${fragment}`);
+			const document = await yamlDocument(page);
+			for (const fragment of step.fragments) if (document.includes(fragment)) throw new Error(`Unexpected YAML field ${fragment}`);
 			break;
 		}
 		case "clickActionEntry": await page.getByRole("textbox", { name: step.label, exact: true }).locator("xpath=..").getByRole("button", { name: step.button, exact: true }).click(); break;
@@ -24,12 +23,9 @@ export async function yamlEditorAction(page: Page, step: Step) {
 		case "expectYamlPicker": await page.getByRole("combobox", { name: step.label, exact: true }).filter({ hasText: step.value }).waitFor(); break;
 		case "replaceYamlDraft": await page.locator(".cm-content[contenteditable=true]").fill(step.value); break;
 		case "formatYaml": await page.getByRole("button", { name: /^Format \(/ }).click(); break;
-		case "expectYamlDocument": {
-			// biome-ignore lint/performance/useDomNodeTextContent: CodeMirror renders document lines as blocks, so rendered text preserves the YAML line breaks.
-			const text = await page.locator(".cm-content").innerText();
-			if (!isDeepStrictEqual(parse(text), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
+		case "expectYamlDocument":
+			if (!isDeepStrictEqual(parse(await yamlDocument(page)), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
 			break;
-		}
 		case "foldYamlLine": {
 			// The fold gutter marks a line at the same height as its line number.
 			const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });
@@ -67,6 +63,21 @@ export async function yamlEditorAction(page: Page, step: Step) {
 		default:
 			throw new Error(`unhandled YAML editor action: ${step.action}`);
 	}
+}
+
+/**
+ * The editor's whole document, from the accessor `YamlCodeEditor.svelte` adds in development
+ * builds. The editor mounts after its extensions load, so this waits for it.
+ */
+async function yamlDocument(page: Page): Promise<string> {
+	const handle = await page.waitForFunction(() => {
+		const host = document.querySelector<HTMLElement & { yamlDocument?: () => string }>(".yaml-code-editor");
+		// An object, so an empty document still ends the wait.
+		return host?.yamlDocument ? { text: host.yamlDocument() } : null;
+	});
+	const value = await handle.jsonValue();
+	if (!value) throw new Error("The YAML editor has no document");
+	return value.text;
 }
 
 /** Waits until the editor marks exactly the expected diagnostics, which the linter sets after its delay. */
