@@ -9,6 +9,21 @@
 		return value === "none" ? [] : value.split(" ").map(Number.parseFloat);
 	}
 
+	/** The trigger's padding box, which its line spans, as the line is positioned inside it. */
+	function paddingBox(trigger: HTMLElement) {
+		const box = trigger.getBoundingClientRect();
+		const style = getComputedStyle(trigger);
+		const [top, right, bottom, left] = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(Number.parseFloat);
+		return {
+			left: box.left + left,
+			top: box.top + top,
+			right: box.right - right,
+			bottom: box.bottom - bottom,
+			width: box.width - left - right,
+			height: box.height - top - bottom,
+		};
+	}
+
 	/**
 	 * Carries the list's line to `trigger`, which became active. Its own line starts where the last
 	 * active trigger's is shown, which is on its way home if that slide still runs, and moves home
@@ -21,7 +36,9 @@
 		const last = lined.get(list);
 		lined.set(list, trigger);
 		if (!last || last === trigger || !last.isConnected) return;
-		const [from, to] = [last.getBoundingClientRect(), trigger.getBoundingClientRect()];
+		// Under reduced motion the line shows under the chosen trigger at once.
+		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+		const [from, to] = [paddingBox(last), paddingBox(trigger)];
 		if (to.width === 0 || to.height === 0) return;
 		// The line spans the trigger's width under it, or its height beside it in a vertical list.
 		const vertical = list.getAttribute("data-orientation") === "vertical";

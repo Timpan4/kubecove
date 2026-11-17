@@ -3,7 +3,8 @@
 //! expects the transition at one end; `midway` expects it between the ends after
 //! the scenario advanced the clock by half the duration; `settled` expects it over.
 //! After `midway`, `back` chooses the first state again and expects the indicator
-//! where it was shown, and `returned` expects it at rest.
+//! where it was shown, and `returned` expects it at rest. `instant`, run under
+//! reduced motion, changes the state and expects it there in the same frame.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
@@ -35,6 +36,22 @@ pub(super) fn handles(check: &str) -> bool {
 pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check: &str) {
     let mut parts = check.split(':').skip(1);
     let (target, phase) = (parts.next().unwrap(), parts.next().unwrap());
+    if phase == "instant" {
+        let before = paint(window, cx, target);
+        let moving = change(window, cx, target);
+        window.render_frame(cx);
+        assert_eq!(
+            Moving::progress(&moving, cx),
+            None,
+            "{target} moves under reduced motion"
+        );
+        assert_ne!(
+            paint(window, cx, target),
+            before,
+            "{target} did not change under reduced motion"
+        );
+        return;
+    }
     if phase == "start" {
         let moving = change(window, cx, target);
         window.render_frame(cx);
@@ -77,12 +94,22 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
                 assert_eq!(progress, None, "{target} still moves after its duration");
                 (start, midway, "at rest")
             };
-            let indicator: Vec<_> = shown.iter().filter(|quad| !other.contains(quad)).collect();
+            let only = |of: &[String], not: &[String]| -> Vec<String> {
+                of.iter().filter(|quad| !not.contains(quad)).cloned().collect()
+            };
+            let indicator = only(shown, other);
             assert!(!indicator.is_empty(), "{target} paints no indicator");
-            for quad in indicator {
+            for quad in &indicator {
                 assert!(
                     painted.contains(quad),
                     "{target} is not {place} at {phase}: {quad} is missing from {painted:?}"
+                );
+            }
+            // Nor is the indicator also left where the other phase showed it.
+            for quad in only(other, shown) {
+                assert!(
+                    !painted.contains(&quad),
+                    "{target} still paints {quad} at {phase}, as it did away from {place}"
                 );
             }
         });

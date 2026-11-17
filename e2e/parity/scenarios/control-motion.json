@@ -72,6 +72,27 @@
       ]
     },
     {
+      "id": "control-motion.segment-reduced",
+      "title": "Under reduced motion a segmented control shows the chosen option at once",
+      "steps": [
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "coverageCheck", "check": "motion:segment:instant" }
+      ]
+    },
+    {
+      "id": "control-motion.tab-reduced",
+      "title": "Under reduced motion the detail tabs show the underline under the chosen tab at once",
+      "steps": [
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab:instant" }
+      ]
+    },
+    {
       "id": "control-motion.row-hover",
       "title": "A resource row fades to its hover background over 150 ms",
       "steps": [
