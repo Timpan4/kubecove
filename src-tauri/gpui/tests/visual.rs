@@ -16,7 +16,9 @@ mod common;
 #[path = "parity/scroll.rs"]
 mod parity_scroll;
 
+// This target uses only the kind-picker lookups, not the other parity helpers.
 #[cfg(target_os = "linux")]
+#[allow(dead_code)]
 #[path = "parity/locate.rs"]
 mod parity_locate;
 
