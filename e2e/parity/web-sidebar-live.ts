@@ -36,7 +36,7 @@ export async function sidebarLiveAction(page: Page, step: Step) {
             if (step.visible || step.highlighted) await row.waitFor({ state: "attached" });
             const rowHandle = (await row.count()) > 0 ? await row.elementHandle() : null;
             const scrollHandle = await sidebarScrollArea(page).elementHandle();
-            // The reveal scrolls on the frame after the row paints, so poll the geometry and the label marker.
+            // The reveal scrolls on the frame after the row paints, so poll the geometry and the row's hint.
             const state = { row: rowHandle, scroll: scrollHandle, visible: step.visible, highlighted: step.highlighted };
             await page.waitForFunction((check: { row: Element | null; scroll: Element | null; visible: boolean; highlighted: boolean }) => {
                 if (!check.scroll) return false;
@@ -45,7 +45,8 @@ export async function sidebarLiveAction(page: Page, step: Step) {
                     const box = check.row.getBoundingClientRect();
                     return box.top >= viewport.top && box.bottom <= viewport.bottom;
                 })();
-                const marker = check.row?.querySelector("[aria-description]")?.getAttribute("aria-description");
+                // The treeitem carries the hint itself, so it is announced when the row has focus.
+                const marker = check.row?.getAttribute("aria-description");
                 return rowVisible === check.visible && (marker === "Contains the selected item") === check.highlighted;
             }, state);
             break;
