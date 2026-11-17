@@ -233,7 +233,9 @@ pub(super) fn view_toggle(
     set: fn(&mut Inspector, ViewMode),
     cx: &mut Context<Inspector>,
 ) -> Div {
+    let slide = control_motion::Slide::new();
     div()
+        .relative()
         .flex()
         .flex_none()
         .items_center()
@@ -242,6 +244,11 @@ pub(super) fn view_toggle(
         .bg(Tokens::background())
         .border_1()
         .border_color(Tokens::border().opacity(0.6))
+        .child(controls::segment_pill(
+            &slide,
+            SharedString::from(format!("segment-pill:{id}")),
+            usize::from(mode == ViewMode::List),
+        ))
         .children(
             [(ViewMode::Cards, "Cards"), (ViewMode::List, "List")].map(|(option, label)| {
                 let active = option == mode;
@@ -274,11 +281,12 @@ pub(super) fn view_toggle(
                         this.save_preferences(cx);
                         cx.notify();
                     }));
-                control_motion::eased(
+                let segment = control_motion::eased(
                     SharedString::from(format!("segment:{id}:{label}")),
                     active,
                     move |on| controls::segment(segment, on),
-                )
+                );
+                slide.option(active, segment)
             }),
         )
 }

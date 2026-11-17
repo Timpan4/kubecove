@@ -132,22 +132,30 @@ pub(super) fn button_frame(variant: Variant, height: f32, disabled: bool) -> Div
 }
 
 /// One `SegmentedControl.svelte` option at `on` of the way to active:
-/// `bg-surface-1 text-foreground shadow-sm` over `text-muted-foreground`, mixed
-/// as its `transition-[color,background-color,border-color,box-shadow]` does.
-/// The option's label inherits the text color.
+/// `text-foreground` over `text-muted-foreground`, mixed as its
+/// `transition-[color]` does. The option's label inherits the text color, and
+/// the group's [`segment_pill`] carries the active background.
 pub(super) fn segment<E: Styled>(option: E, on: f32) -> E {
-    option
-        .bg(control_motion::mix(
-            gpui_kit::transparent_black(),
-            Tokens::card(),
-            on,
-        ))
-        .text_color(control_motion::mix(
-            Tokens::muted_foreground(),
-            Tokens::foreground(),
-            on,
-        ))
-        .shadow(control_motion::shadow_sm(on))
+    option.text_color(control_motion::mix(
+        Tokens::muted_foreground(),
+        Tokens::foreground(),
+        on,
+    ))
+}
+
+/// The `bg-surface-1 shadow-sm` pill of `SegmentedControl.svelte`, which slides
+/// to the active option: the first child of a `relative` group whose options
+/// go through `slide.option`. `id` names the group and `active` is the active
+/// option's place in it.
+pub(super) fn segment_pill(
+    slide: &control_motion::Slide,
+    id: impl Into<gpui_kit::ElementId>,
+    active: usize,
+) -> control_motion::SlideIndicator {
+    slide
+        .indicator(id, active, Tokens::card())
+        .rounded(px(RADIUS))
+        .shadow_sm()
 }
 
 /// `Button size="icon"` (28px) around a 14px icon.

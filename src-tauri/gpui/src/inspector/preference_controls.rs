@@ -1,6 +1,6 @@
 use super::{
     Inspector,
-    controls::{Variant, button, button_frame, segment as segment_style},
+    controls::{Variant, button, button_frame, segment as segment_style, segment_pill},
     settings_page::{settings_row, switch},
 };
 use crate::targets::TestSupportExt;
@@ -178,7 +178,9 @@ impl Inspector {
                 },
                 _ => 0,
             };
+            let slide = crate::control_motion::Slide::new();
             div()
+                .relative()
                 .flex()
                 .items_center()
                 .p(px(2.))
@@ -186,6 +188,11 @@ impl Inspector {
                 .bg(Tokens::background())
                 .border_1()
                 .border_color(Tokens::border().opacity(0.6))
+                .child(segment_pill(
+                    &slide,
+                    SharedString::from(format!("segment-pill:{}", row.title)),
+                    selected,
+                ))
                 .children(options.iter().enumerate().map(|(index, option)| {
                     let active = index == selected;
                     let segment = button_frame(Variant::Ghost, 28., false)
@@ -237,11 +244,12 @@ impl Inspector {
                             }
                             this.save_preferences(cx);
                         }));
-                    crate::control_motion::eased(
+                    let segment = crate::control_motion::eased(
                         SharedString::from(format!("segment:{}:{option}", row.title)),
                         active,
                         move |on| segment_style(segment, on),
-                    )
+                    );
+                    slide.option(active, segment)
                 }))
                 .into_any_element()
         } else {

@@ -2,11 +2,15 @@
 //! `control_motion::DURATION` instead of jumping. `start` changes the control's state and
 //! expects the transition at one end; `midway` expects it between the ends after
 //! the scenario advanced the clock by half the duration; `settled` expects it over.
+//! After `midway`, `back` chooses the first state again and expects the indicator
+//! where it was shown, and `returned` expects it at rest. `instant`, run under
+//! reduced motion, changes the state and expects it there in the same frame.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
 use gpui_kit::test::TestEventExt;
 use kubecove_gpui::control_motion::Moving;
+use kubecove_gpui::theme::Tokens;
 use std::cell::RefCell;
 
 const SETTING: &str = "Show exact timestamps";
@@ -33,6 +37,40 @@ pub(super) fn handles(check: &str) -> bool {
 pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check: &str) {
     let mut parts = check.split(':').skip(1);
     let (target, phase) = (parts.next().unwrap(), parts.next().unwrap());
+    if phase == "instant" {
+        let moving = change(window, cx, target);
+        window.render_frame(cx);
+        assert_eq!(
+            Moving::progress(&moving, cx),
+            None,
+            "{target} moves under reduced motion"
+        );
+        // The indicator's color, and where it rests under the chosen option: the
+        // option's box for a pill, a 2 px line 2 px under it for the tab line, as
+        // `inspector/detail.rs` and `inspector/controls.rs` build them.
+        let (option, color, line) = match target {
+            "segment" => ("gitops-view:List", Tokens::card(), false),
+            "tab" => ("show-events", Tokens::foreground(), true),
+            other => panic!("{other} has no reduced-motion check"),
+        };
+        let mut rest = window.find(option).bounds();
+        if line {
+            rest.origin.y += rest.size.height + gpui_kit::px(2.);
+            rest.size.height = gpui_kit::px(2.);
+        }
+        let rest = format!("{:?}", rest.scale(window.scale_factor()));
+        let indicators: Vec<_> = quads(window, cx, target)
+            .into_iter()
+            .filter(|quad| quad.background == color.into())
+            .map(|quad| format!("{:?}", quad.bounds))
+            .collect();
+        assert_eq!(
+            indicators,
+            [rest],
+            "{target} does not show one indicator at rest under its chosen option"
+        );
+        return;
+    }
     if phase == "start" {
         let moving = change(window, cx, target);
         window.render_frame(cx);
@@ -47,6 +85,53 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             thumb: thumb(window, target),
             paint: paint(window, cx, target).into_iter().collect(),
         }));
+        return;
+    }
+    if phase == "back" || phase == "returned" {
+        if phase == "back" {
+            match target {
+                "segment" => window.click("gitops-view:Cards", cx),
+                "tab" => window.click("show-details", cx),
+                other => panic!("{other} has no first state to turn back to"),
+            }
+            window.render_frame(cx);
+        }
+        let moving = transition(window, cx, target);
+        let progress = Moving::progress(&moving, cx);
+        let painted = paint(window, cx, target).expect("the indicator paints quads");
+        SEEN.with_borrow(|seen| {
+            let seen = seen.as_ref().expect("a start check ran first");
+            let [start, midway] = &seen.paint[..] else {
+                panic!("{check} needs a start and a midway check first");
+            };
+            // The quads only one phase painted are the indicator in that phase:
+            // on its way at `midway` and at rest at `start`.
+            let (shown, other, place) = if phase == "back" {
+                assert_eq!(progress, Some(0.), "{target} did not turn back in place");
+                (midway, start, "where it was shown")
+            } else {
+                assert_eq!(progress, None, "{target} still moves after its duration");
+                (start, midway, "at rest")
+            };
+            let only = |of: &[String], not: &[String]| -> Vec<String> {
+                of.iter().filter(|quad| !not.contains(quad)).cloned().collect()
+            };
+            let indicator = only(shown, other);
+            assert!(!indicator.is_empty(), "{target} paints no indicator");
+            for quad in &indicator {
+                assert!(
+                    painted.contains(quad),
+                    "{target} is not {place} at {phase}: {quad} is missing from {painted:?}"
+                );
+            }
+            // Nor is the indicator also left where the other phase showed it.
+            for quad in only(other, shown) {
+                assert!(
+                    !painted.contains(&quad),
+                    "{target} still paints {quad} at {phase}, as it did away from {place}"
+                );
+            }
+        });
         return;
     }
     let moving = transition(window, cx, target);
@@ -95,36 +180,51 @@ fn paint(
     cx: &mut gpui_kit::App,
     target: &str,
 ) -> Option<Vec<String>> {
-    let id = match target {
-        "switch" => ElementId::Name(format!("setting:{SETTING}").into()),
-        "segment" => "gitops-view:List".into(),
-        "tab" => "show-events".into(),
-        "chevron" => return None,
-        _ => transition(window, cx, target),
-    };
-    // The tab's line sits 4 px under its trigger.
-    let area = window
-        .find(id)
-        .bounds()
-        .dilate(gpui_kit::px(4.))
-        .scale(window.scale_factor());
-    let edge = area.bottom_right();
+    if target == "chevron" {
+        return None;
+    }
     Some(
-        window
-            .painted_quads()
+        quads(window, cx, target)
             .into_iter()
-            .filter(|quad| {
-                // The line's lower edge lies on the area's, which
-                // `is_contained_within` leaves out.
-                let (start, end) = (quad.bounds.origin, quad.bounds.bottom_right());
-                start.x >= area.origin.x
-                    && start.y >= area.origin.y
-                    && end.x <= edge.x
-                    && end.y <= edge.y
-            })
             .map(|quad| format!("{:?} {:?}", quad.bounds, quad.background))
             .collect(),
     )
+}
+
+/// The quads painted inside the target.
+fn quads(
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::App,
+    target: &str,
+) -> Vec<gpui_kit::Quad> {
+    // A pill or a line slides from the option that was active to the chosen one.
+    let (id, from): (ElementId, Option<&'static str>) = match target {
+        "switch" => (ElementId::Name(format!("setting:{SETTING}").into()), None),
+        "segment" => ("gitops-view:List".into(), Some("gitops-view:Cards")),
+        "tab" => ("show-events".into(), Some("show-details")),
+        "tab-actions" => ("show-actions".into(), Some("show-details")),
+        _ => (transition(window, cx, target), None),
+    };
+    let mut area = window.find(id).bounds();
+    if let Some(from) = from {
+        area = area.union(&window.find(from).bounds());
+    }
+    // The tab's line sits 4 px under its trigger.
+    let area = area.dilate(gpui_kit::px(4.)).scale(window.scale_factor());
+    let edge = area.bottom_right();
+    window
+        .painted_quads()
+        .into_iter()
+        .filter(|quad| {
+            // The line's lower edge lies on the area's, which
+            // `is_contained_within` leaves out.
+            let (start, end) = (quad.bounds.origin, quad.bounds.bottom_right());
+            start.x >= area.origin.x
+                && start.y >= area.origin.y
+                && end.x <= edge.x
+                && end.y <= edge.y
+        })
+        .collect()
 }
 
 /// The switch thumb's left edge, or 0 for a target without a moving element.
@@ -147,6 +247,7 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
         "switch" => locate::click_in(window, "page", format!("setting:{SETTING}").into(), cx),
         "segment" => window.click("gitops-view:List", cx),
         "tab" => window.click("show-events", cx),
+        "tab-actions" => window.click("show-actions", cx),
         "row" => {
             let row = transition(window, cx, target);
             let position = window.find(row).bounds().center();
@@ -166,13 +267,13 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
     transition(window, cx, target)
 }
 
-/// The id the target's transition reports under: the `eased` id, or the id of
-/// the element a `hover_fill` fills.
+/// The id the target's transition reports under: the `eased` id, the sliding
+/// indicator's id, or the id of the element a `hover_fill` fills.
 fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -> ElementId {
     let id = match target {
         "switch" => format!("switch-thumb:{SETTING}"),
-        "segment" => "segment:gitops-view:List".into(),
-        "tab" => "tab:show-events".into(),
+        "segment" => "segment-pill:gitops-view".into(),
+        "tab" | "tab-actions" => "tab-line".into(),
         "row" => {
             let name = detail::resolve_resource(window, DEPLOYMENT, cx)
                 .expect("the resource table shows the Deployment");

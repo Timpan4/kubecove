@@ -17,7 +17,7 @@
     },
     {
       "id": "control-motion.segment",
-      "title": "A segmented control fades its active option in over 150 ms",
+      "title": "A segmented control slides its pill to the chosen option over 150 ms",
       "steps": [
         { "action": "openPage", "page": "GitOps" },
         { "action": "coverageCheck", "check": "motion:segment:start" },
@@ -29,7 +29,7 @@
     },
     {
       "id": "control-motion.tab",
-      "title": "A detail tab fades its underline in over 150 ms",
+      "title": "The detail tabs' underline slides to the chosen tab over 150 ms",
       "steps": [
         { "action": "openResources" },
         { "action": "search", "value": "payments-api" },
@@ -40,6 +40,71 @@
         { "action": "coverageCheck", "check": "motion:tab:midway" },
         { "action": "advanceClock", "ms": 75 },
         { "action": "coverageCheck", "check": "motion:tab:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.tab-resizes-list",
+      "title": "The detail tabs' underline slides to the Actions tab over 150 ms though its panel changes the tab list's height",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab-actions:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab-actions:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab-actions:settled" }
+      ]
+    },
+    {
+      "id": "control-motion.segment-turns-back",
+      "title": "A segmented control's pill turns back from where it is when the first option is chosen again mid-slide",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "coverageCheck", "check": "motion:segment:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:segment:midway" },
+        { "action": "coverageCheck", "check": "motion:segment:back" },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "coverageCheck", "check": "motion:segment:returned" }
+      ]
+    },
+    {
+      "id": "control-motion.tab-turns-back",
+      "title": "The detail tabs' underline turns back from where it is when the first tab is chosen again mid-slide",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:tab:midway" },
+        { "action": "coverageCheck", "check": "motion:tab:back" },
+        { "action": "advanceClock", "ms": 150 },
+        { "action": "coverageCheck", "check": "motion:tab:returned" }
+      ]
+    },
+    {
+      "id": "control-motion.segment-reduced",
+      "title": "Under reduced motion a segmented control shows the chosen option at once",
+      "steps": [
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "coverageCheck", "check": "motion:segment:instant" }
+      ]
+    },
+    {
+      "id": "control-motion.tab-reduced",
+      "title": "Under reduced motion the detail tabs show the underline under the chosen tab at once",
+      "steps": [
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "openResources" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+        { "action": "coverageCheck", "check": "motion:tab:instant" }
       ]
     },
     {
