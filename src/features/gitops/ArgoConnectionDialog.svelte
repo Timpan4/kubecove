@@ -22,7 +22,7 @@
 		Switch,
 		Textarea,
 	} from "@/components/ui/svelte";
-	import { eligibleArgoProfiles, upsertArgoProfileInSavedOrder } from "@/lib/argo-connection-policy";
+	import { eligibleArgoProfiles, savedArgoProfileId, upsertArgoProfileInSavedOrder } from "@/lib/argo-connection-policy";
 	import { messageFromError } from "@/lib/error-redaction";
 	import { argoConnectionStatusQueryOptions } from "@/lib/argo-application-inspection";
 	import { finiteRead } from "@/lib/finite-read-lifecycle";
@@ -221,7 +221,7 @@
 		step = { kind: "busy", label: "Connecting…" };
 		const formTls = !saved && target.kind === "externalHttps";
 		const request = {
-			id: saved?.id ?? argoProfileId(scope, target),
+			id: saved?.id ?? savedArgoProfileId(profiles, target) ?? argoProfileId(scope, target),
 			serverUrl: argoEndpointUrl(target),
 			endpoint: target,
 			...(saved ? savedCredential(saved) : credential(loginMode === "local", token, username, password)),

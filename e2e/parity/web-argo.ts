@@ -76,6 +76,18 @@ export async function argoAction(page: Page, step: Step) {
         case "focusArgoResource":
             await page.getByRole("tabpanel").getByRole("button", { name: step.label, exact: false }).first().click();
             break;
+        case "ageArgoProfileId":
+            // The settings store reads this on the next `restartClient`, as the native client reads its preferences file.
+            await page.evaluate((url) => {
+                const stored = JSON.parse(localStorage.getItem("kubecove-settings") ?? "null");
+                const profile = stored?.state?.argoProfiles?.find((saved: { endpoint?: { url?: string } }) => saved.endpoint?.url === url);
+                if (!profile) throw new Error(`No saved Argo CD profile for ${url}`);
+                const [scope, endpoint] = profile.id.split(":externalHttps:");
+                if (!endpoint) throw new Error(`Not a current external profile id: ${profile.id}`);
+                profile.id = `${scope}:${endpoint.toLowerCase()}`;
+                localStorage.setItem("kubecove-settings", JSON.stringify(stored));
+            }, step.url);
+            break;
         case "expectNoSavedArgoProfile": {
             await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();
             await page.getByRole("dialog", { name: "Argo CD connection" }).getByText(step.url, { exact: true }).waitFor({ state: "hidden" });
@@ -129,7 +141,9 @@ export async function argoAction(page: Page, step: Step) {
             if (step.remember && (await remember.getAttribute("aria-checked")) !== "true") await remember.click();
             await dialog.getByRole("button", { name: "Connect", exact: true }).click();
             if (step.tunnel) { await dialog.getByText("Confirm tunnel target", { exact: true }).waitFor(); break; }
-            await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
+            // Wait for this URL's row: another saved profile can already show Disconnect.
+            const row = dialog.getByRole("region", { name: "Saved Argo CD connections", exact: true }).locator(":scope > div").filter({ has: page.getByText(step.url, { exact: true }) });
+            await row.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
             await page.keyboard.press("Escape");
             break;
         }

@@ -230,6 +230,9 @@ pub(super) fn run_scenario(
         if step["action"] == "configureArgoInventory" {
             *backend.argo.inventory_mode.lock().unwrap() = string(step, "mode").into();
         }
+        if step["action"] == "ageArgoProfileId" {
+            argo::age_profile_id(&backend, string(step, "url"));
+        }
         if step["action"] == "configureArgoMock" {
             backend.argo.configure(string(step, "script"));
             if step["script"] == "snapshot-error" {
