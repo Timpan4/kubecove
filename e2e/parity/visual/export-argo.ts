@@ -4,7 +4,10 @@ import type { TauriClient } from "../../../src/lib/tauri";
 import { configureArgoInventory, configureArgoMock } from "../../../src/lib/tauri-dev-mock-argo";
 import type { ArgoApplicationInspector, ArgoApplicationRef, ArgoConnectionStatus, ArgoOperationRequest, JsonObject, JsonValue, ResourceDetailsFull } from "../../../src/lib/types";
 
-type InventoryApplications = Record<"base" | "many" | "same-name", { details: ResourceDetailsFull }[]>;
+/** The URLs of `argo-connection.path-case-keeps-two-profiles`. */
+const PATH_CASE_URLS = ["https://Argocd.Example.Test/Argo", "https://argocd.example.test/argo"];
+
+type InventoryApplications =Record<"base" | "many" | "same-name", { details: ResourceDetailsFull }[]>;
 
 /** Exact native requests from the same mock command implementation as web. */
 export async function exportArgo(client: TauriClient, inventories: InventoryApplications) {
@@ -50,6 +53,11 @@ export async function exportArgo(client: TauriClient, inventories: InventoryAppl
             { ...connect, token: null, username: "fixture-user", password: "fixture-password", insecureTls: true, customCaPem: [...new TextEncoder().encode("parity fixture CA")] },
             { ...connect, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: tunnelEndpoint }, confirmedTarget: preview },
             ...["initial", "remembered", "confirmed"].map(mode => ({ ...connect, token: mode === "initial" ? connect.token : null, profile: { ...connect.profile, id: tunnel, url: "https://argocd-server.argocd.svc", endpoint: tunnelEndpoint, rememberCredential: true }, confirmedTarget: mode === "remembered" ? { namespace: preview.namespace, serviceName: preview.serviceName, podName: null, certificateSha256: null } : preview })),
+            // Two servers whose URLs differ only in path case get their own profiles.
+            ...PATH_CASE_URLS.map(other => {
+                const endpoint = { kind: "externalHttps" as const, url: other };
+                return { ...connect, profile: { ...connect.profile, id: argoProfileId({ ...scope, workspaceId }, endpoint), url: other, endpoint, rememberCredential: true } };
+            }),
         ];
     };
     const variants = [...connectVariants("native-session"), ...connectVariants("1")];

@@ -15,8 +15,13 @@ export interface ArgoConnectionProfilePolicyInput {
 	kubeconfigSourceKey?: string | null;
 }
 
+/**
+ * External identities lowercase only the scheme and host, because URL paths are case-sensitive.
+ * Their `externalHttps:` prefix keeps them apart from identities made before, which lowercased
+ * the whole URL and remain in saved profile ids (ADR 0013). GPUI's `endpoint_identity` matches.
+ */
 export function argoEndpointIdentity(endpoint: ArgoServerEndpoint): string {
-	if (endpoint.kind === "externalHttps") return endpoint.url.trim().toLowerCase();
+	if (endpoint.kind === "externalHttps") return `externalHttps:${lowercaseSchemeAndHost(endpoint.url.trim())}`;
 	return [
 		"serviceTunnel",
 		endpoint.namespace.trim().toLowerCase(),
@@ -26,6 +31,27 @@ export function argoEndpointIdentity(endpoint: ArgoServerEndpoint): string {
 		endpoint.rootPath?.trim() || "/",
 		endpoint.tlsServerName?.trim().toLowerCase() || "",
 	].join(":");
+}
+
+function lowercaseSchemeAndHost(url: string): string {
+	const separator = url.indexOf("://");
+	if (separator < 0) return url;
+	const hostStart = separator + 3;
+	const hostLength = url.slice(hostStart).search(/[/?#]/);
+	const hostEnd = hostLength < 0 ? url.length : hostStart + hostLength;
+	return url.slice(0, hostEnd).toLowerCase() + url.slice(hostEnd);
+}
+
+/**
+ * The id of a saved profile, from the caller's scope, with this endpoint. A new connection
+ * reuses it, so retyping a saved server's URL updates that profile whichever rule made its id.
+ */
+export function savedArgoProfileId(
+	profiles: readonly { id: string; endpoint: ArgoServerEndpoint }[],
+	endpoint: ArgoServerEndpoint,
+): string | undefined {
+	const identity = argoEndpointIdentity(endpoint);
+	return profiles.find((profile) => argoEndpointIdentity(profile.endpoint) === identity)?.id;
 }
 
 interface ArgoConnectionStatusPolicyInput {

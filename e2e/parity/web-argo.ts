@@ -129,7 +129,9 @@ export async function argoAction(page: Page, step: Step) {
             if (step.remember && (await remember.getAttribute("aria-checked")) !== "true") await remember.click();
             await dialog.getByRole("button", { name: "Connect", exact: true }).click();
             if (step.tunnel) { await dialog.getByText("Confirm tunnel target", { exact: true }).waitFor(); break; }
-            await dialog.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
+            // Wait for this URL's row: another saved profile can already show Disconnect.
+            const row = dialog.getByRole("region", { name: "Saved Argo CD connections", exact: true }).locator(":scope > div").filter({ has: page.getByText(step.url, { exact: true }) });
+            await row.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
             await page.keyboard.press("Escape");
             break;
         }

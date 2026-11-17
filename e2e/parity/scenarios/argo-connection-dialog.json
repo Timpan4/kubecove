@@ -364,6 +364,19 @@
         { "action": "expectArgoText", "text": "token=[REDACTED]" },
         { "action": "configureArgoMock", "script": "base" }
       ]
+    },
+    {
+      "id": "argo-connection.path-case-keeps-two-profiles",
+      "title": "Two servers whose URLs differ only in path case keep separate saved profiles, while host case does not count",
+      "steps": [
+        { "action": "openPage", "page": "GitOps" },
+        { "action": "openGitOpsDetails", "kind": "Application", "name": "tenant-ledger", "namespace": "argocd" },
+        { "action": "selectArgoPreference", "preference": "Kubernetes" },
+        { "action": "connectArgoProfile", "url": "https://Argocd.Example.Test/Argo", "remember": true },
+        { "action": "connectArgoProfile", "url": "https://argocd.example.test/argo", "remember": true },
+        { "action": "expectSavedArgoProfile", "url": "https://Argocd.Example.Test/Argo" },
+        { "action": "expectSavedArgoProfile", "url": "https://argocd.example.test/argo" }
+      ]
     }
   ]
 }

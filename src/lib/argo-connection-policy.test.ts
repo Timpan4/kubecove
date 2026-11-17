@@ -6,8 +6,10 @@ import {
 	eligibleArgoProfiles,
 	normalizeArgoConnectionPreference,
 	resolveArgoConnectionPolicy,
+	savedArgoProfileId,
 	upsertArgoProfileInSavedOrder,
 } from "./argo-connection-policy";
+import type { ArgoServerEndpoint } from "./gitops-types";
 
 const profiles: ArgoConnectionProfilePolicyInput[] = [
 	{
@@ -157,10 +159,40 @@ describe("Argo connection policy", () => {
 		expect(added.at(-1)?.id).toBe("third");
 	});
 
-	test("identifies external and private service endpoints stably", () => {
-		expect(argoEndpointIdentity({ kind: "externalHttps", url: " HTTPS://ARGO.EXAMPLE.COM " })).toBe(
-			"https://argo.example.com",
+	test("identifies external endpoints by their case-insensitive scheme and host only", () => {
+		const identity = (url: string) => argoEndpointIdentity({ kind: "externalHttps", url });
+		expect(identity(" HTTPS://ARGO.EXAMPLE.COM ")).toBe("externalHttps:https://argo.example.com");
+		expect(identity("https://Argo.Example.com:8443/Argo/Apps")).toBe(
+			"externalHttps:https://argo.example.com:8443/Argo/Apps",
 		);
+		// Two servers that differ only in path case are two endpoints (#662).
+		expect(identity("https://argo.example.com/Argo")).not.toBe(identity("https://argo.example.com/argo"));
+		// The host ends at the first path, query or fragment delimiter.
+		expect(identity("https://ARGO.example.com?Q")).toBe("externalHttps:https://argo.example.com?Q");
+		expect(identity("https://ARGO.example.com#F")).toBe("externalHttps:https://argo.example.com#F");
+		// Without a scheme separator there is no host to find, so nothing is lowercased.
+		expect(identity("Argo.Example.com/Argo")).toBe("externalHttps:Argo.Example.com/Argo");
+	});
+
+	test("never makes a new external identity equal to one stored before path case counted", () => {
+		// Identities made before lowercased the whole URL, so saved ids end in it (ADR 0013).
+		const before = "https://argo.example.com/argo";
+		expect(argoEndpointIdentity({ kind: "externalHttps", url: "https://argo.example.com/argo" })).not.toBe(before);
+	});
+
+	test("reuses the id of a saved profile with the same endpoint, whatever rule made it", () => {
+		const saved: { id: string; endpoint: ArgoServerEndpoint }[] = [
+			// Made before path case counted: the id lowercases this profile's /Argo path.
+			{ id: "argo:w:c:global:https://argo.example.com/argo", endpoint: { kind: "externalHttps", url: "https://argo.example.com/Argo" } },
+			{ id: "tunnel", endpoint: { kind: "serviceTunnel", namespace: "argocd", serviceName: "argocd-server", servicePort: 443, scheme: "https" } },
+		];
+		expect(savedArgoProfileId(saved, { kind: "externalHttps", url: "https://ARGO.example.com/Argo" })).toBe(saved[0]?.id);
+		// The other server, whose new id could otherwise take the old profile's id.
+		expect(savedArgoProfileId(saved, { kind: "externalHttps", url: "https://argo.example.com/argo" })).toBeUndefined();
+		expect(savedArgoProfileId(saved, { kind: "serviceTunnel", namespace: "ArgoCD", serviceName: "argocd-server", servicePort: 443, scheme: "https" })).toBe("tunnel");
+	});
+
+	test("identifies private service endpoints as before", () => {
 		expect(
 			argoEndpointIdentity({
 				kind: "serviceTunnel",

@@ -68,9 +68,14 @@ pub(super) fn endpoint_url(endpoint: &ArgoServerEndpoint) -> String {
         ),
     }
 }
+/// The web's `argoEndpointIdentity`. External identities lowercase only the scheme and host,
+/// and their `externalHttps:` prefix keeps them apart from saved ids made before, which
+/// lowercased the whole URL and stay as stored (ADR 0013).
 pub(super) fn endpoint_identity(endpoint: &ArgoServerEndpoint) -> String {
     match endpoint {
-        ArgoServerEndpoint::ExternalHttps { url } => url.trim().to_lowercase(),
+        ArgoServerEndpoint::ExternalHttps { url } => {
+            format!("externalHttps:{}", lowercase_scheme_and_host(url.trim()))
+        }
         ArgoServerEndpoint::ServiceTunnel {
             namespace,
             service_name,
@@ -94,6 +99,28 @@ pub(super) fn endpoint_identity(endpoint: &ArgoServerEndpoint) -> String {
                 .to_lowercase()
         ),
     }
+}
+fn lowercase_scheme_and_host(url: &str) -> String {
+    let Some(separator) = url.find("://") else {
+        return url.to_owned();
+    };
+    let host_start = separator + 3;
+    let host_end = url[host_start..]
+        .find(['/', '?', '#'])
+        .map_or(url.len(), |length| host_start + length);
+    format!("{}{}", url[..host_end].to_lowercase(), &url[host_end..])
+}
+/// The web's `savedArgoProfileId`: the id of a profile in `profiles` with this endpoint, which
+/// a new connection reuses whichever rule made that id.
+pub(super) fn saved_profile_id<'a>(
+    profiles: impl IntoIterator<Item = &'a ArgoConnectionProfile>,
+    endpoint: &ArgoServerEndpoint,
+) -> Option<String> {
+    let identity = endpoint_identity(endpoint);
+    profiles
+        .into_iter()
+        .find(|p| endpoint_identity(&p.endpoint) == identity)
+        .map(|p| p.id.clone())
 }
 impl From<Endpoint> for ArgoServerEndpoint {
     fn from(value: Endpoint) -> Self {
@@ -524,3 +551,6 @@ impl Inspector {
         self.save_preferences(cx);
     }
 }
+
+#[cfg(test)]
+mod tests;
