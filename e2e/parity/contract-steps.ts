@@ -376,8 +376,9 @@ export type Step =
     | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" }
     | { action: "clickDetailControl"; label: string }
     | { action: "openLiveSessionPopover" }
-    | { action: "expectLiveSessionRow"; target: string; status: string; controls: string[] }
-    | { action: "liveSessionControl"; operation: "Show" | "Reconnect" | "Copy" | "Stop" | "Manage"; target?: string }
+    /** `local` picks the forward on that local port when sessions share a target. */
+    | { action: "expectLiveSessionRow"; target: string; status: string; controls: string[]; local?: string }
+    | { action: "liveSessionControl"; operation: "Show" | "Reconnect" | "Copy" | "Stop" | "Manage"; target?: string; local?: string }
     | ({ action: "expectHealthTooltip" } & Identity & { state: string; source: string; statuses: string[]; partial: boolean })
     | ({ action: "expectTimestampTooltip" } & Identity & { value: string })
     | { action: "expectEventTimeTooltip"; index: number }

@@ -63,6 +63,28 @@
       ]
     },
     {
+      "id": "live-session-header.forward-same-target-two-ports",
+      "title": "Two forwards of one Pod port on different local ports get separate popover rows, and Stop on one leaves the other",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "configureForward", "remote": "9090", "local": "19091" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "closeDetail" },
+        { "action": "openLiveSessionPopover" },
+        { "action": "expectLiveSessionRow", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "controls": ["Reconnect", "Copy", "Stop"] },
+        { "action": "expectLiveSessionRow", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091", "status": "listening", "controls": ["Reconnect", "Copy", "Stop"] },
+        { "action": "liveSessionControl", "operation": "Stop", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091" },
+        { "action": "expectLiveSessionRow", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "controls": ["Reconnect", "Copy", "Stop"] },
+        { "action": "liveSessionControl", "operation": "Stop", "target": "payments/Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "stopped", "count": 0 }
+      ]
+    },
+    {
       "id": "live-session-header.manage-opens-page",
       "title": "Manage in the header popover opens the Port Forwards page with the same session",
       "steps": [
