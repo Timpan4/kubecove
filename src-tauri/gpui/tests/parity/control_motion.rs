@@ -7,14 +7,23 @@ use super::*;
 use gpui_kit::ElementId;
 use gpui_kit::test::TestEventExt;
 use kubecove_gpui::control_motion::Moving;
-use std::cell::Cell;
+use std::cell::RefCell;
 
 const SETTING: &str = "Show exact timestamps";
 const DEPLOYMENT: &str = "resource:Deployment:payments:payments-api";
 
+/// What the earlier phases of the running check saw.
+struct Seen {
+    /// The progress at `start`.
+    progress: f32,
+    /// The switch thumb's left edge at `start`.
+    thumb: f32,
+    /// The target's paint in each phase so far.
+    paint: Vec<Vec<String>>,
+}
+
 thread_local! {
-    /// The progress the last `start` check saw, and the switch thumb's left edge then.
-    static START: Cell<Option<(f32, f32)>> = const { Cell::new(None) };
+    static SEEN: RefCell<Option<Seen>> = const { RefCell::new(None) };
 }
 
 pub(super) fn handles(check: &str) -> bool {
@@ -33,12 +42,29 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             progress == 0. || progress == 1.,
             "{target} jumped to {progress}"
         );
-        START.set(Some((progress, thumb(window, target))));
+        SEEN.set(Some(Seen {
+            progress,
+            thumb: thumb(window, target),
+            paint: paint(window, cx, target).into_iter().collect(),
+        }));
         return;
     }
     let moving = transition(window, cx, target);
-    let (start, thumb_start) = START.get().expect("a start check ran first");
     let progress = Moving::progress(&moving, cx);
+    let painted = paint(window, cx, target);
+    let (start, thumb_start) = SEEN.with_borrow_mut(|seen| {
+        let seen = seen.as_mut().expect("a start check ran first");
+        // A transition that advances without reaching the screen paints one
+        // phase as it painted another.
+        if let Some(painted) = painted {
+            assert!(
+                !seen.paint.contains(&painted),
+                "{target} paints at {phase} as it did in an earlier phase: {painted:?}"
+            );
+            seen.paint.push(painted);
+        }
+        (seen.progress, seen.thumb)
+    });
     match phase {
         "midway" => {
             let progress = progress.unwrap_or_else(|| panic!("{target} settled at half time"));
@@ -60,6 +86,36 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
         }
         other => panic!("unknown motion phase {other}"),
     }
+}
+
+/// The quads painted inside the target: their bounds and colors. `None` for the
+/// chevron, which is a sprite, and the scene exposes only quads.
+fn paint(
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::App,
+    target: &str,
+) -> Option<Vec<String>> {
+    let id = match target {
+        "switch" => ElementId::Name(format!("setting:{SETTING}").into()),
+        "segment" => "gitops-view:List".into(),
+        "tab" => "show-events".into(),
+        "chevron" => return None,
+        _ => transition(window, cx, target),
+    };
+    // The tab's line sits 4 px under its trigger.
+    let area = window
+        .find(id)
+        .bounds()
+        .dilate(gpui_kit::px(4.))
+        .scale(window.scale_factor());
+    Some(
+        window
+            .painted_quads()
+            .into_iter()
+            .filter(|quad| quad.bounds.is_contained_within(&area))
+            .map(|quad| format!("{:?} {:?}", quad.bounds, quad.background))
+            .collect(),
+    )
 }
 
 /// The switch thumb's left edge, or 0 for a target without a moving element.
