@@ -17,12 +17,22 @@ function hasMessage<Value>(value: Value): value is Value & { message?: string } 
 	return value !== null && Object(value) === value && "message" in Object(value);
 }
 
+// The diagnostics page's own commands. It polls and clears with them, so tracing
+// them would refill the latency report right after Clear. The GPUI client does
+// not measure them either.
+const UNTRACED_COMMANDS = new Set([
+	"get_backend_diagnostics",
+	"get_backend_cache_diagnostics",
+	"clear_backend_diagnostics",
+	"set_backend_diagnostics_enabled",
+]);
+
 /**
  * Runs one command and, while diagnostics is enabled, logs its round trip as
  * tauri.invoke.* events for the latency report and the interaction recorder.
  */
 export async function traceInvoke<T>(cmd: string, args: object | undefined, call: () => Promise<T>): Promise<T> {
-	if (!isDiagnosticsEnabled()) return call();
+	if (!isDiagnosticsEnabled() || UNTRACED_COMMANDS.has(cmd)) return call();
 	const started = performance.now();
 	diagnosticLog("tauri.invoke.start", {
 		cmd,
