@@ -62,24 +62,27 @@
 		sliding = chosen && moves && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 	});
 
-	// A layout change places the pill at once, ending a slide that is running.
-	$effect(() => {
-		if (!group) return;
-		const observer = new ResizeObserver(() => {
-			sliding = false;
-			place();
-		});
-		// The border box, because a padding change moves the options without resizing the content.
-		observer.observe(group, { box: "border-box" });
-		return () => observer.disconnect();
-	});
-
 	function sameBox(a: Box, b: Box): boolean {
 		return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
 	}
 
 	/** The options' values and labels in order, which change when an option is added, moved or renamed. */
 	const optionKey = $derived(options.map((option) => `${option.value}\n${option.label}`).join("\n\n"));
+
+	// A layout change places the pill at once, ending a slide that is running. The options are
+	// observed too, because in a group of fixed width a font load or a padding change can resize
+	// or move them without resizing the group.
+	$effect(() => {
+		if (!group || optionKey === "") return;
+		const observer = new ResizeObserver(() => {
+			sliding = false;
+			place();
+		});
+		// Border boxes, because a padding change moves the options without resizing the content.
+		observer.observe(group, { box: "border-box" });
+		for (const option of group.querySelectorAll("[role='radio']")) observer.observe(option, { box: "border-box" });
+		return () => observer.disconnect();
+	});
 
 	// New, reordered or renamed options can move the active one without resizing the group, so the
 	// hidden pill is measured again and the next slide starts from the active option.
