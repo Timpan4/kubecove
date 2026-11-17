@@ -187,12 +187,7 @@ impl Inspector {
     }
 
     /// Records a key press on the focused element. Never the key itself.
-    pub(super) fn record_key(
-        &self,
-        event: &KeyDownEvent,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn record_key(&self, event: &KeyDownEvent, window: &Window, cx: &mut Context<Self>) {
         let mut recorder = self.presentation.recorder.borrow_mut();
         if !recorder.recording() || event.is_held && recorder.current_kind() == Some(Kind::Key) {
             return;
