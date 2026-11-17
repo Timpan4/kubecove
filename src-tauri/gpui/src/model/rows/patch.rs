@@ -19,9 +19,6 @@ impl ObservedNames {
     pub(crate) fn shared(&self) -> Arc<Vec<Name>> {
         self.0.clone()
     }
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Name> {
-        self.0.iter()
-    }
     /// The names themselves, copied only if a read still holds them.
     fn into_names(self) -> Vec<Name> {
         Arc::try_unwrap(self.0).unwrap_or_else(|shared| (*shared).clone())

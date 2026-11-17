@@ -31,9 +31,12 @@ const WATCHED: [Column; 4] = [
 
 #[derive(Default)]
 pub(super) struct RowChanges {
-    /// The rows, by `resource_id`, that watch notices named since the table
-    /// last drew. A reload names none, so the rows it changes get no tint.
-    noticed: HashSet<String>,
+    /// The kinds, as (context, kind), whose rows watch notices named since the
+    /// table last drew. A reload names none, so the rows it changes get no
+    /// tint. A read of names patches only those rows, so the kind is enough
+    /// unless a reload of the same kind lands before the same frame, and a
+    /// burst of notices costs nothing per name here.
+    noticed: Vec<(String, String)>,
     /// The rows that reads of those names added.
     pub(super) added: Vec<Added>,
     /// The page the table last drew.
@@ -43,6 +46,12 @@ pub(super) struct RowChanges {
     now: Option<Instant>,
     /// Whether this frame drew the table.
     seen: bool,
+}
+
+fn noticed(kinds: &[(String, String)], row: &ResourceSummary) -> bool {
+    kinds
+        .iter()
+        .any(|(context, kind)| *context == row.cluster && *kind == row.kind)
 }
 
 fn added_id(added: &Added) -> String {
@@ -59,15 +68,15 @@ impl RowChanges {
         self.seen = false;
     }
 
-    /// Records the rows a watch notice named, which `patch` then read.
+    /// Records the kind of a `patch` that read the rows a watch notice named.
     pub(super) fn notice(&mut self, patch: &Patch) {
-        let Some(names) = &patch.names else { return };
-        let (kind, context) = (&patch.key.resource_kind.kind, &patch.scope.context);
-        self.noticed.extend(
-            names
-                .iter()
-                .map(|(namespace, name)| resource_id_of(kind, namespace.as_deref(), name, context)),
-        );
+        if patch.names.is_none() {
+            return;
+        }
+        let (context, kind) = (&patch.scope.context, &patch.key.resource_kind.kind);
+        if !self.noticed.iter().any(|(c, k)| c == context && k == kind) {
+            self.noticed.push((context.clone(), kind.clone()));
+        }
     }
 
     /// Forgets the page of a table this frame did not draw. Returns whether a
@@ -114,7 +123,8 @@ impl Inspector {
                 .marks
                 .retain(|_, since| now < *since + HIGHLIGHT.duration);
         }
-        if !changes.noticed.is_empty()
+        let kinds = std::mem::take(&mut changes.noticed);
+        if !kinds.is_empty()
             && !cx.reduce_motion()
             && let Some(drawn) = &changes.drawn
         {
@@ -122,14 +132,11 @@ impl Inspector {
             let before: HashMap<String, &ResourceSummary> = drawn
                 .rows
                 .iter()
+                .filter(|row| noticed(&kinds, row))
                 .map(|row| (resource_id(row), row))
-                .filter(|(id, _)| changes.noticed.contains(id))
                 .collect();
-            for row in &page.rows {
+            for row in page.rows.iter().filter(|row| noticed(&kinds, row)) {
                 let id = resource_id(row);
-                if !changes.noticed.contains(&id) {
-                    continue;
-                }
                 let changed = match before.get(&id) {
                     Some(old) => WATCHED
                         .iter()
@@ -141,7 +148,6 @@ impl Inspector {
                 }
             }
         }
-        changes.noticed.clear();
         changes.added.clear();
         changes.drawn = Some(page.clone());
         self.row_changes = changes;
