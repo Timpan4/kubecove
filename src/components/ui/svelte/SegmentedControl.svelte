@@ -27,7 +27,11 @@
 	let group: HTMLDivElement | undefined = $state();
 	/** The active option's box inside the group, which the pill covers. */
 	let pill: { left: number; top: number; width: number; height: number } | undefined = $state();
-	/** The pill slides only to a newly chosen option. A layout change moves it at once. */
+	/**
+	 * The pill slides only to a newly chosen option. A layout change moves it at once. At rest the
+	 * active option paints its own background, because `offsetWidth` rounds the option's fractional
+	 * width and a pill measured from it would miss the option's edge by a pixel.
+	 */
 	let sliding = $state(false);
 	let shownValue: T | undefined;
 
@@ -77,7 +81,7 @@
 			aria-hidden="true"
 			class={cnfast(
 				"pointer-events-none absolute rounded-md bg-surface-1 shadow-sm",
-				sliding && "transition-[left,top,width,height] duration-150",
+				sliding ? "transition-[left,top,width,height] duration-150" : "invisible",
 			)}
 			style:left="{pill.left}px"
 			style:top="{pill.top}px"
@@ -98,6 +102,7 @@
 				"relative inline-flex cursor-pointer items-center gap-1.5 rounded-md font-medium transition-[color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:pointer-events-none [&_svg]:size-3.5",
 				size === "md" ? "h-7 px-2.5 text-xs" : "h-6 px-2 text-xs",
 				active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+				active && !sliding && "bg-surface-1 shadow-sm",
 			)}
 		>
 			{#if option.icon}
