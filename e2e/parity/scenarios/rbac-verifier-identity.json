@@ -58,7 +58,16 @@
 				{
 					"action": "coverageFill",
 					"label": "Identity name",
+					"value": "a"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
 					"value": "alice"
+				},
+				{
+					"action": "expectRbacGrant",
+					"grant": "get, list, watch · core/pods, services, configmaps"
 				},
 				{
 					"action": "coverageFill",
