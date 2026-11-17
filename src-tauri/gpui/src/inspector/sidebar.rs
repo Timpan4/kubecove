@@ -335,7 +335,7 @@ impl Inspector {
     ) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("sidebar", "build");
         let namespaces = if self.sidebar_tree.open.is_empty()
-            && self.sidebar_tree.folds.is_empty()
+            && !self.sidebar_tree.folds.tree_folding()
             && self.sidebar_tree.reveal.borrow().is_none()
             && self.sidebar_tree.focused(window, cx).is_none()
         {

@@ -82,6 +82,13 @@ impl Folds {
         self.tracks.borrow().is_empty()
     }
 
+    /// Whether a branch of the namespace tree is folding, which needs every
+    /// namespace row built. The other branches key their folds with a `<kind>:`
+    /// prefix, such as `gitops:`, and no namespace or tree path holds a colon.
+    pub(super) fn tree_folding(&self) -> bool {
+        self.tracks.borrow().keys().any(|path| !path.contains(':'))
+    }
+
     /// How the branch at `path` shows its rows this frame: `None` when it is
     /// closed and its fold has ended, so the caller builds no rows for it.
     /// Tests read a running fold's share under `fold:<path>`.
@@ -92,7 +99,8 @@ impl Folds {
             return settled;
         };
         let (share, running) = track.at(cx.background_executor().now());
-        if track.open != open || !running || Moving::finishing(cx) {
+        // Reduced motion turned on during a fold ends it, as it does any transition.
+        if track.open != open || !running || Moving::finishing(cx) || cx.reduce_motion() {
             tracks.remove(path);
             return settled;
         }
