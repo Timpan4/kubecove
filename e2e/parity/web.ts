@@ -53,7 +53,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         case "expectEmptyLauncher": case "expectEntryCount": await shellAction(page, step); break;
         case "startWithoutWorkspace": case "expectNoWorkspaceShell": case "expectPaletteUnavailable": await shellAction(page, step); break;
         case "copyErrorDetail": await shellAction(page, step); break;
-        case "expectForegroundLoading": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
+        case "expectForegroundLoading": case "expectMotion": case "setReducedMotion": case "expectFriendlyError": case "inspectRequiredPermission": case "expectPermissionTarget": case "returnToSource": case "copyResourceName": case "expectCopyToast": case "dismissCopyToast": await feedbackAction(page, step); break;
         case "toggleResourcePin": case "expectWorkspaceEntry": case "openWorkspaceEntry": await shellAction(page, step); break;
         case "reorderKindKey": case "resetKindOrder": case "expectRemoteHost": case "expectRemoteHostTooltip": case "expectNoRemoteHost": case "dropRemoteConnection": await shellAction(page, step); break;
         case "remoteSessionSignal": case "expectRemoteNotice": case "expectNoRemoteNotice": case "clickRemoteNoticeButton": await remoteAction(page, step); break;

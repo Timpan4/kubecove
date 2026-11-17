@@ -235,6 +235,7 @@ impl ResourceObservation {
         rows: Vec<ResourceSummary>,
         version: Option<String>,
         names: Option<ObservedNames>,
+        added: &mut Vec<crate::model::Added>,
     ) -> Vec<ResourceSummary> {
         if let Some(index) = self.position(&scope.context) {
             let id = crate::backend::watch_id(&scope.context, key);
@@ -248,7 +249,7 @@ impl ResourceObservation {
         }
         let retired = Rc::get_mut(&mut self.data)
             .expect("visible source released before patching")
-            .patch(&scope.context, key, rows, names);
+            .patch_noting(&scope.context, key, rows, names, added);
         self.rows_patched();
         retired
     }

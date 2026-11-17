@@ -19,6 +19,9 @@ impl ObservedNames {
     pub(crate) fn shared(&self) -> Arc<Vec<Name>> {
         self.0.clone()
     }
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Name> {
+        self.0.iter()
+    }
     /// The names themselves, copied only if a read still holds them.
     fn into_names(self) -> Vec<Name> {
         Arc::try_unwrap(self.0).unwrap_or_else(|shared| (*shared).clone())
@@ -183,6 +186,15 @@ fn slot_hash(cluster: &str, kind: &str, namespace: Option<&str>, name: &str) -> 
     hasher.finish()
 }
 
+/// A row that a read of noticed names added to the rows it patched. A read
+/// without names reloads a kind and records none.
+pub(crate) struct Added {
+    pub cluster: String,
+    pub kind: String,
+    pub namespace: Option<String>,
+    pub name: String,
+}
+
 /// Applies a watch read of `key` in `context` to `current`. Rows of other
 /// contexts stay as they are. Returns whether a row was added, deleted or
 /// changed its keys.
@@ -192,9 +204,10 @@ pub(crate) fn reconcile(
     key: &WatchResourceKey,
     rows: Vec<ResourceSummary>,
     names: Option<ObservedNames>,
+    added: &mut Vec<Added>,
 ) -> bool {
     let names = names.map(NameIndex::from);
-    reconcile_indexed(current, Watch { context, key }, rows, names.as_ref())
+    reconcile_indexed(current, Watch { context, key }, rows, names.as_ref(), added)
 }
 
 fn reconcile_indexed(
@@ -202,6 +215,7 @@ fn reconcile_indexed(
     watch: Watch<'_>,
     rows: Vec<ResourceSummary>,
     names: Option<&NameIndex>,
+    added: &mut Vec<Added>,
 ) -> bool {
     // `Name` holds no context; `matches` admits only rows of the watch's
     // context, so two contexts' rows never share a name here.
@@ -231,6 +245,14 @@ fn reconcile_indexed(
         }
     });
     keys_changed |= !next.is_empty();
+    if names.is_some() {
+        added.extend(next.keys().map(|(namespace, name)| Added {
+            cluster: watch.context.to_owned(),
+            kind: watch.key.resource_kind.kind.clone(),
+            namespace: namespace.clone(),
+            name: name.clone(),
+        }));
+    }
     current.extend(next.into_values());
     keys_changed
 }
@@ -239,12 +261,26 @@ impl PreparedRows {
     /// Applies a watch read of `key` in `context`. Rows of other contexts stay
     /// as they are. Returns the read's buffer when the rows were patched in
     /// place, for the next read to reuse off the UI thread.
+    #[cfg(test)]
     pub(crate) fn patch(
+        &mut self,
+        context: &str,
+        key: &WatchResourceKey,
+        rows: Vec<ResourceSummary>,
+        names: Option<ObservedNames>,
+    ) -> Vec<ResourceSummary> {
+        self.patch_noting(context, key, rows, names, &mut Vec::new())
+    }
+
+    /// Applies a watch read as `patch` does and records in `added` the rows a
+    /// read of noticed names added.
+    pub(crate) fn patch_noting(
         &mut self,
         context: &str,
         key: &WatchResourceKey,
         mut rows: Vec<ResourceSummary>,
         names: Option<ObservedNames>,
+        added: &mut Vec<Added>,
     ) -> Vec<ResourceSummary> {
         let watch = Watch { context, key };
         // Watch rows carry the backend's owners, so compare them with those. If no
@@ -262,7 +298,7 @@ impl PreparedRows {
             None => names.map(NameIndex::from),
         };
         let _span = crate::frame_profile::scope("watch", "reconcile");
-        if reconcile_indexed(&mut self.rows, watch, rows, names.as_ref()) {
+        if reconcile_indexed(&mut self.rows, watch, rows, names.as_ref(), added) {
             self.rebuild();
         } else {
             self.swap_owners();

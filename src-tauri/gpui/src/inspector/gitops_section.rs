@@ -64,7 +64,7 @@ fn pending(label: &str) -> Div {
         .flex()
         .items_center()
         .gap(px(8.))
-        .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+        .child(ui::spinner(16., Tokens::muted_foreground()))
         .child(ui::muted(ui::xs(label.to_owned())))
 }
 
@@ -284,6 +284,9 @@ impl Inspector {
                 )
                 .into_any_element(),
         };
-        body.child(content)
+        body.when_some(self.loading.reveal("overview-gitops"), |body, opacity| {
+            body.opacity(opacity)
+        })
+        .child(content)
     }
 }

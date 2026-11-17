@@ -3,6 +3,19 @@
 //! is GPUI's in-memory test clipboard, never the system clipboard.
 use super::*;
 
+/// Whether the frame just rendered arranged another, as an element in motion
+/// does: a transition that ends asks for the next frame, and a spinner or the
+/// loading bar's slide arms the repeating clock's timer. The executor clock
+/// stands still within a step, so nothing else does.
+fn frame_requested(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) -> bool {
+    window.render_frame(cx);
+    window.simulate_next_frame(cx);
+    // A frame an earlier step rendered at this clock time may have asked.
+    kubecove_gpui::Inspector::forget_repeating_motion(cx);
+    window.render_frame(cx);
+    window.simulate_next_frame(cx) > 0 || kubecove_gpui::Inspector::repeating_motion(cx)
+}
+
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "expectForegroundLoading" => {
@@ -16,6 +29,32 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 window.find("foreground-loading-bar").description(),
                 Some(expected)
             );
+            if let Some(sliding) = step["sliding"].as_bool() {
+                // Asked of the bar itself: a spinner elsewhere in the window
+                // also arranges frames.
+                let inspector = map_gestures::inspector(window, cx);
+                let (drawn, slides) = {
+                    let bar = inspector.read(cx);
+                    (bar.foreground_bar_motion(), bar.foreground_bar_sliding())
+                };
+                assert!(drawn.is_some() || !sliding, "a sliding bar must be drawn");
+                assert_eq!(slides, sliding, "the foreground loading bar's slide");
+                assert!(
+                    !sliding || frame_requested(window, cx),
+                    "a sliding bar arranges its next frame"
+                );
+            }
+        }
+        "expectMotion" => {
+            assert_eq!(
+                frame_requested(window, cx),
+                step["moving"] == true,
+                "whether the frame arranged another"
+            );
+        }
+        "setReducedMotion" => {
+            cx.set_reduce_motion(step["reduce"] == true);
+            window.refresh();
         }
         "expectFriendlyError" => {
             window.render_frame(cx);

@@ -47,12 +47,25 @@ impl Inspector {
                 Some(version) => self.cluster.versions.insert(id, version),
                 None => self.cluster.versions.remove(&id),
             };
-            crate::model::reconcile(&mut self.cluster.rows, &scope.context, key, rows, names);
+            crate::model::reconcile(
+                &mut self.cluster.rows,
+                &scope.context,
+                key,
+                rows,
+                names,
+                &mut self.row_changes.added,
+            );
             self.observation.rows_patched();
             Vec::new()
         } else {
-            self.observation
-                .patch(scope, key, rows, resource_version, names)
+            self.observation.patch(
+                scope,
+                key,
+                rows,
+                resource_version,
+                names,
+                &mut self.row_changes.added,
+            )
         }
     }
 

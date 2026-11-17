@@ -23,6 +23,10 @@ mod inspection;
 mod kind_selection;
 #[path = "native/live_data.rs"]
 mod live_data;
+#[path = "native/live_motion.rs"]
+mod live_motion;
+#[path = "native/loading_motion.rs"]
+mod loading_motion;
 #[path = "native/map_live.rs"]
 mod map_live;
 #[path = "native/map_motion.rs"]
@@ -95,6 +99,7 @@ struct Controlled {
     secret: adapters::SecretControls,
     sessions: session_controls::SessionControls,
     live: live_data::LiveControls,
+    rows: live_motion::RowControls,
     map_live: map_live::MapControls,
     fail: AtomicBool,
     pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -267,7 +272,10 @@ impl Backend for Controlled {
         let pod = self.sessions.enabled.load(Ordering::SeqCst);
         let argo = self.argo.enabled.load(Ordering::SeqCst);
         let secret = self.secret.enabled.load(Ordering::SeqCst);
-        let map_rows = self.map_live.rows(&scope.context);
+        let map_rows = self
+            .rows
+            .read(&scope.context)
+            .or_else(|| self.map_live.rows(&scope.context));
         let versions = self.live.list_versions.clone();
         let returned = self.live.returned_lists.clone();
         Box::pin(async move {

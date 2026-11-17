@@ -54,7 +54,7 @@ fn header(actions: &ActionsState, permissions_loading: bool) -> Div {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(ui::icon("loader-circle", 14., Tokens::muted_foreground()))
+                    .child(ui::spinner(14., Tokens::muted_foreground()))
                     .child(ui::muted(ui::xs("Loading action permissions"))),
             )
         });

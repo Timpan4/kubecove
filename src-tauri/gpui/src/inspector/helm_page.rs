@@ -83,6 +83,8 @@ pub(super) struct HelmPage {
     /// The release list's loading phase. List items render after the frame,
     /// so `helm_page_view` observes it during render.
     status: Phase,
+    /// The opacity of the items that replaced the indicator, observed with `status`.
+    reveal: Option<f32>,
     pub(super) details: HelmDetails,
     _search_changed: Subscription,
 }
@@ -112,6 +114,7 @@ impl HelmPage {
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             shape: None,
             status: Phase::Ready,
+            reveal: None,
             details: HelmDetails::default(),
             _search_changed,
         }
@@ -348,9 +351,11 @@ impl Inspector {
         let status = self
             .loading
             .phase("surface-helm", self.helm_page.load.pending());
+        let reveal = self.loading.reveal("surface-helm");
         self.observe_helm_details_loading();
         let page = &mut self.helm_page;
         page.status = status;
+        page.reveal = reveal;
         page.layout = Layout::new(frame, page.filtered.len());
         page.details_columns = window.viewport_size().width >= px(1024.);
         let shape = Some((
@@ -381,6 +386,11 @@ impl Inspector {
 
     fn helm_list_item(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let last = index + 1 == self.helm_page.items();
+        // The header stays while the list loads; the rest replaces the indicator.
+        let reveal = self
+            .helm_page
+            .reveal
+            .filter(|_| !matches!(self.helm_item(index), Item::Header));
         let item = match self.helm_item(index) {
             Item::Header => {
                 dui::frame_header("package", "Helm", self.helm_context_badge()).pt(px(20.))
@@ -408,6 +418,7 @@ impl Inspector {
         item.w_full()
             .px(px(20.))
             .when(last, |item| item.pb(px(20.)))
+            .when_some(reveal, |item, opacity| item.opacity(opacity))
             .into_any_element()
     }
 

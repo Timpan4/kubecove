@@ -143,7 +143,7 @@ fn toolbar(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> D
         .gap(px(6.))
         .whitespace_nowrap()
         .child(if connecting {
-            ui::icon("loader-circle", 12., Tokens::muted_foreground()).into_any_element()
+            ui::spinner(12., Tokens::muted_foreground()).into_any_element()
         } else {
             div()
                 .size(px(7.))
@@ -428,7 +428,7 @@ fn viewport(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> 
             .gap(px(8.))
             .p(px(12.))
             .when(connecting, |row| {
-                row.child(ui::icon("loader-circle", 14., Tokens::muted_foreground()))
+                row.child(ui::spinner(14., Tokens::muted_foreground()))
             })
             .child(ui::muted(ui::sm(text)))
             .into_any_element()
