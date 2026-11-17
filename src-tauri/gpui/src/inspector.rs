@@ -257,6 +257,8 @@ impl Inspector {
                 if window.is_window_active() {
                     this.refresh_focused_page(cx);
                 }
+                // The map's edge motion starts and stops with the window (`map/flow.rs`).
+                cx.notify();
             }),
             cx.subscribe_in(&search, window, |this, _, event, _, cx| {
                 if matches!(event, InputEvent::Change) {

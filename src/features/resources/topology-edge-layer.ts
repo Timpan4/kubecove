@@ -1,5 +1,6 @@
 import { type EdgeMarker, getSmoothStepPath, type NodeHandle, Position } from "@xyflow/system";
-import type { FlowTopologyEdge, FlowTopologyNode } from "./topology-types";
+import { resourceLifecycle } from "./resource-lifecycle";
+import { type FlowTopologyEdge, type FlowTopologyNode, INACTIVE_EDGE_CLASS } from "./topology-types";
 
 // Large maps draw edges in one SVG layer instead of one Svelte Flow edge component per edge.
 // With onlyRenderVisibleElements, Svelte Flow mounts both endpoints of every edge that crosses the
@@ -83,49 +84,94 @@ export function buildFlowTopologyEdgeLayer(
 		const source = nodesById.get(edge.source);
 		const target = nodesById.get(edge.target);
 		if (!source || !target || source.hidden || target.hidden || edge.hidden) continue;
-		const sourceHandle = source.handles?.find((handle) => handle.type === "source");
-		const targetHandle = target.handles?.find((handle) => handle.type === "target");
-		if (
-			source.parentId ||
-			target.parentId ||
-			!sourceHandle ||
-			!targetHandle ||
-			source.width === undefined ||
-			source.height === undefined ||
-			target.width === undefined ||
-			target.height === undefined
-		) {
+		const geometry = edgeGeometry(source, target);
+		if (!geometry) {
 			native.push(edge);
 			continue;
 		}
-		const start = handlePoint(source, sourceHandle);
-		const end = handlePoint(target, targetHandle);
-		// Svelte Flow's built-in smoothstep edge passes only the endpoints, so pathOptions do not apply.
-		const [path] = getSmoothStepPath({
-			sourceX: start.x,
-			sourceY: start.y,
-			sourcePosition: sourceHandle.position,
-			targetX: end.x,
-			targetY: end.y,
-			targetPosition: targetHandle.position,
-		});
 		layered.push({
 			id: edge.id,
 			source: edge.source,
 			target: edge.target,
-			path,
-			box: {
-				x: Math.min(source.position.x, target.position.x),
-				y: Math.min(source.position.y, target.position.y),
-				x2: Math.max(source.position.x + source.width, target.position.x + target.width),
-				y2: Math.max(source.position.y + source.height, target.position.y + target.height),
-			},
+			path: geometry.path,
+			box: geometry.box,
 			z: (edge.zIndex ?? 0) + Math.max(nodeZ(source), nodeZ(target)),
 			style: edge.style,
 			markerEnd: edge.markerEnd,
 		});
 	}
 	return { native, layered };
+}
+
+/**
+ * The smoothstep path Svelte Flow draws between two nodes, and the union of their boxes. Null for
+ * nested (parented) nodes, whose position depends on the parent, and for nodes without declared
+ * handles or size.
+ */
+function edgeGeometry(
+	source: FlowTopologyNode,
+	target: FlowTopologyNode,
+): Pick<TopologyLayerEdge, "path" | "box"> | null {
+	const sourceHandle = source.handles?.find((handle) => handle.type === "source");
+	const targetHandle = target.handles?.find((handle) => handle.type === "target");
+	if (
+		source.parentId ||
+		target.parentId ||
+		!sourceHandle ||
+		!targetHandle ||
+		source.width === undefined ||
+		source.height === undefined ||
+		target.width === undefined ||
+		target.height === undefined
+	) {
+		return null;
+	}
+	const start = handlePoint(source, sourceHandle);
+	const end = handlePoint(target, targetHandle);
+	// Svelte Flow's built-in smoothstep edge passes only the endpoints, so pathOptions do not apply.
+	const [path] = getSmoothStepPath({
+		sourceX: start.x,
+		sourceY: start.y,
+		sourcePosition: sourceHandle.position,
+		targetX: end.x,
+		targetY: end.y,
+		targetPosition: targetHandle.position,
+	});
+	return {
+		path,
+		box: {
+			x: Math.min(source.position.x, target.position.x),
+			y: Math.min(source.position.y, target.position.y),
+			x2: Math.max(source.position.x + source.width, target.position.x + target.width),
+			y2: Math.max(source.position.y + source.height, target.position.y + target.height),
+		},
+	};
+}
+
+export type TopologyEdgePulse = { id: string; path: string };
+
+/**
+ * The rollout pulse: the paths of the edges that lead to a resource still in progress, the state
+ * that shows the activity icon on its card. Edges off a selected path stay dimmed and get none.
+ */
+export function buildFlowTopologyPulses(
+	nodes: readonly FlowTopologyNode[],
+	edges: readonly FlowTopologyEdge[],
+): TopologyEdgePulse[] {
+	const nodesById = new Map<string, FlowTopologyNode>();
+	for (const node of nodes) nodesById.set(node.id, node);
+	const pulses: TopologyEdgePulse[] = [];
+	for (const edge of edges) {
+		if (edge.hidden || edge.class === INACTIVE_EDGE_CLASS) continue;
+		const source = nodesById.get(edge.source);
+		const target = nodesById.get(edge.target);
+		const resource = target?.data.node;
+		if (!source || !target || source.hidden || target.hidden || !resource) continue;
+		if (!resourceLifecycle(resource.kind, resource.status)?.progress) continue;
+		const geometry = edgeGeometry(source, target);
+		if (geometry) pulses.push({ id: edge.id, path: geometry.path });
+	}
+	return pulses;
 }
 
 /** Svelte Flow's isEdgeVisible: the endpoint union box overlaps the viewport with positive area. */

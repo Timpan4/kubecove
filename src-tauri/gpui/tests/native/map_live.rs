@@ -12,13 +12,15 @@ pub(super) enum Snapshot {
     Deployment,
     ReplicaSet,
     Pod,
+    /// The Deployment and its ReplicaSet, both still rolling out.
+    RollingOut,
 }
 
 #[derive(Default)]
 pub(super) struct MapControls(Mutex<Option<Snapshot>>);
 
 impl MapControls {
-    fn show(&self, snapshot: Snapshot) {
+    pub(super) fn show(&self, snapshot: Snapshot) {
         *self.0.lock().unwrap() = Some(snapshot);
     }
 
@@ -48,6 +50,10 @@ impl MapControls {
 
     pub(super) fn topology(&self, context: &str) -> Option<Arc<ResourceTopology>> {
         let rows = self.rows(context)?;
+        let status = match *self.0.lock().unwrap() {
+            Some(Snapshot::RollingOut) => "Rolling out",
+            _ => "Available",
+        };
         let ids: Vec<_> = rows
             .iter()
             .map(|row| {
@@ -65,7 +71,7 @@ impl MapControls {
             .map(|(row, id)| {
                 json!({
                     "id": id, "kind": row.kind, "name": row.name, "namespace": row.namespace,
-                    "health": "healthy", "status": "Available", "selectable": true, "summary": row
+                    "health": "healthy", "status": status, "selectable": true, "summary": row
                 })
             })
             .collect();

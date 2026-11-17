@@ -44,8 +44,14 @@ export type FlowTopologyEdge = Omit<
 	markerEnd?: EdgeMarker;
 	pathOptions?: SmoothStepPathOptions;
 	style?: string;
+	/** Set while a resource is selected: whether the edge is on its path. */
+	class?: typeof ACTIVE_EDGE_CLASS | typeof INACTIVE_EDGE_CLASS;
 	focusable?: boolean;
 };
+
+/** App.css moves the dashes of these edges on maps that carry `ownership-map-motion`. */
+export const ACTIVE_EDGE_CLASS = "ownership-map-edge-active";
+export const INACTIVE_EDGE_CLASS = "ownership-map-edge-inactive";
 
 export interface FlowTopology {
 	nodes: FlowTopologyNode[];
