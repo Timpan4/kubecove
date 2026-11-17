@@ -108,6 +108,8 @@ jobs:
             const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
             const desktopPass = `${desktop} ${common}`;
             const gpuiPass = `${gpui} ${common}`;
+            // text_fit also reads the browser-mock fixture that e2e/parity/visual exports from src.
+            const gpuiTestPass = `${gpuiPass} src e2e/parity/visual`;
             // cargo tree reads the separate server manifest and lockfile.
             const backendPass = `${server} ${common}`;
             // The server embeds dist/, builds and typechecks the browser, runs the
@@ -122,11 +124,12 @@ jobs:
               // are separate workspaces that both depend on the desktop crates.
               { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop, passInputs: desktopPass },
               { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiPass },
-              { task: 'gpui-test', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiPass },
-              { task: 'server-backend', scope: 'server', workspace: 'src-tauri', inputs: desktop, passInputs: backendPass },
-              { task: 'server', scope: 'server', workspace: 'src-tauri/server', inputs: server, passInputs: serverPass },
+              // Frontend changes select gpui-test too: text_fit reads the browser-mock fixture.
+              { task: 'gpui-test', scope: 'frontend-or-rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiTestPass },
+              { task: 'server-backend', scope: 'frontend-or-rust', workspace: 'src-tauri', inputs: desktop, passInputs: backendPass },
+              { task: 'server', scope: 'frontend-or-rust', workspace: 'src-tauri/server', inputs: server, passInputs: serverPass },
             ];
-            const include = tasks.filter(({ scope }) => scope === 'server'
+            const include = tasks.filter(({ scope }) => scope === 'frontend-or-rust'
               ? required.frontend || required.rust : required[scope]);
             core.setOutput('matrix', JSON.stringify({ include }));
 
@@ -288,13 +291,13 @@ jobs:
         run: node scripts/ci-rust-pass.mjs decide
 
       - name: Setup Bun
-        if: ${{ (matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        if: ${{ (matrix.task == 'docs' || matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
       - name: Cache Bun dependencies
-        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -303,7 +306,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install frontend dependencies
-        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         run: bun install --frozen-lockfile
 
       - name: Check documentation
@@ -419,6 +422,13 @@ jobs:
         if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
           mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
+          # Text fit against the bundled fonts, on the browser-mock fixture. Without the
+          # fixture the test prints a skip and passes, so a skip fails the step.
+          mkdir -p e2e/artifacts/text-fit
+          bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
+          set -o pipefail
+          KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --test text_fit | tee e2e/artifacts/text-fit/report.txt
+          if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi
           # The E2E flavor's automation and startup checks (ADR 0035).
           mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --test native -- automation:: e2e_interlock::
 
