@@ -137,6 +137,9 @@ mod visual {
             cx.update(|cx| {
                 gpui_kit::init(cx);
                 kubecove_gpui::init(cx).expect("fonts load");
+                // A view's steps open a sidebar branch and use its rows in one
+                // window update, which the clock cannot move inside.
+                kubecove_gpui::control_motion::Moving::set_instant_layout(true, cx);
             });
             let backend = backend.clone();
             let (handle, _) = cx

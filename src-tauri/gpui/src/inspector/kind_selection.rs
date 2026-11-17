@@ -302,6 +302,7 @@ impl Inspector {
         // Fixed, because the sidebar's fold cuts its rows from the height they lay out at.
         div()
             .flex_none()
+            .h(px(super::custom_resources::SEARCH_HEIGHT))
             .pl(px(24.))
             .pr(px(8.))
             .py(px(4.))

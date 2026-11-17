@@ -97,8 +97,9 @@ impl Inspector {
 const CUSTOM_RESOURCES: &str = "Custom Resources";
 /// The fold of the Custom Resources section. No namespace can have this name.
 const SECTION_FOLD: &str = "section:Custom Resources";
-/// `py-1` around the `h-7` search input.
-const SEARCH_HEIGHT: f32 = 36.;
+/// `py-1` around the search input, which lays out 32 px high natively where
+/// the web's `h-7` input is 28 px.
+pub(super) const SEARCH_HEIGHT: f32 = 40.;
 /// `py-1` around one `text-xs` line.
 const MESSAGE_HEIGHT: f32 = 24.;
 
