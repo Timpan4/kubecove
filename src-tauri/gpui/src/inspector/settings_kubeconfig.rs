@@ -4,7 +4,7 @@
 //! picks need this desktop's filesystem, so remote mode does not offer them.
 
 use super::Inspector;
-use super::controls::{Variant, button};
+use super::controls::{Variant, button, inert_button};
 use super::loading::Phase;
 use super::overlay_motion::Tooltip;
 use super::settings_page::{Observed, settings_row, switch};
@@ -297,9 +297,15 @@ impl Inspector {
                 None => element,
             }
         };
-        let save = reason(
+        // A Save that cannot run does not answer the pointer. `reason` dims the
+        // unavailable one, and a disabled `button` would dim it twice.
+        let save = if edits_disabled {
+            inert_button(Variant::Outline, 24.)
+        } else {
             button(Variant::Outline, 24., false)
-                .id("kubeconfig-env-save")
+        };
+        let save = reason(
+            save.id("kubeconfig-env-save")
                 .test_support()
                 .aria_label("Save")
                 .child("Save"),
