@@ -45,7 +45,10 @@ let enabled = false;
 let sequence = 0;
 let previousTimestamp = performance.now();
 const counters = new Map<string, number>();
-type RecordedDiagnosticEvent = Omit<FrontendDiagnosticEvent, "recordedAt"> & { recordedAtMs: number };
+type RecordedDiagnosticEvent = Omit<FrontendDiagnosticEvent, "recordedAt"> & {
+	recordedAtMs: number;
+	commandStartedAtMs?: number;
+};
 const frontendEvents: RecordedDiagnosticEvent[] = [];
 const traceLines: string[] = [];
 const pendingConsoleLines: string[] = [];
@@ -174,11 +177,20 @@ export function clearDiagnostics(): void {
 }
 
 export function getDiagnosticsSnapshot(): DiagnosticsSnapshot {
-	const events = frontendEvents.map(({ recordedAtMs, ...event }) => ({
+	const events = frontendEvents.map(({ recordedAtMs, commandStartedAtMs, ...event }) => ({
 		...event,
+		atMs: Math.round(event.atMs),
+		durationMs: commandStartedAtMs === undefined || event.durationMs === undefined
+			? event.durationMs
+			: Math.round(event.durationMs),
+		data: presentedData(event.data, commandStartedAtMs),
 		recordedAt: new Date(recordedAtMs).toISOString(),
 	}));
 	return buildDiagnosticsSnapshot(enabled, counters, events, traceLines);
+}
+
+export function getRecordedDiagnosticEvents(): readonly RecordedDiagnosticEvent[] {
+	return frontendEvents;
 }
 
 export function buildDiagnosticsSnapshot(
@@ -205,7 +217,13 @@ export function buildDiagnosticsSnapshot(
 	};
 }
 
-export function diagnosticLog(event: string, data?: DiagnosticData): void {
+function presentedData(data: DiagnosticData, commandStartedAtMs: number | undefined): DiagnosticData {
+	return commandStartedAtMs !== undefined && typeof data.ms === "number"
+		? { ...data, ms: Math.round(data.ms) }
+		: data;
+}
+
+export function diagnosticLog(event: string, data?: DiagnosticData, commandStartedAtMs?: number): void {
 	if (!enabled) return;
 
 	const now = performance.now();
@@ -222,7 +240,8 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 	const eventRecord: RecordedDiagnosticEvent = {
 		id: sequence,
 		recordedAtMs: Date.now(),
-		atMs: Math.round(now),
+		atMs: now,
+		commandStartedAtMs,
 		deltaMs: delta,
 		event,
 		count,
@@ -232,7 +251,7 @@ export function diagnosticLog(event: string, data?: DiagnosticData): void {
 	};
 	pushBounded(frontendEvents, eventRecord, MAX_FRONTEND_EVENTS);
 
-	const fields = serializeData(data);
+	const fields = serializeData(presentedData(eventRecord.data, commandStartedAtMs));
 	const line = `[k8s-debug #${sequence} +${delta}ms count=${count}${
 		heapMb === undefined ? "" : ` heap=${heapMb}MB`
 	}] ${event}${fields ? ` ${fields}` : ""}`;
