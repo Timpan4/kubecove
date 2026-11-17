@@ -163,15 +163,28 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
         (seen.progress, seen.thumb)
     });
     // A fold reveals rows by the height they lay out at, so a row under it
-    // keeps the sidebar's row height however long the sidebar grows.
+    // keeps the sidebar's row height however long the sidebar grows. An ended
+    // fold shows the branch's last row whole, right above that row.
     if matches!(phase, "settled" | "ended")
-        && let Some((_, below)) = row_below(target)
+        && let Some((_, below, last)) = row_below(target)
     {
-        let height = |id: &str| window.find(id.to_owned()).bounds().size.height;
+        let bounds = |id: &str| window.find(id.to_owned()).bounds();
+        let row = bounds("nav:Workloads").size.height;
         assert_eq!(
-            height(below),
-            height("nav:Workloads"),
+            bounds(below).size.height,
+            row,
             "{below} is not as high as a sidebar row"
+        );
+        // A fold builds only the rows it shows.
+        let end = window
+            .try_find(last.to_owned())
+            .unwrap_or_else(|| panic!("{target} does not show {last} at {phase}"))
+            .bounds();
+        assert_eq!(end.size.height, row, "{last} is cut at {phase}");
+        assert_eq!(
+            end.bottom(),
+            bounds(below).top(),
+            "{target} is not fully open at {phase}"
         );
     }
     match phase {
@@ -209,7 +222,7 @@ fn paint(
     }
     // A fold paints nothing of its own. The row under the branch shows it,
     // measured from the branch's row so that a scroll of the sidebar is left out.
-    if let Some((branch, below)) = row_below(target) {
+    if let Some((branch, below, _)) = row_below(target) {
         let top = |id: &str| f32::from(window.find(id.to_owned()).bounds().origin.y);
         return Some(vec![(top(below) - top(branch)).to_string()]);
     }
@@ -307,14 +320,15 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
     transition(window, cx, target)
 }
 
-/// A folding branch's row and the row under the branch, which moves as the
-/// branch folds.
-fn row_below(target: &str) -> Option<(&'static str, &'static str)> {
+/// A folding branch's row, the row under the branch, which moves as the
+/// branch folds, and the branch's last row.
+fn row_below(target: &str) -> Option<(&'static str, &'static str, &'static str)> {
     match target {
-        "branch" => Some(("nav:Workloads", "nav:Network")),
+        "branch" => Some(("nav:Workloads", "nav:Network", "tree:Workloads/CronJob")),
         "custom-group" => Some((
             "custom-group:argoproj.io",
             "custom-group:helm.toolkit.fluxcd.io",
+            "custom-kind:argoproj.io/v1alpha1:ApplicationSet",
         )),
         _ => None,
     }

@@ -152,8 +152,8 @@ const TARGETS = {
 		property: "rotate",
 		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
 	},
-	branch: fold(["Workloads"], ["Network"]),
-	"custom-group": fold(["Custom Resources", "argoproj.io"], ["Custom Resources", "helm.toolkit.fluxcd.io"]),
+	branch: fold(["Workloads"], ["Network"], "CronJob"),
+	"custom-group": fold(["Custom Resources", "argoproj.io"], ["Custom Resources", "helm.toolkit.fluxcd.io"], "ApplicationSet"),
 } satisfies Record<string, Target>;
 
 /**
@@ -162,7 +162,8 @@ const TARGETS = {
  * scroll of the sidebar, such as the one a click makes, is left out. `property` names what the
  * transition changes.
  */
-function fold(path: string[], below: string[]): Target {
+/** A folding branch at `path`, the row under it, and the label of the branch's last row. */
+function fold(path: string[], below: string[], last: string): Target {
 	return {
 		moving: (page) => sidebarRow(page, below),
 		property: "height",
@@ -172,10 +173,17 @@ function fold(path: string[], below: string[]): Target {
 		},
 		between: true,
 		// A fold reveals rows by the height they lay out at, so a row under it keeps the sidebar's
-		// row height however long the sidebar grows.
+		// row height however long the sidebar grows. An ended fold shows the branch's last row whole,
+		// right above that row, where a cut-short slide leaves it clipped below that row's top.
 		fits: async (page) => {
-			const [height, row] = await Promise.all([below, ["Workloads"]].map((at) => sidebarRow(page, at).evaluate((item) => item.getBoundingClientRect().height)));
-			if (height !== row) throw new Error(`${below.join(" / ")} is ${height} px high, not a sidebar row's ${row} px`);
+			const [under, row, end] = await Promise.all(
+				[below, ["Workloads"], [...path, last]].map((at) => sidebarRow(page, at).evaluate((item) => {
+					const { top, bottom, height } = item.getBoundingClientRect();
+					return { top, bottom, height };
+				})),
+			);
+			if (under.height !== row.height) throw new Error(`${below.join(" / ")} is ${under.height} px high, not a sidebar row's ${row.height} px`);
+			if (end.bottom !== under.top) throw new Error(`${path.join(" / ")} is not fully open: ${last} ends at ${end.bottom}, ${below.join(" / ")} starts at ${under.top}`);
 		},
 		animated: (page) => sidebarRow(page, path).locator(".."),
 		act: (page) => sidebarRow(page, path).getByRole("button").click(),
