@@ -128,10 +128,7 @@ export const overviewSteps = {
 	selectWorkspaceContext: (item) => ({ context: string(item.context) }),
 	toggleWorkspaceNamespace: (item) => ({ namespace: string(item.namespace) }),
 	expectOpenWorkspace: (item) => ({ name: string(item.name), context: string(item.context) }),
-	openPalette: (item) => {
-		if (item.via !== "button" && item.via !== "shortcut") throw new Error("Expected how the palette opens");
-		return { via: item.via };
-	},
+	openPalette: (item) => ({ via: oneOf(["button", "shortcut"], item.via, "how the palette opens") }),
 	expectPaletteEntry: (item) => ({ label: string(item.label) }),
 	expectNoPaletteEntry: (item) => ({ label: string(item.label) }),
 	choosePaletteEntry: (item) => ({ label: string(item.label) }),

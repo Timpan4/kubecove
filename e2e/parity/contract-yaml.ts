@@ -29,10 +29,12 @@ export const yamlSteps = {
 	toggleDetailDisclosure: (item) => ({ label: string(item.label) }),
 	expectNoPageText: (item) => ({ text: string(item.text) }),
 	clickDetailControl: (item) => ({ label: string(item.label) }),
-	expectYamlDiagnostic: (item) => {
-		if (item.severity !== "error" && item.severity !== "warning" && item.severity !== "info") throw new Error("Expected a diagnostic severity");
-		return { severity: item.severity, source: string(item.source), message: string(item.message), path: string(item.path) };
-	},
+	expectYamlDiagnostic: (item) => ({
+		severity: oneOf(["error", "warning", "info"], item.severity, "a diagnostic severity"),
+		source: string(item.source),
+		message: string(item.message),
+		path: string(item.path),
+	}),
 	expectNoYamlDiagnostic: (item) => ({ message: string(item.message) }),
 	expectYamlApplyDescription: (item) => ({ text: string(item.text) }),
 	expectNoYamlApplyDescription: noPayload,
@@ -69,10 +71,7 @@ export const yamlSteps = {
 		return { contains: item.contains.map(string) };
 	},
 	showTab: (item) => ({ tab: string(item.tab) }),
-	filterEvents: (item) => {
-		if (item.filter !== "All" && item.filter !== "Warnings" && item.filter !== "Normal") throw new Error("Expected an event filter");
-		return { filter: item.filter };
-	},
+	filterEvents: (item) => ({ filter: oneOf(["All", "Warnings", "Normal"], item.filter, "an event filter") }),
 	expectDetailScroll: (item) => ({ view: oneOf(["events", "timeline"], item.view, "event or timeline view") }),
 	expectEvent: (item) => ({ index: count(item.index), reason: string(item.reason), message: string(item.message) }),
 	expectEventCount: (item) => ({ count: count(item.count) }),

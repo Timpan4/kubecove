@@ -1,4 +1,4 @@
-import { type StepParsers, boolean, count, string, noPayload } from "./contract-values";
+import { type StepParsers, boolean, count, noPayload, oneOf, string } from "./contract-values";
 
 export const deliverySteps = {
 	expectGitOpsCount: (item) => ({ label: string(item.label), count: count(item.count) }),
@@ -7,11 +7,10 @@ export const deliverySteps = {
 	openGitOpsResources: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
 	expectArgoWorkspace: (item) => ({ name: string(item.name) }),
 	filterArgoResources: (item) => ({ filter: string(item.filter) }),
-	setDeliveryView: (item) => {
-		if (item.page !== "GitOps" && item.page !== "Helm") throw new Error("Expected a delivery page");
-		if (item.mode !== "Cards" && item.mode !== "List") throw new Error("Expected Cards or List");
-		return { page: item.page, mode: item.mode };
-	},
+	setDeliveryView: (item) => ({
+		page: oneOf(["GitOps", "Helm"], item.page, "a delivery page"),
+		mode: oneOf(["Cards", "List"], item.mode, "Cards or List"),
+	}),
 	expectGitOpsTable: (item) => ({ title: string(item.title), count: count(item.count) }),
 	expectGitOpsItem: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
 	expectNoGitOpsItem: (item) => ({ kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) }),
