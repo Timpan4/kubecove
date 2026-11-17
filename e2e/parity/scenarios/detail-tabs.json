@@ -85,6 +85,19 @@
       ]
     },
     {
+      "id": "revisions.empty-side",
+      "title": "A revision diff against an empty pod template numbers the empty side from line 0",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "search", "value": "todo-web" },
+        { "action": "openResource", "kind": "Deployment", "name": "todo-web", "namespace": "todo" },
+        { "action": "showTab", "tab": "Revisions" },
+        { "action": "expectRevisionDiff", "selected": "Revision 2", "comparison": "Revision 1", "contains": ["@@ -0,0 +1,3 @@", "+metadata:"] },
+        { "action": "selectRevision", "label": "Revision 1" },
+        { "action": "expectRevisionDiff", "selected": "Revision 1", "comparison": "Revision 2", "contains": ["@@ -1,3 +0,0 @@", "-metadata:"] }
+      ]
+    },
+    {
       "id": "actions.restart-review",
       "title": "Restart reviews the exact Deployment, Cancel sends nothing, and Apply runs the reviewed action",
       "steps": [

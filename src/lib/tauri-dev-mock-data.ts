@@ -59,6 +59,31 @@ export const deploymentRevisions: DeploymentRevision[] = [
 	},
 ];
 
+/**
+ * Synthetic todo-web revisions. No real ReplicaSet has an empty pod template,
+ * but one gives the revision diff a hunk with an empty side.
+ */
+export const emptyTemplateRevisions = {
+	name: "todo-web",
+	namespace: "todo",
+	revisions: [
+		{
+			name: "todo-web-6d4b8c7f9a",
+			revision: 2,
+			changeCause: "Label the todo-web pods",
+			createdAt: now,
+			podTemplateYaml: "metadata:\n  labels:\n    app: todo-web\n",
+		},
+		{
+			name: "todo-web-58c9d6b7f4",
+			revision: 1,
+			changeCause: "Create todo-web",
+			createdAt: "2026-06-28T09:30:00Z",
+			podTemplateYaml: "",
+		},
+	] satisfies DeploymentRevision[],
+};
+
 export const source: KubeconfigSourcesSummary = {
 	kubeconfigEnvVar: "kubeconfigSource=browser-mock",
 	paths: [],
