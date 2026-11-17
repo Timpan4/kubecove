@@ -24,6 +24,11 @@ describe("parity input boundaries", () => {
 		expect(() => mergeActionMaps({ openResources: () => {} }, { openResources: () => {} })).toThrow("Duplicate parity action: openResources");
 		expect(() => requireRegisteredActions(["openResources"])).toThrow("typeSettingsField");
 	});
+	test("registration keeps an own action even when it is non-enumerable", () => {
+		const openResources = () => {};
+		const area = Object.defineProperty({ openResources }, "openResources", { enumerable: false });
+		expect(mergeActionMaps(area).openResources).toBe(openResources);
+	});
 	test("overview identities retain an API version and reject malformed discriminators", () => {
 		const step = { action: "openOverviewProblem", kind: "Deployment", name: "same", namespace: "payments", context: "mock-dev", apiVersion: "alpha.example/v1" };
 		expect(parseContract(withStep(step)).scenarios[0].steps[0]).toMatchObject({ apiVersion: "alpha.example/v1" });

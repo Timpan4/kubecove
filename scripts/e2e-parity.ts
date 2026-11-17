@@ -8,7 +8,6 @@ import { runGpui } from "../e2e/parity/gpui-run";
 import { parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
-import { runWeb } from "../e2e/parity/web";
 import { holdFrameIsolation } from "./gpui-frame-process";
 
 // PARITY_JOBS: parallel web pages and GPUI processes each. The default splits the CPUs
@@ -137,7 +136,12 @@ async function runDrivers(contract: Contract) {
 			.then((problem) => { if (problem) fail(problem); }, (error) => fail(`GPUI driver: ${String(error)}`))
 			.finally(async () => { await exportExit; controller.signal.removeEventListener("abort", cancelExport); }));
 	}
-	if (driver !== "gpui") runs.push(runWeb(contract, artifacts, controller.signal, webJobs).catch((error) => fail(`Web driver: ${String(error)}`)).finally(() => mark("web")));
+	if (driver !== "gpui") {
+		runs.push(import("../e2e/parity/web")
+			.then(({ runWeb }) => runWeb(contract, artifacts, controller.signal, webJobs))
+			.catch((error) => fail(`Web driver: ${String(error)}`))
+			.finally(() => mark("web")));
+	}
 	await Promise.all(runs);
 	controller.signal.throwIfAborted();
 	const drivers = driver ? [driver] : ["web", "gpui"] as const;

@@ -17,6 +17,10 @@ async function geometry(terminal: Locator) {
     return { bounds, width, height: row.height, rows, at: (r: number, c: number) => ({ x: bounds.x + (c + 0.1) * width, y: bounds.y + (r + 0.5) * row.height }) };
 }
 
+function visibleTerminal(page: Page) {
+	return page.locator(".xterm:visible");
+}
+
 export const terminalActions = {
 	async terminalFit(page, step) {
 		await page.setViewportSize({ width: step.width, height: step.height });
@@ -28,7 +32,7 @@ export const terminalActions = {
 		await frames(page);
 	},
 	async terminalSelect(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		const cells = await geometry(terminal);
 		const from = cells.at(step.row, step.col);
 		if (step.word) await page.mouse.dblclick(from.x, from.y);
@@ -44,7 +48,7 @@ export const terminalActions = {
 		}
 	},
 	async terminalDragOutside(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		const cells = await geometry(terminal);
 		const from = cells.at(step.row, step.col);
 		const viewport = page.viewportSize();
@@ -67,7 +71,7 @@ export const terminalActions = {
 		await frames(page);
 	},
 	async terminalCopy(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		// Exercise xterm's real copy listener without touching OS clipboard.
 		const copied = await terminal.evaluate((element) => {
 			const clipboardData = new DataTransfer();
@@ -77,7 +81,7 @@ export const terminalActions = {
 		if (copied !== step.text) throw new Error(`Terminal copied ${JSON.stringify(copied)}, expected ${JSON.stringify(step.text)}`);
 	},
 	async terminalPaste(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		await terminal.locator("textarea").evaluate((element, text) => {
 			const clipboardData = new DataTransfer();
 			clipboardData.setData("text/plain", text);
@@ -85,7 +89,7 @@ export const terminalActions = {
 		}, step.text);
 	},
 	async terminalPrimaryPaste(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		if (process.platform !== "linux") throw new Error("Primary selection paste is Linux-only");
 		// xterm's onLinuxMouseSelection selects the mouse selection in its textarea;
 		// WebKitGTK owns that selection as PRIMARY.
@@ -100,7 +104,7 @@ export const terminalActions = {
 		await frames(page);
 	},
 	async terminalFocus(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		if (step.key) await tabTo(page, terminal.locator("textarea"));
 		else if (step.focused) await terminal.locator(".xterm-screen").click();
 		else await terminal.locator("textarea").evaluate((element: HTMLTextAreaElement) => element.blur());
@@ -111,7 +115,7 @@ export const terminalActions = {
 		await frames(page);
 	},
 	async terminalRightClick(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		const cells = await geometry(terminal);
 		const at = cells.at(step.row, step.col);
 		// xterm skips a right press while text is selected, so the selection survives for the browser's context menu.
@@ -119,7 +123,7 @@ export const terminalActions = {
 		await frames(page);
 	},
 	async expectTerminalCursor(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		const cells = await geometry(terminal);
 		await page.waitForFunction(({ expected, row, col, left, width }) => {
 			const cursor = [...document.querySelectorAll(".xterm .xterm-rows .xterm-cursor")].find((element) => element.getClientRects().length > 0);
@@ -134,7 +138,7 @@ export const terminalActions = {
 		}, { expected: step.cursor, row: step.row, col: step.col, left: cells.bounds.x, width: cells.width });
 	},
 	async terminalScroll(page, step) {
-		const terminal = page.locator(".xterm:visible");
+		const terminal = visibleTerminal(page);
 		// xterm 6 scrolls its buffer from wheel input, not from viewport scrollTop.
 		const cells = await geometry(terminal);
 		await page.mouse.move(cells.bounds.x + cells.bounds.width / 2, cells.bounds.y + cells.bounds.height / 2);
