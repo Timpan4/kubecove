@@ -4,9 +4,9 @@
 //! parts of `DetailsTab.svelte` and `metadata-details.ts`. The Containers table
 //! lives in `containers.rs`.
 
-use super::super::Inspector;
 use super::super::detail::{Detail, ResourceDetail};
 use super::super::helm_page::HelmTarget;
+use super::super::{Inspector, PageDestination};
 use super::containers::{cell, row_of, table_body};
 use super::metadata_card;
 use crate::targets::TestSupportExt;
@@ -42,9 +42,7 @@ impl Inspector {
     /// `openHelmRelease`: the Helm page reads the resource's context and selects
     /// the release once it loads. Leaving the detail passes the page's leave guards.
     fn open_helm_release(&mut self, target: HelmTarget, cx: &mut Context<Self>) {
-        self.helm_page.requested_context = Some(target.context.clone());
-        self.helm_page.target = Some(target);
-        self.open_page(super::super::Page::Helm, cx);
+        self.navigate_page(PageDestination::HelmRelease(target), cx);
     }
 
     fn toggle_disclosure(&mut self, disclosure: Disclosure, cx: &mut Context<Self>) {
