@@ -145,7 +145,7 @@ impl Inspector {
 
     /// How `node` shows its children this frame: `None` once it is closed and
     /// its fold has ended.
-    fn nav_fold(&self, node: &str, cx: &mut Context<Self>) -> Option<Fold> {
+    fn nav_fold(&self, node: &str, cx: &mut Context<Self>) -> Option<Fold<'_>> {
         self.sidebar_tree
             .folds
             .branch(&fold_key(node), self.nav_open(node), cx)

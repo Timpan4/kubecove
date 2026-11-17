@@ -21,6 +21,11 @@ struct Track {
     /// The shown share when the run started: 0 is closed and 1 is open.
     from: f32,
     start: Instant,
+    /// The branch's height in pixels, measured on the run's first frame, as
+    /// the web's `slide` measures it when it starts. A child that folds inside
+    /// the branch, or rows that arrive while it runs, change only what shows
+    /// inside that height.
+    height: Option<f32>,
     /// Whether this frame rendered the branch.
     seen: bool,
 }
@@ -59,18 +64,33 @@ impl Folds {
             return;
         }
         let now = cx.background_executor().now();
-        let from = tracks
+        // A run that turns back keeps the height the last run measured, so the
+        // branch turns from the height it shows.
+        let (from, height) = tracks
             .get(path)
-            .map_or(if open { 0. } else { 1. }, |track| track.at(now).0);
+            .map_or((if open { 0. } else { 1. }, None), |track| {
+                (track.at(now).0, track.height)
+            });
         tracks.insert(
             path.to_owned(),
             Track {
                 open,
                 from,
                 start: now,
+                height,
                 seen: true,
             },
         );
+    }
+
+    /// The height of the folding branch at `path`: the one its run measured,
+    /// or `measured`, which becomes the run's height on its first frame.
+    fn height(&self, path: &str, measured: f32) -> f32 {
+        let mut tracks = self.tracks.borrow_mut();
+        let Some(track) = tracks.get_mut(path) else {
+            return measured;
+        };
+        *track.height.get_or_insert(measured)
     }
 
     /// Whether the branch at `path` is folding.
@@ -92,7 +112,7 @@ impl Folds {
     /// How the branch at `path` shows its rows this frame: `None` when it is
     /// closed and its fold has ended, so the caller builds no rows for it.
     /// Tests read a running fold's share under `fold:<path>`.
-    pub(super) fn branch(&self, path: &str, open: bool, cx: &mut App) -> Option<Fold> {
+    pub(super) fn branch(&self, path: &str, open: bool, cx: &mut App) -> Option<Fold<'_>> {
         let mut tracks = self.tracks.borrow_mut();
         let settled = open.then_some(Fold(None));
         let Some(track) = tracks.get_mut(path) else {
@@ -106,7 +126,11 @@ impl Folds {
         }
         track.seen = true;
         Moving::record(&ElementId::Name(format!("fold:{path}").into()), share, cx);
-        Some(Fold(Some(share)))
+        Some(Fold(Some(Running {
+            share,
+            path: path.to_owned(),
+            folds: self,
+        })))
     }
 
     /// Forgets folds whose branch did not render, and reports whether a fold
@@ -118,20 +142,27 @@ impl Folds {
     }
 }
 
-/// A branch that shows rows this frame, and the share of them its fold has
-/// reached if it is folding.
-pub(super) struct Fold(Option<f32>);
+/// A branch that shows rows this frame, and its run if it is folding.
+pub(super) struct Fold<'a>(Option<Running<'a>>);
 
-impl Fold {
+struct Running<'a> {
+    /// The share of the branch's height the fold has reached.
+    share: f32,
+    path: String,
+    folds: &'a Folds,
+}
+
+impl Fold<'_> {
     /// The branch's `rows` cut to the height the fold has reached. `shown` is
     /// the height a row shows, which an inner fold may already have cut.
     pub(super) fn clip<T>(self, mut rows: Vec<T>, shown: impl Fn(&mut T) -> &mut f32) -> Vec<T> {
-        let Some(share) = self.0 else {
+        let Some(run) = self.0 else {
             return rows;
         };
-        let total: f32 = rows.iter_mut().map(|row| *shown(row)).sum();
+        let measured: f32 = rows.iter_mut().map(|row| *shown(row)).sum();
+        let height = run.folds.height(&run.path, measured);
         // Whole pixels, so the rows below the branch stay on the pixel grid.
-        let mut left = (total * share).round();
+        let mut left = (height * run.share).round();
         rows.retain_mut(|row| {
             let height = shown(row);
             *height = height.min(left);
@@ -175,4 +206,57 @@ pub(super) fn cut(row: AnyElement, height: f32, shown: f32) -> AnyElement {
         .overflow_hidden()
         .child(row)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    //! Failure mode: a fold that sizes its branch from the rows' heights on
+    //! every frame lets a child that opens inside a closing branch grow the
+    //! branch, so the rows below it move down before they move up.
+    use super::*;
+    use gpui_kit::TestAppContext;
+
+    /// `sidebar_tree::ROW_HEIGHT`.
+    const ROW: f32 = 26.;
+
+    /// The height a namespace branch shows this frame: four group rows, the
+    /// first of which, Workloads, holds seven kind rows.
+    fn namespace(folds: &Folds, cx: &mut TestAppContext) -> f32 {
+        cx.update(|cx| {
+            let kinds = folds
+                .branch("ns/Workloads", true, cx)
+                .map_or(Vec::new(), |fold| fold.clip(vec![ROW; 7], |row| row));
+            let mut rows = vec![ROW];
+            rows.extend(kinds);
+            rows.extend([ROW; 3]);
+            let shown = folds
+                .branch("ns", false, cx)
+                .map_or(0., |fold| fold.clip(rows, |row| row).iter().sum());
+            folds.end_frame();
+            shown
+        })
+    }
+
+    #[gpui_kit::test]
+    fn a_closing_branch_does_not_grow_while_a_child_opens(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        cx.update(|cx| {
+            folds.start("ns/Workloads", true, cx);
+            folds.start("ns", false, cx);
+        });
+        let mut last = namespace(&folds, cx);
+        assert_eq!(last, 4. * ROW);
+        // Frames 10 ms apart, so the first frames of the run are seen.
+        for _ in 0..15 {
+            cx.background_executor
+                .advance_clock(control_motion::DURATION / 15);
+            let shown = namespace(&folds, cx);
+            assert!(
+                shown <= last,
+                "the closing branch grew from {last} to {shown}"
+            );
+            last = shown;
+        }
+        assert_eq!(last, 0.);
+    }
 }
