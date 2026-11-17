@@ -120,8 +120,12 @@
 			? buildFlowTopologyEdgeLayer(graph.nodes, graph.edges)
 			: null,
 	);
-	// Continuous edge motion repaints every frame, so only maps small enough to stay fully mounted get it.
-	const edgeMotion = $derived(!onlyRenderVisibleElements && !prefersReducedMotion.current);
+	// Continuous edge motion repaints every frame: about a tenth of a core in WebKitGTK on a small
+	// map. So it runs only on maps small enough to stay fully mounted, and only in the active window.
+	let windowActive = $state(document.hasFocus());
+	const edgeMotion = $derived(
+		!onlyRenderVisibleElements && !prefersReducedMotion.current && windowActive,
+	);
 	// The pulse stops with the activity icons when live updates are not current.
 	const pulses = $derived(
 		graph && edgeMotion && updatesCurrent ? buildFlowTopologyPulses(graph.nodes, graph.edges) : [],
@@ -164,6 +168,8 @@
 	};
 
 </script>
+
+<svelte:window onfocus={() => (windowActive = true)} onblur={() => (windowActive = false)} />
 
 <div class="flex h-full min-h-[400px] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm">
 	<div class="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">

@@ -617,8 +617,9 @@
 }
 
 /* Edge motion runs in SVG layers outside the node card subtrees, where the
-   WKWebView blank-card bug above does not apply. OwnershipMap.svelte sets
-   `ownership-map-motion` only on maps that stay fully mounted, and never
+   WKWebView blank-card bug above does not apply. Each frame of it repaints
+   the viewport layer, so OwnershipMap.svelte sets `ownership-map-motion` only
+   on maps that stay fully mounted, only while the window is active, and never
    under reduced motion. Two 8 8 dash periods per loop keep the loop seamless. */
 .ownership-map-motion .ownership-map-edge-active .svelte-flow__edge-path {
   animation: topology-edge-flow 1.8s linear infinite;
