@@ -30,6 +30,7 @@ const FULL_SUITE = [
 	/^src-tauri\/(?!server\/)(?!.*\.(rs|md)$)/,
 ];
 const SCENARIO_FILE = /^e2e\/parity\/scenarios\/[^/]+\.json$/;
+const GPUI_SOURCE = "src-tauri/gpui/src/";
 // A line that is only comment text: code after a closing `*/` makes it a code line.
 const COMMENT_LINE = String.raw`\/\/.*|\/\*(?:(?!\*\/).)*(?:\*\/\s*)?|\*\/\s*|\*(?:\s(?:(?!\*\/).)*(?:\*\/\s*)?)?`;
 const COMMENT = new RegExp(`^\\s*(${COMMENT_LINE})?$`);
@@ -128,6 +129,9 @@ export async function changedScenarios(base: string, scenarioIds: string[], mapP
 	if (!existsSync(mapPath)) return full(`no coverage map at ${mapPath}`);
 	const map = await readMap(mapPath);
 	if ((await git(["cat-file", "-e", `${map.commit}^{commit}`])).code !== 0) return full(`coverage map commit ${map.commit} is not in this clone`);
+	// Maps recorded before dep-info was read from cargo's build-dir layout list no GPUI source,
+	// so a compiled Rust change would select nothing.
+	if (!map.compiled.some((path) => path.startsWith(GPUI_SOURCE))) return full(`coverage map lists no compiled file under ${GPUI_SOURCE}`);
 	const recorded = new Set(map.scenarios);
 	for (const id of scenarioIds) if (!recorded.has(id)) add(id, "no recorded coverage");
 	const pick = (set: number, cause: string) => { for (const index of map.sets[set] ?? []) { const id = map.scenarios[index]; if (id) add(id, cause); } };

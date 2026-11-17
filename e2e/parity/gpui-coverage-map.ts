@@ -26,22 +26,30 @@ async function llvmTool(name: "llvm-cov" | "llvm-profdata", workspace: string): 
 	return existsSync(bundled) ? bundled : name;
 }
 
-/** Repository files listed in cargo dep-info (`*.d`) under `dirs`, including `include_*!` inputs. */
-async function compiledFiles(dirs: string[], root: string): Promise<string[]> {
+/** The GPUI crate root. A recording whose dep-info misses it has misread cargo's layout. */
+const GPUI_CRATE_ROOT = "src-tauri/gpui/src/lib.rs";
+
+/**
+ * Repository files listed in cargo dep-info (`*.d`) anywhere under `buildDir`, including
+ * `include_*!` inputs. Cargo's build-dir layout keeps each unit's dep-info in
+ * `<profile>/build/<package>/<hash>/out/`, so a fixed `deps` directory misses crates. Rustc
+ * names workspace members' files relative to the workspace and path dependencies' files
+ * absolutely. Units left from earlier builds can add files, which only selects more.
+ */
+async function compiledFiles(buildDir: string, workspace: string, root: string): Promise<string[]> {
 	const files = new Set<string>();
-	for (const dir of dirs) {
-		if (!existsSync(dir)) continue;
-		for (const name of (await readdir(dir)).filter((entry) => entry.endsWith(".d"))) {
-			for (const line of (await readFile(join(dir, name), "utf8")).split("\n")) {
-				const colon = line.indexOf(": ");
-				if (colon < 0) continue;
-				for (const path of line.slice(colon + 2).split(/(?<!\\) /).map((part) => part.replaceAll("\\ ", " ").trim()).filter(Boolean)) {
-					const local = relative(root, resolve(path));
-					if (!local.startsWith("..") && !local.startsWith(sep)) files.add(local.split(sep).join("/"));
-				}
+	const names = existsSync(buildDir) ? await readdir(buildDir, { recursive: true }) : [];
+	for (const name of names.filter((entry) => entry.endsWith(".d"))) {
+		for (const line of (await readFile(join(buildDir, name), "utf8")).split("\n")) {
+			const colon = line.indexOf(": ");
+			if (colon < 0) continue;
+			for (const path of line.slice(colon + 2).split(/(?<!\\) /).map((part) => part.replaceAll("\\ ", " ").trim()).filter(Boolean)) {
+				const repositoryPath = local(root, resolve(workspace, path));
+				if (repositoryPath) files.add(repositoryPath);
 			}
 		}
 	}
+	if (!files.has(GPUI_CRATE_ROOT)) throw new Error(`Cargo dep-info under ${buildDir} does not list ${GPUI_CRATE_ROOT}, so the coverage map could not tell which Rust files the parity binary compiled`);
 	return [...files].sort();
 }
 
@@ -113,9 +121,10 @@ const IGNORED = "-ignore-filename-regex=/(\\.cargo|\\.rustup|rustc)/";
 
 /**
  * Converts each `coverage/gpui-<index>.profraw` the parity processes wrote and deletes it.
- * `ids` lists the selected scenario IDs by position, as in `scenarios.txt`.
+ * `ids` lists the selected scenario IDs by position, as in `scenarios.txt`. `buildDir` is the
+ * coverage build's cargo build directory.
  */
-export async function recordGpuiCoverage(artifacts: string, executable: string, depDirs: string[], ids: string[], jobs: number, signal: AbortSignal): Promise<void> {
+export async function recordGpuiCoverage(artifacts: string, executable: string, buildDir: string, ids: string[], jobs: number, signal: AbortSignal): Promise<void> {
 	const root = resolve(".");
 	const workspace = resolve("src-tauri/gpui");
 	const [cov, profdata] = await Promise.all([llvmTool("llvm-cov", workspace), llvmTool("llvm-profdata", workspace)]);
@@ -125,7 +134,7 @@ export async function recordGpuiCoverage(artifacts: string, executable: string, 
 		const index = /^gpui-(\d+)\.profraw$/.exec(name)?.[1];
 		return index === undefined ? [] : [Number(index)];
 	});
-	const info: CodeInfo = { code: {}, compiled: await compiledFiles(depDirs, root) };
+	const info: CodeInfo = { code: {}, compiled: await compiledFiles(buildDir, workspace, root) };
 	let spans: Promise<Map<string, Span>> | undefined;
 	const worker = async () => {
 		for (let index = pending.shift(); index !== undefined; index = pending.shift()) {
