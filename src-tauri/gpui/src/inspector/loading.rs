@@ -7,6 +7,7 @@
 //! asks for each indicator's phase; the frame then schedules one one-shot timer
 //! for the earliest change, so waiting never redraws continuously.
 use super::Inspector;
+use crate::motion::Timing;
 use gpui_kit::{Context, Task};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -16,6 +17,9 @@ use std::time::{Duration, Instant};
 pub const SHOW_DELAY: Duration = Duration::from_millis(300);
 /// The user chose this value.
 pub const MIN_VISIBLE: Duration = Duration::from_millis(300);
+/// How content fades in after a shown indicator: the web's
+/// `animate-in fade-in duration-150`.
+const REVEAL: Timing = Timing::FADE_IN;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
@@ -80,9 +84,14 @@ impl Episode {
 #[derive(Default)]
 struct Frame {
     now: Option<Instant>,
+    reduce_motion: bool,
     /// Episodes and whether this frame observed them.
     episodes: HashMap<String, (Episode, bool)>,
     next: Option<Instant>,
+    /// When content replaced each indicator that had shown.
+    reveals: HashMap<String, Instant>,
+    /// Whether this frame drew an indicator or content that still fades in.
+    fading: bool,
 }
 
 #[derive(Default)]
@@ -131,6 +140,9 @@ impl LoadingDelays {
         }
         if phase.ready() {
             frame.episodes.remove(key);
+            if episode.shown.is_some() {
+                frame.reveals.insert(key.to_owned(), now);
+            }
         } else if let Some(entry) = frame.episodes.get_mut(key) {
             *entry = (episode, true);
         } else {
@@ -149,9 +161,31 @@ impl LoadingDelays {
         self.frame.borrow().episodes.contains_key(key)
     }
 
-    pub(super) fn begin_frame(&mut self, now: Instant) {
+    /// The opacity of the content that replaced the indicator `key`, while it
+    /// fades in. Content fades only after an indicator that had shown: a read
+    /// that settles within the show delay swaps at once, and so does every
+    /// read under reduced motion. Call it after `phase` for the same key. The
+    /// web swaps at once; the user chose this fade for this client on 2026-11-17.
+    pub fn reveal(&self, key: &str) -> Option<f32> {
+        let mut frame = self.frame.borrow_mut();
+        let elapsed = frame
+            .now?
+            .saturating_duration_since(*frame.reveals.get(key)?);
+        if frame.reduce_motion || elapsed >= REVEAL.duration {
+            return None;
+        }
+        frame.fading = true;
+        Some(REVEAL.progress(elapsed))
+    }
+
+    pub(super) fn begin_frame(&mut self, now: Instant, reduce_motion: bool) {
         let frame = self.frame.get_mut();
         frame.now = Some(now);
+        frame.reduce_motion = reduce_motion;
+        frame.fading = false;
+        frame
+            .reveals
+            .retain(|_, since| now < *since + REVEAL.duration);
         frame.next = None;
         for (_, seen) in frame.episodes.values_mut() {
             *seen = false;
@@ -159,15 +193,17 @@ impl LoadingDelays {
     }
 
     /// Forgets indicators this frame did not render, so a later read starts a
-    /// fresh delay, and arms one timer for the earliest phase change.
-    pub(super) fn end_frame(&mut self, cx: &mut Context<Inspector>) {
+    /// fresh delay, and arms one timer for the earliest phase change. Returns
+    /// whether a fade this frame drew is still running.
+    pub(super) fn end_frame(&mut self, cx: &mut Context<Inspector>) -> bool {
         let frame = self.frame.get_mut();
         frame.episodes.retain(|_, (_, seen)| *seen);
+        let fading = frame.fading;
         let (Some(now), Some(next)) = (frame.now, frame.next) else {
-            return;
+            return fading;
         };
         if self.wake.as_ref().is_some_and(|(at, _)| *at == next) {
-            return;
+            return fading;
         }
         let delay = next.saturating_duration_since(now);
         let task = cx.spawn(async move |this, cx| {
@@ -175,6 +211,32 @@ impl LoadingDelays {
             this.update(cx, |_, cx| cx.notify()).ok();
         });
         self.wake = Some((next, task));
+        fading
+    }
+}
+
+impl Inspector {
+    /// The opacity the last frame drew the content that replaced the indicator
+    /// `key` with, or None when it does not fade. Opacity is painted, so UI
+    /// tests ask here.
+    #[doc(hidden)]
+    pub fn content_reveal(&self, key: &str) -> Option<f32> {
+        self.loading.reveal(key)
+    }
+
+    /// Whether a frame rendered at the clock's current time arranged the next
+    /// step of a spinner or of the foreground bar's slide. That wake is a
+    /// timer and asks for no frame, so UI tests ask here. To judge one frame,
+    /// call `forget_repeating_motion` before rendering it.
+    #[doc(hidden)]
+    pub fn repeating_motion(cx: &gpui_kit::App) -> bool {
+        crate::motion::wake_pending(cx)
+    }
+
+    /// Drops what earlier frames told `repeating_motion`.
+    #[doc(hidden)]
+    pub fn forget_repeating_motion(cx: &mut gpui_kit::App) {
+        crate::motion::forget_ask(cx);
     }
 }
 
@@ -187,7 +249,7 @@ mod tests {
     // left over from an indicator that stopped rendering must not show a later
     // read's indicator at once.
     fn frame(delays: &mut LoadingDelays, now: Instant, pending: bool) -> Phase {
-        delays.begin_frame(now);
+        delays.begin_frame(now, false);
         let phase = delays.phase("read", pending);
         let frame = delays.frame.get_mut();
         frame.episodes.retain(|_, (_, seen)| *seen);
@@ -199,7 +261,7 @@ mod tests {
         let start = Instant::now();
         let mut delays = LoadingDelays::default();
         frame(&mut delays, start, true);
-        delays.begin_frame(start + Duration::from_secs(5));
+        delays.begin_frame(start + Duration::from_secs(5), false);
         delays.frame.get_mut().episodes.retain(|_, (_, seen)| *seen);
         let later = start + Duration::from_secs(10);
         assert_eq!(frame(&mut delays, later, true), Phase::Waiting);

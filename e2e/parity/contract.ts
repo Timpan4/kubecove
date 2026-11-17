@@ -23,7 +23,7 @@ export const ACTIONS = [
     "dragKind",
     "expectEmptyLauncher", "expectEntryCount", "startWithoutWorkspace", "expectNoWorkspaceShell", "expectPaletteUnavailable",
     "copyErrorDetail",
-    "expectForegroundLoading", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
+    "expectForegroundLoading", "expectMotion", "setReducedMotion", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
     "copyResourceName", "expectCopyToast", "dismissCopyToast",
     "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
     "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost", "dropRemoteConnection",
@@ -123,7 +123,14 @@ function step<Value>(value: Value): Step {
         case "dragKind": return { action: item.action, kind: string(item.kind), target: string(item.target) };
         case "expectEntryCount": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), count: count(item.count) };
         case "copyErrorDetail": return { action: item.action, error: oneOf(["contexts", "namespaces", "details"], item.error, "an error panel"), expected: string(item.expected) };
-        case "expectForegroundLoading": return { action: item.action, active: boolean(item.active) };
+        case "expectForegroundLoading": {
+            const bar: Extract<Step, { action: "expectForegroundLoading" }> = { action: item.action, active: boolean(item.active) };
+            const sliding = optionalBoolean(item.sliding);
+            if (sliding !== undefined) bar.sliding = sliding;
+            return bar;
+        }
+        case "expectMotion": return { action: item.action, moving: boolean(item.moving) };
+        case "setReducedMotion": return { action: item.action, reduce: boolean(item.reduce) };
         case "expectFriendlyError": {
             const friendly: Extract<Step, { action: "expectFriendlyError" }> = { action: item.action, title: string(item.title) };
             if (item.next !== undefined) friendly.next = string(item.next);

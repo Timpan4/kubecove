@@ -9,7 +9,10 @@ use crate::backend::UpdateStatus;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
-use gpui_kit::{AnyElement, Context, Div, SharedString, deferred, div, prelude::*, px};
+use gpui_kit::{
+    AnimationExt, AnyElement, Context, Div, SharedString, deferred, div, prelude::*, px,
+};
+use std::{cell::Cell, rc::Rc};
 
 /// Whether the popover is open, and the version it last opened for. As on the
 /// web, a version opens the popover once, and closing it keeps it closed.
@@ -17,6 +20,50 @@ use gpui_kit::{AnyElement, Context, Div, SharedString, deferred, div, prelude::*
 pub(super) struct PanelState {
     pub(super) open: bool,
     auto_opened: Option<String>,
+    /// The download bar while the popover shows it.
+    fill: Rc<Cell<Option<Fill>>>,
+}
+
+/// The download bar's width as a share of its track: where its transition
+/// started, where it ends, and what the last frame drew.
+#[derive(Clone, Copy)]
+struct Fill {
+    from: f32,
+    to: f32,
+    shown: f32,
+}
+
+impl PanelState {
+    /// The download bar with the web's `transition-[width]`: a new width starts
+    /// from the width shown. The first width a popover shows appears at once,
+    /// as a mounted element has nothing to transition from.
+    fn download_fill(&self, to: f32) -> impl IntoElement + use<> {
+        let fill = self.fill.clone();
+        let state = match fill.get() {
+            Some(state) if state.to == to => state,
+            Some(state) => Fill {
+                from: state.shown,
+                to,
+                shown: state.shown,
+            },
+            None => Fill {
+                from: to,
+                to,
+                shown: to,
+            },
+        };
+        fill.set(Some(state));
+        div().h_full().bg(Tokens::primary()).with_animation(
+            // A new target is a new animation, so it starts from its beginning.
+            ("update-download-fill", (to * 100.).round() as usize),
+            crate::motion::Timing::TRANSITION.animation(),
+            move |bar, progress| {
+                let shown = state.from + (state.to - state.from) * progress;
+                fill.set(Some(Fill { shown, ..state }));
+                bar.w(gpui_kit::relative(shown))
+            },
+        )
+    }
 }
 
 impl Inspector {
@@ -87,7 +134,12 @@ impl Inspector {
             return None;
         }
         let open = self.update_panel.open;
-        let trigger = ui::ghost_icon("refresh-cw", 28., 14.)
+        if !open {
+            self.update_panel.fill.set(None);
+        }
+        // `animate-spin` on the trigger's icon while the check indicator shows.
+        let checking = self.updates.check.is_some() && self.update_checking().shown();
+        let trigger = ui::ghost_icon_spinning("refresh-cw", 28., 14., checking)
             .id("header-update")
             .test_support()
             .aria_label(self.update_tooltip())
@@ -207,6 +259,12 @@ impl Inspector {
     fn update_body(&self, cx: &mut Context<Self>) -> Div {
         let state = &self.updates;
         let body = div().flex().flex_col().gap(px(8.));
+        if state.error.is_some()
+            || state.check.is_some()
+            || !matches!(state.install, Install::Downloading { .. })
+        {
+            self.update_panel.fill.set(None);
+        }
         if let Some(error) = &state.error {
             return body
                 .child(labelled(
@@ -245,12 +303,7 @@ impl Inspector {
                             .rounded_full()
                             .overflow_hidden()
                             .bg(Tokens::muted())
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(gpui_kit::relative(filled))
-                                    .bg(Tokens::primary()),
-                            ),
+                            .child(self.update_panel.download_fill(filled)),
                     )
                     .child(labelled(ui::muted(ui::xs(caption.clone())), &caption));
             }

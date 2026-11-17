@@ -45,6 +45,9 @@ pub(super) struct HelmDetails {
     /// Resources sorted by `sortHelmReconciliationResources` when read.
     reconciliation: Query<Box<HelmReleaseReconciliation>>,
     reconciliation_read_at: Option<Instant>,
+    /// The opacity of the details and of the reconciliation table while each
+    /// fades in after its indicator, observed during render.
+    reveal: std::cell::Cell<[Option<f32>; 2]>,
 }
 
 impl HelmDetails {
@@ -147,14 +150,19 @@ impl Inspector {
     /// The details card renders as a list item after the frame, so the page
     /// observes its loading phases during render.
     pub(super) fn observe_helm_details_loading(&self) {
+        let details = &self.helm_page.details;
         if self.helm_page.selected.is_none() {
+            details.reveal.set([None; 2]);
             return;
         }
-        let details = &self.helm_page.details;
         self.loading
             .phase("helm-details", details.details.pending());
         self.loading
             .phase("helm-reconciliation", details.reconciliation.pending());
+        details.reveal.set([
+            self.loading.reveal("helm-details"),
+            self.loading.reveal("helm-reconciliation"),
+        ]);
     }
 
     pub(super) fn helm_details_card(&self, cx: &mut Context<Self>) -> Div {
@@ -238,6 +246,9 @@ impl Inspector {
             )),
             Some(Ok(details)) => self.helm_details_body(details, cx),
         }
+        .when_some(page.details.reveal.get()[0], |content, opacity| {
+            content.opacity(opacity)
+        })
         .children(
             [
                 page.details.details.refresh_error(),
@@ -504,7 +515,10 @@ impl Inspector {
                     )
             }
         };
-        div().child(heading).child(body)
+        let reveal = self.helm_page.details.reveal.get()[1];
+        div()
+            .child(heading)
+            .child(body.when_some(reveal, |body, opacity| body.opacity(opacity)))
     }
 }
 
@@ -514,7 +528,7 @@ fn pending(label: &str) -> Div {
         .flex()
         .items_center()
         .gap(px(8.))
-        .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+        .child(ui::spinner(16., Tokens::muted_foreground()))
         .child(
             ui::muted(ui::sm(label.to_owned()))
                 .id(SharedString::from(format!("helm-pending:{label}")))

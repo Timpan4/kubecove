@@ -286,7 +286,7 @@ fn edit_controls(
                 .test_support()
                 .aria_label("Dry run")
                 .when(preparing, |button| {
-                    button.child(ui::icon("loader-circle", 14., Tokens::foreground()))
+                    button.child(ui::spinner(14., Tokens::foreground()))
                 })
                 .child("Dry run");
             if dry_run_disabled {
@@ -310,7 +310,7 @@ fn edit_controls(
                         })
                 })
                 .when(applying, |button| {
-                    button.child(ui::icon("loader-circle", 14., Tokens::primary_foreground()))
+                    button.child(ui::spinner(14., Tokens::primary_foreground()))
                 })
                 .child("Apply");
             if apply_disabled {
@@ -449,7 +449,7 @@ pub(in crate::inspector) fn yaml_tab(
             .aria_label("Edit YAML")
             .when(
                 inspector.loading.phase("yaml-draft", loading).shown(),
-                |button| button.child(ui::icon("loader-circle", 14., Tokens::foreground())),
+                |button| button.child(ui::spinner(14., Tokens::foreground())),
             )
             .child(ui::icon("pencil", 14., Tokens::foreground()))
             .child("Edit YAML")

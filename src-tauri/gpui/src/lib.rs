@@ -20,6 +20,7 @@ mod log_buffer;
 mod logs;
 mod metrics;
 pub mod model;
+mod motion;
 mod palette;
 pub mod preferences;
 mod rbac;

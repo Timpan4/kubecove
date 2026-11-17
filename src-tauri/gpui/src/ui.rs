@@ -1,11 +1,14 @@
 //! Presentation helpers mirroring the Svelte frontend's shadcn-svelte variants
 //! in `src/components/ui/svelte/classes.ts`. Sizes use the web's px values.
 
+use crate::motion;
 use crate::theme::{HEADING, Palette, SANS, SM_FONT_SIZE, Tokens, XS_FONT_SIZE};
 use gpui_kit::{
-    Div, FontWeight, Hsla, Pixels, SharedString, Styled, Svg, Transformation, div, prelude::*, px,
-    radians, svg,
+    AnyElement, App, Bounds, Div, ElementId, FontWeight, GlobalElementId, Hsla, InspectorElementId,
+    LayoutId, Pixels, SharedString, Styled, Svg, Transformation, Window, div, percentage,
+    prelude::*, px, radians, svg,
 };
+use std::time::Duration;
 
 /// Text at a web font size (px) and line height (px).
 pub fn text(content: impl Into<SharedString>, size: f32, line: f32) -> Div {
@@ -58,6 +61,112 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(color)
+}
+
+/// The icon `Spinner.svelte` draws.
+pub const SPINNER: &str = "loader-circle";
+
+/// Tailwind's `animate-spin`, which `Spinner.svelte` sets: `spin 1s linear infinite`
+/// in `node_modules/tailwindcss/theme.css`.
+const SPIN_TURN: Duration = Duration::from_secs(1);
+
+/// `Spinner.svelte`. It turns only while it is rendered, on one clock shared by
+/// every spinner, and rests in an inactive window and under reduced motion.
+pub fn spinner(size: f32, color: Hsla) -> impl IntoElement {
+    spinning(SPINNER, size, color)
+}
+
+/// An icon with `animate-spin`.
+pub fn spinning(name: &str, size: f32, color: Hsla) -> impl IntoElement {
+    Spinning {
+        name: name.to_owned(),
+        size,
+        color,
+    }
+}
+
+/// An icon that turns while repeating motion runs (`motion::repeats`). A
+/// pending state can last for hours, so the next frame comes from the
+/// repeating clock's timer, when the icon has turned one device pixel.
+struct Spinning {
+    name: String,
+    size: f32,
+    color: Hsla,
+}
+
+impl IntoElement for Spinning {
+    type Element = Self;
+
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for Spinning {
+    type RequestLayoutState = AnyElement;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, AnyElement) {
+        let mut icon = icon(&self.name, self.size, self.color);
+        if motion::repeats(window, cx) {
+            // No painted point is farther than half the icon's box from its
+            // centre, so it travels at most the box's circumference per turn.
+            let travel = std::f32::consts::PI * self.size * window.scale_factor();
+            motion::wake_in(SPIN_TURN.div_f32(travel), window, cx);
+            let turn = motion::shared_phase(SPIN_TURN, cx);
+            icon = icon.with_transformation(Transformation::rotate(percentage(turn)));
+        }
+        let mut icon = icon.into_any_element();
+        (icon.request_layout(window, cx), icon)
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        icon: &mut AnyElement,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        icon.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        icon: &mut AnyElement,
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        icon.paint(window, cx);
+    }
+}
+
+/// An icon by name, where `SPINNER` names the turning spinner.
+pub fn glyph(name: &str, size: f32, color: Hsla) -> AnyElement {
+    if name == SPINNER {
+        spinner(size, color).into_any_element()
+    } else {
+        icon(name, size, color).into_any_element()
+    }
 }
 
 /// A branch's chevron at `open` of the way from right to down, as
@@ -205,12 +314,21 @@ pub fn outline_button() -> Div {
 
 /// `Button variant="ghost" size="icon"` (28px square).
 pub fn ghost_icon(name: &str, size: f32, icon_size: f32) -> Div {
-    div()
+    ghost_icon_spinning(name, size, icon_size, false)
+}
+
+/// `ghost_icon` whose icon has `animate-spin` while `spin` is set.
+pub fn ghost_icon_spinning(name: &str, size: f32, icon_size: f32, spin: bool) -> Div {
+    let frame = div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
         .size(px(size))
-        .rounded(px(8.))
-        .child(icon(name, icon_size, Tokens::foreground()))
+        .rounded(px(8.));
+    if spin {
+        frame.child(spinning(name, icon_size, Tokens::foreground()))
+    } else {
+        frame.child(icon(name, icon_size, Tokens::foreground()))
+    }
 }

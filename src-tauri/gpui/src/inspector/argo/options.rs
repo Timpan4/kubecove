@@ -445,9 +445,9 @@ pub(super) fn controls(
             .test_support()
             .aria_description(if disabled { "disabled" } else { "enabled" })
             .when(label != "Rollback", |b| {
-                b.child(ui::icon(
+                b.child(ui::glyph(
                     if spinning {
-                        "loader-circle"
+                        ui::SPINNER
                     } else if label == "Refresh" {
                         "refresh-cw"
                     } else {

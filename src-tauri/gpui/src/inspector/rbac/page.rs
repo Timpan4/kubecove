@@ -284,6 +284,7 @@ impl Inspector {
         self.sync_rbac_review_note(window, cx);
         let pending =
             surface::pending_slot(self.loading.phase("surface-rbac", self.rbac.load.pending()));
+        let reveal = self.loading.reveal("surface-rbac");
         let body = match (self.rbac.load.settled(), pending) {
             (_, Some(slot)) => slot,
             (None, None) => div().into_any_element(),
@@ -300,6 +301,7 @@ impl Inspector {
                 .flex()
                 .flex_col()
                 .gap(px(12.))
+                .when_some(reveal, |body, opacity| body.opacity(opacity))
                 .when_some(self.rbac.load.refresh_error().cloned(), |body, error| {
                     body.child(self.page_read_failure(
                         "RBAC refresh failed",

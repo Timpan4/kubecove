@@ -623,11 +623,21 @@ impl Inspector {
                     },
                     content,
                 );
+                // The whole body replaces the detail indicator; a tab's
+                // content replaces that tab's own.
+                let reveal = self.loading.reveal("detail").or_else(|| {
+                    self.loading.reveal(match detail.tab {
+                        DetailTab::Events => "events",
+                        DetailTab::Revisions => "revisions",
+                        _ => return None,
+                    })
+                });
                 div()
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_h_0()
+                    .when_some(reveal, |body, opacity| body.opacity(opacity))
                     .when(
                         matches!(
                             detail.tab,

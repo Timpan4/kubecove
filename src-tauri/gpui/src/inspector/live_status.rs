@@ -189,7 +189,7 @@ impl Inspector {
         let refreshing = status == LiveStatus::Refreshing;
         let busy = self.observation.refreshing();
         let (icon, label) = if refreshing {
-            ("loader-circle", "Refreshing…")
+            (ui::SPINNER, "Refreshing…")
         } else {
             ("refresh-cw", "Refresh (clear cache)")
         };
@@ -390,6 +390,10 @@ impl Inspector {
                 .test_support()
                 .role(gpui_kit::Role::Status)
                 .aria_label(label.clone())
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(ui::spinner(14., Tokens::muted_foreground()))
                 .child(ui::muted(ui::xs(label)))
                 .into_any_element(),
         )

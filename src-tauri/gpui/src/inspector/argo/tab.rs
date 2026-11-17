@@ -619,6 +619,13 @@ fn argo_tab(
     }
     let failed = matches!(state.load, ArgoLoad::Failed(_));
     column
-        .child(snapshot(view, state, failed, indicator, cx))
+        .child(snapshot(
+            view,
+            state,
+            failed,
+            indicator,
+            loading_delays.reveal("argo-detail"),
+            cx,
+        ))
         .into_any_element()
 }

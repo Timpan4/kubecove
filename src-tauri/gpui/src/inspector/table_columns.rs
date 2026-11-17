@@ -125,12 +125,19 @@ pub(super) fn restart_text(row: &ResourceSummary) -> String {
 /// comes last, so the same object in two contexts has two IDs and an ID
 /// without its context is a prefix of every context's ID.
 pub(super) fn resource_id(row: &ResourceSummary) -> String {
+    resource_id_of(&row.kind, row.namespace.as_deref(), &row.name, &row.cluster)
+}
+
+/// `resource_id` of the row with these names.
+pub(super) fn resource_id_of(
+    kind: &str,
+    namespace: Option<&str>,
+    name: &str,
+    cluster: &str,
+) -> String {
     format!(
-        "resource:{}:{}:{}:{}",
-        row.kind,
-        row.namespace.as_deref().unwrap_or(""),
-        row.name,
-        row.cluster
+        "resource:{kind}:{}:{name}:{cluster}",
+        namespace.unwrap_or("")
     )
 }
 /// Every cell clips to its column, so content cannot draw over a neighbour.

@@ -78,6 +78,7 @@ mod resources;
 mod restore_inventory;
 mod restore_prompt;
 mod revisions_tab;
+mod row_changes;
 mod row_index;
 mod saved_forward_form;
 mod scope;
@@ -160,6 +161,7 @@ pub struct Inspector {
     presentation: presentation::Presentation,
     loading: loading::LoadingDelays,
     overlay_motion: overlay_motion::OverlayMotion,
+    foreground: foreground_bar::ForegroundBar,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
     workspace_name: SharedString,
@@ -178,6 +180,7 @@ pub struct Inspector {
     collapsed_groups: std::collections::HashSet<String>,
     visible: crate::model::Visible,
     row_index: row_index::RowIndex,
+    row_changes: row_changes::RowChanges,
     table_page: usize,
     table_rows: windowed::Windowed,
     /// One focus handle per table row's name control, kept while the row is on the page.
@@ -298,6 +301,7 @@ impl Inspector {
             presentation: Default::default(),
             loading: Default::default(),
             overlay_motion: Default::default(),
+            foreground: Default::default(),
             backend,
             persisted: Default::default(),
             persistence_error: None,
@@ -316,6 +320,7 @@ impl Inspector {
             collapsed_groups: Default::default(),
             visible: Default::default(),
             row_index: Default::default(),
+            row_changes: Default::default(),
             table_page: 0,
             table_rows: windowed::Windowed::unwrapped(),
             table_focus: Default::default(),
@@ -551,9 +556,11 @@ impl Render for Inspector {
             return spike;
         }
         let started = std::time::Instant::now();
-        self.loading.begin_frame(cx.background_executor().now());
+        self.loading
+            .begin_frame(cx.background_executor().now(), cx.reduce_motion());
         self.overlay_motion
             .begin_frame(cx.background_executor().now(), cx.reduce_motion());
+        self.row_changes.begin_frame();
         crate::control_motion::Moving::begin_frame(cx);
         self.sync_argo_scope(window, cx);
         self.sync_scope_reread(window, cx);
@@ -586,6 +593,7 @@ impl Render for Inspector {
         });
         let drawer = self.navigation_drawer(workspace && compact, window, cx);
         let probe = self.presentation_frame(started);
+        let foreground_bar = self.foreground_bar(window, cx);
         let view = div()
             .track_focus(&self.focus)
             .relative()
@@ -621,7 +629,7 @@ impl Render for Inspector {
             .bg(Tokens::background())
             .text_color(Tokens::foreground())
             .font_family(crate::theme::SANS)
-            .child(self.foreground_bar())
+            .child(foreground_bar)
             .children(sidebar)
             .child(
                 div()
@@ -691,7 +699,10 @@ impl Render for Inspector {
             .children(drawer)
             .children(self.copy_toast(cx))
             .children(probe);
-        self.loading.end_frame(cx);
+        let fading = self.loading.end_frame(cx);
+        if self.row_changes.end_frame() || fading {
+            cx.on_next_frame(window, |_, _, cx| cx.notify());
+        }
         self.end_overlay_motion_frame(window, cx);
         self.record_load_frames(window, started.elapsed());
         view

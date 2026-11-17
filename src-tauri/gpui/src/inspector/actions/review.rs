@@ -85,7 +85,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>) -> Div {
                 .items_center()
                 .gap(px(8.))
                 .py(px(32.))
-                .child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+                .child(ui::spinner(16., Tokens::muted_foreground()))
                 .child(ui::muted(ui::sm(if executing {
                     "Applying the reviewed action"
                 } else {

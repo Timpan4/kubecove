@@ -66,7 +66,7 @@ impl Inspector {
     }
 
     /// The text a cell shows. Each cell exposes it as its accessible label.
-    fn cell_text(&self, column: Column, row: &ResourceSummary) -> String {
+    pub(super) fn cell_text(&self, column: Column, row: &ResourceSummary) -> String {
         match column {
             Column::Name => row.name.clone(),
             // The lifecycle label replaces the health badge in the cell, so it labels it too.
@@ -334,13 +334,15 @@ impl Inspector {
                 .into_any_element(),
             Entry::Row(index) => {
                 let row = &page.rows[*index];
+                let id = resource_id(row);
+                let tint = self.row_changes.tint(&id);
                 let cells: Vec<AnyElement> = columns
                     .iter()
                     .map(|column| self.table_cell(*column, row, cx).into_any_element())
                     .collect();
                 let resource = row.clone();
                 div()
-                    .id(SharedString::from(format!("row:{}", resource_id(row))))
+                    .id(SharedString::from(format!("row:{id}")))
                     .test_support()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -349,6 +351,8 @@ impl Inspector {
                     .flex()
                     .border_b_1()
                     .border_color(Tokens::border())
+                    // A watch notice added or changed this row (`row_changes.rs`).
+                    .when_some(tint, |row, tint| row.bg(Tokens::primary().opacity(tint)))
                     // `TableRow.svelte`: `transition-colors` to the hover color.
                     .child(
                         crate::control_motion::hover_fill(
@@ -374,6 +378,7 @@ impl Inspector {
         let page = std::rc::Rc::new(indexed_table_page(&self.visible, &view, |row| {
             self.usage(row)
         }));
+        self.observe_row_changes(&page, cx);
         self.table_page = self.table_page.min(page.page_count - 1);
         let contexts = self.workspace_contexts().len();
         let columns = self.columns(&page.rows, contexts > 1);

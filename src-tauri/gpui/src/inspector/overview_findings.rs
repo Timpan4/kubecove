@@ -1,12 +1,22 @@
 use super::{Inspector, overview::titled_card, resource_filters::HealthFilter};
 use crate::{
+    motion::{Bezier, Timing},
     targets::TestSupportExt,
     theme::{MONO, Palette, Tokens},
     ui,
     workspaces::overview::{Namespace, Overview, Problem, application_owner},
 };
-use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
+use gpui_kit::{AnimationExt, Context, Div, SharedString, div, prelude::*, px};
 use kubecove_lib::models::{HealthAssessmentState, ResourceSummary};
+use std::time::Duration;
+
+/// `ProblemTable.svelte`'s owned-resource rows: `animate-in fade-in duration-150`,
+/// which tw-animate-css eases with `ease`. `motion-reduce:animate-none` shows
+/// the row at once, as a one-shot GPUI animation does under reduced motion.
+const CHILD_FADE: Timing = Timing {
+    duration: Duration::from_millis(150),
+    easing: Bezier::EASE,
+};
 
 enum FindingRow<'a> {
     Root {
@@ -328,7 +338,7 @@ impl Inspector {
         } else {
             ui::muted(ui::xs(app.unwrap_or("None").to_owned())).into_any_element()
         };
-        div()
+        let view = div()
             .id(SharedString::from(format!("overview-problem:{key}")))
             .test_support()
             .aria_label(format!(
@@ -369,7 +379,17 @@ impl Inspector {
                 width * 0.11,
                 ui::xs(cause.restarts.unwrap_or(0).to_string()).text_right(),
             ))
-            .child(cell(width * 0.13, div().child(app_cell)))
+            .child(cell(width * 0.13, div().child(app_cell)));
+        if !child {
+            return view.into_any_element();
+        }
+        // The fade starts when the row mounts, as the web's CSS animation does.
+        view.with_animation(
+            SharedString::from(format!("overview-problem-fade:{key}")),
+            CHILD_FADE.animation(),
+            |view, shown| view.opacity(shown),
+        )
+        .into_any_element()
     }
     pub(super) fn overview_namespaces(
         &self,

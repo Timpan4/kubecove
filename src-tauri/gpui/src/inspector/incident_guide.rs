@@ -510,7 +510,7 @@ impl Inspector {
                                         .text_color(Tokens::muted_foreground())
                                 })
                                 .when(enriching, |notice| {
-                                    notice.child(ui::icon("loader-circle", 16., Tokens::muted_foreground()))
+                                    notice.child(ui::spinner(16., Tokens::muted_foreground()))
                                 })
                                 .id("incident-enrichment")
                                 .test_support()
