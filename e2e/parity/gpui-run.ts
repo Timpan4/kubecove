@@ -40,7 +40,7 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 		if (message.fresh) console.log("Reusing the GPUI parity executable. Cargo found its inputs unchanged.");
 		else {
 			const dirty = build.output.match(/cargo::compiler::fingerprint:\s+dirty: (.+)/)?.[1];
-			const missing = /target="parity"[^\n]*cargo::compiler::fingerprint:\s+err: failed to read [^\n]+No such file or directory/.test(build.output);
+			const missing = /target="parity"[^\n]*cargo::compiler::fingerprint:\s+err: failed to read [^\n]+\n\s*Caused by:\s*No such file or directory/.test(build.output);
 			const reason = dirty ?? (missing ? "Cargo has no cached fingerprint for the parity test in this build directory." : undefined);
 			console.log(reason ? `GPUI parity executable rebuilt: ${reason}` : "GPUI parity executable rebuilt. See gpui-build.log for Cargo diagnostics.");
 		}
