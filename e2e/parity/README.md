@@ -43,7 +43,7 @@ The web driver loads a bundled development build of the app (`web-bundle-server.
 - `PARITY_STEP_SCREENSHOTS=0` keeps only failure screenshots from the web driver. CI sets it, because step screenshots took about ten captures per scenario and 205 MB of artifacts per shard.
 - `PARITY_CHANGED=<base ref>` runs the scenarios that the changes since the merge base with that ref can affect, including uncommitted and untracked files. See "Change-based selection". `PARITY_COVERAGE_MAP=<path>` reads another map than `e2e/artifacts/parity-coverage-map.json`.
 - `PARITY_COVERAGE=1` records the coverage map that `PARITY_CHANGED` reads. See "Change-based selection".
-- `PARITY_RERUN=last` (or an artifacts directory) runs only the scenarios that either driver did not pass in that run.
+- `PARITY_RERUN=last` (or an artifacts directory) reruns each driver's failed or missing results from that run. If only the web driver has failures, the GPUI driver and Cargo are skipped. Coverage recording still runs both drivers for the selected IDs.
 - `PARITY_SUITE_SHARD=<index>/<count>` runs every `count`-th selected scenario from position `index`, so separate CI jobs split one suite. It applies after `PARITY_PREFIX`, `PARITY_EXCLUDE` and `PARITY_CHANGED` and before `PARITY_RERUN`, so a shard's rerun keeps that shard's scenarios.
 - `PARITY_JOBS=<n>` sets the pages and processes per driver. The default is half the CPU count, because both drivers share the CPUs.
 - `PARITY_WEB_JOBS=<n>` sets the web pages alone, overriding `PARITY_JOBS` for the web driver. Single-driver PR jobs use the runner CPU count for pages or processes. Combined main jobs retain one GPUI process and a web page on each other CPU, because a shard's web scenarios took about five times the CPU time of its GPUI scenarios.
@@ -126,7 +126,9 @@ The shared YAML editor scenario covers undo and redo, selection replacement and 
 [Scripted backend timing](mock-timing.md) records the asynchronous failure modes,
 release-gate contract, source-derived retry window and current model boundaries.
 
-When one web scenario fails, rerun that ID alone with `PARITY_PREFIX=<id> PARITY_JOBS=1 bun run e2e:parity`, and use `PARITY_RERUN=last bun run e2e:parity` for several failures or a Vite start timeout. Do not rerun the full suite to tell a flake from a real failure. A scenario that fails in the run and passes alone is a flake; record it below with its cause. A confirmed flake is still a bug in the scenario or driver.
+When one web scenario fails, rerun that ID with `PARITY_DRIVER=web PARITY_PREFIX=<id> bun run e2e:parity`. To rerun the failures from the last report without copying IDs, use `PARITY_RERUN=last bun run e2e:parity`. Keep the same worktree and Cargo target and build directories for GPUI reruns. Cargo checks the inputs, reports whether it reused or rebuilt the test executable, and records rebuild diagnostics in `gpui-build.log`.
+
+A scenario that fails in the run and passes alone is a flake. Record it below with its cause. A confirmed flake is still a bug in the scenario or driver.
 
 Confirmed flakes:
 
