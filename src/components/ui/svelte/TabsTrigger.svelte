@@ -2,6 +2,9 @@
 	/** The trigger that last carried each tab list's line, which the next one's line slides from. */
 	const lined = new WeakMap<Element, HTMLElement>();
 
+	/** Where each list's lined trigger lay when last measured, as `linePlace` gives it. */
+	const placed = new WeakMap<HTMLElement, string>();
+
 	const LINE_PROPERTIES = ["--tabs-line-x", "--tabs-line-y", "--tabs-line-w", "--tabs-line-h", "--tabs-line-duration"];
 
 	/** The numbers of a computed `translate` or `scale`, which reads `none` where nothing is set. */
@@ -35,6 +38,7 @@
 		if (!list) return;
 		const last = lined.get(list);
 		lined.set(list, trigger);
+		placed.set(trigger, linePlace(trigger));
 		if (!last || last === trigger || !last.isConnected) return;
 		// Under reduced motion the line shows under the chosen trigger at once.
 		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -74,6 +78,19 @@
 			: `${box.left - origin.left} ${box.width} ${box.top - row.top}`;
 	}
 
+	/**
+	 * Ends the list's slide at once if a layout change moved its active trigger's line. Every
+	 * trigger's resize calls this, because a sibling that grows can move the active trigger without
+	 * resizing it or the list.
+	 */
+	function settleList(list: Element) {
+		const active = lined.get(list);
+		if (!active?.isConnected) return;
+		const now = linePlace(active);
+		if (placed.get(active) !== now && active.getAttribute("data-state") === "active") endSlide(active);
+		placed.set(active, now);
+	}
+
 	/** Moves the trigger's line home at once, ending its slide. */
 	function endSlide(trigger: HTMLElement) {
 		// A pseudo-element's animations are listed only with the subtree.
@@ -102,24 +119,20 @@
 		const element = trigger;
 		if (!element) return;
 		const active = () => element.getAttribute("data-state") === "active";
-		if (active()) {
-			const list = element.closest("[data-slot='tabs-list']");
-			if (list) lined.set(list, element);
+		const list = element.closest("[data-slot='tabs-list']");
+		if (list && active()) {
+			lined.set(list, element);
+			placed.set(element, linePlace(element));
 		}
 		const observer = new MutationObserver(() => {
 			if (active()) carryLine(element);
 		});
 		observer.observe(element, { attributes: true, attributeFilter: ["data-state"] });
-		// A resize or a wrap can move the trigger along the list, and the slide's offsets were measured
-		// before it. So such a move ends the slide and the line shows under the trigger at once.
-		let placed = linePlace(element);
-		const resized = new ResizeObserver(() => {
-			const now = linePlace(element);
-			if (now !== placed && active()) endSlide(element);
-			placed = now;
-		});
-		const list = element.closest("[data-slot='tabs-list']");
-		if (list) resized.observe(list, { box: "border-box" });
+		// A resize or a wrap can move the active trigger in its list, and the slide's offsets were
+		// measured before it. So such a move ends the slide and the line shows under it at once.
+		if (!list) return () => observer.disconnect();
+		const resized = new ResizeObserver(() => settleList(list));
+		resized.observe(list, { box: "border-box" });
 		resized.observe(element, { box: "border-box" });
 		return () => {
 			observer.disconnect();
