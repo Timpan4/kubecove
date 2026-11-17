@@ -5,6 +5,8 @@
 //! After `midway`, `back` chooses the first state again and expects the indicator
 //! where it was shown, and `returned` expects it at rest. `instant`, run under
 //! reduced motion, changes the state and expects it there in the same frame.
+//! `ended`, after reduced motion turned on mid-run, expects what `settled` does
+//! without moving the clock.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
@@ -162,7 +164,7 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
     });
     // A fold reveals rows by the height they lay out at, so a row under it
     // keeps the sidebar's row height however long the sidebar grows.
-    if phase == "settled"
+    if matches!(phase, "settled" | "ended")
         && let Some((_, below)) = row_below(target)
     {
         let height = |id: &str| window.find(id.to_owned()).bounds().size.height;
@@ -185,7 +187,7 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
                 assert!(moved > 0. && moved < 16., "the thumb moved {moved} px");
             }
         }
-        "settled" => {
+        "settled" | "ended" => {
             assert_eq!(progress, None, "{target} still moves after its duration");
             if target == "switch" {
                 assert_eq!((thumb(window, target) - thumb_start).abs(), 16.);

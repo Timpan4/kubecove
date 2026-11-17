@@ -166,6 +166,21 @@
       ]
     },
     {
+      "id": "control-motion.sidebar-unfold-reduced",
+      "title": "Reduced motion turned on while a sidebar branch unfolds ends the fold at once",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "coverageCheck", "check": "motion:branch:ended" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false }
+      ]
+    },
+    {
       "id": "control-motion.sidebar-unfold-custom",
       "title": "A custom resource group unfolds its kinds over 150 ms, moving the group under it down without passing its place",
       "steps": [

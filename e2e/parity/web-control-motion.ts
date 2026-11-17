@@ -286,7 +286,8 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
  * ends at half of DURATION_MS; `settled` expects the end value. After `midway`, `back` chooses the
  * first state again and expects the value unchanged, and `returned` expects the value at rest.
  * `instant`, run under reduced motion, changes the state and expects no transition of the
- * followed property and the indicator at rest on the new state.
+ * followed property and the indicator at rest on the new state. `ended`, after reduced motion
+ * turned on mid-run, expects what `settled` does without moving the transition to its end.
  *
  * A CSS transition runs on the document timeline, which the page clock does not move. So `start`
  * pauses the control's transitions in their `transitionrun` event, and the later phases seek
@@ -356,8 +357,15 @@ export async function checkControlMotion(page: Page, check: string) {
 		await target.fits?.(page);
 		return;
 	}
-	if (phase !== "settled") throw new Error(`Unknown motion phase in ${check}`);
-	await seek(page, "end");
+	if (phase !== "settled" && phase !== "ended") throw new Error(`Unknown motion phase in ${check}`);
+	if (phase === "settled") await seek(page, "end");
+	else {
+		// Without moving the clock: the page answers a preference change with the next frame.
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		// Svelte cancels a transition's animation once it ends, so an ended one may read `idle`.
+		const states = await page.evaluate(() => window.controlMotion?.map((animation) => animation.playState) ?? []);
+		if (states.some((state) => state === "running" || state === "paused")) throw new Error(`${name} still moves after reduced motion turned on: ${states.join(", ")}`);
+	}
 	const settled = await read(page, target);
 	if (settled === before.rest || settled === before.midway) throw new Error(`${name} ended at ${settled}, its value ${settled === before.rest ? "at rest" : "midway"}`);
 	if (target.between) {

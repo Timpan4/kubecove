@@ -119,6 +119,20 @@
 		return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : FOLD_MS;
 	}
 
+	/** The children's folding wrapper while it is mounted. */
+	let branch = $state<HTMLElement>();
+
+	// Reduced motion turned on while the children fold ends the fold, as it ends any transition.
+	$effect(() => {
+		const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+		const settle = () => {
+			if (!reduced.matches) return;
+			for (const animation of branch?.getAnimations() ?? []) animation.finish();
+		};
+		reduced.addEventListener("change", settle);
+		return () => reduced.removeEventListener("change", settle);
+	});
+
 	function toggleNode(event: MouseEvent) {
 		event.stopPropagation();
 		if (hasChildren) toggleSection();
@@ -201,6 +215,7 @@
 	</div>
 	{#if isExpanded && (hasSearch || (hasChildren && children))}
 		<div
+			bind:this={branch}
 			data-slot="sidebar-branch"
 			transition:slide={{ duration: foldDuration(), easing: controlEase }}
 			onintroend={() => (toggledTo = null)}
