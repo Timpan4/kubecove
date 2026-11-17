@@ -3,12 +3,18 @@
 //! leads to a resource in progress. `App.css` runs the same two animations on
 //! the web (`topology-edge-flow` and `topology-edge-pulse`).
 //!
-//! Both repaint every frame, so only maps small enough to stay fully mounted
-//! move, as `edgeMotion` in `OwnershipMap.svelte` decides. Time comes from the
-//! executor clock, so test drivers move it.
+//! Only maps small enough to stay fully mounted move, and only in the active
+//! window, as `edgeMotion` in `OwnershipMap.svelte` decides. Time comes from
+//! the executor clock, so test drivers move it.
+//!
+//! Every frame renders the whole Inspector, and a selection can last for hours.
+//! So the dashes get a frame only when they have moved one device pixel
+//! (`flow_step`), from a timer. A pulse moves many pixels per frame and lasts
+//! only as long as a rollout, so it asks for every frame, as the table's
+//! activity icon does.
 use super::Inspector;
 use crate::topology::{EdgeState, FlowEdge, FlowItem, Segment};
-use gpui_kit::{Context, Window};
+use gpui_kit::{Context, Task, Window};
 use std::time::{Duration, Instant};
 
 /// The dash and the gap of an active edge in flow units (`stroke-dasharray: 8 8`).
@@ -40,6 +46,9 @@ pub(super) struct EdgeClock {
     epoch: Option<Instant>,
     /// The motion of the frame being rendered, or None while no edge moves.
     motion: Option<EdgeMotion>,
+    /// The wake for the dashes' next step and when it fires. None while a pulse
+    /// asks for every frame.
+    wake: Option<(Instant, Task<()>)>,
 }
 
 impl EdgeClock {
@@ -56,6 +65,12 @@ pub(super) fn pulses(edge: &FlowEdge) -> bool {
 
 fn phase(elapsed: Duration, period: Duration) -> f32 {
     (elapsed.as_secs_f64() % period.as_secs_f64() / period.as_secs_f64()) as f32
+}
+
+/// How long the dashes take to move one device pixel, at `scale` device pixels
+/// per flow unit. A dash period is two dashes long.
+fn flow_step(scale: f32) -> Duration {
+    FLOW_PERIOD.div_f32(DASH * 2. * scale)
 }
 
 /// `topology-edge-pulse`'s opacity at `turn` of a trip.
@@ -165,7 +180,7 @@ impl Track {
 }
 
 impl Inspector {
-    /// Sets this frame's edge motion and asks for the next frame while an edge
+    /// Sets this frame's edge motion and arranges the next frame while an edge
     /// moves. Runs after `rebuild_map`, before the map renders.
     pub(in crate::inspector) fn sync_map_edge_motion(
         &mut self,
@@ -173,32 +188,55 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) {
         let live = self.updates_current();
-        let moving = self.map_is_open()
-            && !cx.reduce_motion()
-            && self.map.cache.as_ref().is_some_and(|view| {
-                !super::viewport::culls(view)
-                    && view
-                        .edges
-                        .iter()
-                        .any(|edge| edge.state == EdgeState::Active || (live && pulses(edge)))
-            });
-        let clock = &mut self.map.edge_clock;
-        if !moving {
-            *clock = EdgeClock::default();
+        let view = self.map.cache.clone().filter(|view| {
+            self.map_is_open()
+                && window.is_window_active()
+                && !cx.reduce_motion()
+                && !super::viewport::culls(view)
+        });
+        let (flowing, pulsing) = view.as_ref().map_or((false, false), |view| {
+            (
+                view.edges
+                    .iter()
+                    .any(|edge| edge.state == EdgeState::Active),
+                live && view.edges.iter().any(pulses),
+            )
+        });
+        let Some(view) = view.filter(|_| flowing || pulsing) else {
+            self.map.edge_clock = EdgeClock::default();
             return;
-        }
+        };
         let now = cx.background_executor().now();
+        let zoom = self.map_viewports(&view).1.map(|viewport| viewport.zoom);
+        let clock = &mut self.map.edge_clock;
         let elapsed = now.duration_since(*clock.epoch.get_or_insert(now));
         clock.motion = Some(EdgeMotion {
             flow: phase(elapsed, FLOW_PERIOD),
             pulse: live.then(|| phase(elapsed, PULSE_PERIOD)),
         });
-        cx.on_next_frame(window, |_, _, cx| cx.notify());
+        if pulsing {
+            clock.wake = None;
+            cx.on_next_frame(window, |_, _, cx| cx.notify());
+            return;
+        }
+        if clock.wake.as_ref().is_some_and(|(at, _)| *at > now) {
+            return;
+        }
+        // Without a measured viewport nothing is drawn; its first size notifies.
+        clock.wake = zoom.map(|zoom| {
+            let step = flow_step(zoom * window.scale_factor());
+            let task = cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(step).await;
+                this.update(cx, |_, cx| cx.notify()).ok();
+            });
+            (now + step, task)
+        });
     }
 
-    /// Whether the last frame moved the dashes of the edge from the topology node
-    /// `source` to `target`, and whether a pulse traveled along it. Edges are
-    /// painted, not elements, so UI tests ask here.
+    /// Whether the dashes of the edge from the topology node `source` to `target`
+    /// are moving, which is the last frame drawing them at a phase with their next
+    /// frame arranged, and whether a pulse travels along it. Edges are painted,
+    /// not elements, so UI tests ask here.
     #[doc(hidden)]
     pub fn map_edge_motion(&self, source: &str, target: &str) -> Option<(bool, bool)> {
         let (Some(view), super::TopologyLoad::Ready(topology)) =
@@ -214,10 +252,14 @@ impl Inspector {
             .edges
             .iter()
             .find(|edge| id(edge.source) == Some(source) && id(edge.target) == Some(target))?;
-        let motion = self.map.edge_clock.motion;
+        let clock = &self.map.edge_clock;
+        let pulsing = clock.motion.is_some_and(|motion| motion.pulse.is_some())
+            && view.edges.iter().any(pulses);
         Some((
-            motion.is_some() && edge.state == EdgeState::Active,
-            motion.is_some_and(|motion| motion.pulse.is_some()) && pulses(edge),
+            clock.motion.is_some()
+                && (pulsing || clock.wake.is_some())
+                && edge.state == EdgeState::Active,
+            pulsing && pulses(edge),
         ))
     }
 }
