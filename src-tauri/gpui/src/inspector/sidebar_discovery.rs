@@ -1,8 +1,10 @@
 //! Custom-kind discovery for the sidebar: every discovered kind for the Custom Resources
 //! section (the web's `list_resource_kinds` query), and namespace-owned kinds for namespace
 //! branches (the web's expanded namespace query).
+use super::sidebar_fold::Row;
+use super::sidebar_tree::ROW_HEIGHT;
 use super::{Inspector, request::Fetch};
-use gpui_kit::{AnyElement, Context, div, prelude::*, px};
+use gpui_kit::{Context, div, prelude::*, px};
 use kubecove_lib::models::DiscoveredResourceKind;
 use std::collections::HashMap;
 
@@ -42,9 +44,7 @@ impl Inspector {
             state.cluster = Fetch::Idle;
             state.context = self.scope.context.clone();
         }
-        state.reads.retain(|ns, _| {
-            self.persisted.preferences.show_custom_resources && self.sidebar_tree.open.contains(ns)
-        });
+        self.drop_closed_namespace_kinds();
         if !self.persisted.preferences.show_custom_resources || !self.workspace_open() {
             return;
         }
@@ -99,6 +99,18 @@ impl Inspector {
         }
     }
 
+    /// Lets go of the kinds of namespaces that are closed and no longer folding.
+    /// A closing namespace keeps its kinds until its rows have folded away, so
+    /// this also runs after the frame its fold ends on: no frame may follow that
+    /// one before the namespace reopens, and reopening must read again.
+    pub(super) fn drop_closed_namespace_kinds(&mut self) {
+        let shown = self.persisted.preferences.show_custom_resources;
+        let tree = &mut self.sidebar_tree;
+        tree.discovery
+            .reads
+            .retain(|ns, _| shown && (tree.open.contains(ns) || tree.folds.folding(ns)));
+    }
+
     /// Cluster-wide kinds for the Custom Resources section; empty until discovery succeeds.
     pub(super) fn cluster_kinds(&self) -> &[DiscoveredResourceKind] {
         match self.cluster_read() {
@@ -142,7 +154,7 @@ impl Inspector {
         &self,
         namespace: &str,
         cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
+    ) -> Vec<Row> {
         if !self.persisted.preferences.show_custom_resources {
             return vec![];
         }
@@ -161,13 +173,15 @@ impl Inspector {
             Fetch::Ready(_) => None,
         };
         if let Some(message) = message {
-            return vec![
+            return vec![Row::new(
                 div()
+                    .flex_none()
                     .pl(px(24.))
-                    .h(px(26.))
+                    .h(px(ROW_HEIGHT))
                     .child(crate::ui::xs(message))
                     .into_any_element(),
-            ];
+                ROW_HEIGHT,
+            )];
         }
         let kinds = self.namespace_kinds(namespace);
         if kinds.is_empty() {
@@ -182,45 +196,48 @@ impl Inspector {
             true,
             cx,
         )];
-        if !self.sidebar_tree.open.contains(&path) {
-            return rows;
-        }
-        let mut groups: Vec<_> = kinds
-            .iter()
-            .filter(|kind| kind.namespaced)
-            .map(|kind| kind.group.as_str())
-            .collect();
-        groups.sort();
-        groups.dedup();
-        for group in groups {
-            let group_path = format!("{path}/{group}");
-            rows.push(self.builtin_row(
-                group_path.clone(),
-                group.to_owned().into(),
-                Some(namespace.into()),
-                2,
-                true,
-                cx,
-            ));
-            if !self.sidebar_tree.open.contains(&group_path) {
-                continue;
-            }
-            let mut children: Vec<_> = kinds
+        rows.extend(self.branch_rows(&path, cx, |this, cx| {
+            let mut groups: Vec<_> = kinds
                 .iter()
-                .filter(|kind| kind.namespaced && kind.group == group)
+                .filter(|kind| kind.namespaced)
+                .map(|kind| kind.group.as_str())
                 .collect();
-            children.sort_by(|a, b| a.kind.cmp(&b.kind));
-            for kind in children {
-                rows.push(self.builtin_row(
-                    format!("{group_path}/{}", kind.kind),
-                    kind.kind.clone().into(),
+            groups.sort();
+            groups.dedup();
+            let mut rows = Vec::new();
+            for group in groups {
+                let group_path = format!("{path}/{group}");
+                rows.push(this.builtin_row(
+                    group_path.clone(),
+                    group.to_owned().into(),
                     Some(namespace.into()),
-                    3,
-                    false,
+                    2,
+                    true,
                     cx,
                 ));
+                rows.extend(this.branch_rows(&group_path, cx, |this, cx| {
+                    let mut children: Vec<_> = kinds
+                        .iter()
+                        .filter(|kind| kind.namespaced && kind.group == group)
+                        .collect();
+                    children.sort_by(|a, b| a.kind.cmp(&b.kind));
+                    children
+                        .into_iter()
+                        .map(|kind| {
+                            this.builtin_row(
+                                format!("{group_path}/{}", kind.kind),
+                                kind.kind.clone().into(),
+                                Some(namespace.into()),
+                                3,
+                                false,
+                                cx,
+                            )
+                        })
+                        .collect()
+                }));
             }
-        }
+            rows
+        }));
         rows
     }
 }

@@ -236,9 +236,7 @@ impl Element for SlideIndicator {
             target.size.height = height;
         }
         let global_id = global_id.expect("the indicator has an id");
-        let finishing = cx
-            .try_global::<Moving>()
-            .is_some_and(|moving| moving.finishing);
+        let finishing = Moving::finishing(cx);
         let (active, id) = (self.active, &self.id);
         let shown = window.with_element_state(global_id, |placed: Option<Placed>, window| {
             let (jump, from) = match &placed {

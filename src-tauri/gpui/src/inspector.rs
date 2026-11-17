@@ -94,6 +94,7 @@ mod settings_sections;
 mod sidebar;
 mod sidebar_cache;
 mod sidebar_discovery;
+mod sidebar_fold;
 mod sidebar_reveal;
 mod sidebar_tree;
 mod surface;
@@ -623,6 +624,7 @@ impl Render for Inspector {
             )
         });
         let drawer = self.navigation_drawer(workspace && compact, window, cx);
+        self.drop_closed_namespace_kinds();
         let probe = self.presentation_frame(started, cx.entity_id());
         let foreground_bar = self.foreground_bar(window, cx);
         let view = div()

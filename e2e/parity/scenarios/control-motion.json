@@ -149,6 +149,103 @@
         { "action": "advanceClock", "ms": 75 },
         { "action": "coverageCheck", "check": "motion:chevron:settled" }
       ]
+    },
+    {
+      "id": "control-motion.sidebar-unfold",
+      "title": "A sidebar branch unfolds its rows over 150 ms, moving the row under it down",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:settled" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-unfold-reduced",
+      "title": "Reduced motion turned on while a sidebar branch unfolds ends the fold at once",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "setReducedMotion", "reduce": true },
+        { "action": "coverageCheck", "check": "motion:branch:ended" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-unfold-collapse-all",
+      "title": "Collapse all while a sidebar branch unfolds closes the branch at once",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "collapseSidebar" },
+        { "action": "coverageCheck", "check": "motion:branch:collapsed" },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": false, "selected": false }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-unfold-inert",
+      "title": "A sidebar branch's rows take no focus or clicks while it unfolds, and do once it has",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "expectSidebarRow", "path": ["Workloads"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "coverageCheck", "check": "motion:branch:inert" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:settled" },
+        { "action": "sidebarSelect", "path": ["Workloads", "Pod"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": true }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-fold-inert",
+      "title": "A sidebar branch's rows take no focus or clicks while it folds closed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarSelect", "path": ["Workloads", "Deployment"] },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Deployment"], "visible": true, "selected": true },
+        { "action": "expectSidebarRow", "path": ["Workloads", "Pod"], "visible": true, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Network"], "visible": true, "selected": false },
+        { "action": "coverageCheck", "check": "motion:branch:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:branch:midway" },
+        { "action": "coverageCheck", "check": "motion:branch:inert" }
+      ]
+    },
+    {
+      "id": "control-motion.sidebar-unfold-custom",
+      "title": "A custom resource group unfolds its kinds over 150 ms, moving the group under it down without passing its place",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "sidebarToggle", "path": ["Workloads"] },
+        { "action": "sidebarToggle", "path": ["Network"] },
+        { "action": "sidebarToggle", "path": ["Config"] },
+        { "action": "sidebarToggle", "path": ["Storage"] },
+        { "action": "expandNav", "page": "Custom Resources" },
+        { "action": "expectCustomGroup", "group": "argoproj.io", "visible": true },
+        { "action": "expectCustomGroup", "group": "helm.toolkit.fluxcd.io", "visible": true },
+        { "action": "coverageCheck", "check": "motion:custom-group:start" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:custom-group:midway" },
+        { "action": "advanceClock", "ms": 75 },
+        { "action": "coverageCheck", "check": "motion:custom-group:settled" }
+      ]
     }
   ]
 }

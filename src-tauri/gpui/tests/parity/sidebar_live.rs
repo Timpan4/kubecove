@@ -133,6 +133,11 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             let id = sidebar_row_id(&path);
             match string(step, "action") {
                 "expectSidebarRow" => {
+                    // The namespace list builds only the rows in view, and
+                    // Playwright finds a row the sidebar has scrolled away.
+                    if step["visible"] == true && window.try_find(id.clone()).is_none() {
+                        seek(window, cx, "sidebar-tree", &id);
+                    }
                     let found = window.try_find(id);
                     assert_eq!(found.is_some(), step["visible"] == true, "{step}");
                     if let Some(row) = found {

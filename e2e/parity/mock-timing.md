@@ -177,6 +177,19 @@ the web driver's clicks and waits let the animation finish. Without that an
 opened overlay would stay transparent and a closed one would stay in the tree,
 because this clock moves only when a step advances it.
 
+## Sidebar fold timing
+
+A sidebar branch opens and closes by height over Tailwind's 150 ms in both
+clients when the user toggles it: Svelte's `slide` transition in
+`SidebarTreeNode.svelte` and `src-tauri/gpui/src/inspector/sidebar_fold.rs`,
+which reads the executor clock. `control-motion.sidebar-unfold` checks that. The
+web runs the fold as a Web Animation, which the driver pauses and seeks.
+
+A fold changes layout, so a row inside an opening branch has no full height
+until the fold ends. Steps open a branch and use its rows without advancing the
+clock, so the native runner turns folds off for each scenario
+(`Moving::set_instant_layout`) and only the `motion:branch` check turns them on.
+
 ## Coverage boundary
 
 The browser interceptor covers command reads. Native fixture gates currently cover

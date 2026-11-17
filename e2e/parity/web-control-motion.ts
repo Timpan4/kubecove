@@ -10,6 +10,8 @@ declare global {
 		controlMotion?: Animation[];
 		/** Whether the followed property started a transition in an `instant` check. */
 		controlMotionRan?: boolean;
+		/** Puts back the `Element.prototype.animate` that an `animated` target's capture replaced. */
+		controlMotionRestore?: () => void;
 	}
 }
 
@@ -22,7 +24,13 @@ type Target = {
 	property: string;
 	/** What the page shows, where the followed property alone does not say it. */
 	shown?(page: Page): Promise<string>;
-	/** Throws unless the indicator covers the chosen option exactly once it has settled. */
+	/** Whether `shown` is a number that moves one way, passing neither end on its way. */
+	between?: boolean;
+	/** The element under which Svelte runs the motion as a Web Animation, where it is no CSS transition. */
+	animated?(page: Page): Locator;
+	/** A fold's first row under its branch, which an `inert` check tries to reach. */
+	inside?(page: Page): Locator;
+	/** Throws unless the control rests as it should once it has settled, such as an indicator covering the chosen option exactly. */
 	fits?(page: Page): Promise<void>;
 	/** Changes the control's state. */
 	act(page: Page): Promise<void>;
@@ -146,7 +154,42 @@ const TARGETS = {
 		property: "rotate",
 		act: (page) => sidebarRow(page, ["Workloads"]).getByRole("button").click(),
 	},
+	branch: { ...fold(["Workloads"], ["Network"], "CronJob"), inside: (page) => sidebarRow(page, ["Workloads", "Pod"]) },
+	"custom-group": fold(["Custom Resources", "argoproj.io"], ["Custom Resources", "helm.toolkit.fluxcd.io"], "ApplicationSet"),
 } satisfies Record<string, Target>;
+
+/**
+ * SidebarTreeNode.svelte: the `slide` transition that unfolds the rows of the branch at `path`.
+ * The row at `below` shows it, by moving down. It is measured from the branch's row, so that a
+ * scroll of the sidebar, such as the one a click makes, is left out. `property` names what the
+ * transition changes. `last` labels the branch's last row.
+ */
+function fold(path: string[], below: string[], last: string): Target {
+	return {
+		moving: (page) => sidebarRow(page, below),
+		property: "height",
+		shown: async (page) => {
+			const [top, branch] = await Promise.all([below, path].map((at) => sidebarRow(page, at).evaluate((row) => row.getBoundingClientRect().top)));
+			return String(top - branch);
+		},
+		between: true,
+		// A fold reveals rows by the height they lay out at, so a row under it keeps the sidebar's
+		// row height however long the sidebar grows. An ended fold shows the branch's last row whole,
+		// right above that row, where a cut-short slide leaves it clipped below that row's top.
+		fits: async (page) => {
+			const [under, row, end] = await Promise.all(
+				[below, ["Workloads"], [...path, last]].map((at) => sidebarRow(page, at).evaluate((item) => {
+					const { top, bottom, height } = item.getBoundingClientRect();
+					return { top, bottom, height };
+				})),
+			);
+			if (under.height !== row.height) throw new Error(`${below.join(" / ")} is ${under.height} px high, not a sidebar row's ${row.height} px`);
+			if (end.bottom !== under.top) throw new Error(`${path.join(" / ")} is not fully open: ${last} ends at ${end.bottom}, ${below.join(" / ")} starts at ${under.top}`);
+		},
+		animated: (page) => sidebarRow(page, path).locator(".."),
+		act: (page) => sidebarRow(page, path).getByRole("button").click(),
+	};
+}
 
 function targetOf(name: string | undefined): Target | undefined {
 	return Object.entries(TARGETS).find(([key]) => key === name)?.[1];
@@ -188,6 +231,36 @@ function seek(page: Page, ms: number | "end") {
  * the properties that move together, such as a pill's left and width, stay at the same time.
  */
 async function follow(page: Page, moving: Locator, target: Target, act: (page: Page) => Promise<void>) {
+	if (target.animated) {
+		// Svelte starts its animation with `element.animate` a frame after the change. A busy page
+		// can run the whole animation between two polls, so this pauses it as it is created.
+		// The page's own `animate` is put back once this has run, whatever happened.
+		await target.animated(page).evaluate((under) => {
+			window.controlMotion = undefined;
+			const original = Element.prototype.animate;
+			window.controlMotionRestore = () => {
+				Element.prototype.animate = original;
+			};
+			Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
+				const animation = original.apply(this, args);
+				// Svelte's first animation is an empty one that lasts the delay.
+				if (under.contains(this) && Number(animation.effect?.getComputedTiming().duration ?? 0) > 0) {
+					Element.prototype.animate = original;
+					animation.pause();
+					animation.currentTime = 0;
+					window.controlMotion = [animation];
+				}
+				return animation;
+			};
+		});
+		try {
+			await act(page);
+			await page.waitForFunction(() => window.controlMotion !== undefined).catch(() => { throw new Error("The control changed without an animation"); });
+		} finally {
+			await page.evaluate(() => window.controlMotionRestore?.());
+		}
+		return;
+	}
 	await moving.evaluate((element, { pseudo, property }) => {
 		window.controlMotion = undefined;
 		const capture = (event: Event) => {
@@ -222,7 +295,11 @@ async function follow(page: Page, moving: Locator, target: Target, act: (page: P
  * ends at half of DURATION_MS; `settled` expects the end value. After `midway`, `back` chooses the
  * first state again and expects the value unchanged, and `returned` expects the value at rest.
  * `instant`, run under reduced motion, changes the state and expects no transition of the
- * followed property and the indicator at rest on the new state.
+ * followed property and the indicator at rest on the new state. `ended`, after reduced motion
+ * turned on mid-run, expects what `settled` does without moving the transition to its end.
+ * `collapsed`, after another action closed a fold mid-run, expects nothing under the branch to
+ * move and the value at rest, without moving the transition. `inert`, mid-fold, expects Tab from
+ * the chevron that started the fold and a click on the branch's first row to pass over that row.
  *
  * A CSS transition runs on the document timeline, which the page clock does not move. So `start`
  * pauses the control's transitions in their `transitionrun` event, and the later phases seek
@@ -292,9 +369,47 @@ export async function checkControlMotion(page: Page, check: string) {
 		await target.fits?.(page);
 		return;
 	}
-	if (phase !== "settled") throw new Error(`Unknown motion phase in ${check}`);
-	await seek(page, "end");
+	if (phase === "inert") {
+		if (!target.inside) throw new Error(`${check} needs a fold target with a first row`);
+		const row = target.inside(page);
+		// The chevron's click focused it, and the branch's first row is the next stop after it.
+		await page.keyboard.press("Tab");
+		if (await row.evaluate((item) => item === document.activeElement)) throw new Error(`Tab reached a row of ${name} while it folds`);
+		// Locator clicks wait for a row that takes events, which an inert one never does.
+		const box = await row.boundingBox();
+		if (!box) throw new Error(`${name} shows no first row midway`);
+		await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+		if ((await row.getAttribute("aria-selected")) === "true") throw new Error(`A click selected a row of ${name} while it folds`);
+		return;
+	}
+	if (phase === "collapsed") {
+		if (!target.animated) throw new Error(`${check} needs a fold target`);
+		// Without moving the clock: the page answers the action with the next frame.
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		// Only the branch's own slide: the row's hover and the chevron's turn transition with it.
+		const moving = await target.animated(page).evaluate((item) => {
+			const branch = item.querySelector(':scope > [data-slot="sidebar-branch"]');
+			return (branch?.getAnimations() ?? []).filter((animation) => animation.playState === "running" || animation.playState === "paused").length;
+		});
+		if (moving > 0) throw new Error(`${name} still folds after it was collapsed`);
+		const collapsed = await read(page, target);
+		if (collapsed !== before.rest) throw new Error(`${name} is at ${collapsed} after it was collapsed, not closed at ${before.rest}`);
+		return;
+	}
+	if (phase !== "settled" && phase !== "ended") throw new Error(`Unknown motion phase in ${check}`);
+	if (phase === "settled") await seek(page, "end");
+	else {
+		// Without moving the clock: the page answers a preference change with the next frame.
+		await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		// Svelte cancels a transition's animation once it ends, so an ended one may read `idle`.
+		const states = await page.evaluate(() => window.controlMotion?.map((animation) => animation.playState) ?? []);
+		if (states.some((state) => state === "running" || state === "paused")) throw new Error(`${name} still moves after reduced motion turned on: ${states.join(", ")}`);
+	}
 	const settled = await read(page, target);
 	if (settled === before.rest || settled === before.midway) throw new Error(`${name} ended at ${settled}, its value ${settled === before.rest ? "at rest" : "midway"}`);
+	if (target.between) {
+		const [rest, midway, end] = [before.rest, before.midway, settled].map(Number);
+		if (!((rest - midway) * (midway - end) > 0)) throw new Error(`${name} moved ${rest}, ${midway}, ${end}, passing an end`);
+	}
 	await target.fits?.(page);
 }
