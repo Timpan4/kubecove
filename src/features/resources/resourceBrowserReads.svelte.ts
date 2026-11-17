@@ -194,7 +194,7 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	// Catch-up can be clearing caches before the topology query starts.
 	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData && topology.fetchStatus === "idle"
 		&& map.status === "connected" && !map.catchingUp && !map.reloadError
-		&& !mapRows?.isError && !mapRows?.isPlaceholderData);
+		&& !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const notice = $derived({
 		table: tableShown ? { status: shown.status, current: tableCurrent, error: shown.reloadError } : null,

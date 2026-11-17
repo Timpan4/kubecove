@@ -41,8 +41,7 @@ impl Inspector {
                     if status == LiveStatus::RefreshFailed
                         || (status == LiveStatus::Live
                             && (self.map.read.refreshing()
-                                || (self.observation.shows(context)
-                                    && self.observation.context_loading(context))))
+                                || self.observation.context_rows_stale(context)))
                     {
                         LiveStatus::CatchingUp
                     } else {

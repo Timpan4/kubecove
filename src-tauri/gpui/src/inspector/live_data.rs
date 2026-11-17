@@ -97,13 +97,6 @@ impl Registration {
             WatchPhase::Running { link, .. } => link.messages(),
         }
     }
-
-    fn messages(&self) -> impl Iterator<Item = &String> {
-        let [error, denied] = self.link_messages();
-        [error, denied, self.reload_error.as_ref()]
-            .into_iter()
-            .flatten()
-    }
 }
 
 impl LiveData {
@@ -143,10 +136,13 @@ impl LiveData {
         )
     }
 
-    pub fn messages(&self) -> impl Iterator<Item = &String> {
-        self.refresh_error
-            .iter()
-            .chain(self.watches.values().flat_map(Registration::messages))
+    pub fn reload_error_where(&self, keep: impl Fn(&str) -> bool) -> Option<&String> {
+        self.refresh_error.as_ref().or_else(|| {
+            self.watches
+                .values()
+                .filter(|watch| keep(&watch.context))
+                .find_map(|watch| watch.reload_error.as_ref())
+        })
     }
 
     /// Each watch for the status menu, in id order, so the first error it

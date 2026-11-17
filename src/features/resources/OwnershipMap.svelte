@@ -236,13 +236,6 @@
 		</div>
 	</div>
 
-	{#if topology && error}
-		<details class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
-			<summary class="cursor-pointer">Map refresh failed</summary>
-			<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} />
-		</details>
-	{/if}
-
 	{#if loading.active}
 		<div class="flex min-h-80 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
 			{#if loading.shown}
@@ -258,6 +251,7 @@
 			/>
 		</div>
 	{:else if !topology || topology.nodes.length === 0 || !graph}
+		{#if topology && error}{@render mapRefreshError()}{/if}
 		<Empty class="min-h-80 flex-1 border-0">
 			<EmptyHeader>
 				<EmptyTitle>{emptyTitle}</EmptyTitle>
@@ -275,7 +269,7 @@
 			>skip graph</Button>.
 		</p>
 		<div
-			class="min-h-80 flex-1"
+			class="relative min-h-80 flex-1"
 			bind:clientWidth={viewportWidth}
 			bind:clientHeight={viewportHeight}
 		>
@@ -317,6 +311,7 @@
 					<Controls position="top-left" orientation="horizontal" showLock={false} />
 				</SvelteFlow>
 			{/if}
+			{#if error}{@render mapRefreshError()}{/if}
 		</div>
 		<div bind:this={afterGraphElement} tabindex="-1"></div>
 		{#if topology.warnings.length > 0}
@@ -332,3 +327,10 @@
 		{/if}
 	{/if}
 </div>
+
+{#snippet mapRefreshError()}
+	<details class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
+		<summary class="cursor-pointer">Map refresh failed</summary>
+		<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} />
+	</details>
+{/snippet}

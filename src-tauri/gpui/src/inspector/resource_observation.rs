@@ -55,6 +55,8 @@ struct ContextRows {
     shown: bool,
     /// The context's built-in read in the current load runs.
     pending: bool,
+    /// A failed scope refresh left this context's previous rows on screen.
+    refresh_failed: bool,
     /// The context's custom-kind read in the current load runs, or waits for its built-ins.
     custom_pending: bool,
     /// The list version of each kind in the context's rows, by `watch_id`.
@@ -182,6 +184,7 @@ impl ResourceObservation {
                     ready: true,
                     shown: true,
                     pending: false,
+                    refresh_failed: false,
                     custom_pending: part.custom_pending,
                     versions: context_versions(context, result.versions),
                     warnings: result
@@ -331,6 +334,7 @@ impl ResourceObservation {
                     }
                 }
                 Err(error) if refresh && part.shown => {
+                    part.refresh_failed = true;
                     applied.warnings.push(format!(
                         "Context \"{context}\": {}. Showing the last loaded data.",
                         error.message
@@ -377,6 +381,11 @@ impl ResourceObservation {
     fn refresh_settled(&mut self, result: Result<(), String>) {
         self.read = None;
         let interrupted = std::mem::take(&mut self.custom_interrupted);
+        if result.is_err() {
+            for part in self.parts.iter_mut().filter(|part| part.shown) {
+                part.refresh_failed = true;
+            }
+        }
         match result {
             Ok(()) => {
                 self.status = Load::Ready;
@@ -435,6 +444,13 @@ impl ResourceObservation {
     pub(super) fn shows(&self, context: &str) -> bool {
         self.position(context)
             .is_some_and(|index| self.parts[index].shown)
+    }
+
+    pub(super) fn context_rows_stale(&self, context: &str) -> bool {
+        self.position(context).is_some_and(|index| {
+            let part = &self.parts[index];
+            part.shown && (part.pending || part.refresh_failed || self.refreshing())
+        })
     }
 
     /// A context whose rows the table shows still reads them.

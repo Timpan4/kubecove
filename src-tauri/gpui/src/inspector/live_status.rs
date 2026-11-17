@@ -414,8 +414,7 @@ impl Inspector {
                 notice.child(
                     div().px(px(12.)).pb(px(12.)).children(
                         self.live
-                            .messages()
-                            .next()
+                            .reload_error_where(|context| self.observation.shows(context))
                             .map(|message| ui::xs(message.clone())),
                     ),
                 )
