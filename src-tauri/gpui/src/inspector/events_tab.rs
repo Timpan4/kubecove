@@ -5,7 +5,8 @@ use super::detail::ResourceDetail;
 use super::events::{EventsLoad, badge, outline, tw};
 use super::loading::LoadingDelays;
 use super::windowed::row_id;
-use super::{Inspector, timestamp_text};
+use super::{Inspector, controls, timestamp_text};
+use crate::control_motion;
 use crate::incident::{self, EventFilter};
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
@@ -280,7 +281,9 @@ pub(super) fn events_tab(
         tw::emerald200()
     });
     let normal = summary.total - summary.warnings;
+    let slide = control_motion::Slide::new();
     let segmented = div()
+        .relative()
         .flex()
         .flex_none()
         .items_center()
@@ -291,10 +294,18 @@ pub(super) fn events_tab(
         .bg(Tokens::background())
         .border_1()
         .border_color(Tokens::border().opacity(0.6))
+        .child(controls::segment_pill(
+            &slide,
+            "segment-pill:events-filter",
+            FILTERS
+                .iter()
+                .position(|(filter, ..)| state.filter == *filter)
+                .unwrap_or_default(),
+        ))
         .children(FILTERS.iter().map(|(filter, id, label)| {
             let active = state.filter == *filter;
             let filter = *filter;
-            div()
+            let segment = div()
                 .id(*id)
                 .test_support()
                 .cursor_pointer()
@@ -303,18 +314,19 @@ pub(super) fn events_tab(
                 .h(px(24.))
                 .px(px(8.))
                 .rounded(px(8.))
-                .when(active, |button| button.bg(Tokens::card()).shadow_sm())
-                .child(ui::medium(ui::xs(*label)).text_color(if active {
-                    Tokens::foreground()
-                } else {
-                    Tokens::muted_foreground()
-                }))
+                .child(ui::medium(ui::xs(*label)))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(events) = this.events_state() {
                         events.filter = filter;
                     }
                     cx.notify();
-                }))
+                }));
+            let segment = control_motion::eased(
+                gpui_kit::SharedString::from(format!("segment:{id}")),
+                active,
+                move |on| controls::segment(segment, on),
+            );
+            slide.option(active, segment)
         }));
     let list = if visible.is_empty() {
         empty(

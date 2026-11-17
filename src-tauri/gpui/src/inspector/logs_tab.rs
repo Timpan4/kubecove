@@ -3,13 +3,16 @@
 //! each one from precomputed line text.
 
 use super::Inspector;
-use super::controls::{RADIUS, Variant, button, button_frame, icon_button};
+use super::controls::{
+    RADIUS, Variant, button, button_frame, icon_button, segment as segment_text, segment_pill,
+};
 use super::detail::ResourceDetail;
 use super::events::tw;
 use super::events_tab::empty;
 use super::log_row::{chip_colors, log_row, red500};
 use super::logs_state::{LogStatus, LogsState, SINCE};
 use super::overlay_motion::{Overlay, OverlayMotion, Tooltip};
+use crate::control_motion;
 use crate::logs::LogLevel;
 use crate::preferences::LogLayout;
 use crate::targets::TestSupportExt;
@@ -35,7 +38,9 @@ fn status_dot(logs: &LogsState) -> Hsla {
 
 fn tail_menu(logs: &LogsState, cx: &mut Context<Inspector>) -> Stateful<Div> {
     let label = |text: &str| ui::muted(ui::xs(text.to_owned()));
+    let slide = control_motion::Slide::new();
     let segments = div()
+        .relative()
         .flex()
         .items_center()
         .p(px(2.))
@@ -43,10 +48,21 @@ fn tail_menu(logs: &LogsState, cx: &mut Context<Inspector>) -> Stateful<Div> {
         .bg(Tokens::background())
         .border_1()
         .border_color(Tokens::border().opacity(0.6))
+        .child(
+            segment_pill(
+                &slide,
+                "segment-pill:log-since",
+                SINCE
+                    .iter()
+                    .position(|(seconds, ..)| logs.since == *seconds)
+                    .unwrap_or_default(),
+            )
+            .rounded(px(6.)),
+        )
         .children(SINCE.iter().map(|(seconds, _, short)| {
             let active = logs.since == *seconds;
             let seconds = *seconds;
-            div()
+            let segment = div()
                 .id(SharedString::from(format!("log-since-{short}")))
                 .test_support()
                 .cursor_pointer()
@@ -55,12 +71,7 @@ fn tail_menu(logs: &LogsState, cx: &mut Context<Inspector>) -> Stateful<Div> {
                 .h(px(24.))
                 .px(px(8.))
                 .rounded(px(6.))
-                .when(active, |button| button.bg(Tokens::card()).shadow_sm())
-                .child(ui::medium(ui::xs(*short)).text_color(if active {
-                    Tokens::foreground()
-                } else {
-                    Tokens::muted_foreground()
-                }))
+                .child(ui::medium(ui::xs(*short)))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     if let Some(logs) = this.logs_state()
                         && logs.since != seconds
@@ -68,7 +79,13 @@ fn tail_menu(logs: &LogsState, cx: &mut Context<Inspector>) -> Stateful<Div> {
                         logs.since = seconds;
                         this.restart_logs(window, cx);
                     }
-                }))
+                }));
+            let segment = control_motion::eased(
+                SharedString::from(format!("segment:log-since-{short}")),
+                active,
+                move |on| segment_text(segment, on),
+            );
+            slide.option(active, segment)
         }));
     div()
         .id("log-tail-menu")
