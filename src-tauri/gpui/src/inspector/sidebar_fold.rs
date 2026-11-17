@@ -77,7 +77,9 @@ impl Folds {
         let (from, turned) = tracks
             .get(path)
             .map_or((if open { 0. } else { 1. }, None), |track| {
-                (track.at(now).0, track.shown)
+                // A run turned back again before it drew keeps the pixels the
+                // branch last showed.
+                (track.at(now).0, track.shown.or(track.turned))
             });
         tracks.insert(
             path.to_owned(),
@@ -248,7 +250,9 @@ mod tests {
     //! - a branch turned back mid-fold jumps at the turn, or reopens to a
     //!   height measured before its child opened and then jumps at the end;
     //! - a branch turned back whose first frame comes late ends its run at once,
-    //!   timed from the share of rows its child has grown since.
+    //!   timed from the share of rows its child has grown since;
+    //! - a branch turned back twice between two frames jumps, having lost the
+    //!   pixels it showed.
     use super::*;
     use gpui_kit::TestAppContext;
 
@@ -369,5 +373,25 @@ mod tests {
                  opened at once to {shown} px"
             );
         }
+    }
+
+    #[gpui_kit::test]
+    fn a_branch_turned_back_twice_between_frames_stays_where_it_was(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        let mut last = namespace(&folds, false, cx);
+        for _ in 0..FRAMES / 2 {
+            frame(cx);
+            last = namespace(&folds, false, cx);
+        }
+        cx.update(|cx| {
+            folds.start("ns", true, cx);
+            folds.start("ns", false, cx);
+        });
+        assert_eq!(
+            namespace(&folds, false, cx),
+            last,
+            "the branch jumped when it was turned back twice"
+        );
     }
 }
