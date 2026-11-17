@@ -6,7 +6,7 @@ type LoadResult = Result<serde_json::Value, AppError>;
 
 #[derive(Clone, Default)]
 pub(super) struct Timing {
-    rules: std::sync::Arc<Mutex<HashMap<(String, String), Rule>>>,
+    rules: Rules,
     /// Fails every read, as the desktop backend's remote route does once the selected server drops.
     refusal: std::sync::Arc<Mutex<Option<AppError>>>,
 }
@@ -25,6 +25,44 @@ struct Load {
     dirty: bool,
     snapshot: Option<serde_json::Value>,
     waiters: Vec<oneshot::Sender<LoadResult>>,
+}
+
+type Rules = std::sync::Arc<Mutex<HashMap<(String, String), Rule>>>;
+
+/// One caller's wait on a held load. Dropping it, when the read completes or
+/// its caller cancels, removes the load once no caller waits on it, as the
+/// browser mock's `load` does when its last waiter leaves. A cancelled read is
+/// then no longer pending, and `competing_reads` does not restart it.
+struct Waiter {
+    receiver: Option<oneshot::Receiver<LoadResult>>,
+    rules: Rules,
+    rule: (String, String),
+    key: String,
+}
+
+impl Drop for Waiter {
+    fn drop(&mut self) {
+        // Close this waiter's channel first, so its sender reads as closed below.
+        drop(self.receiver.take());
+        // A scenario assertion that failed under this lock poisoned it; a
+        // waiter dropped while that panic unwinds must not panic again.
+        let mut rules = self
+            .rules
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(rule) = rules.get_mut(&self.rule) else {
+            return;
+        };
+        let Some(load) = rule.loads.get_mut(&self.key) else {
+            return;
+        };
+        // A load released since then is gone, and a later load with the same
+        // key keeps every waiter whose caller is still waiting.
+        load.waiters.retain(|sender| !sender.is_closed());
+        if load.waiters.is_empty() {
+            rule.loads.remove(&self.key);
+        }
+    }
 }
 
 impl Timing {
@@ -164,10 +202,6 @@ impl Timing {
             return Box::pin(async move { Ok(result) });
         }
         let load = rule.loads.entry(key.into()).or_default();
-        load.waiters.retain(|sender| !sender.is_closed());
-        if load.waiters.is_empty() {
-            load.snapshot = None;
-        }
         // live_store.rs restarts dirty in-flight loads on the next caller.
         if load.dirty {
             for sender in load.waiters.drain(..) {
@@ -180,7 +214,17 @@ impl Timing {
             .get_or_insert_with(|| serde_json::to_value(&result).unwrap());
         let (sender, receiver) = oneshot::channel();
         load.waiters.push(sender);
+        let mut waiter = Waiter {
+            receiver: Some(receiver),
+            rules: self.rules.clone(),
+            rule: (command.into(), context.into()),
+            key: key.into(),
+        };
         Box::pin(async move {
+            let receiver = waiter
+                .receiver
+                .as_mut()
+                .expect("a waiter holds its receiver");
             let snapshot = receiver.await.map_err(|_| AppError::cancelled())??;
             serde_json::from_value(snapshot)
                 .map_err(|error| AppError::new(error.to_string(), AppErrorKind::Serialization))

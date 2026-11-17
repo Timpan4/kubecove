@@ -1,5 +1,5 @@
 use super::*;
-use kubecove_gpui::backend::{INSPECTION_KINDS, Listed, discovered_key};
+use kubecove_gpui::backend::{INSPECTION_KINDS, ListVersions, Listed, discovered_key};
 use kubecove_lib::models::{WatchResourceKey, WatchResourceKind};
 
 impl Fixture {
@@ -114,10 +114,8 @@ impl Fixture {
         } else {
             vec![]
         };
-        let resources = self.with_removed_resource(resources);
+        let (resources, versions) = self.listed_snapshot(&resources, scope.namespace.as_deref());
         let namespaces = self.namespaces.clone();
-        // The version is read with the rows it describes.
-        let versions = self.list_versions(scope.namespace.as_deref());
         let read = self.timing.read(
             "list_resource_scope",
             &scope.context,
@@ -135,6 +133,27 @@ impl Fixture {
             })
         })
     }
+    /// The scripted rows and the list version they describe, as one snapshot.
+    /// Rows and version are read under separate locks of the live script, and
+    /// a script that lands between them on another thread would pair old rows
+    /// with a newer version, so the watch would skip that change. Every
+    /// scripted row change raises the revision, so an unchanged version across
+    /// the reads proves they saw the same script state; otherwise read again.
+    fn listed_snapshot(
+        &self,
+        resources: &[ResourceSummary],
+        namespace: Option<&str>,
+    ) -> (Vec<ResourceSummary>, ListVersions) {
+        loop {
+            let before = self.list_version();
+            let rows = self.with_removed_resource(resources.to_vec());
+            let versions = self.list_versions(namespace);
+            if self.list_version() == before {
+                return (rows, versions);
+            }
+        }
+    }
+
     /// Applies the scripted cluster changes after a resource was pinned:
     /// a deleted Deployment, or an Ingress served at another API version.
     pub(super) fn with_removed_resource(
