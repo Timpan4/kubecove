@@ -57,8 +57,10 @@
 		const to = untrack(() => pill);
 		// Only a move starts a transition, and only a transition's end settles the slide. So a choice
 		// without a pill to start from, or one that lands in the same box, such as in a hidden
-		// control, does not slide.
-		sliding = chosen && from !== undefined && to !== undefined && !sameBox(from, to);	});
+		// control, does not slide. Nor does any choice under reduced motion.
+		const moves = from !== undefined && to !== undefined && !sameBox(from, to);
+		sliding = chosen && moves && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	});
 
 	// A layout change places the pill at once, ending a slide that is running.
 	$effect(() => {
@@ -76,10 +78,13 @@
 		return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
 	}
 
-	// New or reordered options can move the active one without resizing the group, so the hidden
-	// pill is measured again and the next slide starts from the active option.
+	/** The options' values and labels in order, which change when an option is added, moved or renamed. */
+	const optionKey = $derived(options.map((option) => `${option.value}\n${option.label}`).join("\n\n"));
+
+	// New, reordered or renamed options can move the active one without resizing the group, so the
+	// hidden pill is measured again and the next slide starts from the active option.
 	$effect(() => {
-		if (options.length > 0 && !sliding) place();
+		if (optionKey !== "" && !sliding) place();
 	});
 
 	/**
