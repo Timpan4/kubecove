@@ -28,10 +28,11 @@ struct Track {
     height: Option<f32>,
     /// The pixels the branch showed on the last frame.
     shown: Option<f32>,
-    /// The pixels the branch's rows laid out on the last frame.
-    measured: Option<f32>,
     /// The pixels the branch showed when the user turned it back. The run's
-    /// first frame moves `from` to them, so the branch turns from where it is.
+    /// first frame moves `from` to their share of the rows that frame lays
+    /// out, so the branch turns from where it is, and the run cannot end
+    /// before that frame: a child may have grown the rows since `from` was
+    /// taken, which leaves the turned run longer than `from` says.
     turned: Option<f32>,
     /// Whether this frame rendered the branch.
     seen: bool,
@@ -74,17 +75,7 @@ impl Folds {
         let (from, turned) = tracks
             .get(path)
             .map_or((if open { 0. } else { 1. }, None), |track| {
-                // The share of the rows the branch showed, which a child that
-                // opened inside it may have grown since the run started. The
-                // first frame of the new run checks its end against this
-                // share before it measures the rows again.
-                let from = match (track.shown, track.measured) {
-                    (Some(shown), Some(measured)) if measured > 0. => {
-                        (shown / measured).clamp(0., 1.)
-                    }
-                    _ => track.at(now).0,
-                };
-                (from, track.shown)
+                (track.at(now).0, track.shown)
             });
         tracks.insert(
             path.to_owned(),
@@ -94,7 +85,6 @@ impl Folds {
                 start: now,
                 height: None,
                 shown: None,
-                measured: None,
                 turned,
                 seen: true,
             },
@@ -102,13 +92,14 @@ impl Folds {
     }
 
     /// The pixels the folding branch at `path` shows at `now`, whose rows lay
-    /// out `measured` high this frame.
-    fn reached(&self, path: &str, measured: f32, now: Instant) -> f32 {
+    /// out `measured` high this frame, and which showed `turned` pixels when
+    /// the user turned it back before this frame.
+    fn reached(&self, path: &str, measured: f32, now: Instant, turned: Option<f32>) -> f32 {
         let mut tracks = self.tracks.borrow_mut();
         let Some(track) = tracks.get_mut(path) else {
             return measured;
         };
-        if let Some(turned) = track.turned.take()
+        if let Some(turned) = turned
             && measured > 0.
         {
             track.from = (turned / measured).clamp(0., 1.);
@@ -121,7 +112,6 @@ impl Folds {
         // Whole pixels, so the rows below the branch stay on the pixel grid.
         let shown = (height * track.at(now).0).round();
         track.shown = Some(shown);
-        track.measured = Some(measured);
         shown
     }
 
@@ -152,8 +142,14 @@ impl Folds {
         };
         let now = cx.background_executor().now();
         let (share, running) = track.at(now);
+        // Taken here, so that only this frame's rows rescale the turn.
+        let turned = track.turned.take();
         // Reduced motion turned on during a fold ends it, as it does any transition.
-        if track.open != open || !running || Moving::finishing(cx) || cx.reduce_motion() {
+        if track.open != open
+            || (!running && turned.is_none())
+            || Moving::finishing(cx)
+            || cx.reduce_motion()
+        {
             tracks.remove(path);
             return settled;
         }
@@ -162,6 +158,7 @@ impl Folds {
         Some(Fold(Some(Running {
             now,
             path: path.to_owned(),
+            turned,
             folds: self,
         })))
     }
@@ -182,6 +179,8 @@ struct Running<'a> {
     /// The frame's time.
     now: Instant,
     path: String,
+    /// `Track::turned`, on the run's first frame.
+    turned: Option<f32>,
     folds: &'a Folds,
 }
 
@@ -193,7 +192,7 @@ impl Fold<'_> {
             return rows;
         };
         let measured: f32 = rows.iter_mut().map(|row| *shown(row)).sum();
-        let mut left = run.folds.reached(&run.path, measured, run.now);
+        let mut left = run.folds.reached(&run.path, measured, run.now, run.turned);
         rows.retain_mut(|row| {
             let height = shown(row);
             *height = height.min(left);
@@ -247,7 +246,7 @@ mod tests {
     //! - a branch turned back mid-fold jumps at the turn, or reopens to a
     //!   height measured before its child opened and then jumps at the end;
     //! - a branch turned back whose first frame comes late ends its run at once,
-    //!   timed from the share of a height its child has since grown past.
+    //!   timed from the share of rows its child has grown since.
     use super::*;
     use gpui_kit::TestAppContext;
 
@@ -344,23 +343,29 @@ mod tests {
 
     #[gpui_kit::test]
     fn a_branch_turned_back_keeps_folding_when_its_first_frame_is_late(cx: &mut TestAppContext) {
-        let folds = Folds::default();
-        close_while_a_child_opens(&folds, cx);
-        namespace(&folds, false, cx);
-        for _ in 0..FRAMES / 2 {
-            frame(cx);
+        // Frames before the turn, and how late its first frame comes. Each
+        // first frame lands after the run timed from the share the branch
+        // showed has ended, but before the run timed from its pixels over the
+        // rows that frame lays out does. The child keeps growing the rows
+        // while that frame is late, so a share taken on any earlier frame
+        // ends the run too soon.
+        for (frames, late_ms) in [(7, 120), (3, 50), (4, 80)] {
+            let folds = Folds::default();
+            close_while_a_child_opens(&folds, cx);
             namespace(&folds, false, cx);
+            for _ in 0..frames {
+                frame(cx);
+                namespace(&folds, false, cx);
+            }
+            cx.update(|cx| folds.start("ns", true, cx));
+            cx.background_executor
+                .advance_clock(std::time::Duration::from_millis(late_ms));
+            let shown = namespace(&folds, true, cx);
+            assert!(
+                folds.folding("ns") && shown < 11. * ROW,
+                "the branch turned back after {frames} frames and drawn {late_ms} ms late \
+                 opened at once to {shown} px"
+            );
         }
-        cx.update(|cx| folds.start("ns", true, cx));
-        // A busy machine draws the turn's first frame late: after the 110 ms
-        // the share of the namespace's own rows it showed would take to open,
-        // but within the 132 ms its 28 of 237 px take.
-        cx.background_executor
-            .advance_clock(control_motion::DURATION * 4 / 5);
-        let shown = namespace(&folds, true, cx);
-        assert!(
-            folds.folding("ns") && shown < 11. * ROW,
-            "the branch turned back opened at once to {shown} px"
-        );
     }
 }
