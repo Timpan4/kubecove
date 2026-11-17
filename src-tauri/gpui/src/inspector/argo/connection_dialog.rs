@@ -47,9 +47,13 @@ impl Inspector {
                                 cx.stop_propagation();
                             }
                         }))
-                        .on_mouse_down_out(
-                            cx.listener(|this, _, _, cx| this.cancel_argo_connection(cx)),
-                        )
+                        // Every press is outside a closing dialog, and cancelling
+                        // again would reset what started after it closed.
+                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                            if this.argo.connections.dialog {
+                                this.cancel_argo_connection(cx);
+                            }
+                        }))
                         .child(self.argo_connection_content(cx))
                         .child(
                             button(Variant::Outline, 24., false)
