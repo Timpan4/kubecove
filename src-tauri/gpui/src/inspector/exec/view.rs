@@ -4,6 +4,7 @@ use super::super::{
     Inspector,
     controls::{Variant, button},
     detail::Detail,
+    overlay_motion::Overlay,
 };
 use super::menu;
 use crate::targets::TestSupportExt;
@@ -43,11 +44,14 @@ impl Inspector {
             containers.push(String::new());
         }
         let default = containers.first().cloned().unwrap_or_default();
+        let shown = self
+            .overlay_motion
+            .sample(Overlay::ExecMenu, self.exec.menu);
         let menu = div()
             .flex()
             .flex_col()
             .gap(px(4.))
-            .when(self.exec.menu, |menu| {
+            .when(shown.is_some(), |menu| {
                 menu.absolute()
                     .top(px(36.))
                     .left(px(4.))
@@ -90,6 +94,10 @@ impl Inspector {
                         )
                     })
             });
+        let menu = match shown {
+            Some(shown) => shown.surface(menu).into_any_element(),
+            None => menu.into_any_element(),
+        };
         if self.exec.tabs.is_empty() {
             return div().relative().flex().flex_col().items_center().justify_center().min_h(px(288.)).gap(px(12.))
                 .border_1().border_color(Tokens::border()).rounded(px(8.))

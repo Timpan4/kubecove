@@ -388,9 +388,18 @@ impl Inspector {
             // `ResourceInspector.svelte`: `bg-surface-1` (= card).
             .bg(Tokens::card())
             .child(self.detail_view(cx));
+        // The pane renders only while a resource is open, so the track starts
+        // with the pane and selecting another row does not replay the enter.
+        let aside = match self
+            .overlay_motion
+            .sample(super::overlay_motion::Overlay::Detail, true)
+        {
+            Some(shown) => shown.surface(aside).into_any_element(),
+            None => aside.into_any_element(),
+        };
         [
             handle.into_any_element(),
-            crate::frame_profile::element("detail", aside.into_any_element()),
+            crate::frame_profile::element("detail", aside),
         ]
     }
 
@@ -579,6 +588,7 @@ impl Inspector {
                         detail,
                         self.persisted.preferences.log_layout,
                         &self.loading,
+                        &self.overlay_motion,
                         cx,
                     ),
                     DetailTab::Revisions => revisions_tab(detail, &self.loading, cx),

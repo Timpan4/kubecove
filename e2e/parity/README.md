@@ -200,6 +200,7 @@ Update installation and platform packaging follow ADR 0034. The `settings-update
 Known differences that have no shared scenario:
 
 - GPUI does not read the platform reduce-motion setting. The web honors `prefers-reduced-motion`.
+- Overlay motion: GPUI animates dialogs, their backdrop, the navigation drawer, the Map context select and the detail panel's enter. The web shows them without motion. Popovers and tooltips animate in both, where GPUI slides 8 px from the trigger in place of the web's zoom. `tests/native/overlay_motion.rs` covers the GPUI-only part; "Overlay enter and exit timing" in `mock-timing.md` has the reason.
 - Pins: deleting the last object of a custom kind keeps its pin in GPUI until a list of that kind completes, where the web drops it. GPUI drops a pin whose saved namespace was deleted, where the web keeps it.
 - Remote error detail text differs between the clients.
 - The exec terminal's right-click menu is GPUI's own. The web shows the platform webview menu, and GPUI shows Copy, Paste and Select all, which call the same paths as Ctrl+Insert, Shift+Insert and the select-all gesture. The web driver cannot open the webview menu, so `tests/native/exec_context_menu.rs` covers GPUI's menu.

@@ -1,0 +1,28 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "overlay-motion.popover",
+      "title": "The update popover fades in and out over 150 ms on the CSS ease curve",
+      "steps": [
+        { "action": "configureSettingsMock", "script": "update-available" },
+        { "action": "openLauncher" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "holdOverlayMotion" },
+        { "action": "updateStatusControl", "control": "Open" },
+        { "action": "expectOverlayOpacity", "overlay": "update-status", "opacity": 0 },
+        { "action": "advanceOverlayMotion", "ms": 75 },
+        { "action": "expectOverlayOpacity", "overlay": "update-status", "opacity": 0.8024 },
+        { "action": "advanceOverlayMotion", "ms": 75 },
+        { "action": "expectOverlayOpacity", "overlay": "update-status", "opacity": 1 },
+        { "action": "updateStatusControl", "control": "Escape" },
+        { "action": "expectOverlayOpacity", "overlay": "update-status", "opacity": 1 },
+        { "action": "advanceOverlayMotion", "ms": 75 },
+        { "action": "expectOverlayOpacity", "overlay": "update-status", "opacity": 0.1976 },
+        { "action": "advanceOverlayMotion", "ms": 75 },
+        { "action": "expectNoOverlay", "overlay": "update-status" }
+      ]
+    }
+  ]
+}

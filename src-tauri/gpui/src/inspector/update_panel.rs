@@ -3,6 +3,7 @@
 
 use super::Inspector;
 use super::controls::{Variant, button};
+use super::overlay_motion::Overlay;
 use super::updates::Install;
 use crate::backend::UpdateStatus;
 use crate::targets::TestSupportExt;
@@ -115,21 +116,26 @@ impl Inspector {
                     .bg(Tokens::primary()),
             );
         }
-        if self.update_panel.open {
+        if let Some(shown) = self
+            .overlay_motion
+            .sample(Overlay::UpdateStatus, self.update_panel.open)
+        {
             wrapper = wrapper.child(
                 deferred(
-                    self.update_panel_card(cx)
-                        .id("update-status-popover")
-                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                            this.close_update_panel();
-                            cx.notify();
-                        }))
-                        .occlude()
-                        .absolute()
-                        .top(px(36.))
-                        .right_0()
-                        .w(px(320.))
-                        .shadow_lg(),
+                    shown.surface(
+                        self.update_panel_card(cx)
+                            .id("update-status-popover")
+                            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                this.close_update_panel();
+                                cx.notify();
+                            }))
+                            .occlude()
+                            .absolute()
+                            .top(px(36.))
+                            .right_0()
+                            .w(px(320.))
+                            .shadow_lg(),
+                    ),
                 )
                 .with_priority(1),
             );

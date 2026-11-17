@@ -5,6 +5,7 @@
 use super::{
     Inspector, Page,
     detail::{Detail, DetailTab},
+    overlay_motion::Overlay,
     surface,
 };
 use crate::live_sessions::{exec_command, exec_status, forward_status, forward_title, local_url};
@@ -74,8 +75,12 @@ impl Inspector {
                 }),
             );
         let mut wrapper = div().relative().child(trigger);
-        if self.sessions.popover {
-            wrapper = wrapper.child(deferred(self.live_session_panel(cx)).with_priority(1));
+        if let Some(shown) = self
+            .overlay_motion
+            .sample(Overlay::LiveSessions, self.sessions.popover)
+        {
+            wrapper = wrapper
+                .child(deferred(shown.surface(self.live_session_panel(cx))).with_priority(1));
         }
         wrapper
     }

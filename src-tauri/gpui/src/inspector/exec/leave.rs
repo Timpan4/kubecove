@@ -2,6 +2,7 @@
 use super::super::{
     Inspector, Page,
     controls::{Variant, button},
+    overlay_motion::Overlay,
     request::InFlight,
 };
 use crate::targets::TestSupportExt;
@@ -131,66 +132,68 @@ impl Inspector {
         &self,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let LeaveDialog::Confirming(_) = &self.exec.leave else {
-            return None;
-        };
+        let shown = self.overlay_motion.sample(
+            Overlay::ExecLeave,
+            matches!(self.exec.leave, LeaveDialog::Confirming(_)),
+        )?;
         let title = format!(
             "Stop {} exec session{}?",
             self.exec.tabs.len(),
             if self.exec.tabs.len() == 1 { "" } else { "s" }
         );
         Some(
-            div()
-                .absolute()
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(gpui_kit::black().opacity(0.5))
-                .child(
-                    ui::card()
-                        // `DialogContent` takes its accessible name from the title.
-                        .id("exec-leave-dialog")
-                        .test_support()
-                        .role(gpui_kit::Role::Dialog)
-                        .aria_label(title.clone())
-                        .w(px(448.))
-                        .p(px(24.))
-                        .gap(px(16.))
+            shown
+                .surface(
+                    div()
+                        .absolute()
+                        .inset_0()
                         .flex()
-                        .flex_col()
-                        .child(ui::heading(title, 18., 28.))
-                        .child(ui::muted(ui::sm(
-                            "Leaving this view stops the open exec sessions.",
-                        )))
-                        .children(
-                            self.exec.tabs.iter().map(|t| {
-                                ui::xs(format!("{} in {}", t.command.join(" "), t.container))
-                            }),
-                        )
+                        .items_center()
+                        .justify_center()
+                        .bg(gpui_kit::black().opacity(0.5))
                         .child(
-                            div()
+                            ui::card()
+                                // `DialogContent` takes its accessible name from the title.
+                                .id("exec-leave-dialog")
+                                .test_support()
+                                .role(gpui_kit::Role::Dialog)
+                                .aria_label(title.clone())
+                                .w(px(448.))
+                                .p(px(24.))
+                                .gap(px(16.))
                                 .flex()
-                                .justify_end()
-                                .gap(px(8.))
+                                .flex_col()
+                                .child(ui::heading(title, 18., 28.))
+                                .child(ui::muted(ui::sm(
+                                    "Leaving this view stops the open exec sessions.",
+                                )))
+                                .children(self.exec.tabs.iter().map(|t| {
+                                    ui::xs(format!("{} in {}", t.command.join(" "), t.container))
+                                }))
                                 .child(
-                                    button(Variant::Outline, 28., false)
-                                        .id("exec-leave-cancel")
-                                        .test_support()
-                                        .child(ui::xs("Stay"))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.exec.leave = LeaveDialog::Closed;
-                                            cx.notify();
-                                        })),
-                                )
-                                .child(
-                                    button(Variant::Destructive, 28., false)
-                                        .id("exec-leave-confirm")
-                                        .test_support()
-                                        .child(ui::xs("Stop and leave"))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.stop_exec_and_leave(window, cx)
-                                        })),
+                                    div()
+                                        .flex()
+                                        .justify_end()
+                                        .gap(px(8.))
+                                        .child(
+                                            button(Variant::Outline, 28., false)
+                                                .id("exec-leave-cancel")
+                                                .test_support()
+                                                .child(ui::xs("Stay"))
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.exec.leave = LeaveDialog::Closed;
+                                                    cx.notify();
+                                                })),
+                                        )
+                                        .child(
+                                            button(Variant::Destructive, 28., false)
+                                                .id("exec-leave-confirm")
+                                                .test_support()
+                                                .child(ui::xs("Stop and leave"))
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.stop_exec_and_leave(window, cx)
+                                                })),
+                                        ),
                                 ),
                         ),
                 )

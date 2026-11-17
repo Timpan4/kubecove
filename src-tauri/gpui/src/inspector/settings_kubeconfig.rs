@@ -6,13 +6,13 @@
 use super::Inspector;
 use super::controls::{Variant, button};
 use super::loading::Phase;
+use super::overlay_motion::Tooltip;
 use super::settings_page::{Observed, settings_row, switch};
 use crate::backend::KubeconfigSourcesSummary;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
 use gpui_kit::component::input::{Input, Textarea};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{Context, Div, SharedString, Window, div, prelude::*, px};
 
 /// What settling a kubeconfig sources read does beyond showing the sources.

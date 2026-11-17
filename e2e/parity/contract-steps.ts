@@ -72,6 +72,10 @@ export type Step =
     | { action: "resizeViewport"; width: number; height: number }
     | { action: "openNavigationDrawer" }
     | { action: "expectNavigationDrawer"; open: boolean }
+    | { action: "holdOverlayMotion" }
+    | { action: "advanceOverlayMotion"; ms: number }
+    | { action: "expectOverlayOpacity"; overlay: OverlayName; opacity: number }
+    | { action: "expectNoOverlay"; overlay: OverlayName }
     | { action: "sidebarKey"; path: string[]; key: "Enter" | "Space" | "ArrowLeft" | "ArrowRight" }
     | { action: "retryLauncher"; read: "contexts" | "namespaces" }
     | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
@@ -393,6 +397,9 @@ export const PANEL_CONTROLS = [
 type PanelControl = (typeof PANEL_CONTROLS)[number];
 export const MAP_KEYS = ["Tab", "Shift+Tab", "Enter", "Space"] as const;
 export const MAP_CONTEXT_KEYS = ["Enter", "Space", "ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab", "Shift+Tab"] as const;
+/** Overlay surfaces whose enter and exit the motion steps follow: the ones that animate in both clients. */
+export const OVERLAY_NAMES = ["update-status"] as const;
+export type OverlayName = (typeof OVERLAY_NAMES)[number];
 type MapKey = (typeof MAP_KEYS)[number];
 /** The zoom controls, labeled as xyflow labels them on the web. */
 export const MAP_CONTROLS = ["Zoom In", "Zoom Out", "Fit View"] as const;

@@ -1,10 +1,10 @@
+use super::overlay_motion::Tooltip;
 use super::surface;
 use crate::model::health_source;
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::topology::node::{Lifecycle, LifecycleTone};
 use crate::ui;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     Animation, AnimationExt, AnyElement, Div, Hsla, SharedString, Transformation, div, percentage,
     prelude::*, px,

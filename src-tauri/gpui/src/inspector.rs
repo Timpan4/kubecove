@@ -53,6 +53,7 @@ mod map_context;
 mod metrics;
 mod namespace_list;
 mod navigation_state;
+mod overlay_motion;
 mod overview;
 mod overview_findings;
 mod overview_saved;
@@ -158,6 +159,7 @@ pub struct Inspector {
     timings: crate::diagnostics::Timings,
     presentation: presentation::Presentation,
     loading: loading::LoadingDelays,
+    overlay_motion: overlay_motion::OverlayMotion,
     persisted: crate::preferences::Document,
     persistence_error: Option<String>,
     workspace_name: SharedString,
@@ -293,6 +295,7 @@ impl Inspector {
             timings: Default::default(),
             presentation: Default::default(),
             loading: Default::default(),
+            overlay_motion: Default::default(),
             backend,
             persisted: Default::default(),
             persistence_error: None,
@@ -547,6 +550,8 @@ impl Render for Inspector {
         }
         let started = std::time::Instant::now();
         self.loading.begin_frame(cx.background_executor().now());
+        self.overlay_motion
+            .begin_frame(cx.background_executor().now(), cx.reduce_motion());
         self.sync_argo_scope(window, cx);
         self.sync_scope_reread(window, cx);
         self.sync_remote_status(window, cx);
@@ -576,8 +581,7 @@ impl Render for Inspector {
                     .into_any_element(),
             )
         });
-        let drawer = (workspace && compact && self.navigation_open)
-            .then(|| self.navigation_drawer(window, cx));
+        let drawer = self.navigation_drawer(workspace && compact, window, cx);
         let probe = self.presentation_frame(started);
         let view = div()
             .track_focus(&self.focus)
@@ -685,6 +689,7 @@ impl Render for Inspector {
             .children(self.copy_toast(cx))
             .children(probe);
         self.loading.end_frame(cx);
+        self.end_overlay_motion_frame(window, cx);
         self.record_load_frames(window, started.elapsed());
         view
     }

@@ -1,5 +1,5 @@
 //! Discovered kinds retain their API identity even before they contain objects.
-use super::{Inspector, Page, sidebar_discovery::ClusterRead};
+use super::{Inspector, Page, overlay_motion::Overlay, sidebar_discovery::ClusterRead};
 use crate::backend::ScopeResult;
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
@@ -304,27 +304,33 @@ impl Inspector {
                         cx.notify();
                     })),
             )
-            .when(self.live.picker_open, |picker| {
-                picker.child(
-                    deferred(
-                        div()
-                            .id("kind-popup")
-                            .occlude()
-                            .absolute()
-                            .top(px(34.))
-                            .left_0()
-                            .min_w(px(240.))
-                            .p(px(4.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(Tokens::border())
-                            .bg(Tokens::surface2())
-                            .shadow_lg()
-                            .child(self.kind_picker_options(cx)),
+            .when_some(
+                self.overlay_motion
+                    .sample(Overlay::KindPicker, self.live.picker_open),
+                |picker, shown| {
+                    picker.child(
+                        deferred(
+                            shown.surface(
+                                div()
+                                    .id("kind-popup")
+                                    .occlude()
+                                    .absolute()
+                                    .top(px(34.))
+                                    .left_0()
+                                    .min_w(px(240.))
+                                    .p(px(4.))
+                                    .rounded(px(8.))
+                                    .border_1()
+                                    .border_color(Tokens::border())
+                                    .bg(Tokens::surface2())
+                                    .shadow_lg()
+                                    .child(self.kind_picker_options(cx)),
+                            ),
+                        )
+                        .with_priority(1),
                     )
-                    .with_priority(1),
-                )
-            })
+                },
+            )
             .into_any_element()
     }
 }

@@ -3,6 +3,7 @@
 use super::super::{
     Inspector,
     controls::{Variant, button},
+    overlay_motion::Overlay,
 };
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -14,7 +15,10 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> Option<gpui_kit::AnyElement> {
         let dialog_focus = self.argo.connections.dialog_focus.clone();
-        self.argo.connections.dialog.then(|| {
+        let shown = self
+            .overlay_motion
+            .sample(Overlay::ArgoConnection, self.argo.connections.dialog);
+        shown.map(|shown| {
             let overlay = div()
                 .absolute()
                 .inset_0()
@@ -57,10 +61,15 @@ impl Inspector {
                                 ),
                         ),
                 );
-            overlay
-                .id("argo-connection-overlay")
-                .focus_trap("argo-connection-dialog", &dialog_focus)
-                .into_any_element()
+            let overlay = overlay.id("argo-connection-overlay");
+            // A closing dialog keeps no focus, so the trap ends with the close.
+            if shown.exiting() {
+                shown.surface(overlay).into_any_element()
+            } else {
+                shown
+                    .surface(overlay.focus_trap("argo-connection-dialog", &dialog_focus))
+                    .into_any_element()
+            }
         })
     }
 }

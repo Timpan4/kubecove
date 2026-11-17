@@ -3,7 +3,10 @@
 //! the workspace has more than one context. It filters display only; every
 //! context is still read and watched.
 
-use super::Inspector;
+use super::{
+    Inspector,
+    overlay_motion::{Overlay, Shown},
+};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{AnyElement, Context, SharedString, deferred, div, prelude::*, px};
@@ -70,9 +73,9 @@ impl Inspector {
             Some(selected) => selected.join(", "),
         };
         let popup = self
-            .filters
-            .context_open
-            .then(|| self.context_popup(&contexts, selected.as_deref(), cx));
+            .overlay_motion
+            .sample(Overlay::ContextFilter, self.filters.context_open)
+            .map(|shown| self.context_popup(&contexts, selected.as_deref(), shown, cx));
         Some(
             div()
                 .relative()
@@ -107,50 +110,53 @@ impl Inspector {
         &self,
         contexts: &[String],
         selected: Option<&[String]>,
+        shown: Shown,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         deferred(
-            div()
-                .id("context-options")
-                .test_support()
-                .occlude()
-                .absolute()
-                .top(px(34.))
-                .left_0()
-                .min_w(px(240.))
-                .p(px(8.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::border())
-                .bg(Tokens::surface2())
-                .shadow_lg()
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .child(ui::caps("Contexts", 10.))
-                .children(contexts.iter().map(|context| {
-                    let checked = selected.is_none_or(|selected| selected.contains(context));
-                    let target = context.clone();
-                    div()
-                        .id(SharedString::from(format!("context-option:{context}")))
-                        .test_support()
-                        .role(gpui_kit::Role::CheckBox)
-                        .aria_label(context.clone())
-                        .aria_description(if checked { "checked" } else { "unchecked" })
-                        .h(px(32.))
-                        .px(px(8.))
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .rounded(px(6.))
-                        .cursor_pointer()
-                        .hover(|row| row.bg(Tokens::muted()))
-                        .child(super::resource_filter_controls::check_box(checked))
-                        .child(ui::xs(context.clone()))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.toggle_context(&target, !checked, cx);
-                        }))
-                })),
+            shown.surface(
+                div()
+                    .id("context-options")
+                    .test_support()
+                    .occlude()
+                    .absolute()
+                    .top(px(34.))
+                    .left_0()
+                    .min_w(px(240.))
+                    .p(px(8.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(Tokens::border())
+                    .bg(Tokens::surface2())
+                    .shadow_lg()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(ui::caps("Contexts", 10.))
+                    .children(contexts.iter().map(|context| {
+                        let checked = selected.is_none_or(|selected| selected.contains(context));
+                        let target = context.clone();
+                        div()
+                            .id(SharedString::from(format!("context-option:{context}")))
+                            .test_support()
+                            .role(gpui_kit::Role::CheckBox)
+                            .aria_label(context.clone())
+                            .aria_description(if checked { "checked" } else { "unchecked" })
+                            .h(px(32.))
+                            .px(px(8.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .rounded(px(6.))
+                            .cursor_pointer()
+                            .hover(|row| row.bg(Tokens::muted()))
+                            .child(super::resource_filter_controls::check_box(checked))
+                            .child(ui::xs(context.clone()))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_context(&target, !checked, cx);
+                            }))
+                    })),
+            ),
         )
         .with_priority(1)
         .into_any_element()

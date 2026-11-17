@@ -43,9 +43,17 @@ mod visual {
         })
         .unwrap();
         // The first frame measures the ownership map's viewport; the second fits the graph to it.
+        // An overlay the view opened also starts its enter on the first frame, and the web
+        // capture's wait covers that too.
         for _ in 0..2 {
-            cx.update_window(handle, |_, window, cx| window.render_frame(cx))
-                .unwrap();
+            cx.update_window(handle, |_, window, cx| {
+                window.render_frame(cx);
+                let root = gpui_kit::base::Root::read(window, cx).view().clone();
+                if let Ok(inspector) = root.downcast::<Inspector>() {
+                    inspector.update(cx, |inspector, cx| inspector.finish_overlay_motion(cx));
+                }
+            })
+            .unwrap();
             cx.run_until_parked();
         }
         let image = cx

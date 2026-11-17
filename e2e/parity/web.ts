@@ -26,6 +26,7 @@ import { expectDetailScroll, expectResourceEvent } from "./web-detail-scroll";
 import { mcpAction } from "./web-mcp";
 import { remoteAction } from "./web-remote";
 import { navigationAction } from "./web-navigation";
+import { overlayMotionAction } from "./web-overlay-motion";
 import { panelAction } from "./web-panels";
 import { multiContextAction } from "./web-multi-context";
 import { resourceFilterAction } from "./web-resource-filters";
@@ -150,6 +151,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
             if (step.notice) await page.getByText(step.notice, { exact: true }).first().waitFor();
             break;
         case "expectLiveMenu": await liveMenuAction(page, step); break;
+        case "holdOverlayMotion": case "advanceOverlayMotion": case "expectOverlayOpacity": case "expectNoOverlay": await overlayMotionAction(page, step); break;
         case "replayLiveData": await page.evaluate(`import('/src/lib/tauri-dev-mock-live.ts').then(m => m.replayLiveData(${JSON.stringify(step.script)}))`); break;
         case "sortResourceTable": case "pressResourceRow": case "expectResourceOrder": case "toggleResourceGroup": case "expectResourceGroup": case "openResourceRow": case "expectResourceCell": case "expectResourceCellFits": case "expectResourceColumns": case "expectResourceActivity": await resourceTableAction(page, step); break;
         case "expectRowContexts": case "filterContexts": case "expectResourceSummary": case "selectMapContext": case "expectMapContext": case "mapContextKey": case "expectMapContextOptions": await multiContextAction(page, step); break;

@@ -1,7 +1,7 @@
 //! Workspace sidebar, mirroring `WorkspaceSidebar.svelte`, `SidebarTree.svelte`
 //! and `SidebarTreeNode.svelte`.
 
-use super::{Inspector, Page};
+use super::{Inspector, Page, overlay_motion::Overlay};
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui;
@@ -270,49 +270,64 @@ impl Inspector {
         }
     }
 
-    /// The compact-width drawer, `WorkspaceSidebar`'s `SheetContent`.
+    /// The compact-width drawer, `WorkspaceSidebar`'s `SheetContent`. `available`
+    /// is false where the shell has no drawer. The sheet and its backdrop each
+    /// play their own exit after the drawer closes.
     pub(super) fn navigation_drawer(
         &self,
+        available: bool,
         window: &gpui_kit::Window,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
-        div()
-            .id("workspace-navigation")
-            .occlude()
-            .test_support()
-            .aria_label("Workspace navigation")
-            .absolute()
-            .top_0()
-            .bottom_0()
-            .left_0()
-            .right_0()
-            .flex()
-            .child(
-                div()
-                    .id("navigation-backdrop")
-                    .test_support()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .right_0()
-                    .bg(Tokens::background().opacity(0.6))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.navigation_open = false;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                div()
-                    .id("navigation-panel")
-                    .occlude()
-                    .test_support()
-                    .relative()
-                    .h_full()
-                    .bg(Tokens::background())
-                    .child(self.sidebar(window, cx, DRAWER_WIDTH)),
-            )
-            .into_any_element()
+    ) -> Option<AnyElement> {
+        let open = available && self.navigation_open;
+        let backdrop = self.overlay_motion.sample(Overlay::DrawerBackdrop, open);
+        let sheet = self.overlay_motion.sample(Overlay::Drawer, open);
+        if backdrop.is_none() && sheet.is_none() {
+            return None;
+        }
+        Some(
+            div()
+                .id("workspace-navigation")
+                .occlude()
+                .test_support()
+                .aria_label("Workspace navigation")
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .flex()
+                .children(backdrop.map(|backdrop| {
+                    backdrop.surface(
+                        div()
+                            .id("navigation-backdrop")
+                            .test_support()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left_0()
+                            .right_0()
+                            .bg(Tokens::background().opacity(0.6))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.navigation_open = false;
+                                cx.notify();
+                            })),
+                    )
+                }))
+                .children(sheet.map(|sheet| {
+                    sheet.surface(
+                        div()
+                            .id("navigation-panel")
+                            .occlude()
+                            .test_support()
+                            .relative()
+                            .h_full()
+                            .bg(Tokens::background())
+                            .child(self.sidebar(window, cx, DRAWER_WIDTH)),
+                    )
+                }))
+                .into_any_element(),
+        )
     }
 
     pub(super) fn sidebar_contents(

@@ -9,12 +9,13 @@ use super::events::tw;
 use super::events_tab::empty;
 use super::log_row::{chip_colors, log_row, red500};
 use super::logs_state::{LogStatus, LogsState, SINCE};
+use super::overlay_motion::{Overlay, OverlayMotion, Tooltip};
 use crate::logs::LogLevel;
 use crate::preferences::LogLayout;
 use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens};
 use crate::ui;
-use gpui_kit::component::{input::Input, select::Select, tooltip::Tooltip};
+use gpui_kit::component::{input::Input, select::Select};
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, SharedString, Stateful, deferred, div, list,
     prelude::*, px,
@@ -127,7 +128,12 @@ fn status_part(text: Div, id: &'static str, label: String) -> impl IntoElement {
         .aria_label(label)
 }
 
-fn toolbar(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> Div {
+fn toolbar(
+    logs: &LogsState,
+    connecting: bool,
+    motion: &OverlayMotion,
+    cx: &mut Context<Inspector>,
+) -> Div {
     // The label shrinks and ends in an ellipsis, as the row runs out of width; the full text stays on hover.
     let status_label = logs.status_label();
     let status_title = format!("{status_label} · {} lines", logs.buffer.len());
@@ -179,9 +185,12 @@ fn toolbar(logs: &LogsState, connecting: bool, cx: &mut Context<Inspector>) -> D
                     cx.notify();
                 })),
         )
-        .when(logs.tail_menu_open, |wrapper| {
-            wrapper.child(deferred(tail_menu(logs, cx)).with_priority(1))
-        });
+        .when_some(
+            motion.sample(Overlay::LogTail, logs.tail_menu_open),
+            |wrapper, shown| {
+                wrapper.child(deferred(shown.surface(tail_menu(logs, cx))).with_priority(1))
+            },
+        );
     let (variant, icon, text) = if logs.paused {
         (Variant::Default, "play", "Resume")
     } else {
@@ -507,6 +516,7 @@ pub(super) fn logs_tab(
     detail: &ResourceDetail,
     layout: LogLayout,
     loading: &super::loading::LoadingDelays,
+    motion: &OverlayMotion,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
     let Some(logs) = detail.logs.as_ref() else {
@@ -546,7 +556,7 @@ pub(super) fn logs_tab(
         .flex_1()
         .min_h_0()
         .gap(px(6.))
-        .child(toolbar(logs, connecting, cx))
+        .child(toolbar(logs, connecting, motion, cx))
         .child(filters(logs, layout, cx))
         .children(error)
         .child(viewport(logs, connecting, cx))
