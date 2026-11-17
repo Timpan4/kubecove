@@ -171,6 +171,21 @@ test("compiled Rust changes select all scenarios even without parent execution",
 	});
 });
 
+// Failure mode: a recording that read dep-info from the wrong directory, or resolved its relative
+// paths against the repository root, lists no GPUI source, so every GPUI Rust edit selected nothing.
+test("a map that lists no compiled GPUI source selects all scenarios for a GPUI Rust edit", async () => {
+	await fixture(async (root) => {
+		const map = JSON.parse(await readFile(join(root, "map.json"), "utf8"));
+		map.compiled = ["tests/parity.rs", "tests/common/mod.rs"];
+		await writeFile(join(root, "map.json"), JSON.stringify(map));
+		await writeFile(join(root, RUST), RUST_SOURCE.replace("Phase::Ready", "Phase::Failed"));
+		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "GPUI Rust edit"]);
+		const result = await plan(root);
+		expect(result.ids).toEqual(ids);
+		expect(result.fallback).toContain("lists no compiled file under src-tauri/gpui/src/");
+	});
+});
+
 test("main changes the map already recorded select nothing for a branch that is behind it", async () => {
 	await fixture(async (root, base) => {
 		const git = (...args: string[]) => run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", ...args]);
