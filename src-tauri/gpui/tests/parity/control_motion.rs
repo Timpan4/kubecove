@@ -108,11 +108,20 @@ fn paint(
         .bounds()
         .dilate(gpui_kit::px(4.))
         .scale(window.scale_factor());
+    let edge = area.bottom_right();
     Some(
         window
             .painted_quads()
             .into_iter()
-            .filter(|quad| quad.bounds.is_contained_within(&area))
+            .filter(|quad| {
+                // The line's lower edge lies on the area's, which
+                // `is_contained_within` leaves out.
+                let (start, end) = (quad.bounds.origin, quad.bounds.bottom_right());
+                start.x >= area.origin.x
+                    && start.y >= area.origin.y
+                    && end.x <= edge.x
+                    && end.y <= edge.y
+            })
             .map(|quad| format!("{:?} {:?}", quad.bounds, quad.background))
             .collect(),
     )
