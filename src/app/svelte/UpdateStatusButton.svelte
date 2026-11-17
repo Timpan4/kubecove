@@ -12,6 +12,7 @@
 	import { cnfast } from "@/lib/utils";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import { canCheckForUpdates, type AppUpdateState } from "@/features/app-updates/store";
+	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
 	import { appUpdateStore } from "./appUpdateStore";
 
 	const checkedAtFormatter = new Intl.DateTimeFormat(undefined, {
@@ -154,7 +155,13 @@
 								<div class="text-xs leading-relaxed text-muted-foreground">{update.errorMessage}</div>
 							</div>
 						{/if}
-						<Button type="button" onclick={() => void update.relaunchApp()}>
+						<!-- The restart ends the process without a window close event, so the close guard never runs. -->
+						<Button
+							type="button"
+							onclick={() => {
+								if (canLeaveYamlDraft()) void update.relaunchApp();
+							}}
+						>
 							<RefreshCw data-icon="inline-start" />
 							Relaunch
 						</Button>

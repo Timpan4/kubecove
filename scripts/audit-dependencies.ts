@@ -15,6 +15,8 @@ const ignoredAdvisories = new Map([
 	["GHSA-vfj7-8cjw-p6xm", "braces"],
 	// TODO(Timpan4): Remove once deepmerge ships a patch or @sveltejs/vite-plugin-svelte drops it.
 	["GHSA-gcqx-w48m-w2h4", "deepmerge"],
+	// TODO(Timpan4): Remove once picomatch ships a patch; WebdriverIO and expect pull in 4.0.7.
+	["GHSA-fc5q-39xc-vjpf", "picomatch"],
 ]);
 
 function advisoryId(advisory: AuditAdvisory): string {
