@@ -44,9 +44,11 @@ const TARGETS = {
 		// Options are fractional pixels wide, so a surface measured in whole pixels misses one by a
 		// pixel. The pill's last `transitionend` reaches the page with a later frame, so this waits.
 		fits: async (page) => {
-			const option = await page.getByRole("radio", { name: "List", exact: true }).elementHandle();
-			const fitted = await page.waitForFunction((chosen) => {
-				const pill = chosen.parentElement?.querySelector("[data-slot='segmented-control-pill']");
+			const group = await page.getByRole("radiogroup").filter({ has: page.getByRole("radio", { name: "List", exact: true }) }).elementHandle();
+			const fitted = await page.waitForFunction((options) => {
+				const chosen = options.querySelector("[aria-checked='true']");
+				if (!chosen) return false;
+				const pill = options.querySelector("[data-slot='segmented-control-pill']");
 				const surfaces = [pill, chosen].filter((item): item is Element => {
 					if (!item) return false;
 					const style = getComputedStyle(item);
@@ -58,7 +60,7 @@ const TARGETS = {
 				};
 				const [surface] = surfaces;
 				return surfaces.length === 1 && surface !== undefined && edges(surface) === edges(chosen);
-			}, option).then(() => true, () => false);
+			}, group).then(() => true, () => false);
 			if (!fitted) throw new Error("At rest, not exactly one surface covers the chosen option edge to edge");
 		},
 	},
@@ -224,6 +226,7 @@ export async function checkControlMotion(page: Page, check: string) {
 		await seek(page, "end");
 		const returned = await read(page, target);
 		if (returned !== before.rest) throw new Error(`${name} returned to ${returned}, not to ${before.rest} at rest`);
+		await target.fits?.(page);
 		return;
 	}
 	if (phase !== "settled") throw new Error(`Unknown motion phase in ${check}`);
