@@ -136,6 +136,11 @@ impl Inspector {
             Overlay::ExecLeave,
             matches!(self.exec.leave, LeaveDialog::Confirming(_)),
         )?;
+        // "Stop and leave" ends the sessions the dialog lists, so it has
+        // nothing left to draw during an exit.
+        if shown.exiting() && self.exec.tabs.is_empty() {
+            return None;
+        }
         let title = format!(
             "Stop {} exec session{}?",
             self.exec.tabs.len(),
