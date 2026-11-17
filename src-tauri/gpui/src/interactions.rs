@@ -2,8 +2,9 @@
 //! `src/lib/interaction-recorder.ts`, with the same JSON line per interaction.
 //!
 //! Each click, drag, key, scroll and navigation starts one entry that lasts
-//! until the next. Targets come from `crate::targets`: element ids, never
-//! labels, text, typed characters or cluster data. Entries stay in memory.
+//! until the next. Targets come from `crate::targets`: roles and source lines,
+//! never ids, labels, text, typed characters or cluster data. Entries stay in
+//! memory.
 //!
 //! Native meanings that differ from the web's:
 //! - Frame deltas come from a chained next-frame callback, the web's

@@ -521,7 +521,7 @@ fn a_refused_sidebar_row_keeps_its_selection(cx: &mut TestAppContext) {
     step(cx, handle, |window, cx| edit_draft(window, cx, DRAFT));
     step(cx, handle, |window, cx| window.click("nav:RBAC", cx));
     step(cx, handle, |window, _| {
-        assert_eq!(window.find("nav:RBAC").description(), Some("unselected"));
+        assert_eq!(window.find("nav:RBAC").selected(), Some(false));
         assert!(window.find("discard-draft").visible());
     });
 }

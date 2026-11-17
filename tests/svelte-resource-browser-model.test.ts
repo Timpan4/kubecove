@@ -873,7 +873,7 @@ describe("svelte resource browser model", () => {
 			healthFilter: "all",
 			sort: { id: "name", desc: false },
 			pageIndex: 0,
-			collapsedGroups: new Set([resourceTypeGroupCollapseKey(pod)]),
+			collapsedGroups: new Set([resourceTypeGroupCollapseKey(pod, false)]),
 		});
 
 		expect(model.groupedByGitOps).toBe(false);
@@ -922,7 +922,7 @@ describe("svelte resource browser model", () => {
 		});
 		const collapsedGroups = new Set<string>([
 			resourceGroupCollapseKey(owned),
-			resourceTypeGroupCollapseKey(owned),
+			resourceTypeGroupCollapseKey(owned, true),
 		]);
 		const model = buildResourceTableModel([owned], {
 			search: "",

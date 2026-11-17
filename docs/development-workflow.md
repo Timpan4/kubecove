@@ -254,7 +254,7 @@ inputs, which the workflow regression checks enforce.
 | --- | --- | --- |
 | rust | `src-tauri :!src-tauri/gpui :!src-tauri/server` | Compiler inputs plus `shared` |
 | gpui-clippy | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
-| gpui-test | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
+| gpui-test | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared src e2e/parity/visual` |
 | server-backend | `src-tauri :!src-tauri/gpui :!src-tauri/server` | `src-tauri :!src-tauri/gpui` plus `shared` |
 | server | `src-tauri :!src-tauri/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
 
@@ -321,7 +321,12 @@ one cache:
 - `frontend-e2e`: `e2e:fast`, separate from the frontend checks and compiler
   integration tests in the `Frontend checks` job;
 - `rust`: desktop Rust tests, Clippy and dependency audits;
-- `gpui-clippy` and `gpui-test`: GPUI Clippy, and library and native tests;
+- `gpui-clippy` and `gpui-test`: GPUI Clippy, and library, native and text-fit
+  tests. Text fit (`src-tauri/gpui/tests/text_fit.rs`) lays out the browser-mock
+  fixture with the bundled fonts, so `gpui-test` installs Bun, exports the
+  fixture, and keys its pass on `src` and `e2e/parity/visual` too. Frontend
+  changes select `gpui-test` as well as Rust changes, as they do for the server
+  tasks;
 - `server-backend`: GUI-free backend tests and dependency-tree verification;
 - `server`: API-only server tests and Clippy, then the browser UI build,
   default-feature server tests and Clippy, the server build and HTTP/WebSocket

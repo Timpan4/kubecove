@@ -82,7 +82,8 @@ export type Step =
     | { action: "expectNoOverlay"; overlay: OverlayName }
     | { action: "sidebarKey"; path: string[]; key: "Enter" | "Space" | "ArrowLeft" | "ArrowRight" }
     | { action: "retryLauncher"; read: "contexts" | "namespaces" }
-    | { action: "expectLauncherRetry"; read: "contexts" | "namespaces" }
+    /** `height`: the Retry button's rendered height in pixels. */
+    | { action: "expectLauncherRetry"; read: "contexts" | "namespaces"; height?: number }
     | { action: "overviewOperation"; destination: "Resources" | "Workspaces" | "Port Forwards" | "Incidents" }
     | { action: "reviewIncidentAction"; index: number }
     | { action: "expectTopologyDenied" }
@@ -139,7 +140,9 @@ export type Step =
     | { action: "setHistoricalReplicaSets"; checked: boolean }
     | { action: "expectKindChecked"; kind: string; checked: boolean }
     | { action: "fillMcpPort"; value: string }
-    | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" }
+    | { action: "mcpControl"; control: "MCP server" | "Submit port" | "Save" | "Copy token" | "Copy Claude Code command" | "Rotate token" | "Reload settings" }
+    | { action: "configureMcpSettingsFile"; file: "invalid" | "valid" }
+    | { action: "expectMcpLoadError"; text: string }
     | { action: "expectMcpState"; enabled: boolean; port: string; running: boolean; save: boolean; command: boolean }
     | { action: "expectMcpCopy"; kind: "token" | "command"; rotated: boolean }
     | { action: "expectMcpRequests"; requests: string[] }
@@ -376,8 +379,9 @@ export type Step =
     | { action: "setDeliveryView"; page: "GitOps" | "Helm"; mode: "Cards" | "List" }
     | { action: "clickDetailControl"; label: string }
     | { action: "openLiveSessionPopover" }
-    | { action: "expectLiveSessionRow"; target: string; status: string; controls: string[] }
-    | { action: "liveSessionControl"; operation: "Show" | "Reconnect" | "Copy" | "Stop" | "Manage"; target?: string }
+    /** `local` picks the forward on that local port when sessions share a target. */
+    | { action: "expectLiveSessionRow"; target: string; status: string; controls: string[]; local?: string }
+    | { action: "liveSessionControl"; operation: "Show" | "Reconnect" | "Copy" | "Stop" | "Manage"; target?: string; local?: string }
     | ({ action: "expectHealthTooltip" } & Identity & { state: string; source: string; statuses: string[]; partial: boolean })
     | ({ action: "expectTimestampTooltip" } & Identity & { value: string })
     | { action: "expectEventTimeTooltip"; index: number }

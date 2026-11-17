@@ -79,7 +79,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
         case "replayPageReads": case "focusStalePage": case "expectPageText": case "searchCustomKinds": case "searchKindPicker": case "expectCustomGroup": case "toggleKind": case "openKindPicker": case "closeKindPicker": case "selectAllKinds": case "expectKindChecked": await sidebarLiveAction(page, step); break;
         case "openNamespacePicker": case "closeNamespacePicker": case "searchNamespacePicker": case "selectAllNamespaces": case "toggleNamespace": case "expectNamespaceChecked": case "expectNamespaceTrigger": case "selectHealthFilter": case "expectHealthFilter": case "chooseGitOpsOwner": case "clearResourceFilters": case "setHistoricalReplicaSets": await resourceFilterAction(page, step); break;
         case "toggleDetailDisclosure": case "expectNoPageText": await detailStatusAction(page, step); break;
-        case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests":
+        case "fillMcpPort": case "mcpControl": case "expectMcpState": case "expectMcpCopy": case "expectMcpRequests": case "configureMcpSettingsFile": case "expectMcpLoadError":
             await mcpAction(page, step); break;
         case "configureArgoMock": case "argoControl": case "focusArgoResource": case "expectNoSavedArgoProfile": case "copyArgoValue": case "configureArgoInventory": case "expandArgoDiff": case "reconnectArgoProfile": case "argoProfileSignIn":
         case "connectArgoProfile": case "disconnectArgoProfile": case "reviewArgoOperation": case "confirmArgoReview": case "cancelArgoReview": case "expectArgoReview": case "expectArgoText": case "expectArgoPolicy": case "argoDocument":

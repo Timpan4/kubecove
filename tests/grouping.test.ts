@@ -40,16 +40,15 @@ describe("resource grouping helpers", () => {
 
 		expect(pageTypeGroupCounts(rows, true)).toEqual(
 			new Map([
-				["Owned by Argo CD: payments (partial evidence)::Pods", 1],
-				["Owned by Argo CD: payments (partial evidence)::Services", 1],
-				["No GitOps ownership evidence::Pods", 1],
-				["No GitOps ownership evidence::ConfigMaps", 1],
+				["group:Owned by Argo CD: payments (partial evidence)::type:Pods", 1],
+				["group:Owned by Argo CD: payments (partial evidence)::type:Services", 1],
+				["group:No GitOps ownership evidence::type:Pods", 1],
+				["group:No GitOps ownership evidence::type:ConfigMaps", 1],
 			]),
 		);
 	});
 
-	test("returns empty counts when grouping is disabled", () => {
+	test("returns no owner counts when grouping is disabled", () => {
 		expect(pageGitOpsGroupCounts([baseResource], false).size).toBe(0);
-		expect(pageTypeGroupCounts([baseResource], false).size).toBe(0);
 	});
 });

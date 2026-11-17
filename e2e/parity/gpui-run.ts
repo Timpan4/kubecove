@@ -1,5 +1,5 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
 import { COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
@@ -82,7 +82,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	const scenarios = contract.scenarios.flatMap((scenario) => results.has(scenario.id) ? [results.get(scenario.id)] : []);
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));
 	if (coverage) {
-		await recordGpuiCoverage(artifacts, executable, [join(env.CARGO_TARGET_DIR ?? "", "debug", "deps"), dirname(executable)], contract.scenarios.map((scenario) => scenario.id), shards, signal);
+		await recordGpuiCoverage(artifacts, executable, env.CARGO_BUILD_BUILD_DIR ?? "", contract.scenarios.map((scenario) => scenario.id), shards, signal);
 		await rm(strayProfiles, { recursive: true, force: true });
 		mark("gpuiCoverage");
 	}

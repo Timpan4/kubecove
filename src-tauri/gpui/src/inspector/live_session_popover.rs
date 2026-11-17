@@ -205,7 +205,7 @@ impl Inspector {
         let mut controls = div().flex().flex_wrap().justify_end().gap(px(8.));
         if showable {
             controls = controls.child(
-                row_button(format!("live-session:{label}:show"), "cable", "Show").on_click(
+                row_button(format!("live-session:{}:show", session.id), "cable", "Show").on_click(
                     cx.listener(move |this, _, _, cx| {
                         this.show_exec_session(&session_id, &pod, &namespace, cx)
                     }),
@@ -213,16 +213,19 @@ impl Inspector {
             );
         }
         controls = controls.child(
-            row_button(format!("live-session:{label}:stop"), "square", "Stop").on_click(
-                cx.listener(move |this, _, _, cx| this.stop_exec_id(stop_id.clone(), cx)),
-            ),
+            row_button(
+                format!("live-session:{}:stop", session.id),
+                "square",
+                "Stop",
+            )
+            .on_click(cx.listener(move |this, _, _, cx| this.stop_exec_id(stop_id.clone(), cx))),
         );
         let badge = if matches!(session.status, PodExecSessionStatus::Error) {
             ui::status_badge(Tone::Error, status)
         } else {
             ui::outline_badge(status)
         };
-        row_frame(&label)
+        row_frame(&session.id, &label)
             .child(
                 div()
                     .flex()
@@ -245,7 +248,7 @@ impl Inspector {
                                 text.child(ui::muted(ui::xs(source)).truncate())
                             }),
                     )
-                    .child(status_badge(badge, &label, status)),
+                    .child(status_badge(badge, &session.id, status)),
             )
             .when_some(session.last_error.clone(), |row, error| {
                 row.child(
@@ -277,7 +280,7 @@ impl Inspector {
         } else {
             ui::outline_badge(status)
         };
-        row_frame(&label)
+        row_frame(&session.id, &label)
             .aria_description(description)
             .child(
                 div()
@@ -304,7 +307,7 @@ impl Inspector {
                                 text.child(ui::muted(ui::xs(source)).truncate())
                             }),
                     )
-                    .child(status_badge(badge, &label, status)),
+                    .child(status_badge(badge, &session.id, status)),
             )
             .when_some(session.last_error.clone(), |row, error| {
                 row.child(
@@ -320,7 +323,7 @@ impl Inspector {
                     .gap(px(8.))
                     .child(
                         row_button(
-                            format!("live-session:{label}:reconnect"),
+                            format!("live-session:{}:reconnect", session.id),
                             "rotate-ccw",
                             "Reconnect",
                         )
@@ -331,17 +334,20 @@ impl Inspector {
                         )),
                     )
                     .child(
-                        row_button(format!("live-session:{label}:copy"), "copy", "Copy").on_click(
-                            cx.listener(move |_, _, _, cx| {
+                        row_button(format!("live-session:{}:copy", session.id), "copy", "Copy")
+                            .on_click(cx.listener(move |_, _, _, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(copy_url.clone()))
-                            }),
-                        ),
+                            })),
                     )
                     .child(
-                        row_button(format!("live-session:{label}:stop"), "square", "Stop")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.stop_forward_id(stop_id.clone(), cx)
-                            })),
+                        row_button(
+                            format!("live-session:{}:stop", session.id),
+                            "square",
+                            "Stop",
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.stop_forward_id(stop_id.clone(), cx)
+                        })),
                     ),
             )
     }
@@ -369,18 +375,22 @@ impl Inspector {
     }
 }
 
-/// The row's status badge, tested by the row's label and the status text.
-fn status_badge(badge: Div, label: &str, status: &str) -> ObservedElement<Stateful<Div>> {
+/// The row's status badge, keyed by session id and named by the status text.
+fn status_badge(badge: Div, session_id: &str, status: &str) -> ObservedElement<Stateful<Div>> {
     badge
-        .id(SharedString::from(format!("live-session-status:{label}")))
+        .id(SharedString::from(format!(
+            "live-session-status:{session_id}"
+        )))
         .test_support()
         .aria_label(status.to_owned())
 }
 
-/// `rounded-md border bg-background p-2` row shell, identified by its label.
-fn row_frame(label: &str) -> ObservedElement<Stateful<Div>> {
+/// `rounded-md border bg-background p-2` row shell. The id comes from the
+/// session id, because two sessions can share a target label: forwards of one
+/// target on different local ports or contexts, or two exec tabs for one Pod.
+fn row_frame(session_id: &str, label: &str) -> ObservedElement<Stateful<Div>> {
     div()
-        .id(SharedString::from(format!("live-session-row:{label}")))
+        .id(SharedString::from(format!("live-session-row:{session_id}")))
         .test_support()
         .aria_label(label.to_owned())
         .flex()

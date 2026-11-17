@@ -251,6 +251,28 @@ pub async fn set_mcp_settings(
     Ok(status(&state))
 }
 
+/// Re-reads the settings file after a failed load, so the user can fix the file without a
+/// restart. Saved settings that enable MCP start the listener, as at startup. A failed
+/// read replaces the load error. The file is never written here. Once settings are
+/// loaded this returns the current status unchanged.
+pub async fn reload_mcp_settings(host: State<'_, McpHost>) -> Result<McpStatus, AppError> {
+    let mut state = host.state.lock().await;
+    if state.load_error.is_some() {
+        match load_settings(&host.paths()?.config_dir) {
+            Ok(settings) => {
+                state.load_error = None;
+                state.settings = settings;
+                host.restart(&mut state).await;
+            }
+            Err(error) => {
+                state.load_error = Some(error.message.clone());
+                return Err(error);
+            }
+        }
+    }
+    Ok(status(&state))
+}
+
 /// Returns the bearer token so the user can copy it into an agent's configuration.
 /// The frontend calls this only on an explicit reveal (ADR 0028). Token file access holds
 /// the host lock so it never overlaps a rotation.

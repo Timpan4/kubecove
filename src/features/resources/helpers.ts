@@ -270,11 +270,19 @@ export function resourceGroupCollapseKey(
 	return `group:${gitOpsOwnershipGroupLabel(resource, multiContext)}`;
 }
 
+/**
+ * Without GitOps grouping one kind group row spans every Helm release and
+ * ownership group, so its key uses one empty group for all rows.
+ */
 export function resourceTypeGroupCollapseKey(
 	resource: ResourceSummary,
+	groupedByGitOps: boolean,
 	multiContext = false,
 ): string {
-	return `${resourceGroupCollapseKey(resource, multiContext)}::type:${formatResourceTypeGroupLabel(resource)}`;
+	const group = groupedByGitOps
+		? gitOpsOwnershipGroupLabel(resource, multiContext)
+		: "";
+	return `group:${group}::type:${formatResourceTypeGroupLabel(resource)}`;
 }
 
 export function describeResourceScope(

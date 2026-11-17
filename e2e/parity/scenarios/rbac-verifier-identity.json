@@ -1,0 +1,88 @@
+{
+	"fixture": "browser-mocks",
+	"context": "mock-dev",
+	"scenarios": [
+		{
+			"id": "coverage-rbac.verify-without-selection",
+			"title": "With no RBAC object to select, Investigate identity still shows a verifier that runs a live review",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Search RBAC objects",
+					"value": "no-such-rbac-object"
+				},
+				{
+					"action": "coverageText",
+					"text": "No matching RBAC objects.",
+					"visible": true
+				},
+				{
+					"action": "coverageClick",
+					"label": "Investigate identity"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "alice"
+				},
+				{
+					"action": "verifyRbacAccess",
+					"verb": "get"
+				},
+				{
+					"action": "expectRbacVerdict",
+					"outcome": "allowed"
+				}
+			]
+		},
+		{
+			"id": "coverage-rbac.role-manual-identity",
+			"title": "On a Role, typing an identity name keeps the manual identity form editable",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "selectRbacCategory",
+					"category": "Roles"
+				},
+				{
+					"action": "selectRbacItem",
+					"title": "Role/payments-reader"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "a"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "alice"
+				},
+				{
+					"action": "expectRbacGrant",
+					"grant": "get, list, watch · core/pods, services, configmaps"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Groups",
+					"value": "developers,system:authenticated"
+				},
+				{
+					"action": "verifyRbacAccess",
+					"verb": "get"
+				},
+				{
+					"action": "expectRbacVerdict",
+					"outcome": "allowed"
+				}
+			]
+		}
+	]
+}

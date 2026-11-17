@@ -59,6 +59,31 @@ export const deploymentRevisions: DeploymentRevision[] = [
 	},
 ];
 
+/**
+ * Synthetic todo-web revisions. No real ReplicaSet has an empty pod template,
+ * but one gives the revision diff a hunk with an empty side.
+ */
+export const emptyTemplateRevisions = {
+	name: "todo-web",
+	namespace: "todo",
+	revisions: [
+		{
+			name: "todo-web-6d4b8c7f9a",
+			revision: 2,
+			changeCause: "Label the todo-web pods",
+			createdAt: now,
+			podTemplateYaml: "metadata:\n  labels:\n    app: todo-web\n",
+		},
+		{
+			name: "todo-web-58c9d6b7f4",
+			revision: 1,
+			changeCause: "Create todo-web",
+			createdAt: "2026-06-28T09:30:00Z",
+			podTemplateYaml: "",
+		},
+	] satisfies DeploymentRevision[],
+};
+
 export const source: KubeconfigSourcesSummary = {
 	kubeconfigEnvVar: "kubeconfigSource=browser-mock",
 	paths: [],
@@ -131,10 +156,11 @@ export const resources: ResourceSummary[] = [
 	res("Service", "kube-dns", "kube-system", "healthy", undefined, "ClusterIP", 0, "platform"),
 	res("ConfigMap", "coredns", "kube-system", "healthy", undefined, "Active", 0, "platform"),
 	res("Secret", "sh.helm.release.v1.cilium.v2", "kube-system", "unknown", undefined, "Redacted", 0, "platform"),
-	res("Deployment", "grafana", "monitoring", "healthy", "1/1", "Synced", 0, "monitoring"),
+	// The grafana release's manifest objects, as the Helm mock lists them, give the table a second Helm release.
+	res("Deployment", "grafana", "monitoring", "healthy", "1/1", "Synced", 0, "monitoring", { helmRelease: "grafana" }),
 	res("Pod", "grafana-5d7864bb9c-4twqz", "monitoring", "healthy", "1/1", "Running", 0, "monitoring"),
-	res("Service", "grafana", "monitoring", "healthy", undefined, "ClusterIP", 0, "monitoring"),
-	res("Ingress", "grafana", "monitoring", "healthy", undefined, "Ready", 0, "monitoring", { apiVersion: "networking.k8s.io/v1" }),
+	res("Service", "grafana", "monitoring", "healthy", undefined, "ClusterIP", 0, "monitoring", { helmRelease: "grafana" }),
+	res("Ingress", "grafana", "monitoring", "healthy", undefined, "Ready", 0, "monitoring", { apiVersion: "networking.k8s.io/v1", helmRelease: "grafana" }),
 	res("ConfigMap", "grafana", "monitoring", "healthy", undefined, "Active", 0, "monitoring"),
 	res("Secret", "grafana", "monitoring", "unknown", undefined, "Redacted", 0, "monitoring"),
 	res("Deployment", "opensearch-dashboards", "opensearch", "attention", "1/1", "Synced", 1, "logs"),

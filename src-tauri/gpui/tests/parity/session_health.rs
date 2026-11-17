@@ -1,4 +1,5 @@
 use super::*;
+use gpui_kit::ElementId;
 
 /// Header live-session popover, health badge tooltips and timestamp tooltips.
 /// Hover text is the element's description, so each check compares the text the
@@ -11,25 +12,26 @@ pub fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) 
             }
         }
         "expectLiveSessionRow" => {
-            let target = string(step, "target");
-            assert_eq!(
-                window.find(format!("live-session-status:{target}")).label(),
-                Some(string(step, "status"))
+            let row = session_row(window, step);
+            let status = string(step, "status");
+            let scope = window.within(row.clone());
+            assert!(
+                scope.try_find_by_label(status).is_some(),
+                "{row:?} is not {status}"
             );
             for control in strings(step, "controls") {
-                let id = format!("live-session:{target}:{}", control.to_lowercase());
-                assert!(window.try_find(id.clone()).is_some(), "missing {id}");
+                assert!(
+                    scope.try_find_by_label(&control).is_some(),
+                    "{row:?} has no {control}"
+                );
             }
         }
         "liveSessionControl" => match string(step, "operation") {
             "Manage" => window.click("live-sessions-manage", cx),
             operation => {
-                let id = format!(
-                    "live-session:{}:{}",
-                    string(step, "target"),
-                    operation.to_lowercase()
-                );
-                locate::click_in(window, "live-session-list", id.into(), cx)
+                let row = session_row(window, step);
+                let control = locate::id(&window.within(row).find_by_label(operation));
+                locate::click_in(window, "live-session-list", control, cx)
             }
         },
         "expectHealthTooltip" => {
@@ -67,6 +69,41 @@ pub fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) 
         _ => return false,
     }
     true
+}
+
+/// The one header popover row labeled with the step's target. Sessions of one
+/// target share that label, so, like the web driver, an exec target keeps only
+/// rows with Show (sessions open in a tab), and a step with `local` keeps only
+/// the forward whose local URL ends in that port.
+fn session_row(window: &mut gpui_kit::Window, step: &Value) -> ElementId {
+    let target = string(step, "target");
+    let local = step["local"].as_str();
+    let candidates: Vec<ElementId> = window
+        .within("live-session-list")
+        .find_all_by_label(target)
+        .into_iter()
+        .filter(|row| {
+            local.is_none_or(|port| {
+                row.description()
+                    .and_then(|text| text.split_once(' '))
+                    .and_then(|(url, _)| url.rsplit_once(':'))
+                    .is_some_and(|(_, row_port)| row_port == port)
+            })
+        })
+        .map(|row| locate::id(&row))
+        .collect();
+    let rows: Vec<ElementId> = candidates
+        .into_iter()
+        .filter(|row| {
+            target.contains(':')
+                || window
+                    .within(row.clone())
+                    .try_find_by_label("Show")
+                    .is_some()
+        })
+        .collect();
+    assert_eq!(rows.len(), 1, "live-session rows for {target} {local:?}");
+    rows.into_iter().next().expect("one row")
 }
 
 /// `kind:namespace:name`, the key native rows use in their test IDs.
