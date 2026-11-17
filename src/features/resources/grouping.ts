@@ -1,7 +1,7 @@
 import { gitOpsOwnershipGroupLabel } from "@/lib/gitops-ownership-evidence";
 import { OTHER_RESOURCE_KINDS } from "@/lib/resource-kind-order";
 import type { ResourceSummary } from "@/lib/types";
-import { formatResourceTypeGroupLabel } from "./helpers";
+import { resourceTypeGroupCollapseKey } from "./helpers";
 
 // The user's kind order decides group order; kinds it does not list share the
 // "other kinds" slot. The column sort orders rows inside groups and ties.
@@ -26,15 +26,15 @@ export function pageGitOpsGroupCounts(
 	return counts;
 }
 
+/** Rows per kind group row, keyed by `resourceTypeGroupCollapseKey`. */
 export function pageTypeGroupCounts(
 	rows: ResourceSummary[],
 	groupedByGitOps: boolean,
 	multiContext = false,
 ): Map<string, number> {
 	const counts = new Map<string, number>();
-	if (!groupedByGitOps) return counts;
 	for (const row of rows) {
-		const key = `${gitOpsOwnershipGroupLabel(row, multiContext)}::${formatResourceTypeGroupLabel(row)}`;
+		const key = resourceTypeGroupCollapseKey(row, groupedByGitOps, multiContext);
 		counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
 	return counts;

@@ -174,9 +174,16 @@ export async function shellAction(page: Page, step: Step): Promise<void> {
         case "retryLauncher":
             await page.getByRole("button", { name: "Retry", exact: true }).click();
             break;
-        case "expectLauncherRetry":
-            await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
+        case "expectLauncherRetry": {
+            const retry = page.getByRole("button", { name: "Retry", exact: true });
+            await retry.waitFor();
+            if (step.height !== undefined) {
+                const bounds = await retry.boundingBox();
+                if (!bounds) throw new Error("Retry has no bounds");
+                if (Math.abs(bounds.height - step.height) >= 0.5) throw new Error(`Retry is ${bounds.height}px high`);
+            }
             break;
+        }
         case "overviewOperation":
             if (step.destination === "Resources") await page.getByRole("button", { name: "Open resources", exact: true }).click();
             else if (step.destination === "Workspaces") await page.getByRole("button", { name: "Open workspaces", exact: true }).click();

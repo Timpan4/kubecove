@@ -135,6 +135,10 @@ mod visual {
             .collect();
         for view in views {
             let backend = Arc::new(Fixture::load(Path::new(&fixture)));
+            // The web capture sets this phase and reloads before it opens the launcher.
+            if view == "launcher-errors" {
+                *backend.shell_read_phase.lock().unwrap() = "contexts-failed".into();
+            }
             let mut cx = HeadlessAppContext::with_platform(
                 gpui_kit::platform::current_platform(true).text_system(),
                 Arc::new(AppAssets),
@@ -496,6 +500,17 @@ mod visual {
                 "workspaces" => act(&mut cx, handle, |window, cx| {
                     window.click("header-workspaces", cx)
                 }),
+                "launcher-errors" => {
+                    act(&mut cx, handle, |window, cx| {
+                        window.click("header-workspaces", cx)
+                    });
+                    // The context read fails after its retries, which the parity runner
+                    // also waits out before `expectLauncherRetry`.
+                    for millis in [1000, 2000] {
+                        cx.advance_clock(std::time::Duration::from_millis(millis));
+                        cx.run_until_parked();
+                    }
+                }
                 "workspace-editor" => {
                     act(&mut cx, handle, |window, cx| {
                         window.click("header-workspaces", cx)

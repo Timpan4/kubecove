@@ -26,12 +26,16 @@ export function buildResourceTableEntries(
 		? resourceGroupCollapseKey(selected, multiContext)
 		: null;
 	const selectedType = selected
-		? resourceTypeGroupCollapseKey(selected, multiContext)
+		? resourceTypeGroupCollapseKey(selected, groupedByGitOps, multiContext)
 		: null;
 	const pageGroups = groupedByGitOps
 		? pageGitOpsGroupCounts(pageRows, true, multiContext)
 		: new Map<string, number>();
-	const pageTypeGroups = pageTypeGroupCounts(pageRows, true, multiContext);
+	const pageTypeGroups = pageTypeGroupCounts(
+		pageRows,
+		groupedByGitOps,
+		multiContext,
+	);
 	const entries: ResourceTableEntry[] = [];
 	let previous: ResourceSummary | null = null;
 	let previousGroupLabel: string | null = null;
@@ -39,7 +43,11 @@ export function buildResourceTableEntries(
 		const groupLabel = gitOpsOwnershipGroupLabel(resource, multiContext);
 		const typeLabel = formatResourceTypeGroupLabel(resource);
 		const groupKey = resourceGroupCollapseKey(resource, multiContext);
-		const typeKey = resourceTypeGroupCollapseKey(resource, multiContext);
+		const typeKey = resourceTypeGroupCollapseKey(
+			resource,
+			groupedByGitOps,
+			multiContext,
+		);
 		const groupCollapsed =
 			groupedByGitOps &&
 			groupKey !== selectedGroup &&
@@ -65,7 +73,7 @@ export function buildResourceTableEntries(
 				key: typeKey,
 				label: typeLabel,
 				kind: resource.kind,
-				count: pageTypeGroups.get(`${groupLabel}::${typeLabel}`) ?? 0,
+				count: pageTypeGroups.get(typeKey) ?? 0,
 				collapsed: typeCollapsed,
 			});
 		if (!groupCollapsed && !typeCollapsed)
