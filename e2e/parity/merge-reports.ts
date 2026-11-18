@@ -23,7 +23,7 @@ export function driverReportRows<Report>(driver: Driver, report: Report): unknow
 function scenarioResult(driver: Driver, id: string, result: ReturnType<typeof object>) {
 	const status = result.status;
 	if (status !== "passed" && status !== "failed") throw new Error(`Invalid ${driver} result: ${id}`);
-	return { id, status, result };
+	return { id, status };
 }
 
 export function driverScenarioResults<Report>(driver: Driver, report: Report) {

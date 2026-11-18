@@ -67,14 +67,20 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 	const emptyHash = selectionHash("");
 	for (const { path, result } of newestFirst) {
 		if (!result) {
-			const files = await Promise.all(["scenarios.txt", ...Object.values(driverSelectionFile)].map(async (name) => {
-				try { return (await stat(join(path, name))).size; }
-				catch (error) {
-					if (isMissingFile(error)) return 0;
-					throw error;
-				}
-			}));
-			if (files.some((size) => size > 0)) throw new Error(`Could not read ${join(path, "result.json")}. Restore result.json before rerunning.`);
+			const restore = `Could not read ${join(path, "result.json")}. Restore result.json before rerunning.`;
+			const [shared, web, gpui] = await Promise.all([
+				readRunFile(path, "scenarios.txt"),
+				readRunFile(path, driverSelectionFile.web),
+				readRunFile(path, driverSelectionFile.gpui),
+			]).catch((error) => { throw new Error(restore, { cause: error }); });
+			const requestedFile = requested === "web" ? web : gpui;
+			const otherFile = requested === "web" ? gpui : web;
+			if (requested && requestedFile === "" && shared && otherFile) {
+				const combined = scenarioIds(shared);
+				const other = scenarioIds(otherFile);
+				if (combined.size > 0 && combined.size === other.size && [...combined].every((id) => other.has(id))) continue;
+			}
+			if (shared || web || gpui) throw new Error(restore);
 			continue;
 		}
 		const hashes = selectionHashes(path, result);
@@ -144,7 +150,8 @@ async function recordedSelections(
 	return { web: scenarioIds(web), gpui: scenarioIds(gpui) };
 }
 
-type DriverFailure = { driverFailed: boolean; legacyFailedShards?: string[] };
+type LegacyShardExit = { index: number; count: number; code: string | undefined };
+type DriverFailure = { driverFailed: boolean; legacyFailedShards?: LegacyShardExit[] };
 
 async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { driverFailed, legacyFailedShards = [] }: DriverFailure): Promise<Set<string>> {
 	// Failures outside scenario execution can depend on the original selection.
@@ -161,18 +168,27 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { 
 		}
 		if (legacyFailedShards.length) {
 			if (results.size !== ids.size) return ids;
-			const shards = await Promise.all(legacyFailedShards.map(async (index) => {
-				const shard = JSON.parse(await readFile(join(run, `gpui-${index}.json`), "utf8"));
-				return driverScenarioResults("gpui", shard);
+			const files = (await readdir(run)).flatMap((name) => {
+				const index = /^gpui-(0|[1-9]\d*)\.json$/.exec(name)?.[1];
+				return index === undefined ? [] : [{ name, index: Number(index) }];
+			});
+			const count = files.length;
+			if (files.some(({ index }) => index >= count) ||
+				legacyFailedShards.some((exit) => exit.count !== count || exit.index >= count)) return ids;
+			const shards = await Promise.all(files.map(async ({ name, index }) => {
+				const shard = JSON.parse(await readFile(join(run, name), "utf8"));
+				return { index, rows: driverScenarioResults("gpui", shard) };
 			}));
 			const seen = new Set<string>();
-			for (const shard of shards) {
-				if (!shard.some(({ status }) => status === "failed")) return ids;
-				for (const { id, status } of shard) {
+			const failed = new Set(legacyFailedShards.map(({ index }) => index));
+			for (const { index, rows } of shards) {
+				if (failed.has(index) && !rows.some(({ status }) => status === "failed")) return ids;
+				for (const { id, status } of rows) {
 					if (seen.has(id) || results.get(id) !== (status === "passed")) return ids;
 					seen.add(id);
 				}
 			}
+			if (seen.size !== results.size) return ids;
 		}
 	} catch {
 		// An unreadable or incomplete report cannot prove that any of its scenarios passed.
@@ -182,7 +198,7 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { 
 }
 
 function isLegacyDefaultMapCopyError(error: string): boolean {
-	const [, from, to] = error.match(/\bcopyfile '([^'\r\n]+)' -> '([^'\r\n]+)'/) ?? [];
+	const [, from, to] = error.match(/\bcopyfile '([^\r\n]+?)' -> '([^\r\n]+?)'(?=; |$)/) ?? [];
 	if (!from || !to) return false;
 	const source = from.replaceAll("\\", "/");
 	const destination = to.replaceAll("\\", "/");
@@ -195,7 +211,7 @@ function isLegacyDefaultMapCopyError(error: string): boolean {
 }
 
 function hasLegacyRunError(error: string): boolean {
-	const scopedFailure = /^(?:(?:Web|GPUI) driver: |(?:web|gpui) report: |Error: (?:Invalid (?:web|gpui) result: |Missing (?:web|gpui) results: )|GPUI shard \d+\/\d+ (?:exited -?\d+|wrote no report))/;
+	const scopedFailure = /^(?:(?:Web|GPUI) driver: |(?:web|gpui) report: |Error: (?:Invalid (?:web|gpui) result: |Missing (?:web|gpui) results: |Expected (?:web|gpui) report$|Missing scenarios: (?:web|gpui)$)|GPUI shard \d+\/\d+ (?:exited -?\d+|wrote no report))/;
 	return error.split("; ").some((message) => message && !scopedFailure.test(message));
 }
 
@@ -229,16 +245,21 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 	if (failedDrivers !== undefined && (!Array.isArray(failedDrivers) || failedDrivers.some((name) => name !== "web" && name !== "gpui"))) return recorded;
 	const legacyError = metadata.status === "failed" && isString(metadata.error) ? metadata.error : "";
 	if (metadata.runLevelFailed === undefined && hasLegacyRunError(legacyError)) return recorded;
-	const driverFailed = (driver: Driver, legacyLabel: string) =>
-		failedDrivers === undefined ? legacyError.includes(legacyLabel) : failedDrivers.includes(driver);
-	const legacyGpuiExits = failedDrivers === undefined ? [...legacyError.matchAll(/\bGPUI shard (\d+)\/\d+ (?:exited (-?\d+)|wrote no report)/g)] : [];
+	const driverFailed = (driver: Driver, legacyLabel: string) => failedDrivers === undefined
+		? legacyError.includes(legacyLabel) || legacyError.includes(`Error: Expected ${driver} report`) ||
+			legacyError.includes(`Error: Missing scenarios: ${driver}`)
+		: failedDrivers.includes(driver);
+	const legacyGpuiExits = failedDrivers === undefined
+		? [...legacyError.matchAll(/\bGPUI shard (\d+)\/(\d+) (?:exited (-?\d+)|wrote no report)/g)]
+			.map(([, index, count, code]) => ({ index: Number(index), count: Number(count), code }))
+		: [];
 	// Rust libtest exits 101 on an assertion failure. Only a complete report can confirm it.
-	const gpuiInfrastructureFailure = legacyGpuiExits.some((exit) => exit[2] !== "101");
+	const gpuiInfrastructureFailure = legacyGpuiExits.some(({ code }) => code !== "101");
 	const [web, gpui] = await Promise.all([
 		failedScenarios(run, "web", recorded.web, { driverFailed: driverFailed("web", "Web driver:") }),
 		failedScenarios(run, "gpui", recorded.gpui, {
 			driverFailed: driverFailed("gpui", "GPUI driver:") || gpuiInfrastructureFailure,
-			legacyFailedShards: legacyGpuiExits.flatMap((exit) => exit[1] ? [exit[1]] : []),
+			legacyFailedShards: legacyGpuiExits,
 		}),
 	]);
 	if (metadata.status === "failed" && !web.size && !gpui.size) return recorded;

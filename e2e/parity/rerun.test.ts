@@ -54,6 +54,17 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		}, "2026-01-07");
 		expect(await lastRerunSource(root)).toBe(gpuiOnly);
 		expect(await lastRerunSource(root, "web")).toBe(modern);
+		const damagedGpui = await save("gpui-metadata-damaged", {
+			"result.json": "{",
+			"web-scenarios.txt": "",
+			"gpui-scenarios.txt": "two",
+			"scenarios.txt": "two",
+		}, "2026-01-07T12:00:00Z");
+		expect(await lastRerunSource(root, "web")).toBe(modern);
+		await expect(lastRerunSource(root, "gpui")).rejects.toThrow(join(damagedGpui, "result.json"));
+		await writeFile(join(damagedGpui, "scenarios.txt"), "two\nuncertain");
+		await expect(lastRerunSource(root, "web")).rejects.toThrow(join(damagedGpui, "result.json"));
+		await rm(damagedGpui, { recursive: true });
 		await save("corrupt", {
 			"result.json": JSON.stringify({ selectionHashes: { web: selectionHash("one"), gpui: selectionHash("") } }),
 			"web-scenarios.txt": "on",
@@ -385,7 +396,7 @@ test("a failed legacy coverage run replays the recorded selection, including pre
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
 		const selected = { web: new Set(["one", "two"]), gpui: new Set(["one", "two"]) };
 		expect(await rerunSelections(run, { coverage: true })).toEqual({ ...selected, coveragePublication: "unknown" });
-		const artifacts = "/checkout/e2e/artifacts";
+		const artifacts = "/home/o'connor/checkout/e2e/artifacts";
 		const source = `${artifacts}/parity-original-run/coverage-map.json`;
 		const target = `${artifacts}/parity-coverage-map.json`;
 		for (const error of [
@@ -408,19 +419,37 @@ test("legacy GPUI shard infrastructure failures replay the whole driver selectio
 	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
 	try {
 		await Promise.all([
-			writeFile(join(run, "scenarios.txt"), "one\ntwo"),
-			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"},{"id":"two","status":"failed"}]}'),
+			writeFile(join(run, "scenarios.txt"), "one\ntwo\nthree"),
+			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"},{"id":"two","status":"failed"},{"id":"three","status":"passed"}]}'),
 			writeFile(join(run, "gpui-0.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
-			writeFile(join(run, "gpui-1.json"), '{"driver":"gpui","scenarios":[{"id":"two","status":"failed"}]}'),
+			writeFile(join(run, "gpui-1.json"), '{"driver":"gpui","scenarios":[{"id":"two","status":"failed"},{"id":"three","status":"passed"}]}'),
 		]);
 		for (const error of ["GPUI shard 0/2 exited 137", "GPUI shard 0/2 wrote no report", "GPUI shard 1/2 exited 101"]) {
 			await writeFile(join(run, "result.json"), JSON.stringify({ driver: "gpui", status: "failed", error }));
-			expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(error.endsWith("101") ? ["two"] : ["one", "two"]) });
+			expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(error.endsWith("101") ? ["two"] : ["one", "two", "three"]) });
 		}
+		await writeFile(join(run, "gpui-1.json"), '{"driver":"gpui","scenarios":[{"id":"two","status":"failed"}]}');
+		expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(["one", "two", "three"]) });
 		await writeFile(join(run, "result.json"), '{"driver":"gpui","status":"failed","error":"GPUI shard 0/2 exited 101; GPUI shard 1/2 exited 101"}');
-		expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(["one", "two"]) });
+		expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(["one", "two", "three"]) });
 		await rm(join(run, "gpui-0.json"));
-		expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(["one", "two"]) });
+		expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(["one", "two", "three"]) });
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("legacy validation errors leave the healthy driver out of the retry", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			writeFile(join(run, "scenarios.txt"), "one"),
+			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
+		]);
+		for (const error of ["Error: Expected web report", "Error: Missing scenarios: web"]) {
+			await writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", status: "failed", error }));
+			expect(await rerunSelections(run)).toEqual({ web: new Set(["one"]), gpui: new Set() });
+		}
 	} finally {
 		await rm(run, { recursive: true });
 	}
