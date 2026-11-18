@@ -477,10 +477,12 @@
 		&& (!notice.map.sharesTableError || notice.map.status === "reconnecting" || notice.map.status === "connecting")
 		&& notice.map.status !== "partial" && notice.map.status !== "polling");
 	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
+	// Keep the minimum display time after combined recovery. During split recovery, name the panel still stale.
+	const allCurrent = $derived(notice.table?.current !== false && notice.map?.current !== false);
 	const tableNotice = $derived(notice.table && (notice.table.error
 		? "refreshFailed"
-		: watchNotice(notice.table.status, !notice.table.current && tableStale.shown)));
-	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, !notice.map.current && mapStale.shown));
+		: watchNotice(notice.table.status, (allCurrent || !notice.table.current) && tableStale.shown)));
+	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, (allCurrent || !notice.map.current) && mapStale.shown));
 	const mapNotice = $derived.by((): NoticeKind | null => {
 		if (!notice.map) return null;
 		if (notice.map.failed) return "topologyFailed";

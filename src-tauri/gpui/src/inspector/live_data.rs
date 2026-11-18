@@ -514,12 +514,9 @@ impl Inspector {
                         } else {
                             None
                         };
-                        let mut reload =
-                            tick && (lost || forbidden || read_failed || missing_kind.is_some());
-                        let kind_recovery = missing_kind
-                            .filter(|_| !lost && !forbidden && !read_failed && batch.is_empty());
+                        let mut reload = tick && (lost || forbidden || read_failed);
                         // A recovery tick with nothing to recover leaves the view as it is.
-                        if tick && batch.is_empty() && !reload {
+                        if tick && batch.is_empty() && !reload && missing_kind.is_none() {
                             continue;
                         }
                         let mut names = Some(crate::model::ObservedNames::default());
@@ -552,6 +549,9 @@ impl Inspector {
                                 _ => {}
                             }
                         }
+                        // Connected messages can renew a healthy watch without requesting a relist.
+                        let kind_recovery = missing_kind.filter(|_| !reload && !lost && !forbidden);
+                        reload |= missing_kind.is_some();
                         // After a failed reload, rows it should have changed may be
                         // stale, so the next reload lists the kind, not just its names.
                         if tick || read_failed {
