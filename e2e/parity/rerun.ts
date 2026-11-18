@@ -41,10 +41,7 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 	const runs = await Promise.all(directories.map(async ({ name }) => {
 		const path = join(root, name);
 		const resultPath = join(path, "result.json");
-		const file = await stat(resultPath).catch((error) => {
-			if (isMissingFile(error)) return undefined;
-			throw error;
-		});
+		const file = await stat(resultPath).catch(() => undefined);
 		if (!file) return undefined;
 		const time = file.mtimeMs;
 		try {
@@ -135,7 +132,9 @@ async function recordedSelections(
 	return { web: scenarioIds(web), gpui: scenarioIds(gpui) };
 }
 
-async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { driverFailed, verifyLegacyExit = false }: { driverFailed: boolean; verifyLegacyExit?: boolean }): Promise<Set<string>> {
+type DriverFailure = { driverFailed: boolean; legacyFailedShards?: string[] };
+
+async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { driverFailed, legacyFailedShards = [] }: DriverFailure): Promise<Set<string>> {
 	// Failures outside scenario execution can depend on the original selection.
 	if (!ids.size || driverFailed) return ids;
 
@@ -145,10 +144,24 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { 
 		const scenarios = driverScenarioResults(driver, report);
 		for (const { id, status } of scenarios) {
 			const duplicate = results.has(id);
-			if (!ids.has(id) || (verifyLegacyExit && duplicate)) return ids;
+			if (!ids.has(id) || (legacyFailedShards.length && duplicate)) return ids;
 			results.set(id, !duplicate && status === "passed");
 		}
-		if (verifyLegacyExit && (results.size !== ids.size || !scenarios.some(({ status }) => status === "failed"))) return ids;
+		if (legacyFailedShards.length) {
+			if (results.size !== ids.size) return ids;
+			const shards = await Promise.all(legacyFailedShards.map(async (index) => {
+				const shard = JSON.parse(await readFile(join(run, `gpui-${index}.json`), "utf8"));
+				return driverScenarioResults("gpui", shard);
+			}));
+			const seen = new Set<string>();
+			for (const shard of shards) {
+				if (!shard.some(({ status }) => status === "failed")) return ids;
+				for (const { id, status } of shard) {
+					if (seen.has(id) || results.get(id) !== (status === "passed")) return ids;
+					seen.add(id);
+				}
+			}
+		}
 	} catch {
 		// An unreadable or incomplete report cannot prove that any of its scenarios passed.
 		return ids;
@@ -176,6 +189,7 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 		// Earlier runners could fail to publish coverage without recording a separate outcome.
 		if (metadata.status === "failed" && metadata.coverageMapFailure === undefined && metadata.coverageMapFailed === undefined) return recorded;
 	}
+	if (metadata.runLevelFailed === true) return recorded;
 	// A scenario report cannot establish that driver cleanup succeeded.
 	if (metadata.status !== "passed" && metadata.status !== "failed") return recorded;
 	const failedDrivers = metadata.failedDrivers;
@@ -183,14 +197,14 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 	const legacyError = metadata.status === "failed" && isString(metadata.error) ? metadata.error : "";
 	const driverFailed = (driver: Driver, legacyLabel: string) =>
 		failedDrivers === undefined ? legacyError.includes(legacyLabel) : failedDrivers.includes(driver);
-	const legacyGpuiExits = failedDrivers === undefined ? [...legacyError.matchAll(/\bGPUI shard \d+\/\d+ (?:exited (-?\d+)|wrote no report)/g)] : [];
+	const legacyGpuiExits = failedDrivers === undefined ? [...legacyError.matchAll(/\bGPUI shard (\d+)\/\d+ (?:exited (-?\d+)|wrote no report)/g)] : [];
 	// Rust libtest exits 101 on an assertion failure. Only a complete report can confirm it.
-	const gpuiInfrastructureFailure = legacyGpuiExits.some((exit) => exit[1] !== "101");
+	const gpuiInfrastructureFailure = legacyGpuiExits.some((exit) => exit[2] !== "101");
 	const [web, gpui] = await Promise.all([
 		failedScenarios(run, "web", recorded.web, { driverFailed: driverFailed("web", "Web driver:") }),
 		failedScenarios(run, "gpui", recorded.gpui, {
 			driverFailed: driverFailed("gpui", "GPUI driver:") || gpuiInfrastructureFailure,
-			verifyLegacyExit: legacyGpuiExits.length > 0,
+			legacyFailedShards: legacyGpuiExits.flatMap((exit) => exit[1] ? [exit[1]] : []),
 		}),
 	]);
 	if (metadata.status === "failed" && !web.size && !gpui.size) return recorded;

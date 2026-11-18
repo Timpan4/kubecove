@@ -73,6 +73,7 @@ const interrupt = () => controller.abort(new Error("Interrupted"));
 process.once("SIGINT", interrupt);
 process.once("SIGTERM", interrupt);
 let failure: string | undefined;
+let runLevelFailed = false;
 let resultDriver: Driver | "both" = driver ?? "both";
 let selectionHashes: Record<Driver, string> | undefined;
 let coverageMapFailure: CoverageMapFailure | null = null;
@@ -146,7 +147,7 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		for (const { id, status } of results) if (status === "passed") passed[name].add(id);
 	}
 	if (!coverage) return;
-	if (failedDrivers.size) return;
+	if (reports.some(({ results }) => !results)) return;
 	try {
 		// Only complete, validated reports can contribute coverage rows.
 		const bothPassed = new Set([...passed.web].filter((id) => passed.gpui.has(id)));
@@ -156,6 +157,7 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
 		if (publishCoverageMap) {
 			coverageMapFailure = "publication";
+			if (failedDrivers.size) return;
 			const temporary = join(artifacts, "default-map.tmp");
 			await copyFile(path, temporary);
 			await rename(temporary, resolve(DEFAULT_MAP));
@@ -204,7 +206,10 @@ try {
 	} else if (rerun) console.log("Nothing to rerun: no earlier failures match this selection.");
 	// A change no scenario can observe, or a CI shard with no share of a small selection.
 	else console.log("No parity scenarios selected by the changes.");
-} catch (error) { fail(String(error)); }
+} catch (error) {
+	runLevelFailed = true;
+	fail(String(error));
+}
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
 	const interrupted = controller.signal.aborted;
@@ -218,6 +223,7 @@ finally {
 		selectionRecorded: selectionHashes !== undefined,
 		selectionHashes,
 		failedDrivers: [...failedDrivers],
+		runLevelFailed,
 		coverageMapFailure,
 		coveragePublicationRequested,
 		interrupted,

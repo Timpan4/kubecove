@@ -32,11 +32,10 @@ console.log(JSON.stringify({
 }));
 `, { mode: 0o755 }),
 			writeFile(executable, `#!/usr/bin/env bun
-const scenarios = [
-	{ id: "one", status: process.env.TEST_EXIT === "invalid-status" ? "invalid" : "passed" },
-	{ id: "two", status: process.env.TEST_EXIT === "all-passed" ? "passed" : "failed" },
-	{ id: "three", status: "passed" },
-];
+const ids = (await Bun.file(process.env.KUBECOVE_PARITY_SCENARIO_IDS).text()).split("\\n").filter(Boolean);
+const scenarios = ids.map((id) => ({ id, status: "passed" }));
+if (process.env.TEST_EXIT !== "all-passed") scenarios[1].status = "failed";
+if (process.env.TEST_EXIT === "invalid-status") scenarios[0].status = "invalid";
 if (process.env.TEST_EXIT === "incomplete") scenarios.pop();
 const driver = process.env.TEST_EXIT === "wrong-driver" ? "web" : "gpui";
 await Bun.write(process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-0.json", JSON.stringify({ driver, scenarios }));
@@ -57,14 +56,18 @@ process.exit(101);
 			const child = Bun.spawn([process.execPath, "-e", `
 import { join } from "node:path";
 import { runGpui } from "./e2e/parity/gpui-run";
-import { rerunSelections } from "./e2e/parity/rerun";
+import { DRIVER_SELECTION_FORMAT, rerunSelections, selectionHash } from "./e2e/parity/rerun";
 
 const artifacts = process.env.TEST_ARTIFACTS;
 const scenarios = ["one", "two", "three"].map((id) => ({ id, title: id, steps: [] }));
-await Bun.write(join(artifacts, "scenarios.txt"), scenarios.map(({ id }) => id).join("\\n"));
+const gpui = scenarios.map(({ id }) => id).join("\\n");
+await Bun.write(join(artifacts, "gpui-scenarios.txt"), gpui);
+await Bun.write(join(artifacts, "web-scenarios.txt"), "");
 const problem = await runGpui({ scenarios }, artifacts, { path: "", exit: Promise.resolve(0) }, 1, new AbortController().signal, () => {});
 await Bun.write(join(artifacts, "result.json"), JSON.stringify({
 	driver: "gpui", status: "failed", failedDrivers: problem ? ["gpui"] : [],
+	selectionFormat: DRIVER_SELECTION_FORMAT,
+	selectionHashes: { web: selectionHash(""), gpui: selectionHash(gpui) },
 }));
 const selected = await rerunSelections(artifacts);
 console.log(JSON.stringify({ driverFailed: Boolean(problem), ids: [...selected.gpui] }));
