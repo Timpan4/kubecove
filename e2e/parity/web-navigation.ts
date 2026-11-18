@@ -1,26 +1,27 @@
-import type { Page } from "playwright-core";
-import type { Step } from "./contract";
+import type { WebActions } from "./web-action";
 import { tabTo } from "./web-keyboard";
 import { sidebarRow } from "./web-sidebar-live";
 
-export async function navigationAction(page: Page, step: Step): Promise<void> {
-    switch (step.action) {
-        case "openNamespaceList": await page.getByRole("button", { name: "View all", exact: true }).click(); break;
-        case "expectNamespaceRow": {
-            const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: step.name, exact: true }) });
-            await row.getByRole("cell", { name: step.age, exact: true }).first().waitFor();
-            break;
-        }
-        case "resizeViewport": await page.setViewportSize({ width: step.width, height: step.height }); break;
-        case "openNavigationDrawer": await page.getByRole("button", { name: "Open workspace navigation", exact: true }).click(); break;
-        case "expectNavigationDrawer":
-            await page.getByRole("dialog", { name: "Workspace navigation", exact: true }).waitFor({ state: step.open ? "visible" : "hidden" });
-            break;
-        case "sidebarKey":
-            // Tab focuses the row without selecting it, so Enter and Space must select it themselves.
-            await tabTo(page, sidebarRow(page, step.path));
-            await page.keyboard.press(step.key);
-            break;
-        default: throw new Error(`Unknown navigation action ${step.action}`);
-    }
-}
+export const navigationActions = {
+	async openNamespaceList(page) {
+		await page.getByRole("button", { name: "View all", exact: true }).click();
+	},
+	async expectNamespaceRow(page, step) {
+		const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: step.name, exact: true }) });
+		await row.getByRole("cell", { name: step.age, exact: true }).first().waitFor();
+	},
+	async resizeViewport(page, step) {
+		await page.setViewportSize({ width: step.width, height: step.height });
+	},
+	async openNavigationDrawer(page) {
+		await page.getByRole("button", { name: "Open workspace navigation", exact: true }).click();
+	},
+	async expectNavigationDrawer(page, step) {
+		await page.getByRole("dialog", { name: "Workspace navigation", exact: true }).waitFor({ state: step.open ? "visible" : "hidden" });
+	},
+	async sidebarKey(page, step) {
+		// Tab focuses the row without selecting it, so Enter and Space must select it themselves.
+		await tabTo(page, sidebarRow(page, step.path));
+		await page.keyboard.press(step.key);
+	},
+} satisfies Partial<WebActions>;

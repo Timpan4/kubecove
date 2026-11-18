@@ -1,79 +1,115 @@
 import { LIVE_SCRIPTS } from "../../src/lib/tauri-dev-mock-live";
-import type { JsonObject } from "../../src/lib/types";
-import type { Step } from "./contract-steps";
-import { boolean, count, oneOf, optionalBoolean, plainString, string } from "./contract-values";
+import { type StepParsers, boolean, count, object, oneOf, optionalBoolean, plainString, string, strings, noPayload, withOptional } from "./contract-values";
 
-/** Parses terminal, port-forward, exec and live-data steps; returns undefined for any other action. */
-export function sessionStep(item: JsonObject): Step | undefined {
-	switch (item.action) {
-		case "terminalFit": return { action: item.action, width: count(item.width), height: count(item.height) };
-		case "terminalOutput": return { action: item.action, data: string(item.data), container: string(item.container) };
-		case "terminalSelect": return { action: item.action, row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false, line: optionalBoolean(item.line) ?? false, alt: optionalBoolean(item.alt) ?? false };
-		case "terminalCopy": case "terminalPaste": return { action: item.action, text: item.text === "" ? "" : string(item.text) };
-		case "terminalPrimaryPaste": return { action: item.action, text: string(item.text) };
-		case "terminalScroll": return { action: item.action, rows: count(item.rows) };
-		case "terminalDragOutside": return { action: item.action, row: count(item.row), col: count(item.col), edge: oneOf(["above", "below"], item.edge, "a terminal edge") };
-		case "terminalRelease": return { action: item.action, ms: count(item.ms) };
-		case "terminalFocus": {
-			const focus: Extract<Step, { action: "terminalFocus" }> = { action: item.action, focused: boolean(item.focused) };
-			if (item.key !== undefined) {
-				if (!focus.focused) throw new Error("Only focusing the terminal takes a key");
-				focus.key = oneOf(["Tab"] as const, item.key, "a terminal focus key");
-			}
-			return focus;
-		}
-		case "terminalKey": return { action: item.action, key: oneOf(["Tab"] as const, item.key, "a terminal key") };
-		case "terminalRightClick": return { action: item.action, row: count(item.row), col: count(item.col) };
-		case "expectTerminalCursor": {
-			const cursor: Extract<Step, { action: "expectTerminalCursor" }> = { action: item.action, cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint") };
-			if (item.row !== undefined && item.row !== null) cursor.row = count(item.row);
-			if (item.col !== undefined && item.col !== null) cursor.col = count(item.col);
-			return cursor;
-		}
-		case "configurePreset": return { action: item.action, label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) };
-		case "presetControl": {
-			const control: Extract<Step, { action: "presetControl" }> = { action: item.action, operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action") };
-			if (item.label !== undefined) control.label = string(item.label);
-			return control;
-		}
-		case "replaySessions": return { action: item.action, script: oneOf(["reconnecting", "failed", "foreign-output", "exec-output", "exec-exited", "exec-failed", "exec-stopped"], item.script, "a session script") };
-		case "confirmExecLeave": return { action: item.action, choice: oneOf(["stay", "stop"], item.choice, "a leave choice") };
-		case "configureForward": return { action: item.action, remote: string(item.remote), local: item.local === undefined ? "" : plainString(item.local) };
-		case "forwardControl": {
-			const control: Extract<Step, { action: "forwardControl" }> = { action: item.action, operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control") };
-			if (item.target !== undefined) control.target = string(item.target);
-			return control;
-		}
-		case "expectForwardState": {
-			const state: Extract<Step, { action: "expectForwardState" }> = { action: item.action, target: string(item.target), local: string(item.local), status: string(item.status), count: count(item.count) };
-			if (item.resolved !== undefined) state.resolved = string(item.resolved);
-			return state;
-		}
-		case "expectForwardNotice": return { action: item.action, title: string(item.title), text: string(item.text) };
-		case "execControl": {
-			const control: Extract<Step, { action: "execControl" }> = {
-				action: item.action,
-				operation: oneOf(["start", "input", "close", "stop", "select", "custom", "arguments", "shortcut", "run"], item.operation, "an exec control"),
-			};
-			if (item.container !== undefined) control.container = string(item.container);
-			if (item.command !== undefined) control.command = string(item.command);
-			if (item.data !== undefined) control.data = string(item.data);
-			if (item.tab !== undefined) control.tab = count(item.tab);
-			return control;
-		}
-		case "expectExecState": {
-			const state: Extract<Step, { action: "expectExecState" }> = { action: item.action, container: string(item.container), status: string(item.status), contains: item.contains === undefined ? "" : plainString(item.contains) };
-			if (item.absent !== undefined) state.absent = string(item.absent);
-			if (item.command !== undefined) state.command = string(item.command);
-			return state;
-		}
-		case "expectLiveState": {
-			const state: Extract<Step, { action: "expectLiveState" }> = { action: item.action, label: string(item.label) };
-			if (item.notice !== undefined) state.notice = string(item.notice);
-			return state;
-		}
-		case "expectLiveMenu": return { action: item.action, message: string(item.message) };
-		case "replayLiveData": return { action: item.action, script: oneOf(LIVE_SCRIPTS, item.script, "a live script") };
-		default: return undefined;
-	}
-}
+export const sessionsSteps = {
+	mockTiming: (item) => {
+		const control = object(item.control);
+		const timing: import("../../src/lib/tauri-dev-mock-timing").TimingControl = {
+			operation: oneOf(["hold", "dirty", "contend", "release", "fail", "failOnce", "expectRequests", "expectPending", "expectNoRetry", "expectNoError"], control.operation, "a timing operation"),
+			command: string(control.command), context: control.context === "" ? "" : string(control.context),
+		};
+		if (control.kind !== undefined) timing.kind = string(control.kind);
+		if (control.namespace !== undefined) timing.namespace = string(control.namespace);
+		if (control.count !== undefined) timing.count = count(control.count);
+		return { control: timing };
+	},
+	expectLiveSessionCount: (item) => ({ count: count(item.count) }),
+	expectPortForward: (item) => ({ title: string(item.title) }),
+	openLiveSessionPopover: noPayload,
+	expectLiveSessionRow: (item) => {
+		return withOptional({
+			target: string(item.target), status: string(item.status), controls: strings(item.controls, false),
+		}, {
+			local: item.local !== undefined ? string(item.local) : undefined,
+		});
+	},
+	liveSessionControl: (item) => {
+		return withOptional({
+			operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control"),
+		}, {
+			target: item.target !== undefined ? string(item.target) : undefined,
+			local: item.local !== undefined ? string(item.local) : undefined,
+		});
+	},
+	expectHealthTooltip: (item) => ({ kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), state: string(item.state), source: string(item.source), statuses: strings(item.statuses, true), partial: boolean(item.partial) }),
+	expectTimestampTooltip: (item) => ({ kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), value: string(item.value) }),
+	expectEventTimeTooltip: (item) => ({ index: count(item.index) }),
+	terminalFit: (item) => ({ width: count(item.width), height: count(item.height) }),
+	terminalOutput: (item) => ({ data: string(item.data), container: string(item.container) }),
+	terminalSelect: (item) => ({ row: count(item.row), col: count(item.col), endRow: count(item.endRow), endCol: count(item.endCol), word: optionalBoolean(item.word) ?? false, line: optionalBoolean(item.line) ?? false, alt: optionalBoolean(item.alt) ?? false }),
+	terminalCopy: (item) => ({ text: item.text === "" ? "" : string(item.text) }),
+	terminalPaste: (item) => ({ text: item.text === "" ? "" : string(item.text) }),
+	terminalPrimaryPaste: (item) => ({ text: string(item.text) }),
+	terminalScroll: (item) => ({ rows: count(item.rows) }),
+	terminalDragOutside: (item) => ({ row: count(item.row), col: count(item.col), edge: oneOf(["above", "below"], item.edge, "a terminal edge") }),
+	terminalRelease: (item) => ({ ms: count(item.ms) }),
+	terminalFocus: (item) => {
+		const focused = boolean(item.focused);
+		if (item.key === undefined) return { focused };
+		if (!focused) throw new Error("Only focusing the terminal takes a key");
+		return { focused, key: oneOf(["Tab"], item.key, "a terminal focus key") };
+	},
+	terminalKey: (item) => ({ key: oneOf(["Tab"] as const, item.key, "a terminal key") }),
+	terminalRightClick: (item) => ({ row: count(item.row), col: count(item.col) }),
+	expectTerminalCursor: (item) => {
+		return withOptional({
+			cursor: oneOf(["block", "block blink", "bar", "bar blink", "underline", "underline blink", "outline"], item.cursor, "a cursor paint"),
+		}, {
+			row: item.row !== undefined && item.row !== null ? count(item.row) : undefined,
+			col: item.col !== undefined && item.col !== null ? count(item.col) : undefined,
+		});
+	},
+	configurePreset: (item) => ({ label: string(item.label), context: string(item.context), namespace: string(item.namespace), service: string(item.service), remote: string(item.remote), local: string(item.local) }),
+	presetControl: (item) => {
+		return withOptional({
+			operation: oneOf(["add", "save", "edit", "start", "remove", "absent"], item.operation, "a preset action"),
+		}, {
+			label: item.label !== undefined ? string(item.label) : undefined,
+		});
+	},
+	replaySessions: (item) => ({ script: oneOf(["reconnecting", "failed", "foreign-output", "exec-output", "exec-exited", "exec-failed", "exec-stopped"], item.script, "a session script") }),
+	confirmExecLeave: (item) => ({ choice: oneOf(["stay", "stop"], item.choice, "a leave choice") }),
+	configureForward: (item) => ({ remote: string(item.remote), local: item.local === undefined ? "" : plainString(item.local) }),
+	forwardControl: (item) => {
+		return withOptional({
+			operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"),
+		}, {
+			target: item.target !== undefined ? string(item.target) : undefined,
+		});
+	},
+	expectForwardState: (item) => {
+		return withOptional({
+			target: string(item.target), local: string(item.local), status: string(item.status), count: count(item.count),
+		}, {
+			resolved: item.resolved !== undefined ? string(item.resolved) : undefined,
+		});
+	},
+	expectForwardNotice: (item) => ({ title: string(item.title), text: string(item.text) }),
+	execControl: (item) => {
+		return withOptional({
+			operation: oneOf(["start", "input", "close", "stop", "select", "custom", "arguments", "shortcut", "run"], item.operation, "an exec control"),
+		}, {
+			container: item.container !== undefined ? string(item.container) : undefined,
+			command: item.command !== undefined ? string(item.command) : undefined,
+			data: item.data !== undefined ? string(item.data) : undefined,
+			tab: item.tab !== undefined ? count(item.tab) : undefined,
+		});
+	},
+	expectExecState: (item) => {
+		return withOptional({
+			container: string(item.container), status: string(item.status), contains: item.contains === undefined ? "" : plainString(item.contains),
+		}, {
+			absent: item.absent !== undefined ? string(item.absent) : undefined,
+			command: item.command !== undefined ? string(item.command) : undefined,
+		});
+	},
+	expectLiveState: (item) => {
+		return withOptional({
+			label: string(item.label),
+		}, {
+			notice: item.notice !== undefined ? string(item.notice) : undefined,
+		});
+	},
+	expectLiveMenu: (item) => ({ message: string(item.message) }),
+	replayLiveData: (item) => ({ script: oneOf(LIVE_SCRIPTS, item.script, "a live script") }),
+} satisfies StepParsers;
