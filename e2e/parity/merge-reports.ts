@@ -13,33 +13,53 @@ export function parseDriver<Value>(value: Value): Driver {
 	throw new Error(`Invalid parity driver: ${String(value)}`);
 }
 
-export function driverScenarioResults<Report>(driver: Driver, report: Report) {
+function driverReportRows<Report>(driver: Driver, report: Report): unknown[] {
 	const input = object(report);
 	if (input.driver !== driver) throw new Error(`Expected ${driver} report`);
 	if (!Array.isArray(input.scenarios)) throw new Error(`Missing scenarios: ${driver}`);
-	return input.scenarios.map((value) => {
+	return input.scenarios;
+}
+
+function scenarioResult(driver: Driver, id: string, result: ReturnType<typeof object>) {
+	const status = result.status;
+	if (status !== "passed" && status !== "failed") throw new Error(`Invalid ${driver} result: ${id}`);
+	return { id, status, result };
+}
+
+export function driverScenarioResults<Report>(driver: Driver, report: Report) {
+	return driverReportRows(driver, report).map((value) => {
 		const result = object(value);
-		const id = string(result.id);
-		const status = result.status;
-		if (status !== "passed" && status !== "failed") throw new Error(`Invalid ${driver} result: ${id}`);
-		return { id, status, result };
+		return scenarioResult(driver, string(result.id), result);
 	});
 }
 
-/** Requires one result per selected ID and preserves ordinary scenario failures. */
-export function completeDriverResults<Report>(contract: Contract, driver: Driver, report: Report) {
-	const results = driverScenarioResults(driver, report);
+/** Preserves only unique, valid selected rows and reports validation failures. */
+export function inspectDriverResults<Report>(contract: Contract, driver: Driver, report: Report) {
 	const expected = new Set(contract.scenarios.map(({ id }) => id));
-	for (const { id } of results) {
-		if (!expected.delete(id)) throw new Error(`Invalid ${driver} result: ${id}`);
+	const results = new Map<string, ReturnType<typeof scenarioResult>>();
+	const problems: string[] = [];
+	for (const value of driverReportRows(driver, report)) {
+		try {
+			const result = object(value);
+			const id = string(result.id);
+			if (!expected.delete(id)) {
+				results.delete(id);
+				throw new Error(`Invalid ${driver} result: ${id}`);
+			}
+			results.set(id, scenarioResult(driver, id, result));
+		} catch (error) {
+			problems.push(error instanceof Error ? error.message : String(error));
+		}
 	}
-	if (expected.size) throw new Error(`Missing ${driver} results: ${[...expected].join(", ")}`);
-	return results;
+	if (expected.size) problems.push(`Missing ${driver} results: ${[...expected].join(", ")}`);
+	return { results: [...results.values()], problems };
 }
 
 /** Requires exactly one passing result for every selected scenario from this driver. */
 export function validateDriverReport<Report>(contract: Contract, driver: Driver, report: Report): void {
-	const failed = completeDriverResults(contract, driver, report).find(({ status }) => status === "failed");
+	const { results, problems } = inspectDriverResults(contract, driver, report);
+	if (problems.length) throw new Error(problems.join("; "));
+	const failed = results.find(({ status }) => status === "failed");
 	if (failed) throw new Error(`Invalid ${driver} result: ${failed.id}`);
 }
 

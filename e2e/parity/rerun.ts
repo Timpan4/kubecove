@@ -45,7 +45,10 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 	const runs = await Promise.all(directories.map(async ({ name }) => {
 		const path = join(root, name);
 		const resultPath = join(path, "result.json");
-		const file = await stat(resultPath).catch(() => undefined);
+		const file = await stat(resultPath).catch((error) => {
+			if (!isMissingFile(error)) console.warn(`Skipping parity artifact ${resultPath}: ${String(error)}`);
+			return undefined;
+		});
 		if (!file) return undefined;
 		const time = file.mtimeMs;
 		try {
@@ -186,6 +189,11 @@ function isLegacyDefaultMapCopyError(error: string): boolean {
 		destination === posix.join(root, posix.basename(DEFAULT_MAP));
 }
 
+function hasLegacyRunError(error: string): boolean {
+	const scopedFailure = /^(?:(?:Web|GPUI) driver: |(?:web|gpui) report: |Error: (?:Invalid (?:web|gpui) result: |Missing (?:web|gpui) results: )|GPUI shard \d+\/\d+ (?:exited -?\d+|wrote no report))/;
+	return error.split("; ").some((message) => message && !scopedFailure.test(message));
+}
+
 /** Reads the recorded selection for each driver, including reports from older runners. */
 export async function rerunSelections(run: string, { coverage = false } = {}): Promise<RetrySelection> {
 	let metadata: ReturnType<typeof object> = {};
@@ -215,6 +223,7 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 	const failedDrivers = metadata.failedDrivers;
 	if (failedDrivers !== undefined && (!Array.isArray(failedDrivers) || failedDrivers.some((name) => name !== "web" && name !== "gpui"))) return recorded;
 	const legacyError = metadata.status === "failed" && isString(metadata.error) ? metadata.error : "";
+	if (metadata.runLevelFailed === undefined && hasLegacyRunError(legacyError)) return recorded;
 	const driverFailed = (driver: Driver, legacyLabel: string) =>
 		failedDrivers === undefined ? legacyError.includes(legacyLabel) : failedDrivers.includes(driver);
 	const legacyGpuiExits = failedDrivers === undefined ? [...legacyError.matchAll(/\bGPUI shard (\d+)\/\d+ (?:exited (-?\d+)|wrote no report)/g)] : [];

@@ -37,25 +37,28 @@ const scenarios = ids.map((id) => ({ id, status: "passed" }));
 if (process.env.TEST_EXIT !== "all-passed") scenarios[1].status = "failed";
 if (process.env.TEST_EXIT === "invalid-status") scenarios[0].status = "invalid";
 if (process.env.TEST_EXIT === "incomplete") scenarios.pop();
+if (process.env.TEST_EXIT === "duplicate") scenarios.push({ id: ids[0], status: "failed" });
 const driver = process.env.TEST_EXIT === "wrong-driver" ? "web" : "gpui";
 await Bun.write(process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-0.json", JSON.stringify({ driver, scenarios }));
 if (process.env.TEST_EXIT === "killed") process.kill(process.pid, "SIGKILL");
 process.exit(101);
 `, { mode: 0o755 }),
 		]);
-		for (const { exit, driverFailed, ids } of [
-			{ exit: "scenario-failed", driverFailed: false, ids: ["two"] },
-			{ exit: "all-passed", driverFailed: true, ids: ["one", "two", "three"] },
-			{ exit: "killed", driverFailed: true, ids: ["one", "two", "three"] },
-			{ exit: "wrong-driver", driverFailed: true, ids: ["one", "two", "three"] },
-			{ exit: "invalid-status", driverFailed: true, ids: ["one", "two", "three"] },
-			{ exit: "incomplete", driverFailed: true, ids: ["one", "two", "three"] },
+		for (const { exit, driverFailed, ids, passing } of [
+			{ exit: "scenario-failed", driverFailed: false, ids: ["two"], passing: ["one", "three"] },
+			{ exit: "all-passed", driverFailed: true, ids: ["one", "two", "three"], passing: ["one", "two", "three"] },
+			{ exit: "killed", driverFailed: true, ids: ["one", "two", "three"], passing: ["one", "three"] },
+			{ exit: "wrong-driver", driverFailed: true, ids: ["one", "two", "three"], passing: [] },
+			{ exit: "invalid-status", driverFailed: true, ids: ["one", "two", "three"], passing: [] },
+			{ exit: "incomplete", driverFailed: true, ids: ["one", "two", "three"], passing: ["one"] },
+			{ exit: "duplicate", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
 		]) {
 			const artifacts = join(directory, exit);
 			await mkdir(artifacts);
 			const child = Bun.spawn([process.execPath, "-e", `
 import { join } from "node:path";
 import { runGpui } from "./e2e/parity/gpui-run";
+import { inspectDriverResults } from "./e2e/parity/merge-reports";
 import { DRIVER_SELECTION_FORMAT, rerunSelections, selectionHash } from "./e2e/parity/rerun";
 
 const artifacts = process.env.TEST_ARTIFACTS;
@@ -70,7 +73,9 @@ await Bun.write(join(artifacts, "result.json"), JSON.stringify({
 	selectionHashes: { web: selectionHash(""), gpui: selectionHash(gpui) },
 }));
 const selected = await rerunSelections(artifacts);
-console.log(JSON.stringify({ driverFailed: Boolean(problem), ids: [...selected.gpui] }));
+const report = await Bun.file(join(artifacts, "gpui.json")).json();
+const passing = inspectDriverResults({ scenarios }, "gpui", report).results.filter(({ status }) => status === "passed").map(({ id }) => id);
+console.log(JSON.stringify({ driverFailed: Boolean(problem), ids: [...selected.gpui], passing }));
 `], {
 				cwd: resolve(import.meta.dir, "../.."),
 				env: {
@@ -89,7 +94,7 @@ console.log(JSON.stringify({ driverFailed: Boolean(problem), ids: [...selected.g
 				new Response(child.stderr).text(),
 			]);
 			if (code !== 0) throw new Error(`GPUI exit probe "${exit}" failed: ${stderr}`);
-			expect(stdout.trimEnd().split("\n").at(-1)).toBe(JSON.stringify({ driverFailed, ids }));
+			expect(stdout.trimEnd().split("\n").at(-1)).toBe(JSON.stringify({ driverFailed, ids, passing }));
 		}
 	} finally {
 		await rm(directory, { recursive: true });

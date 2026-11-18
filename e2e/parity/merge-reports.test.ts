@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Contract } from "./contract";
-import { collectReports, mergeReports, newestAttempts } from "./merge-reports";
+import { collectReports, inspectDriverResults, mergeReports, newestAttempts } from "./merge-reports";
 
 // Failure modes are recorded in the implementation report before these tests:
 // missing report, duplicate scenario, one-driver-only scenario, invalid or failed result.
@@ -32,6 +32,23 @@ test("rejects duplicate, unexpected, failed and malformed results", () => {
 		[report("other", "one", "two"), valid[1]],
 		[null, valid[1]],
 	]) expect(() => mergeReports(contract, invalid)).toThrow();
+});
+
+test("partial coverage keeps only unique valid results from the selected driver", () => {
+	const partial = inspectDriverResults(contract, "gpui", report("gpui", "one"));
+	expect(partial.results.map(({ id }) => id)).toEqual(["one"]);
+	expect(partial.problems).toEqual(["Missing gpui results: two"]);
+	const invalid = inspectDriverResults(contract, "gpui", {
+		driver: "gpui",
+		scenarios: [
+			{ id: "one", status: "passed" },
+			{ id: "two", status: "passed" },
+			{ id: "one", status: "failed" },
+			{ id: "unselected", status: "passed" },
+		],
+	});
+	expect(invalid.results.map(({ id }) => id)).toEqual(["two"]);
+	expect(invalid.problems).toEqual(["Invalid gpui result: one", "Invalid gpui result: unselected"]);
 });
 
 test("collection fails when a selected run has no report or never passed", async () => {

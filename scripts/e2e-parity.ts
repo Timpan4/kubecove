@@ -5,7 +5,7 @@ import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
 import { type Contract, loadContract, requireActionCoverage, requireViewCoverage } from "../e2e/parity/contract";
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
-import { completeDriverResults, type Driver, parseDriver } from "../e2e/parity/merge-reports";
+import { type Driver, inspectDriverResults, parseDriver } from "../e2e/parity/merge-reports";
 import { type CoverageMapFailure, DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
@@ -133,23 +133,21 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 	const reports = await Promise.all(executed.map(async (name) => {
 		try {
 			const report = JSON.parse(await readFile(join(artifacts, `${name}.json`), "utf8"));
-			return { name, results: completeDriverResults(selection[name], name, report) };
-		} catch (error) { return { name, error: `${name} report: ${String(error)}` }; }
+			return { name, ...inspectDriverResults(selection[name], name, report) };
+		} catch (error) {
+			return { name, results: [], problems: [error instanceof Error ? error.message : String(error)] };
+		}
 	}));
 	const passed = { web: new Set<string>(), gpui: new Set<string>() };
-	for (const { name, results, error } of reports) {
-		if (!results) {
-			driverFailed(name, error);
-			continue;
-		}
+	for (const { name, results, problems } of reports) {
+		if (problems.length) driverFailed(name, `${name} report: Error: ${problems.join("; ")}`);
 		const failed = results.find(({ status }) => status === "failed");
 		if (failed) fail(`${name} report: Error: Invalid ${name} result: ${failed.id}`);
 		for (const { id, status } of results) if (status === "passed") passed[name].add(id);
 	}
 	if (!coverage) return;
-	if (reports.some(({ results }) => !results)) return;
 	try {
-		// Only complete, validated reports can contribute coverage rows.
+		// Each coverage row must have a unique passing result from both drivers.
 		const bothPassed = new Set([...passed.web].filter((id) => passed.gpui.has(id)));
 		const path = join(artifacts, "coverage-map.json");
 		const map = await writeRunMap(artifacts, path, bothPassed);

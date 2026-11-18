@@ -93,18 +93,24 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	}));
 	await writeFile(join(artifacts, "gpui.log"), runs.map((run, index) => `== shard ${index}/${count} exited ${run.code}\n${run.output}`).join("\n"));
 	const selectedIds = new Set(contract.scenarios.map(({ id }) => id));
-	const results = new Map<string, unknown>();
+	const results = new Map<string, unknown[]>();
 	const problems: string[] = [];
 	for (const [index, run] of runs.entries()) {
 		let reportedFailure = false;
 		try {
 			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8"));
 			for (const { id, status, result } of driverScenarioResults("gpui", report)) {
-				if (!selectedIds.has(id) || results.has(id)) {
+				if (!selectedIds.has(id)) {
 					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${id}`);
 					continue;
 				}
-				results.set(id, result);
+				const previous = results.get(id);
+				if (previous) {
+					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${id}`);
+					previous.push(result);
+					continue;
+				}
+				results.set(id, [result]);
 				if (status === "failed") reportedFailure = true;
 			}
 		} catch (error) { problems.push(`GPUI shard ${index}/${count} did not produce a valid report: ${String(error)}`); }
@@ -116,7 +122,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	}
 	const missing = [...selectedIds].filter((id) => !results.has(id));
 	if (missing.length) problems.push(`Missing GPUI results: ${missing.join(", ")}`);
-	const scenarios = contract.scenarios.flatMap((scenario) => results.has(scenario.id) ? [results.get(scenario.id)] : []);
+	const scenarios = contract.scenarios.flatMap(({ id }) => results.get(id) ?? []);
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));
 	if (coverage) {
 		await recordGpuiCoverage(artifacts, executable, env.CARGO_BUILD_BUILD_DIR ?? "", contract.scenarios.map((scenario) => scenario.id), shards, signal);

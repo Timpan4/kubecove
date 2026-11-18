@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type CoverageMapFailure, DRIVER_SELECTION_FORMAT, lastRerunSource, rerunSelections, selectionHash } from "./rerun";
@@ -9,6 +9,7 @@ type RunOutcome = {
 	coverageMapFailure?: CoverageMapFailure;
 	coveragePublicationRequested?: boolean;
 	runLevelFailed?: boolean;
+	error?: string;
 };
 
 function driverFiles(web: string, gpui: string, outcome: RunOutcome = {}) {
@@ -124,6 +125,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("last find
 	const old = join(root, "parity-inaccessible");
 	const recent = join(root, "parity-recent");
 	await mkdir(old);
+	const warning = spyOn(console, "warn").mockImplementation(() => {});
 	try {
 		await mkdir(recent);
 		await Promise.all([
@@ -135,7 +137,9 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("last find
 		await utimes(join(old, "result.json"), earlier, earlier);
 		await chmod(old, 0o000);
 		expect(await lastRerunSource(root)).toBe(recent);
+		expect(warning).toHaveBeenCalledWith(expect.stringContaining(join(old, "result.json")));
 	} finally {
+		warning.mockRestore();
 		await chmod(old, 0o700);
 		await rm(root, { recursive: true });
 	}
@@ -426,6 +430,16 @@ test("a run-level failure replays both selections even when a scenario also fail
 			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
 		]);
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]) });
+		await writeFile(join(run, "result.json"), driverFiles("one\ntwo", "one", {
+			status: "failed",
+			error: "Error: Invalid web result: two; Error: Could not release frame isolation",
+		})["result.json"]);
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]) });
+		await writeFile(join(run, "result.json"), driverFiles("one\ntwo", "one", {
+			status: "failed",
+			error: "Error: Invalid web result: two",
+		})["result.json"]);
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
 	} finally {
 		await rm(run, { recursive: true });
 	}
