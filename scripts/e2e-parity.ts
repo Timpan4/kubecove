@@ -160,6 +160,7 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 			if (failedDrivers.size) return;
 			const temporary = join(artifacts, "default-map.tmp");
 			await copyFile(path, temporary);
+			controller.signal.throwIfAborted();
 			await rename(temporary, resolve(DEFAULT_MAP));
 		}
 		coverageMapFailure = null;
@@ -174,6 +175,9 @@ try {
 	requireActionCoverage(contract);
 	const scenarios = await selectScenarios(contract.scenarios);
 	const failed = rerun ? await rerunSelections(rerun, { coverage }) : undefined;
+	if (failed?.coveragePublication === "unknown") {
+		console.warn("Publication intent is unknown for this legacy run. To refresh the default coverage map, run unfiltered with PARITY_COVERAGE=1 and PARITY_RERUN unset.");
+	}
 	const coverageIds = coverage && failed ? new Set([...failed.web, ...failed.gpui]) : undefined;
 	const selectedFor = (name: Driver): Contract => {
 		if (driver && driver !== name) return { scenarios: [] };
@@ -185,10 +189,11 @@ try {
 	const executed = (["web", "gpui"] as const).filter((name) => selection[name].scenarios.length);
 	const narrowed = ["PARITY_PREFIX", "PARITY_SCENARIOS", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
 	const fullSelection = executed.length === 2 && executed.every((name) => selection[name].scenarios.length === contract.scenarios.length);
-	if (failed?.publishCoverageMap && !narrowed && !fullSelection) {
+	const retryPublication = failed?.coveragePublication === "retry";
+	if (retryPublication && !narrowed && !fullSelection) {
 		throw new Error("The recorded selection does not cover the current suite. Run PARITY_COVERAGE=1 without PARITY_RERUN to publish the default map.");
 	}
-	coveragePublicationRequested = coverage && !narrowed && fullSelection && (!rerun || failed?.publishCoverageMap === true);
+	coveragePublicationRequested = coverage && !narrowed && fullSelection && (!rerun || retryPublication);
 	if (!executed.length && !rerun && !process.env.PARITY_CHANGED) throw new Error("No parity scenarios selected");
 	if (executed.length === 1) resultDriver = executed[0];
 	await writeSelections(selection);

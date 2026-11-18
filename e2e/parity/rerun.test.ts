@@ -80,6 +80,15 @@ test("last picks the newest finished run with a complete nonempty selection", as
 			"gpui-scenarios.txt": "",
 		}, "2026-01-13");
 		await expect(lastRerunSource(root)).rejects.toThrow(join(damaged, "result.json"));
+		const unsupported = await save("future-format", {
+			...driverFiles('["one"]', ""),
+			"result.json": JSON.stringify({
+				selectionFormat: "driver-files-v2",
+				selectionHashes: { web: selectionHash('["one"]'), gpui: selectionHash("") },
+			}),
+		}, "2026-01-14");
+		await expect(lastRerunSource(root)).rejects.toThrow("Unsupported parity selection format");
+		await expect(rerunSelections(unsupported)).rejects.toThrow("Unsupported parity selection format");
 	} finally {
 		await rm(root, { recursive: true });
 	}
@@ -343,11 +352,11 @@ test("a coverage retry replays both selections after a coverage-map failure", as
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
 		expect(await rerunSelections(run, { coverage: true })).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]) });
 		await writeFile(join(run, "result.json"), driverFiles("one\ntwo", "one", { status: "failed", coverageMapFailure: "publication" })["result.json"]);
-		expect(await rerunSelections(run, { coverage: true })).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]), publishCoverageMap: true });
+		expect(await rerunSelections(run, { coverage: true })).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]), coveragePublication: "retry" });
 		await writeFile(join(run, "result.json"), driverFiles("one\ntwo", "one", {
 			status: "failed", coverageMapFailure: "generation", coveragePublicationRequested: true,
 		})["result.json"]);
-		expect(await rerunSelections(run, { coverage: true })).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]), publishCoverageMap: true });
+		expect(await rerunSelections(run, { coverage: true })).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]), coveragePublication: "retry" });
 	} finally {
 		await rm(run, { recursive: true });
 	}
@@ -363,7 +372,22 @@ test("a failed legacy coverage run replays the recorded selection, including pre
 			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"},{"id":"two","status":"passed"}]}'),
 		]);
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
-		expect(await rerunSelections(run, { coverage: true })).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one", "two"]) });
+		const selected = { web: new Set(["one", "two"]), gpui: new Set(["one", "two"]) };
+		expect(await rerunSelections(run, { coverage: true })).toEqual({ ...selected, coveragePublication: "unknown" });
+		const artifacts = "/checkout/e2e/artifacts";
+		const source = `${artifacts}/parity-original-run/coverage-map.json`;
+		const target = `${artifacts}/parity-coverage-map.json`;
+		for (const error of [
+			`Error: EISDIR: illegal operation on a directory, copyfile '${source}' -> '${target}'`,
+			`Error: EPERM: operation not permitted, copyfile 'C:${source.replaceAll("/", "\\")}' -> 'C:${target.replaceAll("/", "\\")}'`,
+		]) {
+			await writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", status: "failed", error }));
+			expect(await rerunSelections(run, { coverage: true })).toEqual({ ...selected, coveragePublication: "retry" });
+		}
+		await writeFile(join(run, "result.json"), JSON.stringify({
+			driver: "both", status: "failed", error: `Error: copyfile '${source}' -> '/elsewhere/parity-coverage-map.json'`,
+		}));
+		expect(await rerunSelections(run, { coverage: true })).toEqual({ ...selected, coveragePublication: "unknown" });
 	} finally {
 		await rm(run, { recursive: true });
 	}

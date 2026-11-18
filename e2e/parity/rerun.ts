@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
+import { DEFAULT_MAP } from "./changed-scenarios";
 import { isString, object } from "./contract-values";
 import { type Driver, driverScenarioResults } from "./merge-reports";
 
@@ -9,7 +10,7 @@ export const driverSelectionFile = { web: "web-scenarios.txt", gpui: "gpui-scena
 export type CoverageMapFailure = "generation" | "publication";
 
 type DriverSelections = Record<Driver, Set<string>>;
-type RetrySelection = DriverSelections & { publishCoverageMap?: true };
+type RetrySelection = DriverSelections & { coveragePublication?: "retry" | "unknown" };
 
 function isMissingFile<Value>(error: Value): boolean {
 	return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -20,6 +21,9 @@ export function selectionHash(contents: string): string {
 }
 
 function selectionHashes(run: string, metadata: ReturnType<typeof object>): Record<Driver, string> | undefined {
+	if (metadata.selectionFormat !== undefined && metadata.selectionFormat !== DRIVER_SELECTION_FORMAT) {
+		throw new Error(`Unsupported parity selection format in ${join(run, "result.json")}. Use a runner that supports this artifact.`);
+	}
 	if (metadata.selectionHashes === undefined) return undefined;
 	try {
 		const { web, gpui } = object(metadata.selectionHashes);
@@ -169,6 +173,19 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { 
 	return new Set([...ids].filter((id) => !results.get(id)));
 }
 
+function isLegacyDefaultMapCopyError(error: string): boolean {
+	const [, from, to] = error.match(/\bcopyfile '([^'\r\n]+)' -> '([^'\r\n]+)'/) ?? [];
+	if (!from || !to) return false;
+	const source = from.replaceAll("\\", "/");
+	const destination = to.replaceAll("\\", "/");
+	const run = posix.dirname(source);
+	const root = posix.dirname(run);
+	return posix.basename(source) === "coverage-map.json" &&
+		posix.basename(run).startsWith("parity-") &&
+		root.endsWith(`/${posix.dirname(DEFAULT_MAP)}`) &&
+		destination === posix.join(root, posix.basename(DEFAULT_MAP));
+}
+
 /** Reads the recorded selection for each driver, including reports from older runners. */
 export async function rerunSelections(run: string, { coverage = false } = {}): Promise<RetrySelection> {
 	let metadata: ReturnType<typeof object> = {};
@@ -182,12 +199,15 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 	const hashes = selectionHashes(run, metadata);
 	const recorded = await recordedSelections(run, metadata, hashes);
 	if (coverage) {
-		if (metadata.coverageMapFailure === "publication") return { ...recorded, publishCoverageMap: true };
-		if (metadata.coverageMapFailure === "generation" || metadata.coverageMapFailed === true) {
-			return metadata.coveragePublicationRequested === true ? { ...recorded, publishCoverageMap: true } : recorded;
+		if (metadata.coverageMapFailure === "publication") return { ...recorded, coveragePublication: "retry" };
+		if (metadata.coverageMapFailure === "generation") {
+			return metadata.coveragePublicationRequested === true ? { ...recorded, coveragePublication: "retry" } : recorded;
 		}
 		// Earlier runners could fail to publish coverage without recording a separate outcome.
-		if (metadata.status === "failed" && metadata.coverageMapFailure === undefined && metadata.coverageMapFailed === undefined) return recorded;
+		if (metadata.status === "failed" && metadata.coverageMapFailure === undefined && metadata.coverageMapFailed !== false) {
+			const copyFailed = isString(metadata.error) && isLegacyDefaultMapCopyError(metadata.error);
+			return { ...recorded, coveragePublication: copyFailed ? "retry" : "unknown" };
+		}
 	}
 	if (metadata.runLevelFailed === true) return recorded;
 	// A scenario report cannot establish that driver cleanup succeeded.
