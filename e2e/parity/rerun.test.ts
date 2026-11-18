@@ -65,6 +65,15 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		await writeFile(join(damagedGpui, "scenarios.txt"), "two\nuncertain");
 		await expect(lastRerunSource(root, "web")).rejects.toThrow(join(damagedGpui, "result.json"));
 		await rm(damagedGpui, { recursive: true });
+		const badOtherHash = await save("gpui-hash-damaged", {
+			...driverFiles("", "two"),
+			"result.json": JSON.stringify({ selectionFormat: DRIVER_SELECTION_FORMAT, selectionHashes: { web: selectionHash(""), gpui: "badhash" } }),
+		}, "2026-01-07T18:00:00Z");
+		expect(await lastRerunSource(root, "web")).toBe(modern);
+		await expect(lastRerunSource(root, "gpui")).rejects.toThrow("Invalid driver selection hashes");
+		await rm(join(badOtherHash, "web-scenarios.txt"));
+		await expect(lastRerunSource(root, "web")).rejects.toThrow("Invalid driver selection hashes");
+		await rm(badOtherHash, { recursive: true });
 		await save("corrupt", {
 			"result.json": JSON.stringify({ selectionHashes: { web: selectionHash("one"), gpui: selectionHash("") } }),
 			"web-scenarios.txt": "on",
@@ -450,6 +459,13 @@ test("legacy validation errors leave the healthy driver out of the retry", async
 			await writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", status: "failed", error }));
 			expect(await rerunSelections(run)).toEqual({ web: new Set(["one"]), gpui: new Set() });
 		}
+		await writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"}]}');
+		await rm(join(run, "gpui.json"));
+		const error = "GPUI driver: Error: Fixture export failed; Error: ENOENT: no such file or directory, open '/home/o'; connor/e2e/artifacts/parity-original-run/gpui.json'";
+		await writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", status: "failed", error }));
+		expect(await rerunSelections(run)).toEqual({ web: new Set(), gpui: new Set(["one"]) });
+		await writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", status: "failed", error: `${error}; Error: Could not release frame isolation` }));
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["one"]), gpui: new Set(["one"]) });
 	} finally {
 		await rm(run, { recursive: true });
 	}

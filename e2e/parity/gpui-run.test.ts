@@ -34,14 +34,20 @@ console.log(JSON.stringify({
 			writeFile(executable, `#!/usr/bin/env bun
 const ids = (await Bun.file(process.env.KUBECOVE_PARITY_SCENARIO_IDS).text()).split("\\n").filter(Boolean);
 const [shard] = process.env.KUBECOVE_PARITY_SHARD.split("/");
-const reportPath = process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-" + shard + ".json";
-if (process.env.TEST_EXIT === "malformed-duplicate") {
+const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
+const reportPath = artifacts + "/gpui-" + shard + ".json";
+const mode = process.env.TEST_EXIT;
+const claim = (position) => Bun.write(artifacts + "/gpui-claims/" + position, shard);
+if (mode === "malformed-duplicate" || mode === "misplaced") {
+	await Promise.all((shard === "0" ? [0, 2] : [1]).map(claim));
+	const first = mode === "misplaced" ? { id: ids[1], status: "failed" } : { id: ids[0], status: "passed" };
 	const scenarios = shard === "0"
-		? [{ id: ids[0], status: "passed" }, { id: ids[2], status: "passed" }]
-		: [{ id: ids[0], status: "passed" }, { id: ids[1], status: "invalid" }];
+		? [first, { id: ids[2], status: "passed" }]
+		: [{ id: ids[0], status: "passed" }, ...(mode === "misplaced" ? [] : [{ id: ids[1], status: "invalid" }])];
 	await Bun.write(reportPath, JSON.stringify({ driver: "gpui", scenarios }));
-	process.exit(shard === "0" ? 0 : 101);
+	process.exit((mode === "misplaced") === (shard === "0") ? 101 : 0);
 }
+await Promise.all(ids.flatMap((_, position) => mode === "missing-claim" && position === 0 ? [] : [claim(position)]));
 const scenarios = ids.map((id) => ({ id, status: "passed" }));
 if (process.env.TEST_EXIT !== "all-passed") scenarios[1].status = "failed";
 if (process.env.TEST_EXIT === "invalid-status") scenarios[0].status = "invalid";
@@ -62,6 +68,8 @@ process.exit(101);
 			{ exit: "incomplete", driverFailed: true, ids: ["one", "two", "three"], passing: ["one"] },
 			{ exit: "duplicate", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
 			{ exit: "malformed-duplicate", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
+			{ exit: "misplaced", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
+			{ exit: "missing-claim", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
 		]) {
 			const artifacts = join(directory, exit);
 			await mkdir(artifacts);
@@ -76,7 +84,7 @@ const scenarios = ["one", "two", "three"].map((id) => ({ id, title: id, steps: [
 const gpui = scenarios.map(({ id }) => id).join("\\n");
 await Bun.write(join(artifacts, "gpui-scenarios.txt"), gpui);
 await Bun.write(join(artifacts, "web-scenarios.txt"), "");
-const shards = process.env.TEST_EXIT === "malformed-duplicate" ? 2 : 1;
+const shards = ["malformed-duplicate", "misplaced"].includes(process.env.TEST_EXIT) ? 2 : 1;
 const problem = await runGpui({ scenarios }, artifacts, { path: "", exit: Promise.resolve(0) }, shards, new AbortController().signal, () => {});
 await Bun.write(join(artifacts, "result.json"), JSON.stringify({
 	driver: "gpui", status: "failed", failedDrivers: problem ? ["gpui"] : [],

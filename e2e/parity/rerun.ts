@@ -83,11 +83,13 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 			if (shared || web || gpui) throw new Error(restore);
 			continue;
 		}
-		const hashes = selectionHashes(path, result);
-		if (hashes) {
-			const hasWork = requested ? hashes[requested] !== emptyHash : hashes.web !== emptyHash || hashes.gpui !== emptyHash;
-			if (!hasWork) continue;
+		if (requested && (result.selectionFormat === undefined || result.selectionFormat === DRIVER_SELECTION_FORMAT)) {
+			const candidate = result.selectionHashes;
+			if (candidate && typeof candidate === "object" && requested in candidate &&
+				Reflect.get(candidate, requested) === emptyHash && await readRunFile(path, driverSelectionFile[requested]) === "") continue;
 		}
+		const hashes = selectionHashes(path, result);
+		if (!requested && hashes?.web === emptyHash && hashes.gpui === emptyHash) continue;
 		const selected = await recordedSelections(path, result, hashes, { skipUnrecorded: true, requested });
 		if (requested ? selected[requested].size : selected.web.size || selected.gpui.size) return path;
 	}
@@ -243,7 +245,9 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 	if (metadata.status !== "passed" && metadata.status !== "failed") return recorded;
 	const failedDrivers = metadata.failedDrivers;
 	if (failedDrivers !== undefined && (!Array.isArray(failedDrivers) || failedDrivers.some((name) => name !== "web" && name !== "gpui"))) return recorded;
-	const legacyError = metadata.status === "failed" && isString(metadata.error) ? metadata.error : "";
+	const legacyError = metadata.status === "failed" && isString(metadata.error)
+		? metadata.error.replace(/(^|; )(?:Error: )?ENOENT: no such file or directory, open '[^\r\n]+?[/\\](web|gpui)\.json'(?=; |$)/g, "$1Error: Expected $2 report")
+		: "";
 	if (metadata.runLevelFailed === undefined && hasLegacyRunError(legacyError)) return recorded;
 	const driverFailed = (driver: Driver, legacyLabel: string) => failedDrivers === undefined
 		? legacyError.includes(legacyLabel) || legacyError.includes(`Error: Expected ${driver} report`) ||

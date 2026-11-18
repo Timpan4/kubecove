@@ -93,7 +93,10 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 		return run;
 	}));
 	await writeFile(join(artifacts, "gpui.log"), runs.map((run, index) => `== shard ${index}/${count} exited ${run.code}\n${run.output}`).join("\n"));
-	const selectedIds = new Set(contract.scenarios.map(({ id }) => id));
+	const claims = new Map(await Promise.all(contract.scenarios.map(async ({ id }, index) => {
+		const owner = await readFile(join(artifacts, "gpui-claims", String(index)), "utf8").catch(() => undefined);
+		return [id, owner] as const;
+	})));
 	const results = new Map<string, unknown[]>();
 	const problems: string[] = [];
 	for (const [index, run] of runs.entries()) {
@@ -111,9 +114,15 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 					problems.push(`Invalid GPUI result from shard ${index}/${count}: ${String(error)}`);
 					continue;
 				}
-				if (!selectedIds.has(id)) {
+				if (!claims.has(id)) {
 					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${id}`);
 					continue;
+				}
+				const claimed = claims.get(id) === String(index);
+				if (!claimed) {
+					problems.push(`Unverified GPUI claim for ${id} in shard ${index}/${count}`);
+					// Keep the ID so a duplicate in another shard still invalidates coverage.
+					result.status = "unverified";
 				}
 				const previous = results.get(id);
 				if (previous) {
@@ -123,7 +132,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 				}
 				results.set(id, [result]);
 				if (result.status === "failed") reportedFailure = true;
-				else if (result.status !== "passed") problems.push(`Invalid GPUI result from shard ${index}/${count}: ${id}`);
+				else if (claimed && result.status !== "passed") problems.push(`Invalid GPUI result from shard ${index}/${count}: ${id}`);
 			}
 		} catch (error) { problems.push(`GPUI shard ${index}/${count} did not produce a valid report: ${String(error)}`); }
 		// The native harness writes the report, then fails its test if a scenario failed.
@@ -132,7 +141,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 			problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
 		}
 	}
-	const missing = [...selectedIds].filter((id) => !results.has(id));
+	const missing = [...claims.keys()].filter((id) => !results.has(id));
 	if (missing.length) problems.push(`Missing GPUI results: ${missing.join(", ")}`);
 	const scenarios = contract.scenarios.flatMap(({ id }) => results.get(id) ?? []);
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));

@@ -153,6 +153,9 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		const map = await writeRunMap(artifacts, path, bothPassed);
 		mark("coverageMap");
 		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
+		const covered = new Set(map.scenarios);
+		const missing = [...bothPassed].filter((id) => !covered.has(id));
+		if (missing.length) throw new Error(`Missing coverage for passing scenarios: ${missing.join(", ")}`);
 		if (publishCoverageMap) {
 			coverageMapFailure = "publication";
 			if (failedDrivers.size) return;
