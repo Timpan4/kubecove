@@ -7,8 +7,6 @@ import type { Driver } from "./merge-reports";
 export const DRIVER_SELECTION_FORMAT = "driver-files-v1";
 export const driverSelectionFile = { web: "web-scenarios.txt", gpui: "gpui-scenarios.txt" };
 
-class MissingLegacyDriver extends Error {}
-
 function isMissingFile<Value>(error: Value): boolean {
 	return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
@@ -53,12 +51,8 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 			const hasWork = requested ? hashes[requested] !== emptyHash : hashes.web !== emptyHash || hashes.gpui !== emptyHash;
 			if (!hasWork) continue;
 		}
-		try {
-			const selected = await recordedSelections(path, result, hashes, requested);
-			if (requested ? selected[requested].size : selected.web.size || selected.gpui.size) return path;
-		} catch (error) {
-			if (hashes || error instanceof MissingLegacyDriver) throw error;
-		}
+		const selected = await recordedSelections(path, result, hashes, { skipUnrecorded: true });
+		if (requested ? selected[requested].size : selected.web.size || selected.gpui.size) return path;
 	}
 	throw new Error("PARITY_RERUN=last found no finished parity run");
 }
@@ -76,50 +70,39 @@ function scenarioIds(contents: string): Set<string> {
 	return new Set(contents.split(/\r?\n/).filter(Boolean));
 }
 
-async function recordedSelections(run: string, metadata: ReturnType<typeof object>, hashes: Record<Driver, string> | undefined, requested?: Driver): Promise<Record<Driver, Set<string>>> {
-	const [web, gpui] = await Promise.all([
+async function recordedSelections(
+	run: string,
+	metadata: ReturnType<typeof object>,
+	hashes: Record<Driver, string> | undefined,
+	{ skipUnrecorded = false } = {},
+): Promise<Record<Driver, Set<string>>> {
+	const [web, gpui, shared] = await Promise.all([
 		readRunFile(run, driverSelectionFile.web),
 		readRunFile(run, driverSelectionFile.gpui),
+		hashes ? undefined : readRunFile(run, "scenarios.txt"),
 	]);
-	if (web === undefined && gpui === undefined && !hashes && metadata.selectionFormat !== DRIVER_SELECTION_FORMAT) {
-		const ids = scenarioIds(await readFile(join(run, "scenarios.txt"), "utf8"));
-		if (!ids.size) return { web: ids, gpui: ids };
-		const previous = metadata.driver;
-		if (previous === "both") return { web: ids, gpui: ids };
-		const selected = previous === "web" || previous === "gpui" ? previous : requested;
-		if (selected === "web") return { web: ids, gpui: new Set() };
-		if (selected === "gpui") return { web: new Set(), gpui: ids };
-		throw new MissingLegacyDriver(`Legacy driver metadata is missing or invalid in ${run}. Restore result.json or set PARITY_DRIVER.`);
+	const modern = metadata.selectionFormat !== undefined || hashes || web !== undefined || gpui !== undefined;
+	if (skipUnrecorded && !hashes && !web && !gpui && !shared) return { web: new Set(), gpui: new Set() };
+	if (!modern) {
+		if (shared === undefined) throw new Error(`Missing scenarios.txt in ${run}. Restore the recorded selection before rerunning.`);
+		const ids = scenarioIds(shared);
+		if (metadata.driver === "both") return { web: ids, gpui: ids };
+		if (metadata.driver === "web") return { web: ids, gpui: new Set() };
+		if (metadata.driver === "gpui") return { web: new Set(), gpui: ids };
+		throw new Error(`Legacy driver metadata is missing or invalid in ${run}. Restore result.json before rerunning.`);
 	}
 	if (web === undefined || gpui === undefined) {
 		const missing = [web === undefined ? "web" : "", gpui === undefined ? "GPUI" : ""].filter(Boolean);
 		const label = missing.length === 1 ? "selection" : "selections";
 		throw new Error(`Missing ${missing.join(" and ")} ${label} in ${run}. Restore its driver selection files before rerunning.`);
 	}
-	const selected = { web: scenarioIds(web), gpui: scenarioIds(gpui) };
-	if (hashes) {
-		if (hashes.web !== selectionHash(web) || hashes.gpui !== selectionHash(gpui)) {
-			throw new Error(`Selection files in ${run} do not match result.json. Restore the recorded driver selections before rerunning.`);
-		}
-		return selected;
+	if (!hashes) {
+		throw new Error(`Missing driver selection hashes in ${join(run, "result.json")}. Restore result.json before rerunning.`);
 	}
-	// Earlier results recorded the effective mode and sometimes a shared list.
-	if (selected.web.size || selected.gpui.size) {
-		const executed = (["web", "gpui"] as const).filter((name) => selected[name].size);
-		const recorded = executed.length === 1 ? executed[0] : "both";
-		if ((metadata.driver === "web" || metadata.driver === "gpui" || metadata.driver === "both") && metadata.driver !== recorded) {
-			throw new Error(`Selection files in ${run} do not match the recorded driver. Restore the recorded driver selections before rerunning.`);
-		}
+	if (hashes.web !== selectionHash(web) || hashes.gpui !== selectionHash(gpui)) {
+		throw new Error(`Selection files in ${run} do not match result.json. Restore the recorded driver selections before rerunning.`);
 	}
-	const shared = await readRunFile(run, "scenarios.txt");
-	if (shared !== undefined) {
-		const recorded = scenarioIds(shared);
-		const union = new Set([...selected.web, ...selected.gpui]);
-		if (recorded.size !== union.size || [...recorded].some((id) => !union.has(id))) {
-			throw new Error(`Driver selections in ${run} do not match scenarios.txt. Restore the recorded driver selections before rerunning.`);
-		}
-	}
-	return selected;
+	return { web: scenarioIds(web), gpui: scenarioIds(gpui) };
 }
 
 async function failedScenarios(run: string, driver: Driver, ids: Set<string>, driverFailed: boolean): Promise<Set<string>> {
@@ -144,16 +127,17 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, dr
 }
 
 /** Reads the recorded selection for each driver, including reports from older runners. */
-export async function rerunSelections(run: string, requested?: Driver): Promise<Record<Driver, Set<string>>> {
+export async function rerunSelections(run: string, { coverage = false } = {}): Promise<Record<Driver, Set<string>>> {
 	let metadata: ReturnType<typeof object> = {};
 	try {
 		const result = await readRunFile(run, "result.json");
 		if (result !== undefined) metadata = object(JSON.parse(result));
 	} catch {
-		// Newer runs can still be retried if both selection files are intact.
+		// Selection validation reports what must be restored.
 	}
 	const hashes = selectionHashes(run, metadata);
-	const recorded = await recordedSelections(run, metadata, hashes, requested);
+	const recorded = await recordedSelections(run, metadata, hashes);
+	if (coverage && metadata.coverageMapFailed === true) return recorded;
 	// A scenario report cannot establish that driver cleanup succeeded.
 	if (metadata.status !== "passed" && metadata.status !== "failed") return recorded;
 	const failedDrivers = metadata.failedDrivers;
@@ -165,5 +149,6 @@ export async function rerunSelections(run: string, requested?: Driver): Promise<
 		failedScenarios(run, "web", recorded.web, driverFailed("web", "Web driver:")),
 		failedScenarios(run, "gpui", recorded.gpui, driverFailed("gpui", "GPUI driver:")),
 	]);
+	if (metadata.status === "failed" && !web.size && !gpui.size) return recorded;
 	return { web, gpui };
 }
