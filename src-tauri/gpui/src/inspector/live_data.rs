@@ -322,7 +322,8 @@ impl Inspector {
             contexts,
             self.scope.namespace,
         );
-        if owner != self.live.owner {
+        let owner_changed = owner != self.live.owner;
+        if owner_changed {
             self.live.watches.clear();
             self.observation.discard_patches();
             self.live.owner = owner;
@@ -353,7 +354,7 @@ impl Inspector {
             .collect();
         // A changed kind selection keeps the watches of the kinds it still
         // holds, as `update` in resource-watch.ts keeps unchanged keys' streams.
-        if kinds_changed {
+        if owner_changed || kinds_changed {
             let wanted: HashSet<&str> = pairs.iter().map(|(_, _, id)| id.as_str()).collect();
             self.live
                 .watches
@@ -456,6 +457,7 @@ impl Inspector {
                                                     resource_version,
                                                     names: None,
                                                     watch: Some(id.clone()),
+                                                    kind_recovery: None,
                                                 },
                                                 cx,
                                             );
@@ -503,15 +505,19 @@ impl Inspector {
                         if closed {
                             lost = true;
                         }
-                        let missing_kind = tick
-                            && this
-                                .update(cx, |this, _| {
-                                    this.observation.kind_read_failed(&scope.context, &id)
-                                })
-                                .unwrap_or(false);
-                        let mut reload = tick && (lost || forbidden || read_failed || missing_kind);
-                        let recovering_kind_only =
-                            missing_kind && !lost && !forbidden && !read_failed && batch.is_empty();
+                        let missing_kind = if tick {
+                            this.update(cx, |this, _| {
+                                this.observation.kind_error_started(&scope.context, &id)
+                            })
+                            .ok()
+                            .flatten()
+                        } else {
+                            None
+                        };
+                        let mut reload =
+                            tick && (lost || forbidden || read_failed || missing_kind.is_some());
+                        let kind_recovery = missing_kind
+                            .filter(|_| !lost && !forbidden && !read_failed && batch.is_empty());
                         // A recovery tick with nothing to recover leaves the view as it is.
                         if tick && batch.is_empty() && !reload {
                             continue;
@@ -642,6 +648,7 @@ impl Inspector {
                                                 resource_version,
                                                 names,
                                                 watch: Some(id.clone()),
+                                                kind_recovery,
                                             },
                                             cx,
                                         );
@@ -652,10 +659,9 @@ impl Inspector {
                                         false
                                     }
                                     Err(error) => {
-                                        let failed = !recovering_kind_only
-                                            || this
-                                                .observation
-                                                .kind_read_failed(&scope.context, &id);
+                                        // A retry for a selected-kind list belongs to its existing error.
+                                        // A newer list can retire it without clearing the watch's own errors.
+                                        let failed = kind_recovery.is_none();
                                         if let Some(w) = this.live.watches.get_mut(&id) {
                                             if failed {
                                                 w.reload_error = Some(error.message);
@@ -702,6 +708,9 @@ impl Inspector {
         patch: super::resource_observation::Patch,
         cx: &mut Context<Self>,
     ) {
+        if patch.superseded(&self.observation) {
+            return;
+        }
         if patch.watch.is_some() {
             self.invalidate_topology(&patch.scope, cx);
         }
@@ -718,6 +727,9 @@ impl Inspector {
         self.visible.release_source();
         self.row_index.invalidate();
         for patch in pending {
+            if patch.superseded(&self.observation) {
+                continue;
+            }
             self.row_changes.notice(&patch);
             let rows = self.patch_kind(
                 &patch.scope,

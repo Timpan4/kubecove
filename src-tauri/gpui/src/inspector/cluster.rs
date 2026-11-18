@@ -7,7 +7,7 @@ use super::{Inspector, Load, Page};
 use crate::backend::CLUSTER_KINDS;
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
-use std::rc::Rc;
+use std::{rc::Rc, time::Instant};
 
 #[derive(Default)]
 pub(super) struct ClusterState {
@@ -73,6 +73,7 @@ impl Inspector {
         };
         let backend = self.backend.clone();
         let context = self.scope.context.clone();
+        let started = Instant::now();
         let read = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.cluster_resources(context.clone(), std::mem::take(&mut refresh))
         });
@@ -81,6 +82,9 @@ impl Inspector {
             let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(result) => {
+                        this.observation
+                            .clear_listed_kind_errors(&result.listed, started);
+                        this.supersede_kind_errors(&result.listed, started);
                         this.cluster.rows = result.resources;
                         this.cluster.versions = crate::backend::context_versions(
                             &this.cluster.context,

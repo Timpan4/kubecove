@@ -18,7 +18,12 @@ use kubecove_lib::models::{AppError, ResourceSummary};
 use std::{rc::Rc, time::Instant};
 
 /// One context's read, shareable while in flight with the Overview's read.
-type SharedRead = Shared<Read<ScopeResult>>;
+type ReadResult = (Instant, Result<ScopeResult, AppError>);
+type SharedRead = Shared<BoxFuture<'static, ReadResult>>;
+
+fn started_read(read: Read<ScopeResult>, started: Instant) -> BoxFuture<'static, ReadResult> {
+    read.map(move |result| (started, result)).boxed()
+}
 
 /// Which of a context's two reads answered.
 #[derive(PartialEq, Eq)]
@@ -32,9 +37,9 @@ async fn arrive(
     stage: Stage,
     context: String,
     read: SharedRead,
-) -> (Stage, String, Result<ScopeResult, AppError>) {
-    let result = read.await;
-    (stage, context, result)
+) -> (Stage, String, Instant, Result<ScopeResult, AppError>) {
+    let (started, result) = read.await;
+    (stage, context, started, result)
 }
 
 /// Prepares the rows of every context that answered on the background
@@ -85,7 +90,12 @@ fn settle_shared(reads: &[(String, SharedRead)]) -> Settled<ScopeResult> {
     settle(
         reads
             .iter()
-            .map(|(context, read)| (context.clone(), Box::pin(read.clone()) as Read<ScopeResult>))
+            .map(|(context, read)| {
+                (
+                    context.clone(),
+                    read.clone().map(|(_, result)| result).boxed(),
+                )
+            })
             .collect(),
     )
 }
@@ -218,7 +228,6 @@ impl Inspector {
         let request = self.request.clone();
         let starts = self.read_watch_starts(&contexts, cx);
         // Shared, so the Overview's read of the same contexts joins this request instead of issuing another.
-        let scope_started = Instant::now();
         let reads = self.scope_reads(&contexts, starts, refresh, cx);
         self.load_workspace_overview(refresh, Some(reads.clone()), cx);
         // As the web's keepPreviousData does, rows of the same contexts stay
@@ -245,7 +254,7 @@ impl Inspector {
                 .into_iter()
                 .map(|(context, read)| arrive(Stage::Builtin, context, read))
                 .collect();
-            while let Some((stage, context, result)) = arrivals.next().await {
+            while let Some((stage, context, scope_started, result)) = arrivals.next().await {
                 if stage == Stage::Custom {
                     if this
                         .update(cx, |this, cx| {
@@ -386,11 +395,15 @@ impl Inspector {
         cx: &Context<Self>,
     ) -> SharedScopeReads {
         if self.focused_application().is_some() {
+            let started = Instant::now();
             let read = self.application_resources_read(refresh, cx);
             let read = self.timings.measure("list_resource_scope", read);
             return SharedScopeReads {
                 contexts: contexts.to_vec(),
-                builtin: vec![(self.scope.context.clone(), read.shared())],
+                builtin: vec![(
+                    self.scope.context.clone(),
+                    started_read(read, started).shared(),
+                )],
                 custom: Vec::new(),
             };
         }
@@ -401,6 +414,7 @@ impl Inspector {
                 context: context.clone(),
                 namespace: self.scope.namespace.clone(),
             };
+            let custom_started = Instant::now();
             if let Some(first) = self.backend.scope_custom_resources(scope.clone()) {
                 let backend = self.backend.clone();
                 let scope = scope.clone();
@@ -412,19 +426,20 @@ impl Inspector {
                             .expect("custom read remains available")
                     })
                 });
-                custom.push((context.clone(), read.shared()));
+                custom.push((context.clone(), started_read(read, custom_started).shared()));
             }
             let backend = self.backend.clone();
             let mut refresh = refresh;
             let executor = cx.background_executor().clone();
             let timings = self.timings.clone();
             let list = move || {
+                let started = Instant::now();
                 let read = crate::read_retry::read(executor, move || {
                     backend.scope_builtin_resources(scope.clone(), std::mem::take(&mut refresh))
                 });
-                timings.measure("list_resource_scope", read)
+                started_read(timings.measure("list_resource_scope", read), started)
             };
-            let read: Read<ScopeResult> = match start {
+            let read: BoxFuture<'static, ReadResult> = match start {
                 Some(start) => Box::pin(async move {
                     start.await;
                     list().await

@@ -15,6 +15,7 @@
 		const workloads = initialTopology.nodes.filter((node) => node.kind === "Deployment");
 		error = new Error([
 			"Topology request unavailable",
+			`https://example.invalid/apis/apps/v1/deployments/${workloads.map((node) => node.name).join("-")}`,
 			...workloads.map((node) => `Unable to read ownership for ${node.namespace}/${node.name}`),
 		].join("\n"));
 	}

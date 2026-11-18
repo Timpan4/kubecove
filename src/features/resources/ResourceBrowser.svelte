@@ -479,8 +479,8 @@
 	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
 	const tableNotice = $derived(notice.table && (notice.table.error
 		? "refreshFailed"
-		: watchNotice(notice.table.status, tableStale.shown)));
-	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, mapStale.shown));
+		: watchNotice(notice.table.status, !notice.table.current && tableStale.shown)));
+	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, !notice.map.current && mapStale.shown));
 	const mapNotice = $derived.by((): NoticeKind | null => {
 		if (!notice.map) return null;
 		if (notice.map.failed) return "topologyFailed";
@@ -744,7 +744,7 @@
 
 <div class="flex h-full min-h-0 min-w-0 flex-col gap-3" bind:this={browserElement} tabindex="-1">
 	{#if resourcesQuery.data && !resourcesQuery.isPlaceholderData}
-		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
+		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} contextRefreshFailed={resourcesQuery.isError} />
 	{/if}
 	{#if contextsLoading.shown && resourcesQuery.loadingContexts.length > 0}
 		<p role="status" class="flex items-center gap-2 text-xs text-muted-foreground" data-contexts-loading>

@@ -344,7 +344,7 @@
 </div>
 
 {#snippet mapRefreshError()}
-	<details bind:this={refreshErrorDetails} class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
+	<details bind:this={refreshErrorDetails} data-map-refresh-error class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
 		<summary class="cursor-pointer">Map refresh failed</summary>
 		<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} scrollTechnicalDetail={false} />
 	</details>

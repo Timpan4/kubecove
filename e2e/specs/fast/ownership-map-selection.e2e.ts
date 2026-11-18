@@ -63,7 +63,9 @@ describe("ownership map selection rendering", () => {
 				expect(await technicalDetail.getText()).toContain("Topology request unavailable");
 				expect(await browser.execute(() => {
 					const detail = document.querySelector("details[open] pre");
-					return detail?.clientHeight === detail?.scrollHeight;
+					const disclosure = detail?.closest("details[data-map-refresh-error]");
+					return Boolean(detail && disclosure && detail.clientHeight === detail.scrollHeight
+						&& disclosure.clientWidth === disclosure.scrollWidth);
 				})).toBe(true);
 				await browser.keys("Tab");
 				expect(await browser.execute(() => {

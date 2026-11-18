@@ -150,6 +150,7 @@ pub(super) async fn cluster_resources(
     let mut resources = Vec::new();
     let mut warnings = Vec::new();
     let mut versions = super::ListVersions::new();
+    let mut listed = Vec::new();
     // The kinds are listed together; results are read in kind order, so the
     // first failing kind still decides the error.
     let reads: Vec<_> = CLUSTER_KINDS
@@ -165,13 +166,17 @@ pub(super) async fn cluster_resources(
         })
         .collect();
     let results = bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await;
-    for ((kind, key), result) in CLUSTER_KINDS.iter().zip(&keys).zip(results) {
+    for ((kind, key), result) in CLUSTER_KINDS.iter().zip(keys).zip(results) {
         match result {
             Ok(snapshot) => {
                 resources.extend(Arc::unwrap_or_clone(snapshot.rows));
                 if let Some(version) = snapshot.resource_version {
-                    versions.insert(super::watch_signature(key), version);
+                    versions.insert(super::watch_signature(&key), version);
                 }
+                listed.push(super::Listed {
+                    context: context.clone(),
+                    key,
+                });
             }
             Err(error) if error.kind == AppErrorKind::Forbidden => {
                 warnings.push(format!("{kind}: {}", error.message))
@@ -184,6 +189,6 @@ pub(super) async fn cluster_resources(
         resources,
         warnings,
         versions,
-        listed: Vec::new(),
+        listed,
     })
 }

@@ -557,8 +557,22 @@ impl ResourceObservation {
     }
 
     pub(super) fn kind_read_failed(&self, context: &str, watch_id: &str) -> bool {
-        self.position(context)
-            .is_some_and(|index| self.parts[index].kind_errors.contains_key(watch_id))
+        self.kind_error_started(context, watch_id).is_some()
+    }
+
+    pub(super) fn kind_error_started(&self, context: &str, watch_id: &str) -> Option<Instant> {
+        self.parts[self.position(context)?]
+            .kind_errors
+            .get(watch_id)
+            .map(|error| error.started)
+    }
+
+    pub(super) fn clear_listed_kind_errors(&mut self, listed: &[Listed], started: Instant) {
+        for list in listed {
+            if let Some(index) = self.position(&list.context) {
+                self.parts[index].clear_listed_errors(std::slice::from_ref(list), started);
+            }
+        }
     }
 
     pub(super) fn kind_relisted(&mut self, context: &str, key: &WatchResourceKey) {

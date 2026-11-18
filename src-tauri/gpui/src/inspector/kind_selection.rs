@@ -42,8 +42,10 @@ impl KindSelection {
     }
 
     pub(super) fn retain_watches(&mut self, wanted: &HashSet<&str>) {
-        self.reads
-            .retain(|_, read| read.ids.iter().any(|id| wanted.contains(id.as_str())));
+        self.reads.retain(|_, read| {
+            read.ids.retain(|id| wanted.contains(id.as_str()));
+            !read.ids.is_empty()
+        });
     }
 }
 
@@ -263,16 +265,20 @@ impl Inspector {
                 if let Some(read) = this.kind_selection.reads.get_mut(&selected) {
                     read.loading = false;
                 }
-                if this.scope != scope || !this.kind_selected(&selected) {
+                if this.scope != scope
+                    || !this.kind_selected(&selected)
+                    || this.live_keys().is_none()
+                {
                     return;
                 }
+                let contexts = this.watch_contexts();
                 let several = results.len() > 1;
                 for (context, result) in results {
                     let id = crate::backend::watch_id(&context, &key);
                     let Some(read) = this.kind_selection.reads.get(&selected) else {
                         return;
                     };
-                    if !read.ids.contains(&id) {
+                    if !read.ids.contains(&id) || !contexts.contains(&context) {
                         continue;
                     }
                     match result {
@@ -290,6 +296,7 @@ impl Inspector {
                                 resource_version,
                                 names: None,
                                 watch: None,
+                                kind_recovery: None,
                             },
                             cx,
                         ),
