@@ -177,8 +177,8 @@ impl Inspector {
         if !chosen.remove(&key) {
             chosen.insert(key.clone());
             self.read_selected_kind(key.clone(), cx);
-        } else {
-            self.kind_selection.reads.remove(&key);
+        } else if let Some(read) = self.kind_selection.reads.remove(&key) {
+            self.observation.clear_kind_errors(&read.ids);
         }
         self.close_detail(cx);
         self.table_page = 0;
@@ -256,12 +256,15 @@ impl Inspector {
                         // A context whose rows don't show has nothing to call stale;
                         // its own read failure is already its warning.
                         Err(error) if this.observation.shows(&context) => {
-                            this.live.refresh_error =
-                                Some(super::resource_observation::context_message(
+                            this.observation.record_kind_error(
+                                &context,
+                                crate::backend::watch_id(&context, &key),
+                                super::resource_observation::context_message(
                                     several,
                                     &context,
                                     &error.message,
-                                ))
+                                ),
+                            );
                         }
                         Err(_) => {}
                     }

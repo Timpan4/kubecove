@@ -53,6 +53,7 @@
         { "action": "replayLiveData", "script": "rollout" },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": true, "pulse": true },
         { "action": "expectLiveState", "label": "Live" },
+        { "action": "coverageText", "text": "Showing last observed graph. Map activity indicators are paused until the map refreshes.", "visible": false },
         { "action": "setReducedMotion", "reduce": true },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false }
       ]
@@ -77,7 +78,8 @@
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
-        { "action": "expectLiveState", "label": "Live" }
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "coverageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover.", "visible": false }
       ]
     },
     {

@@ -3,7 +3,10 @@
 use super::{Load, custom_resources::CustomLoad, request::InFlight};
 use crate::backend::{ListVersions, ScopeResult, context_versions};
 use crate::model::PreparedRows;
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+};
 
 mod freshness;
 mod snapshots;
@@ -57,6 +60,8 @@ struct ContextRows {
     pending: bool,
     /// The scope refresh failure that left this context's previous rows on screen.
     refresh_error: Option<String>,
+    /// Reads of newly selected kinds that have yet to obtain a list.
+    kind_errors: BTreeMap<String, String>,
     /// The context's custom-kind read in the current load runs, or waits for its built-ins.
     custom_pending: bool,
     /// The list version of each kind in the context's rows, by `watch_id`.
@@ -65,6 +70,14 @@ struct ContextRows {
     warnings: Vec<String>,
     /// The namespaces of the context's rows, for the namespace picker.
     namespaces: Vec<NamespaceSummary>,
+}
+
+impl ContextRows {
+    fn read_error(&self) -> Option<&str> {
+        self.refresh_error
+            .as_deref()
+            .or_else(|| self.kind_errors.values().next().map(String::as_str))
+    }
 }
 
 /// What applying every context's read changes outside `ResourceObservation`.
@@ -184,7 +197,6 @@ impl ResourceObservation {
                     ready: true,
                     shown: true,
                     pending: false,
-                    refresh_error: None,
                     custom_pending: part.custom_pending,
                     versions: context_versions(context, result.versions),
                     warnings: result
@@ -193,6 +205,7 @@ impl ResourceObservation {
                         .map(|warning| context_message(several, context, warning))
                         .collect(),
                     namespaces: result.namespaces,
+                    ..ContextRows::default()
                 };
                 self.status = Load::Ready;
             }
@@ -449,7 +462,7 @@ impl ResourceObservation {
     pub(super) fn context_rows_stale(&self, context: &str) -> bool {
         self.position(context).is_some_and(|index| {
             let part = &self.parts[index];
-            part.shown && (part.pending || part.refresh_error.is_some() || self.refreshing())
+            part.shown && (part.pending || part.read_error().is_some() || self.refreshing())
         })
     }
 
@@ -457,7 +470,34 @@ impl ResourceObservation {
         self.parts
             .iter()
             .filter(|part| part.shown)
-            .find_map(|part| part.refresh_error.as_deref())
+            .find_map(ContextRows::read_error)
+    }
+
+    pub(super) fn record_kind_error(&mut self, context: &str, watch_id: String, error: String) {
+        if let Some(index) = self.position(context) {
+            self.parts[index].kind_errors.insert(watch_id, error);
+        }
+    }
+
+    pub(super) fn clear_kind_errors(&mut self, watch_ids: &[String]) {
+        for part in &mut self.parts {
+            for id in watch_ids {
+                part.kind_errors.remove(id);
+            }
+        }
+    }
+
+    pub(super) fn kind_relisted(
+        &mut self,
+        context: &str,
+        key: &kubecove_lib::models::WatchResourceKey,
+    ) {
+        if let Some(index) = self.position(context) {
+            let failures = &mut self.parts[index].kind_errors;
+            if !failures.is_empty() {
+                failures.remove(&crate::backend::watch_id(context, key));
+            }
+        }
     }
 
     /// A context whose rows the table shows still reads them.
