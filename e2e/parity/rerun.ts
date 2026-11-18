@@ -25,17 +25,24 @@ export function selectionHash(contents: string): string {
 	return createHash("sha256").update(contents).digest("hex");
 }
 
+function hashFields(metadata: ReturnType<typeof object>): ReturnType<typeof object> | undefined {
+	try {
+		return object(metadata.selectionHashes);
+	} catch {
+		return undefined;
+	}
+}
+
 function selectionHashes(run: string, metadata: ReturnType<typeof object>): Record<Driver, string> | undefined {
 	if (metadata.selectionFormat !== undefined && metadata.selectionFormat !== DRIVER_SELECTION_FORMAT) {
 		throw new Error(`Unsupported parity selection format in ${join(run, "result.json")}. Use a runner that supports this artifact.`);
 	}
 	if (metadata.selectionHashes === undefined) return undefined;
-	try {
-		const { web, gpui } = object(metadata.selectionHashes);
+	const fields = hashFields(metadata);
+	if (fields) {
+		const { web, gpui } = fields;
 		const sha256 = /^[0-9a-f]{64}$/;
 		if (isString(web) && isString(gpui) && sha256.test(web) && sha256.test(gpui)) return { web, gpui };
-	} catch {
-		// Report which artifact needs restoring for malformed manifests as well.
 	}
 	throw new Error(`Invalid driver selection hashes in ${join(run, "result.json")}. Restore result.json before rerunning.`);
 }
@@ -84,9 +91,8 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 			continue;
 		}
 		if (requested && (result.selectionFormat === undefined || result.selectionFormat === DRIVER_SELECTION_FORMAT)) {
-			const candidate = result.selectionHashes;
-			if (candidate && typeof candidate === "object" && requested in candidate &&
-				Reflect.get(candidate, requested) === emptyHash && await readRunFile(path, driverSelectionFile[requested]) === "") continue;
+			if (hashFields(result)?.[requested] === emptyHash &&
+				await readRunFile(path, driverSelectionFile[requested]) === "") continue;
 		}
 		const hashes = selectionHashes(path, result);
 		if (!requested && hashes?.web === emptyHash && hashes.gpui === emptyHash) continue;
