@@ -1,8 +1,5 @@
-import type { Page } from "playwright-core";
-import type { Step } from "./contract";
-import type { OverlayName } from "./contract-steps";
-
-type OverlayMotionStep = Extract<Step, { action: "holdOverlayMotion" | "advanceOverlayMotion" | "expectOverlayOpacity" | "expectNoOverlay" }>;
+import type { WebActions } from "./web-action";
+import type { OverlayName } from "./contract-overlay-motion";
 
 /** The element each overlay name draws on, by the shared wrappers' `data-slot`. */
 const SURFACES = {
@@ -18,41 +15,39 @@ const OPACITY_TOLERANCE = 6e-4;
  * seeks it. A paused animation that is sought to its end stays paused and fires no
  * `animationend`, so the seek finishes it instead, which lets bits-ui unmount a closed overlay.
  */
-export async function overlayMotionAction(page: Page, step: OverlayMotionStep): Promise<void> {
-	switch (step.action) {
-		case "holdOverlayMotion":
-			await page.addStyleTag({ content: "*, *::before, *::after { animation-play-state: paused !important; }" });
-			break;
-		case "advanceOverlayMotion":
-			await page.evaluate((ms) => {
-				for (const animation of document.getAnimations()) {
-					if (!(animation instanceof CSSAnimation) || !["enter", "exit"].includes(animation.animationName)) continue;
-					const next = Number(animation.currentTime ?? 0) + ms;
-					const end = Number(animation.effect?.getComputedTiming().endTime ?? 0);
-					if (next >= end) animation.finish();
-					else animation.currentTime = next;
-				}
-			}, step.ms);
-			break;
-		case "expectOverlayOpacity": {
-			const surface = page.locator(SURFACES[step.overlay]);
-			await surface.waitFor({ state: "attached" });
-			try {
-				await page.waitForFunction(
-					({ selector, opacity, tolerance }) => {
-						const element = document.querySelector(selector);
-						return element !== null && Math.abs(Number(getComputedStyle(element).opacity) - opacity) <= tolerance;
-					},
-					{ selector: SURFACES[step.overlay], opacity: step.opacity, tolerance: OPACITY_TOLERANCE },
-				);
-			} catch {
-				const drawn = await surface.evaluate((element) => getComputedStyle(element).opacity);
-				throw new Error(`${step.overlay} drew at opacity ${drawn}, not ${step.opacity}`);
+export const overlayMotionActions = {
+	async holdOverlayMotion(page) {
+		await page.addStyleTag({ content: "*, *::before, *::after { animation-play-state: paused !important; }" });
+	},
+	async advanceOverlayMotion(page, step) {
+		await page.evaluate((ms) => {
+			for (const animation of document.getAnimations()) {
+				if (!(animation instanceof CSSAnimation) || !["enter", "exit"].includes(animation.animationName)) continue;
+				const next = Number(animation.currentTime ?? 0) + ms;
+				const end = Number(animation.effect?.getComputedTiming().endTime ?? 0);
+				if (next >= end) animation.finish();
+				else animation.currentTime = next;
 			}
-			break;
+		}, step.ms);
+	},
+	async expectOverlayOpacity(page, step) {
+		const selector: string = SURFACES[step.overlay];
+		const surface = page.locator(selector);
+		await surface.waitFor({ state: "attached" });
+		try {
+			await page.waitForFunction<boolean, { selector: string; opacity: number; tolerance: number }>(
+				({ selector, opacity, tolerance }) => {
+					const element = document.querySelector(selector);
+					return element !== null && Math.abs(Number(getComputedStyle(element).opacity) - opacity) <= tolerance;
+				},
+				{ selector, opacity: step.opacity, tolerance: OPACITY_TOLERANCE },
+			);
+		} catch {
+			const drawn = await surface.evaluate((element) => getComputedStyle(element).opacity);
+			throw new Error(`${step.overlay} drew at opacity ${drawn}, not ${step.opacity}`);
 		}
-		case "expectNoOverlay":
-			await page.locator(SURFACES[step.overlay]).waitFor({ state: "detached" });
-			break;
-	}
-}
+	},
+	async expectNoOverlay(page, step) {
+		await page.locator(SURFACES[step.overlay]).waitFor({ state: "detached" });
+	},
+} satisfies Partial<WebActions>;
