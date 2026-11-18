@@ -33,13 +33,22 @@ console.log(JSON.stringify({
 `, { mode: 0o755 }),
 			writeFile(executable, `#!/usr/bin/env bun
 const ids = (await Bun.file(process.env.KUBECOVE_PARITY_SCENARIO_IDS).text()).split("\\n").filter(Boolean);
+const [shard] = process.env.KUBECOVE_PARITY_SHARD.split("/");
+const reportPath = process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-" + shard + ".json";
+if (process.env.TEST_EXIT === "malformed-duplicate") {
+	const scenarios = shard === "0"
+		? [{ id: ids[0], status: "passed" }, { id: ids[2], status: "passed" }]
+		: [{ id: ids[0], status: "passed" }, { id: ids[1], status: "invalid" }];
+	await Bun.write(reportPath, JSON.stringify({ driver: "gpui", scenarios }));
+	process.exit(shard === "0" ? 0 : 101);
+}
 const scenarios = ids.map((id) => ({ id, status: "passed" }));
 if (process.env.TEST_EXIT !== "all-passed") scenarios[1].status = "failed";
 if (process.env.TEST_EXIT === "invalid-status") scenarios[0].status = "invalid";
 if (process.env.TEST_EXIT === "incomplete") scenarios.pop();
 if (process.env.TEST_EXIT === "duplicate") scenarios.push({ id: ids[0], status: "failed" });
 const driver = process.env.TEST_EXIT === "wrong-driver" ? "web" : "gpui";
-await Bun.write(process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-0.json", JSON.stringify({ driver, scenarios }));
+await Bun.write(reportPath, JSON.stringify({ driver, scenarios }));
 if (process.env.TEST_EXIT === "killed") process.kill(process.pid, "SIGKILL");
 process.exit(101);
 `, { mode: 0o755 }),
@@ -49,9 +58,10 @@ process.exit(101);
 			{ exit: "all-passed", driverFailed: true, ids: ["one", "two", "three"], passing: ["one", "two", "three"] },
 			{ exit: "killed", driverFailed: true, ids: ["one", "two", "three"], passing: ["one", "three"] },
 			{ exit: "wrong-driver", driverFailed: true, ids: ["one", "two", "three"], passing: [] },
-			{ exit: "invalid-status", driverFailed: true, ids: ["one", "two", "three"], passing: [] },
+			{ exit: "invalid-status", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
 			{ exit: "incomplete", driverFailed: true, ids: ["one", "two", "three"], passing: ["one"] },
 			{ exit: "duplicate", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
+			{ exit: "malformed-duplicate", driverFailed: true, ids: ["one", "two", "three"], passing: ["three"] },
 		]) {
 			const artifacts = join(directory, exit);
 			await mkdir(artifacts);
@@ -66,7 +76,8 @@ const scenarios = ["one", "two", "three"].map((id) => ({ id, title: id, steps: [
 const gpui = scenarios.map(({ id }) => id).join("\\n");
 await Bun.write(join(artifacts, "gpui-scenarios.txt"), gpui);
 await Bun.write(join(artifacts, "web-scenarios.txt"), "");
-const problem = await runGpui({ scenarios }, artifacts, { path: "", exit: Promise.resolve(0) }, 1, new AbortController().signal, () => {});
+const shards = process.env.TEST_EXIT === "malformed-duplicate" ? 2 : 1;
+const problem = await runGpui({ scenarios }, artifacts, { path: "", exit: Promise.resolve(0) }, shards, new AbortController().signal, () => {});
 await Bun.write(join(artifacts, "result.json"), JSON.stringify({
 	driver: "gpui", status: "failed", failedDrivers: problem ? ["gpui"] : [],
 	selectionFormat: DRIVER_SELECTION_FORMAT,

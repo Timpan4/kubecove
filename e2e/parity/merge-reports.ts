@@ -13,7 +13,7 @@ export function parseDriver<Value>(value: Value): Driver {
 	throw new Error(`Invalid parity driver: ${String(value)}`);
 }
 
-function driverReportRows<Report>(driver: Driver, report: Report): unknown[] {
+export function driverReportRows<Report>(driver: Driver, report: Report): unknown[] {
 	const input = object(report);
 	if (input.driver !== driver) throw new Error(`Expected ${driver} report`);
 	if (!Array.isArray(input.scenarios)) throw new Error(`Missing scenarios: ${driver}`);

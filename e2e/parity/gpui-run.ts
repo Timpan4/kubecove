@@ -3,7 +3,8 @@ import { join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
 import { COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
-import { driverScenarioResults } from "./merge-reports";
+import { object, string } from "./contract-values";
+import { driverReportRows } from "./merge-reports";
 import { driverSelectionFile } from "./rerun";
 
 type Spawned = { code: number; output: string; signaled: boolean };
@@ -96,10 +97,20 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	const results = new Map<string, unknown[]>();
 	const problems: string[] = [];
 	for (const [index, run] of runs.entries()) {
+		const before = problems.length;
 		let reportedFailure = false;
 		try {
 			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8"));
-			for (const { id, status, result } of driverScenarioResults("gpui", report)) {
+			for (const value of driverReportRows("gpui", report)) {
+				let id: string;
+				let result: ReturnType<typeof object>;
+				try {
+					result = object(value);
+					id = string(result.id);
+				} catch (error) {
+					problems.push(`Invalid GPUI result from shard ${index}/${count}: ${String(error)}`);
+					continue;
+				}
 				if (!selectedIds.has(id)) {
 					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${id}`);
 					continue;
@@ -111,11 +122,12 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 					continue;
 				}
 				results.set(id, [result]);
-				if (status === "failed") reportedFailure = true;
+				if (result.status === "failed") reportedFailure = true;
+				else if (result.status !== "passed") problems.push(`Invalid GPUI result from shard ${index}/${count}: ${id}`);
 			}
 		} catch (error) { problems.push(`GPUI shard ${index}/${count} did not produce a valid report: ${String(error)}`); }
 		// The native harness writes the report, then fails its test if a scenario failed.
-		const scenarioExit = run.code === LIBTEST_FAILURE && reportedFailure;
+		const scenarioExit = run.code === LIBTEST_FAILURE && reportedFailure && problems.length === before;
 		if (run.signaled || (run.code !== 0 && !scenarioExit)) {
 			problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
 		}
