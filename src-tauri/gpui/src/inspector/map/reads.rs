@@ -32,12 +32,22 @@ impl ReadState {
 
 impl Inspector {
     pub(in crate::inspector) fn load_topology(&mut self, cx: &mut Context<Self>) {
+        self.restart_topology_read(false, cx);
+    }
+
+    pub(in crate::inspector) fn refresh_topology(&mut self, cx: &mut Context<Self>) {
+        self.restart_topology_read(true, cx);
+    }
+
+    fn restart_topology_read(&mut self, retain_ready: bool, cx: &mut Context<Self>) {
         self.map.read.cancel();
         if !matches!(self.page, Page::Resources | Page::ClusterOverview) {
             return;
         }
-        self.map.cache.take();
-        self.map.replace_topology(TopologyLoad::Loading);
+        if !retain_ready || !matches!(self.map.topology, TopologyLoad::Ready(_)) {
+            self.map.cache.take();
+            self.map.replace_topology(TopologyLoad::Loading);
+        }
         self.start_topology_read(false, cx);
     }
 

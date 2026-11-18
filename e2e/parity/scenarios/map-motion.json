@@ -60,6 +60,28 @@
       ]
     },
     {
+      "id": "map.manual-refresh-retains-graph",
+      "title": "A failed manual topology refresh retains the graph while table activity continues",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "list_resource_topology", "context": "mock-dev", "kind": "forbidden" } },
+        { "action": "refresh" },
+        { "action": "coverageText", "text": "Showing last observed graph. Map activity indicators are paused until the map refreshes.", "visible": true },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
+        { "action": "refresh" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "coverageText", "text": "Showing last observed graph. Map activity indicators are paused until the map refreshes.", "visible": false }
+      ]
+    },
+    {
       "id": "map.catch-up-keeps-table-live",
       "title": "The table resumes activity while the map still waits for its catch-up read",
       "steps": [

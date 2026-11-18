@@ -348,7 +348,7 @@ impl Inspector {
                 });
             });
             self.observation.start_refresh(task);
-            self.load_topology(cx);
+            self.refresh_topology(cx);
             self.load_inventory(true, cx);
             self.load_page(cx);
         }
