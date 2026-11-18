@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { rerunSelections } from "./rerun";
+import { DRIVER_SELECTION_FORMAT, rerunSelections } from "./rerun";
 
 test("a rerun selects only each driver's failures, including missing results", async () => {
 	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
@@ -69,9 +69,22 @@ test("a partial per-driver selection never borrows IDs from the compatibility li
 	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
 	try {
 		await writeFile(join(run, "web-scenarios.txt"), "web-only");
-		expect(await rerunSelections(run)).toEqual({ web: new Set(["web-only"]), gpui: new Set() });
+		await expect(rerunSelections(run)).rejects.toThrow("Missing GPUI selection");
 		await writeFile(join(run, "scenarios.txt"), "web-only\nnot-recorded");
 		await expect(rerunSelections(run)).rejects.toThrow("Missing GPUI selection");
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("a versioned artifact requires driver selections even if only the shared list was copied", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			writeFile(join(run, "scenarios.txt"), "web-only\ngpui-only"),
+			writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", selectionFormat: DRIVER_SELECTION_FORMAT })),
+		]);
+		await expect(rerunSelections(run)).rejects.toThrow("Missing web and GPUI selections");
 	} finally {
 		await rm(run, { recursive: true });
 	}

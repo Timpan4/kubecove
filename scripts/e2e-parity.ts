@@ -6,7 +6,7 @@ import { type Contract, loadContract, requireActionCoverage, requireViewCoverage
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { type Driver, parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
-import { rerunSelections } from "../e2e/parity/rerun";
+import { DRIVER_SELECTION_FORMAT, rerunSelections } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { holdFrameIsolation } from "./gpui-frame-process";
@@ -159,10 +159,13 @@ try {
 	requireActionCoverage(contract);
 	const scenarios = await selectScenarios(contract.scenarios);
 	const failed = rerun ? await rerunSelections(rerun) : undefined;
-	const selectedFor = (name: Driver): Contract => ({
-		scenarios: driver && driver !== name ? [] : scenarios.filter(({ id }) =>
-			!failed || (coverage ? failed.web.has(id) || failed.gpui.has(id) : failed[name].has(id))),
-	});
+	const coverageIds = coverage && failed ? new Set([...failed.web, ...failed.gpui]) : undefined;
+	const selectedFor = (name: Driver): Contract => {
+		if (driver && driver !== name) return { scenarios: [] };
+		if (!failed) return { scenarios };
+		const ids = coverageIds ?? failed[name];
+		return { scenarios: scenarios.filter(({ id }) => ids.has(id)) };
+	};
 	const selection = { web: selectedFor("web"), gpui: selectedFor("gpui") };
 	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios from ${rerun}`);
 	if (selection.web.scenarios.length || selection.gpui.scenarios.length) {
@@ -181,7 +184,7 @@ try {
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
 	mark("total");
-	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", driver: resultDriver, status: failure ? "failed" : "passed", error: failure, phases }, null, 2));
+	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", driver: resultDriver, selectionFormat: DRIVER_SELECTION_FORMAT, status: failure ? "failed" : "passed", error: failure, phases }, null, 2));
 	console.log(`Parity artifacts: ${artifacts}`);
 }
 if (failure) { console.error(failure); process.exitCode = 1; }

@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { object, string } from "./contract-values";
 import { type Driver, parseDriver } from "./merge-reports";
 
+export const DRIVER_SELECTION_FORMAT = "driver-files-v1";
+
 async function readRunFile(run: string, name: string): Promise<string | undefined> {
 	try {
 		return await readFile(join(run, name), "utf8");
@@ -41,30 +43,29 @@ export async function rerunSelections(run: string): Promise<Record<Driver, Set<s
 		readRunFile(run, "gpui-scenarios.txt"),
 	]);
 	if (webSelection === undefined && gpuiSelection === undefined) {
-		const legacySelection = await readFile(join(run, "scenarios.txt"), "utf8");
 		let previous: Driver | undefined;
+		let hasDriverSelections = false;
 		try {
 			const result = await readRunFile(run, "result.json");
 			if (result !== undefined) {
-				const recorded = object(JSON.parse(result)).driver;
-				if (recorded !== "both") previous = parseDriver(recorded);
+				const metadata = object(JSON.parse(result));
+				hasDriverSelections = metadata.selectionFormat === DRIVER_SELECTION_FORMAT;
+				if (!hasDriverSelections && metadata.driver !== "both") previous = parseDriver(metadata.driver);
 			}
 		} catch {
 			console.warn(`Could not read legacy driver metadata in ${run}. Considering both drivers for its shared selection.`);
 		}
+		if (hasDriverSelections) throw new Error(`Missing web and GPUI selections in ${run}. Restore its driver selections before rerunning.`);
+		const legacySelection = await readFile(join(run, "scenarios.txt"), "utf8");
 		webSelection = previous === "gpui" ? "" : legacySelection;
 		gpuiSelection = previous === "web" ? "" : legacySelection;
 	} else if (webSelection === undefined || gpuiSelection === undefined) {
 		const missing = webSelection === undefined ? "web" : "GPUI";
-		// The runner writes the shared list only after publishing both driver lists.
-		if (await readRunFile(run, "scenarios.txt") !== undefined) {
-			throw new Error(`Missing ${missing} selection in ${run}. Restore its driver selection before rerunning.`);
-		}
-		console.warn(`No ${missing} selection was recorded in ${run}.`);
+		throw new Error(`Missing ${missing} selection in ${run}. Restore its driver selection before rerunning.`);
 	}
 	const [web, gpui] = await Promise.all([
-		failedScenarios(run, "web", webSelection ?? ""),
-		failedScenarios(run, "gpui", gpuiSelection ?? ""),
+		failedScenarios(run, "web", webSelection),
+		failedScenarios(run, "gpui", gpuiSelection),
 	]);
 	return { web, gpui };
 }
