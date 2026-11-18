@@ -3,6 +3,131 @@
 	"context": "mock-dev",
 	"scenarios": [
 		{
+			"id": "logs.pod.event-watch-warning",
+			"title": "An Events watch failure stays with Events while Pod logs remain live",
+			"steps": [
+				{ "action": "coverageScript", "script": "logs-stream" },
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "expectLogToolbarFit", "state": "Live" },
+				{ "action": "replayLiveData", "script": "events-failed" },
+				{ "action": "expectLogToolbarFit", "state": "Live" },
+				{ "action": "coverageCheck", "check": "emit-log" },
+				{ "action": "filterLogs", "value": "Newest controlled line" },
+				{ "action": "coverageText", "visible": true, "text": "Newest controlled line" },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "showTab", "tab": "Details" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "replayLiveData", "script": "connected" },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" }
+			]
+		},
+		{
+			"id": "logs.events.failed-refresh",
+			"title": "A failed Events refresh preserves the last list and reports its own warning",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" },
+				{ "action": "replayLiveData", "script": "reconnecting" },
+				{ "action": "replayLiveData", "script": "events-list-failed" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": true, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" },
+				{ "action": "replayLiveData", "script": "events-failed" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" },
+				{ "action": "showTab", "tab": "Details" },
+				{ "action": "coverageText", "visible": false, "text": "Status loaded; event signals are unavailable." },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "replayLiveData", "script": "events-list-recovered" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": false, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "coverageText", "visible": true, "text": "No events" }
+			]
+		},
+		{
+			"id": "logs.events.awaiting-first-connection",
+			"title": "Events refresh while the first watch opens and catch up when it connects",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "replayLiveData", "script": "events-watch-opening" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "expectEventCount", "count": 2 },
+				{ "action": "replayLiveData", "script": "events-list-recovered" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": true, "text": "No events" },
+				{ "action": "replayLiveData", "script": "events-list-failed" },
+				{ "action": "replayLiveData", "script": "connected" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "coverageText", "visible": true, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" }
+			]
+		},
+		{
+			"id": "logs.events.replaces-stopped-watch",
+			"title": "A stopped Events watch refreshes and resumes live changes",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "expectEventCount", "count": 2 },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "replayLiveData", "script": "events-watch-stopped" },
+				{ "action": "replayLiveData", "script": "events-list-recovered" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": true, "text": "No events" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+			]
+		},
+		{
+			"id": "logs.events.polls-during-reconnect",
+			"title": "Events changes missed during reconnect arrive through the fallback list",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "expectEventCount", "count": 2 },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "replayLiveData", "script": "reconnecting" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "coverageText", "visible": false, "text": "Newest scripted event" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+			]
+		},
+		{
+			"id": "logs.events.retry-watch-start",
+			"title": "A transient watch-start error recovers live Events without reopening the inspector",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "replayLiveData", "script": "events-watch-refused" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch start refused" },
+				{ "action": "replayLiveData", "script": "events-watch-ready" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch start refused" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+			]
+		},
+		{
 			"id": "logs.pod.toolbar-live",
 			"title": "A multi-container Pod's live Logs toolbar keeps its status clear of the container picker and buttons, and its buttons inside the detail panel",
 			"steps": [

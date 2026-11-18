@@ -397,6 +397,7 @@
 			<div class="relative flex min-h-0 flex-1 flex-col">
 				<div
 					bind:this={logViewport}
+					data-log-viewport
 					class="relative min-h-0 flex-1 overflow-auto rounded-md border bg-background/50 [overflow-anchor:none]"
 				>
 					{#if lineCount === 0}

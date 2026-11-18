@@ -3,6 +3,59 @@
 	"context": "mock-dev",
 	"scenarios": [
 		{
+			"id": "coverage-logs.one-line-long",
+			"title": "One-line layout clips a long message until the row is expanded",
+			"steps": [
+				{ "action": "openSettings" },
+				{ "action": "showSettingsSection", "section": "Appearance" },
+				{ "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+				{ "action": "closeSettings" },
+				{ "action": "coverageScript", "script": "logs-long" },
+				{ "action": "openResources" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "coverageCheck", "check": "log-compact-wrap" },
+				{ "action": "filterLogs", "value": "status=READY" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "coverageCheck", "check": "log-expanded-field" },
+				{ "action": "filterLogs", "value": "elapsed=100.0" },
+				{ "action": "expectLogLines", "lines": [] },
+				{ "action": "filterLogs", "value": "elapsed=100" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "note=a  b" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "tabbed=cache warm" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "state=cache warm" },
+				{ "action": "expectLogLines", "lines": ["logfmt row"] },
+				{ "action": "filterLogs", "value": "counts={\"2\":1.0000000000000002,\"10\":1,\"z\":0,\"a\":1}" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "first second" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "value=null" },
+				{ "action": "expectLogLines", "lines": ["Overflow row"] },
+				{ "action": "filterLogs", "value": "nested=[null,\"1e400\"]" },
+				{ "action": "expectLogLines", "lines": ["Overflow row"] },
+				{ "action": "filterLogs", "value": "request completed" },
+				{ "action": "expectLogLines", "lines": ["request completed"] }
+			]
+		},
+		{
+			"id": "coverage-logs.one-line-source",
+			"title": "One-line aggregate logs reserve room for the message beside a long source",
+			"steps": [
+				{ "action": "openSettings" },
+				{ "action": "showSettingsSection", "section": "Appearance" },
+				{ "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+				{ "action": "closeSettings" },
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "coverageCheck", "check": "log-compact-source" }
+			]
+		},
+		{
 			"id": "coverage-logs.one-line",
 			"title": "One-line logs expand individual or all rows and copy the exact selected raw line",
 			"steps": [

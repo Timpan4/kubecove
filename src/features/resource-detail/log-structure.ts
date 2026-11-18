@@ -192,20 +192,53 @@ export function parseLogStructure(message: string): LogStructure {
 	return finish(level, headline, msg, error, fields);
 }
 
+export function inlineLogText(text: string): string {
+	return text.replace(/\r\n|[\r\n\t\u2028\u2029]/g, " ");
+}
+
+export function formatLogField({ key, value }: LogField): string {
+	return inlineLogText(`${key}=${value}`);
+}
+
 export function highlightSegments(text: string, term: string): HighlightSegment[] {
 	const needle = term.toLowerCase();
 	if (!needle) return [{ text, match: false }];
 	const haystack = text.toLowerCase();
 	const segments: HighlightSegment[] = [];
-	let cursor = 0;
 	let found = haystack.indexOf(needle);
+	if (found < 0) return [{ text, match: false }];
+
+	// Map ordered matches back to source characters only when lowercasing
+	// expands the text. Keep just the current character's bounds.
+	const source = haystack.length !== text.length ? text[Symbol.iterator]() : null;
+	let originalStart = 0;
+	let originalEnd = 0;
+	let normalizedCharEnd = 0;
+	const advance = () => {
+		const character = source?.next().value;
+		if (character === undefined) return false;
+		originalStart = originalEnd;
+		originalEnd += character.length;
+		normalizedCharEnd += character.toLowerCase().length;
+		return true;
+	};
+	let cursor = 0;
 	while (found >= 0) {
-		if (found > cursor) segments.push({ text: text.slice(cursor, found), match: false });
-		segments.push({ text: text.slice(found, found + needle.length), match: true });
-		cursor = found + needle.length;
-		found = haystack.indexOf(needle, cursor);
+		const normalizedEnd = found + needle.length;
+		let start = found;
+		let end = normalizedEnd;
+		if (source) {
+			while (normalizedCharEnd <= found && advance()) { /* advance to the first character */ }
+			start = Math.max(cursor, originalStart);
+			while (normalizedCharEnd < normalizedEnd && advance()) { /* advance to the last character */ }
+			end = originalEnd;
+		}
+		if (start > cursor) segments.push({ text: text.slice(cursor, start), match: false });
+		if (end > start) segments.push({ text: text.slice(start, end), match: true });
+		cursor = end;
+		found = haystack.indexOf(needle, normalizedEnd);
 	}
-	if (cursor < text.length || segments.length === 0) {
+	if (cursor < text.length) {
 		segments.push({ text: text.slice(cursor), match: false });
 	}
 	return segments;

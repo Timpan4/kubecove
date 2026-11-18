@@ -81,6 +81,176 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
     assert_eq!(messages[2]["status"], "reconnecting");
 }
 
+#[tokio::test(start_paused = true)]
+async fn event_watch_uses_the_right_version_after_an_in_stream_error() {
+    for reply in [EventWatchError::Envelope, EventWatchError::BareStatus] {
+        for (code, expected_version) in [(410, "0"), (500, "0"), (503, "56")] {
+            let (versions, states) = recover_event_watch_after_error(reply, code).await;
+            assert_eq!(versions, ["0", "55", expected_version], "{reply:?} {code}");
+            assert_eq!(
+                states,
+                [
+                    "connected",
+                    "reconnecting",
+                    "connected",
+                    "error",
+                    "reconnecting",
+                    "connected",
+                    "resourceEventsChanged"
+                ],
+                "{reply:?} {code}"
+            );
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn event_watch_uses_the_right_version_after_an_http_error() {
+    for (code, expected_version) in [(410, "0"), (500, "0"), (503, "55")] {
+        let (versions, states) = recover_event_watch_after_error(EventWatchError::Http, code).await;
+        assert_eq!(versions, ["0", "55", expected_version], "HTTP {code}");
+        assert_eq!(
+            states,
+            [
+                "connected",
+                "reconnecting",
+                "error",
+                "reconnecting",
+                "connected",
+                "resourceEventsChanged"
+            ],
+            "HTTP {code}"
+        );
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum EventWatchError {
+    Envelope,
+    BareStatus,
+    Http,
+}
+
+async fn recover_event_watch_after_error(
+    reply: EventWatchError,
+    code: u16,
+) -> (Vec<String>, Vec<String>) {
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let service_requests = requests.clone();
+    let (unexpected_request, failure) = tokio::sync::oneshot::channel();
+    let unexpected_request = Mutex::new(Some(unexpected_request));
+    let service = tower::service_fn(move |request: Request<Body>| {
+        let mut requests = service_requests.lock().unwrap();
+        requests.push(request.uri().to_string());
+        let bookmark = |version| {
+            json!({
+                "type": "BOOKMARK",
+                "object": { "apiVersion": "v1", "kind": "Event", "metadata": { "resourceVersion": version } }
+            })
+        };
+        let error = json!({
+            "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": code,
+            "message": if code == 500 { "etcd event received with PrevKv=nil (type=DELETE)" } else { "Events watch rejected" }
+        });
+        let (code, body) = match (reply, requests.len()) {
+            (_, 1) => (200, format!("{}\n", bookmark("55"))),
+            (EventWatchError::Http, 2) => (code, error.to_string()),
+            (reply, 2) => {
+                let error = match reply {
+                    EventWatchError::Envelope => json!({ "type": "ERROR", "object": error }),
+                    EventWatchError::BareStatus | EventWatchError::Http => error,
+                };
+                (200, format!("{}\n{error}\n", bookmark("56")))
+            }
+            (_, 3) => (
+                200,
+                format!(
+                    "{}\n",
+                    json!({
+                        "type": "ADDED",
+                        "object": {
+                            "apiVersion": "v1",
+                            "kind": "Event",
+                            "metadata": { "name": "app.started", "namespace": "default", "resourceVersion": "57" },
+                            "involvedObject": { "kind": "Pod", "name": "app", "namespace": "default" }
+                        }
+                    })
+                ),
+            ),
+            (_, attempt) => {
+                if let Some(unexpected_request) = unexpected_request.lock().unwrap().take() {
+                    let _ = unexpected_request.send(attempt);
+                }
+                (503, String::new())
+            }
+        };
+        std::future::ready(Ok::<_, std::convert::Infallible>(
+            Response::builder()
+                .status(code)
+                .body(Body::from(body.into_bytes()))
+                .unwrap(),
+        ))
+    });
+    let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let observed_messages = messages.clone();
+    let channel = stream_channel(move |message| {
+        let delivered = message["type"] == "resourceEventsChanged";
+        if delivered {
+            assert_eq!(message["target"]["name"], "app");
+            assert_eq!(message["action"], "added");
+        }
+        observed_messages.lock().unwrap().push(message);
+        if delivered { Err(()) } else { Ok(()) }
+    });
+    let registry = StreamRegistry::default();
+    let (_, broadcaster, _) = registry.subscribe_event(
+        "test",
+        "source",
+        "dev",
+        "Pod",
+        "app",
+        Some("default"),
+        channel,
+    );
+    let watch = run_event_watch(
+        FixedClusterAccess::new(Client::new(service, "default")).access(),
+        "dev".into(),
+        "Pod".into(),
+        "app".into(),
+        Some("default".into()),
+        broadcaster,
+    );
+    tokio::select! {
+        () = watch => {},
+        Ok(attempt) = failure => panic!("Unexpected Events watch attempt {attempt}"),
+    }
+
+    let versions = requests
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|uri| {
+            uri.split(['?', '&'])
+                .find_map(|parameter| parameter.strip_prefix("resourceVersion="))
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    let states = messages
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|message| {
+            message["status"]
+                .as_str()
+                .or_else(|| message["type"].as_str())
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    (versions, states)
+}
+
 #[tokio::test]
 async fn forbidden_watch_stops_and_replays_permission_status_to_new_subscribers() {
     for in_stream in [false, true] {

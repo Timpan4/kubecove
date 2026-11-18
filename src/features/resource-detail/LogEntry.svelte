@@ -3,7 +3,7 @@
 	import { Button } from "@/components/ui/svelte";
 	import type { LogLayout } from "@/lib/settings";
 	import type { ParsedLogLine } from "./log-helpers";
-	import { highlightSegments, type LogLevel } from "./log-structure";
+	import { formatLogField, highlightSegments, inlineLogText, type LogLevel } from "./log-structure";
 
 	const LEVEL_LABELS = {
 		error: "ERR",
@@ -123,7 +123,7 @@
 {/snippet}
 
 {#snippet headline(extra: string)}
-	<span class="min-w-0 text-[12.5px] font-medium leading-[17px] text-foreground {extra}">
+	<span data-log-headline class="min-w-0 text-[12.5px] font-medium leading-[17px] text-foreground {extra}">
 		{@render highlighted(structure.headline)}
 	</span>
 {/snippet}
@@ -138,13 +138,12 @@
 
 {#snippet fieldChips()}
 	{#if structure.fields.length > 0}
-		<div class="flex flex-wrap gap-[3px]">
+		<div class="flex w-full min-w-0 flex-wrap gap-[3px]">
 			{#each structure.fields as field, index (index)}
 				<span
-					class="whitespace-nowrap rounded border bg-muted/40 px-1.5 font-mono text-[10.5px] leading-[15px] text-foreground/85"
+					class="max-w-full min-w-0 rounded border bg-muted/40 px-1.5 font-mono text-[10.5px] leading-[15px] whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground/85"
 				>
-					<span class="text-muted-foreground">{@render highlighted(field.key)}</span>
-					{@render highlighted(field.value)}
+					{@render highlighted(formatLogField(field))}
 				</span>
 			{/each}
 		</div>
@@ -153,12 +152,9 @@
 
 {#snippet fieldText(extra: string)}
 	{#if structure.fields.length > 0}
-		<div class="font-mono text-[11px] leading-4 text-foreground/85 {extra}">
+		<div class="font-mono text-[11px] leading-4 text-foreground/85 {extra} {!wrap ? 'max-h-4' : ''}">
 			{#each structure.fields as field, index (index)}
-				<span class="mr-2.5"
-					><span class="text-muted-foreground">{@render highlighted(field.key)}</span>
-					{@render highlighted(field.value)}</span
-				>
+				<span class="mr-2.5 {wrap ? 'whitespace-pre-wrap' : 'whitespace-pre'}">{@render highlighted(formatLogField(field))}</span>
 			{/each}
 		</div>
 	{/if}
@@ -212,22 +208,22 @@
 		{@render time()}
 		{@render badge()}
 		<div class="min-w-0 flex-1">
-			<div class="text-[12px] leading-[18px] {open ? '[overflow-wrap:anywhere]' : 'truncate'}">
-				{#if sourceLabel}<span class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span
-					class="font-medium text-foreground">{@render highlighted(structure.headline)}</span
+			{#if open && sourceLabel}<span data-log-source class="block max-w-[30%] truncate font-mono text-[10.5px] leading-[18px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}
+			<div data-log-summary class="text-[12px] leading-[18px] {open ? '[overflow-wrap:anywhere]' : 'max-h-[18px] truncate'}">
+				{#if !open && sourceLabel}<span data-log-source class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span data-log-headline
+					class="font-medium text-foreground">{@render highlighted(open ? structure.headline : inlineLogText(structure.headline))}</span
 				>{#if !open && structure.error}<span
-						class="ml-2 font-mono text-[11px] text-red-600 dark:text-red-300"
-						>{@render highlighted(structure.error)}</span
+						class="ml-2 font-mono text-red-600 dark:text-red-300"
+						>{@render highlighted(inlineLogText(structure.error))}</span
 					>{/if}{#if !open && structure.fields.length > 0}<span
-						class="ml-2 font-mono text-[11px] text-foreground/75"
-						>{#each structure.fields as field, index (index)}<span class="mr-2"
-								><span class="text-muted-foreground">{@render highlighted(field.key)}</span>
-								{@render highlighted(field.value)}</span
+						class="ml-2 font-mono text-foreground/75"
+						>{#each structure.fields as field, index (index)}<span class="mr-2 whitespace-pre"
+								>{@render highlighted(formatLogField(field))}</span
 							>{/each}</span
 					>{/if}
 			</div>
 			{#if open}
-				<div class="flex flex-col items-start gap-1 pb-1 pt-0.5">
+				<div data-log-details class="flex flex-col items-start gap-1 pb-1 pt-0.5">
 					{@render errorText("[overflow-wrap:anywhere]")}
 					{@render fieldChips()}
 					<Button variant="outline" size="xs" onclick={copyLine}>

@@ -3,6 +3,9 @@ use kubecove_gpui::backend::WatchTarget;
 use kubecove_lib::models::{StreamMessage, StreamStatus, WatchResourceTarget};
 use tokio::sync::mpsc;
 
+#[path = "live_data_events.rs"]
+mod events;
+
 #[gpui_kit::test]
 fn cancelling_an_opening_watch_releases_its_stream(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
@@ -56,6 +59,11 @@ fn ended_streams_restart_on_the_web_recovery_tick(cx: &mut TestAppContext) {
 #[derive(Default)]
 pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
+    events_empty: AtomicBool,
+    events_open_fails: AtomicBool,
+    events_open_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    events_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    events_reads: std::sync::atomic::AtomicUsize,
     /// Whether opening a watch fails.
     open_fails: AtomicBool,
     gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -528,43 +536,25 @@ fn deterministic_resource_read_errors_wait_for_manual_refresh(cx: &mut TestAppCo
     .unwrap();
 }
 
-#[gpui_kit::test]
-fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
-    let backend = Arc::new(Controlled::default());
-    backend.live.events_fail.store(true, Ordering::SeqCst);
-    let handle = open(cx, backend.clone());
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        window.click("show-events", cx);
-        window.render_frame(cx);
-        assert!(window.try_find("event:0").is_none());
-    })
-    .unwrap();
-    backend.live.events_fail.store(false, Ordering::SeqCst);
-    cx.background_executor
-        .advance_clock(std::time::Duration::from_millis(15_000));
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        assert_eq!(
-            window.find("event:0").label(),
-            Some("BackOff Back-off restarting failed container app")
-        );
-    })
-    .unwrap();
-}
 impl LiveControls {
     pub fn events(&self) -> Read<Vec<ResourceEventSummary>> {
+        self.events_reads.fetch_add(1, Ordering::SeqCst);
         let fail = self.events_fail.load(Ordering::SeqCst);
+        let empty = self.events_empty.load(Ordering::SeqCst);
+        let gate = self.events_gate.lock().unwrap().take();
         Box::pin(async move {
+            if let Some(gate) = gate {
+                gate.await
+                    .expect("Events read gate dropped before explicit release");
+            }
             if fail {
-                return Err(AppError::new("Events unavailable", AppErrorKind::Network));
+                return Err(AppError::new(
+                    "Events unavailable (bearer example-credential)",
+                    AppErrorKind::Network,
+                ));
+            }
+            if empty {
+                return Ok(Vec::new());
             }
             Ok(serde_json::from_value(json!([
                 {"eventType": "Normal", "reason": "Pulled", "message": "Image present.", "count": 1, "lastSeen": "8m", "lastSeenAt": "2026-06-29T09:52:00Z", "source": "kubelet", "namespace": "payments"},
@@ -574,7 +564,10 @@ impl LiveControls {
         })
     }
     pub fn open(&self, target: WatchTarget) -> Read<LogStream> {
-        if self.open_fails.load(Ordering::SeqCst) {
+        if self.open_fails.load(Ordering::SeqCst)
+            || (matches!(target, WatchTarget::Events(_))
+                && self.events_open_fails.load(Ordering::SeqCst))
+        {
             return Box::pin(async { Err(AppError::new("watch refused", AppErrorKind::Network)) });
         }
         let (sender, messages) = mpsc::unbounded_channel();
@@ -585,9 +578,16 @@ impl LiveControls {
                 message: "Live".into(),
             })
             .unwrap();
+        let gate = if matches!(target, WatchTarget::Events(_)) {
+            &self.events_open_gate
+        } else {
+            &self.gate
+        }
+        .lock()
+        .unwrap()
+        .take();
         self.streams.lock().unwrap().push((target, sender.clone()));
         let stream = LogStream::new(messages, ());
-        let gate = self.gate.lock().unwrap().take();
         Box::pin(async move {
             if let Some(gate) = gate {
                 let _ = gate.await;

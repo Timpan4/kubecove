@@ -21,7 +21,7 @@ use crate::ui;
 use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, KeyDownEvent, MouseButton, MouseMoveEvent,
-    ScrollHandle, Subscription, Task, Window, div, prelude::*, px,
+    ScrollHandle, SharedString, Subscription, Task, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, ResourceSummary};
 use std::sync::Arc;
@@ -654,11 +654,23 @@ impl Inspector {
                             .absolute()
                             .size_0(),
                     )
+                    .when(matches!(detail.tab, DetailTab::Details | DetailTab::Events), |body| {
+                        body.children(
+                            [
+                                ("events-watch-warning", "Events watch failed", &detail.events.watch_error),
+                                ("events-refresh-warning", "Events refresh failed", &detail.events.refresh_error),
+                            ]
+                            .into_iter()
+                            .filter_map(|(id, heading, error)| {
+                                let message = SharedString::from(format!("{heading}: {}", error.as_ref()?));
+                                Some(ui::muted(ui::xs(message.clone()))
+                                    .id(id)
+                                    .test_support()
+                                    .aria_label(message))
+                            }),
+                        )
+                    })
                     .child(content)
-                    .when_some(detail.events.watch_error.clone(), |body, error| body.child(
-                        ui::xs(format!("Realtime watch failed: events: {error}. Showing the last loaded data."))
-                            .text_color(Tokens::destructive())
-                    ))
                     .into_any_element()
             }
         };

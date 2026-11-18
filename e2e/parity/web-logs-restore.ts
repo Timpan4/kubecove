@@ -58,7 +58,7 @@ export const logRowAndRestoreActions = {
 	},
 	async expectLogLines(page, step) {
 		// Headlines of the rendered rows, in display order.
-		await page.waitForFunction((lines) => JSON.stringify([...document.querySelectorAll("[data-log-row]")].map((row) => row.querySelector('span[class*="text-[12.5px]"]')?.textContent?.trim())) === JSON.stringify(lines), step.lines);
+		await page.waitForFunction((lines) => JSON.stringify([...document.querySelectorAll("[data-log-row]")].map((row) => row.querySelector("[data-log-headline]")?.textContent?.trim())) === JSON.stringify(lines), step.lines);
 	},
 	async expectLogToolbarFit(page, step) {
 		await expectLogToolbarFit(page, step.state);

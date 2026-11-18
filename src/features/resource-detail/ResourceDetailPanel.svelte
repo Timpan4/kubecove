@@ -13,6 +13,7 @@
 
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
@@ -21,6 +22,7 @@
 		formatExactTimestamp,
 	} from "@/components/timestamp-format";
 	import { diagnosticLog } from "@/lib/diagnostics";
+	import { messageFromError } from "@/lib/error-redaction";
 	import {
 		closeStreamChannel,
 		createStreamChannel,
@@ -42,6 +44,8 @@
 	import { argoApplicationReads } from "@/lib/argo-application-inspection";
 	import { createLiveReadRefresh } from "@/lib/live-view-refresh";
 	import { queryMatchers, type QueryMatch } from "@/lib/queryKeys";
+	import { isTransientQueryError } from "@/lib/query-retry";
+	import { RESOURCE_RECOVERY_INTERVAL } from "@/lib/resource-watch";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
@@ -142,6 +146,10 @@
 	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
+	let eventsWatchPhase = $state<"opening" | "connected" | "recovering">("opening");
+	const showEventsWarnings = $derived(
+		activeTab === "details" || activeTab === "events",
+	);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
 	let resourceRefreshVersion = $state(0);
 	let ExecTabComponent = $state<typeof import("./ExecTab.svelte").default | null>(null);
@@ -195,7 +203,6 @@
 			});
 	}
 	const detailsQueryKey = $derived(readSpec.detailsQueryKey);
-	const eventsQueryKey = $derived(readSpec.eventsQueryKey);
 
 	$effect(() => {
 		const key = resourceKey;
@@ -214,9 +221,12 @@
 	const eventsReady = $derived(
 		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
 	);
-	const eventsQuery = createQuery<ResourceEventSummary[]>(() =>
-		resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
-	);
+	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
+		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady, queryClient),
+		refetchInterval: eventsWatchPhase !== "connected"
+			? (query) => query.state.status === "success" ? RESOURCE_RECOVERY_INTERVAL : false
+			: false,
+	}));
 
 	const detailResource = $derived(detailsQuery.data?.summary ?? resource);
 	const conditionRows = $derived(getConditionRows(detailsQuery.data?.status));
@@ -364,53 +374,71 @@
 	$effect(() => {
 		if (!eventsEnabled) return;
 		let cancelled = false;
-		let streamId: string | null = null;
+		let retireAttempt: (() => void) | undefined;
+		let retryTimer: ReturnType<typeof setTimeout> | undefined;
+		const source = kubeconfigSourceKey;
+		const scope = resourceKey;
+		const { eventsQueryKey, eventWatch: target } = untrack(() => readSpec);
 		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
-		let needsCatchUp = false;
-		const channel = createStreamChannel((event: StreamMessage) => {
-			if (cancelled) return;
+		diagnosticLog("detail.events.watch", { key: scope });
+		eventsWatchPhase = "opening";
+		realtimeEventsWatchError = null;
+		function receive(event: StreamMessage) {
 			if (event.type === "error") {
-				realtimeEventsWatchError = event.message;
-				needsCatchUp = true;
+				realtimeEventsWatchError = messageFromError(event.message);
+				eventsWatchPhase = "recovering";
 				return;
 			}
 			if (event.type === "status") {
 				if (event.status === "connected") {
 					realtimeEventsWatchError = null;
-					if (needsCatchUp) {
-						needsCatchUp = false;
-						refresh.notify();
-					}
-				} else needsCatchUp = true;
+					const needsCatchUp = eventsWatchPhase !== "connected";
+					eventsWatchPhase = "connected";
+					if (needsCatchUp) refresh.notify();
+				} else eventsWatchPhase = "recovering";
+				return;
+			}
+			if (event.type === "stopped") {
+				retireAttempt?.();
+				eventsWatchPhase = "recovering";
+				retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);
 				return;
 			}
 			if (event.type === "resourceEventsChanged") refresh.notify();
-		}, client);
-		void startResourceEventWatch(
-			client,
-			readSpec.eventWatch.cluster,
-			readSpec.eventWatch.kind,
-			readSpec.eventWatch.name,
-			readSpec.eventWatch.namespace,
-			channel,
-			kubeconfigSourceKey,
-		)
-			.then((id) => {
-				if (cancelled) {
-					void stopStream(client, id);
-					return;
-				}
-				streamId = id;
-			})
-			.catch((cause: unknown) => {
-				if (cancelled) return;
-				realtimeEventsWatchError = cause instanceof Error ? cause.message : String(cause);
-			});
+		}
+		function connect() {
+			retryTimer = undefined;
+			let closed = false;
+			let streamId: string | null = null;
+			const channel = createStreamChannel((event: StreamMessage) => {
+				if (!closed) receive(event);
+			}, client);
+			const close = () => {
+				if (closed) return;
+				closed = true;
+				closeStreamChannel(channel);
+				if (streamId) void stopStream(client, streamId).catch(() => {});
+			};
+			retireAttempt = close;
+			void startResourceEventWatch(client, target.cluster, target.kind, target.name, target.namespace, channel, source)
+				.then((id) => {
+					if (closed) void stopStream(client, id).catch(() => {});
+					else streamId = id;
+				})
+				.catch((cause: unknown) => {
+					if (cancelled || closed) return;
+					close();
+					realtimeEventsWatchError = messageFromError(cause);
+					eventsWatchPhase = "recovering";
+					if (isTransientQueryError(cause)) retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);
+				});
+		}
+		connect();
 		return () => {
 			cancelled = true;
+			if (retryTimer !== undefined) clearTimeout(retryTimer);
 			refresh.dispose();
-			if (streamId) void stopStream(client, streamId);
-			closeStreamChannel(channel);
+			retireAttempt?.();
 		};
 	});
 
@@ -537,9 +565,19 @@
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
 
-	{#if realtimeWatchError || realtimeEventsWatchError}
+	{#if realtimeWatchError}
 		<p class="text-muted-foreground text-xs">
-			Realtime watch failed{#if realtimeWatchError}: {realtimeWatchError}{/if}{#if realtimeEventsWatchError}{#if realtimeWatchError} · {:else}: {/if}events: {realtimeEventsWatchError}{/if}. Showing the last loaded data.
+			Realtime watch failed: {realtimeWatchError}. Showing the last loaded data.
+		</p>
+	{/if}
+	{#if showEventsWarnings && realtimeEventsWatchError}
+		<p class="text-muted-foreground text-xs">
+			Events watch failed: {realtimeEventsWatchError}
+		</p>
+	{/if}
+	{#if showEventsWarnings && eventsQuery.isRefetchError}
+		<p class="text-muted-foreground text-xs">
+			Events refresh failed: {messageFromError(eventsQuery.error)}
 		</p>
 	{/if}
 

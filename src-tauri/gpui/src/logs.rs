@@ -5,8 +5,10 @@
 use gpui_kit::SharedString;
 use kubecove_lib::models::LogLineSource;
 use regex::Regex;
+use serde::Serialize;
 use serde_json::Value;
-use std::fmt;
+use std::borrow::Cow;
+use std::io;
 use std::sync::LazyLock;
 
 /// `MAX_RETAINED_LOG_LINES`; the backend clamps tail requests to the same value.
@@ -54,6 +56,23 @@ pub struct LogField {
     pub value: SharedString,
 }
 
+impl LogField {
+    pub fn write_token(&self, text: &mut String) {
+        text.push_str(&inline_log_text(&self.key));
+        text.push('=');
+        text.push_str(&inline_log_text(&self.value));
+    }
+}
+
+pub fn inline_log_text(text: &str) -> Cow<'_, str> {
+    let breaks = ['\r', '\n', '\t', '\u{2028}', '\u{2029}'];
+    if text.contains(breaks) {
+        Cow::Owned(text.replace("\r\n", " ").replace(breaks, " "))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LogStructure {
     pub level: Option<LogLevel>,
@@ -74,7 +93,7 @@ pub struct ParsedLogLine {
     pub timestamp: Option<SharedString>,
     /// `LogEntry`'s `sourceLabel`: `pod/container`, the Pod alone, or empty.
     pub source_label: SharedString,
-    /// `logLineSearchText`: raw text, Pod and container, lowercased.
+    /// `logLineSearchText`: raw text and source, lowercased.
     pub search: String,
 }
 
@@ -109,6 +128,9 @@ static FIELD: LazyLock<Regex> =
     LazyLock::new(|| regex(r#"^\s*([A-Za-z_][A-Za-z0-9_.-]*)=("(?:[^"\\]|\\.)*"|\S*)"#));
 static QUOTED: LazyLock<Regex> = LazyLock::new(|| regex(r#"^"(?:[^"\\]|\\.)*"$"#));
 static ESCAPE: LazyLock<Regex> = LazyLock::new(|| regex(r"\\(.)"));
+static JSON_STRING_OR_NUMBER: LazyLock<Regex> = LazyLock::new(|| {
+    regex(r#""(?:[^"\\]|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"#)
+});
 
 const LEVEL_KEYS: &[&str] = &["level", "lvl", "severity"];
 const MESSAGE_KEYS: &[&str] = &["msg", "message"];
@@ -127,10 +149,32 @@ fn unquote(value: &str) -> String {
 }
 
 /// `stringValue`: strings stay raw, anything else is its JSON text.
-fn string_value(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
+fn string_value(mut value: Value) -> String {
+    if let Value::String(text) = value {
+        return text;
+    }
+    order_object_values(&mut value);
+    let mut serializer = serde_json::Serializer::with_formatter(Vec::new(), JavaScriptNumbers);
+    value
+        .serialize(&mut serializer)
+        .expect("JSON log value serializes");
+    String::from_utf8(serializer.into_inner()).expect("JSON is UTF-8")
+}
+
+/// JSON.parse stores integers and decimals as ECMAScript numbers.
+struct JavaScriptNumbers;
+
+impl serde_json::ser::Formatter for JavaScriptNumbers {
+    fn write_i64<W: io::Write + ?Sized>(&mut self, writer: &mut W, value: i64) -> io::Result<()> {
+        self.write_f64(writer, value as f64)
+    }
+
+    fn write_u64<W: io::Write + ?Sized>(&mut self, writer: &mut W, value: u64) -> io::Result<()> {
+        self.write_f64(writer, value as f64)
+    }
+
+    fn write_f64<W: io::Write + ?Sized>(&mut self, writer: &mut W, value: f64) -> io::Result<()> {
+        writer.write_all(ryu_js::Buffer::new().format_finite(value).as_bytes())
     }
 }
 
@@ -160,33 +204,31 @@ fn finish(
     }
 }
 
-/// Object entries in document order, as `Object.entries` yields them.
-struct Entries(Vec<(String, Value)>);
-
-impl<'de> serde::Deserialize<'de> for Entries {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = Entries;
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a JSON object")
-            }
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut map: A,
-            ) -> Result<Entries, A::Error> {
-                let mut entries: Vec<(String, Value)> = Vec::new();
-                while let Some((key, value)) = map.next_entry::<String, Value>()? {
-                    // A repeated key keeps its first position and its last value.
-                    match entries.iter_mut().find(|(existing, _)| *existing == key) {
-                        Some(entry) => entry.1 = value,
-                        None => entries.push((key, value)),
-                    }
-                }
-                Ok(Entries(entries))
-            }
+fn order_object_values(value: &mut Value) {
+    match value {
+        Value::Array(items) => items.iter_mut().for_each(order_object_values),
+        Value::Object(entries) => {
+            order_object_keys(entries);
+            entries.values_mut().for_each(order_object_values);
         }
-        deserializer.deserialize_map(Visitor)
+        _ => {}
+    }
+}
+
+// Object.entries and JSON.stringify put array-index keys first, in numeric order.
+// The stable sort keeps every other key in insertion order.
+fn order_object_keys(entries: &mut serde_json::Map<String, Value>) {
+    fn index_key(key: &str) -> u32 {
+        match key.as_bytes() {
+            [b'0'] => 0,
+            [b'1'..=b'9', ..] => key.parse().unwrap_or(u32::MAX),
+            _ => u32::MAX,
+        }
+    }
+    if entries.keys().any(|key| index_key(key) != u32::MAX) {
+        let mut ordered: Vec<_> = std::mem::take(entries).into_iter().collect();
+        ordered.sort_by_key(|(key, _)| index_key(key));
+        entries.extend(ordered);
     }
 }
 
@@ -197,8 +239,33 @@ fn field(key: impl Into<SharedString>, value: impl Into<SharedString>) -> LogFie
     }
 }
 
+fn parse_json_value(text: &str) -> Option<Value> {
+    if let Ok(value) = serde_json::from_str(text) {
+        return Some(value);
+    }
+    // JSON.stringify emits null for numbers that JSON.parse rounded to infinity.
+    // Retry only if an overflowing number occurred outside quoted strings.
+    let mut normalized = String::new();
+    let mut offset = 0;
+    for token in JSON_STRING_OR_NUMBER.find_iter(text) {
+        if token.as_str().parse::<f64>().is_ok_and(f64::is_infinite) {
+            normalized.push_str(&text[offset..token.start()]);
+            normalized.push_str("null");
+            offset = token.end();
+        }
+    }
+    if offset == 0 {
+        return None;
+    }
+    normalized.push_str(&text[offset..]);
+    serde_json::from_str(&normalized).ok()
+}
+
 fn parse_json(text: &str) -> Option<LogStructure> {
-    let Entries(entries) = serde_json::from_str(text).ok()?;
+    let Value::Object(mut entries) = parse_json_value(text)? else {
+        return None;
+    };
+    order_object_keys(&mut entries);
     let (mut level, mut message, mut error) = (None, None, None);
     let mut fields = Vec::new();
     for (key, raw) in entries {
@@ -206,7 +273,7 @@ fn parse_json(text: &str) -> Option<LogStructure> {
         if TIME_KEYS.contains(&lower.as_str()) {
             continue;
         }
-        let value = string_value(&raw);
+        let value = string_value(raw);
         let mapped = LEVEL_KEYS
             .contains(&lower.as_str())
             .then(|| LogLevel::from_alias(&value))
@@ -373,22 +440,39 @@ pub fn highlight_ranges(text: &str, term: &str) -> Vec<std::ops::Range<usize>> {
         return Vec::new();
     }
     let haystack = text.to_lowercase();
-    // Lowercasing can change byte lengths outside ASCII; ranges would not map back.
-    if haystack.len() != text.len() {
-        return Vec::new();
+    let matches = haystack.match_indices(term);
+    if text.is_ascii() {
+        return matches
+            .map(|(start, matched)| start..start + matched.len())
+            .collect();
     }
-    let mut ranges = Vec::new();
+    // The matches are ordered, so one forward pass maps their byte offsets
+    // to original characters, including characters that expand or shrink.
+    let mut source = text
+        .char_indices()
+        .scan(0, |normalized_end, (start, character)| {
+            *normalized_end += character.to_lowercase().map(char::len_utf8).sum::<usize>();
+            Some((*normalized_end, start..start + character.len_utf8()))
+        })
+        .peekable();
     let mut cursor = 0;
-    while let Some(found) = haystack[cursor..].find(term) {
-        let start = cursor + found;
-        let end = start + term.len();
-        if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
-            break;
-        }
-        ranges.push(start..end);
-        cursor = end;
-    }
-    ranges
+    matches
+        .filter_map(|(start, matched)| {
+            while source.peek().is_some_and(|(end, _)| *end <= start) {
+                source.next();
+            }
+            let original_start = source.peek()?.1.start.max(cursor);
+            while source
+                .peek()
+                .is_some_and(|(end, _)| *end < start + matched.len())
+            {
+                source.next();
+            }
+            let range = original_start..source.peek()?.1.end;
+            cursor = range.end;
+            (!range.is_empty()).then_some(range)
+        })
+        .collect()
 }
 
 /// Names the Logs tab's container picker offers for a Pod: regular containers,
@@ -422,6 +506,21 @@ pub fn container_options(status: Option<&Value>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn highlight_preserves_field_spans_when_lowercase_changes_byte_width() {
+        for (text, term, expected) in [
+            ("İD=READY", "ready", "READY"),
+            ("İD=READY", "i", "İ"),
+            ("KİİD=READY", "ı", ""),
+            ("KİİD=READY", "ready", "READY"),
+        ] {
+            let ranges = highlight_ranges(text, term);
+            let matches: String = ranges.into_iter().map(|range| &text[range]).collect();
+            assert_eq!(matches, expected);
+        }
+        assert_eq!(highlight_ranges("İİİ", "\u{0307}i"), vec![0..4, 4..6]);
+    }
 
     // Failure modes: logfmt tails that are not pure logfmt must not lose text;
     // `msg` beside a prose headline must stay visible; JSON key order must

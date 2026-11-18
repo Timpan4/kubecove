@@ -4,6 +4,8 @@
 
 use super::Inspector;
 use super::detail::Detail;
+use super::friendly_error::redact_detail;
+use super::live_data::COALESCE;
 use super::windowed::{Windowed, row_id};
 use crate::incident::{self, EventFilter, SignalTone};
 use crate::theme::{Tokens, oklch};
@@ -13,9 +15,11 @@ use gpui_kit::{
     AppContext, Context, Div, Entity, FontWeight, Hsla, SharedString, Subscription, Task, Window,
     div, prelude::*, px,
 };
-use kubecove_lib::models::ResourceEventSummary;
+use kubecove_lib::models::{AppError, ResourceEventSummary};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::mpsc;
 
 pub(super) enum EventsLoad {
     Pending,
@@ -39,10 +43,7 @@ pub(super) struct EventsState {
     task: Option<Task<()>>,
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
-    /// The number of the last read started, and of the newest read that
-    /// settled into `load`. The first read and the watch's reads overlap.
-    started_reads: u64,
-    settled_read: u64,
+    pub refresh_error: Option<String>,
     _search_changed: Subscription,
 }
 
@@ -67,22 +68,9 @@ impl EventsState {
             task: None,
             watch: None,
             watch_error: None,
-            started_reads: 0,
-            settled_read: 0,
+            refresh_error: None,
             _search_changed,
         }
-    }
-
-    /// Numbers a read as it starts.
-    pub fn begin_read(&mut self) -> u64 {
-        self.started_reads += 1;
-        self.started_reads
-    }
-
-    /// Whether the read numbered `read` may still change `load`: a read that
-    /// started later has not already settled it.
-    pub fn current(&self, read: u64) -> bool {
-        read > self.settled_read
     }
 
     pub fn events(&self) -> &[ResourceEventSummary] {
@@ -92,18 +80,27 @@ impl EventsState {
         }
     }
 
-    /// Stores the complete read numbered `read` and the layout source the
-    /// timeline cache compares. Every path that writes `EventsLoad::Ready`
-    /// goes through here, after checking `current(read)`.
-    pub fn set_ready(&mut self, read: u64, mut events: Vec<ResourceEventSummary>) {
-        self.settled_read = read;
+    fn set_ready(&mut self, mut events: Vec<ResourceEventSummary>) {
         incident::sort_events(&mut events);
         let source: Arc<[u8]> = serde_json::to_vec(&events)
             .expect("event models serialize")
             .into();
+        if self.layout_source != source {
+            self.rows = Windowed::default();
+        }
         self.layout_key = row_id(&source);
         self.layout_source = source;
         self.load = EventsLoad::Ready(events);
+        self.refresh_error = None;
+    }
+
+    fn set_failed(&mut self, error: String) {
+        let error = redact_detail(&error);
+        if matches!(self.load, EventsLoad::Ready(_)) {
+            self.refresh_error = Some(error);
+        } else {
+            self.load = EventsLoad::Failed(error);
+        }
     }
 
     pub fn is_open(&self, key: &str) -> bool {
@@ -121,30 +118,41 @@ impl Inspector {
             return;
         };
         let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
-        let read = self.backend.events(detail.data.summary.clone(), uid);
-        let read = self.timings.measure("events", read);
-        let number = detail.events.begin_read();
+        let resource = detail.data.summary.clone();
+        let backend = self.backend.clone();
+        let read = self
+            .timings
+            .measure("events", backend.events(resource.clone(), uid.clone()));
         detail.events.load = EventsLoad::Pending;
+        detail.events.refresh_error = None;
         detail.events.layout_key = 0;
         detail.events.layout_source = Arc::default();
-        // The detail owns this read, so it only settles into the detail that started it.
+        detail.events.rows = Windowed::default();
+        // A single slot keeps one trailing refresh while the detail reads or cools down.
+        let (refresh, mut requested) = mpsc::channel(1);
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                // A watch read that started later may already have settled newer rows.
-                if let Detail::Ready(detail) = &mut this.detail
-                    && detail.events.current(number)
+            if this
+                .update(cx, |this, cx| this.apply_events_read(result, cx))
+                .is_err()
+            {
+                return;
+            }
+            while requested.recv().await.is_some() {
+                let started = Instant::now();
+                let result = backend.events(resource.clone(), uid.clone()).await;
+                if this
+                    .update(cx, |this, cx| this.apply_events_read(result, cx))
+                    .is_err()
                 {
-                    detail.events.rows = Windowed::default();
-                    match result {
-                        Ok(events) => detail.events.set_ready(number, events),
-                        Err(error) => detail.events.load = EventsLoad::Failed(error.message),
-                    }
+                    return;
                 }
-                cx.notify();
-            });
+                cx.background_executor()
+                    .timer(COALESCE.saturating_sub(started.elapsed()))
+                    .await;
+            }
         }));
-        self.watch_events(window, cx);
+        self.watch_events(refresh, window, cx);
     }
 
     pub(super) fn events_state(&mut self) -> Option<&mut EventsState> {
@@ -152,6 +160,21 @@ impl Inspector {
             Detail::Ready(detail) => Some(&mut detail.events),
             _ => None,
         }
+    }
+
+    fn apply_events_read(
+        &mut self,
+        result: Result<Vec<ResourceEventSummary>, AppError>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(events) = self.events_state() else {
+            return;
+        };
+        match result {
+            Ok(rows) => events.set_ready(rows),
+            Err(error) => events.set_failed(error.message),
+        }
+        cx.notify();
     }
 }
 

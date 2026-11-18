@@ -135,6 +135,23 @@ describe("parseLogStructure", () => {
 });
 
 describe("highlightSegments", () => {
+	test("preserves original spans when lowercasing expands a field key", () => {
+		expect(highlightSegments("İD=READY", "ready")).toEqual([
+			{ text: "İD=", match: false },
+			{ text: "READY", match: true },
+		]);
+		expect(highlightSegments("İD=READY", "i")).toEqual([
+			{ text: "İ", match: true },
+			{ text: "D=READY", match: false },
+		]);
+	});
+
+	test("highlights overlapping source characters once", () => {
+		const segments = highlightSegments("İİİ", "\u0307i");
+		expect(segments.map(({ text }) => text).join("")).toBe("İİİ");
+		expect(segments.every(({ text, match }) => text.length > 0 && match)).toBe(true);
+	});
+
 	test("marks case-insensitive matches and keeps all text", () => {
 		expect(highlightSegments("Origin origin", "origin")).toEqual([
 			{ text: "Origin", match: true },

@@ -1,5 +1,5 @@
 import type { LogLineSource, StreamStatus } from "@/lib/types";
-import { type LogStructure, parseLogStructure } from "./log-structure";
+import { formatLogField, inlineLogText, type LogStructure, parseLogStructure } from "./log-structure";
 
 /** Client-side log stream phases plus the statuses the backend stream reports. */
 export type LogStreamStatus = "idle" | "connecting" | "error" | "stopped" | StreamStatus;
@@ -83,10 +83,10 @@ export function orderedLogLines(
 }
 
 export function logLineSearchText(line: ParsedLogLine): string {
-	return [line.raw, line.source?.podName, line.source?.container]
-		.filter(Boolean)
-		.join(" ")
-		.toLowerCase();
+	let text = line.raw;
+	if (line.source?.podName) text += ` ${line.source.podName}`;
+	if (line.source?.container) text += ` ${line.source.container}`;
+	return text.toLowerCase();
 }
 
 export function orderParsedLogLines(
@@ -100,9 +100,26 @@ export function filterOrderedParsedLogLines(
 	lines: ParsedLogLine[],
 	filterTerm: string,
 ): ParsedLogLine[] {
+	const phrase = filterTerm.includes(" ");
 	return filterTerm
-		? lines.filter((line) => logLineSearchText(line).includes(filterTerm))
+		? lines.filter((line) =>
+				logLineSearchText(line).includes(filterTerm) ||
+				matchesDisplayedText(line, filterTerm, phrase),
+			)
 		: lines;
+}
+
+function matchesDisplayedText(line: ParsedLogLine, term: string, phrase: boolean): boolean {
+	const quoted = line.message.includes('"');
+	// Replacing a tab or hard break introduces a space into the compact headline.
+	if (!quoted && !phrase) return false;
+	const { headline, error, fields } = line.structure;
+	const matches = (text: string) => {
+		const inline = inlineLogText(text);
+		return (quoted || inline !== text) && inline.toLowerCase().includes(term);
+	};
+	return matches(headline) || (error !== undefined && matches(error)) ||
+		(quoted && fields.some((field) => formatLogField(field).toLowerCase().includes(term)));
 }
 
 function validTimestampMs(value: string | undefined): number | undefined {

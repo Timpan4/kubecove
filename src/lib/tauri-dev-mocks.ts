@@ -424,7 +424,7 @@ function startLogStream(
 	send(channel, { type: "status", streamId, status: "connected", message: aggregate ? "Streaming 2 pod containers" : "Mock log stream connected" });
 	const sources = aggregate
 		? [
-				{ podName: "payments-api-7db7c9c9d4-8n2xq", container: "app" },
+				{ podName: "payments-api-background-reconciliation-worker-primary-7db7c9c9d4", container: "payments-ledger-reconciliation-and-notification-processor" },
 				{ podName: "payments-api-7db7c9c9d4-zl6pd", container: "app" },
 			]
 		: [undefined];

@@ -159,7 +159,7 @@
 							<div class="rounded-md border bg-surface-0 px-3 py-2 text-xs text-muted-foreground">
 								{signalsLoading.shown
 									? "Checking events and status signals..."
-									: eventsQuery.isError
+									: eventsQuery.isLoadingError
 										? "Status loaded; event signals are unavailable."
 										: "No active incident signals for this resource."}
 							</div>

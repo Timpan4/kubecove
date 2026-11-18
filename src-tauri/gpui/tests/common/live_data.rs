@@ -42,13 +42,21 @@ pub(super) struct ScriptState {
     /// no backend owner. Its ownerRef-only Pod follows either.
     reowned: Option<Reowned>,
     events: Option<EventSet>,
+    events_list_failed: bool,
+    event_watch_start: EventWatchStart,
     /// Scripted changes so far. The mock list version is one higher.
     revision: u64,
     /// The list version that first shows the scripted change.
     changed_at: Option<u64>,
     /// The kind and start version of each resource watch, in opening order.
     starts: Vec<(String, Option<String>)>,
-    pub(super) watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
+    pub(super) watches: Vec<FixtureWatch>,
+}
+
+pub(super) struct FixtureWatch {
+    pub(super) target: WatchTarget,
+    pub(super) sender: mpsc::UnboundedSender<StreamMessage>,
+    opening: bool,
 }
 /// The Deployment the "ownership" scripts move to another GitOps owner.
 const REOWNED: &str = "checkout-worker";
@@ -74,6 +82,15 @@ fn scripted_target(row: &ResourceSummary) -> bool {
 enum EventSet {
     Live,
     Overflow,
+    Empty,
+}
+
+#[derive(Clone, Copy, Default)]
+enum EventWatchStart {
+    #[default]
+    Ready,
+    Opening,
+    Refused,
 }
 impl Fixture {
     /// Fixture construction precedes timed notification delivery. NativeBackend
@@ -86,11 +103,11 @@ impl Fixture {
         let keys = {
             let mut state = self.live.state.lock().unwrap();
             state.burst = index.is_multiple_of(2);
-            state.watches.retain(|(_, sender)| !sender.is_closed());
+            state.watches.retain(|watch| !watch.sender.is_closed());
             state
                 .watches
                 .iter()
-                .filter_map(|(watch, sender)| match watch {
+                .filter_map(|FixtureWatch { target, sender, .. }| match target {
                     WatchTarget::Resource { scope, key, .. }
                         if self
                             .resources
@@ -362,8 +379,23 @@ impl Fixture {
                 state.revision += 1;
                 state.changed_at = Some(state.revision + 1);
             }
-            "events" => state.events = Some(EventSet::Live),
-            "events-overflow" => state.events = Some(EventSet::Overflow),
+            "events" | "events-overflow" => {
+                state.events = Some(if script == "events" {
+                    EventSet::Live
+                } else {
+                    EventSet::Overflow
+                });
+                state.events_list_failed = false;
+            }
+            "events-list-failed" | "events-list-recovered" => {
+                state.events_list_failed = script == "events-list-failed";
+                if !state.events_list_failed {
+                    state.events = Some(EventSet::Empty);
+                }
+            }
+            "events-watch-opening" => state.event_watch_start = EventWatchStart::Opening,
+            "events-watch-refused" => state.event_watch_start = EventWatchStart::Refused,
+            "events-watch-ready" => state.event_watch_start = EventWatchStart::Ready,
             _ => {}
         }
         if let Some(notifications) = self.live.notifications.lock().unwrap().take() {
@@ -376,11 +408,29 @@ impl Fixture {
             }
             return;
         }
-        state.watches.retain(|(_, sender)| !sender.is_closed());
-        for (watch, sender) in &state.watches {
+        state.watches.retain(|watch| !watch.sender.is_closed());
+        let state = &mut *state;
+        let burst_context = state.burst_context.as_ref();
+        for FixtureWatch {
+            target: watch,
+            sender,
+            opening,
+        } in &mut state.watches
+        {
+            if matches!(watch, WatchTarget::Events(_)) {
+                match script {
+                    "connected" => *opening = false,
+                    "reconnecting"
+                    | "forbidden"
+                    | "failed"
+                    | "events-failed"
+                    | "events-watch-stopped" => *opening = true,
+                    _ => {}
+                }
+            }
             if matches!(script, "burst" | "burst-reset") {
                 if let WatchTarget::Resource { scope, key, .. } = watch
-                    && (state.burst_context.as_ref()).is_none_or(|only| *only == scope.context)
+                    && burst_context.is_none_or(|only| *only == scope.context)
                 {
                     for row in self
                         .resources
@@ -415,6 +465,17 @@ impl Fixture {
                 ),
             };
             let message = match script {
+                "events-watch-stopped" if matches!(watch, WatchTarget::Events(_)) => {
+                    StreamMessage::Stopped {
+                        stream_id: "fixture".into(),
+                    }
+                }
+                "events-failed" if matches!(watch, WatchTarget::Events(_)) => {
+                    StreamMessage::Error {
+                        stream_id: "fixture".into(),
+                        message: "Scripted Events watch failure".into(),
+                    }
+                }
                 "connected" | "reconnecting" | "forbidden" => StreamMessage::Status {
                     stream_id: "fixture".into(),
                     status: if script == "forbidden" {
@@ -426,7 +487,10 @@ impl Fixture {
                     },
                     message: script.into(),
                 },
-                "events" | "events-overflow" if matches!(watch, WatchTarget::Events(r) if r.kind == "Deployment" && r.name == "payments-api") => {
+                "events" | "events-overflow"
+                    if !*opening
+                        && matches!(watch, WatchTarget::Events(r) if r.kind == "Deployment" && r.name == "payments-api") =>
+                {
                     StreamMessage::ResourceEventsChanged {
                         stream_id: "fixture".into(),
                         target,
@@ -458,6 +522,13 @@ impl Fixture {
                 _ => continue,
             };
             let _ = sender.send(message);
+            if script == "events-failed" {
+                let _ = sender.send(StreamMessage::Status {
+                    stream_id: "fixture".into(),
+                    status: StreamStatus::Reconnecting,
+                    message: "Retrying Events watch".into(),
+                });
+            }
             if script == "failed" {
                 let _ = sender.send(StreamMessage::Status {
                     stream_id: "fixture".into(),
@@ -490,14 +561,28 @@ impl Fixture {
                     .unwrap();
                 return Ok(LogStream::new(receiver, sender));
             }
-            sender
-                .send(StreamMessage::Status {
-                    stream_id: "fixture".into(),
-                    status: StreamStatus::Connected,
-                    message: "Live updates connected".into(),
-                })
-                .unwrap();
             let mut state = live.lock().unwrap();
+            let start_status = if matches!(target, WatchTarget::Events(_)) {
+                state.event_watch_start
+            } else {
+                EventWatchStart::Ready
+            };
+            match start_status {
+                EventWatchStart::Refused => {
+                    return Err(AppError::new(
+                        "Scripted Events watch start refused",
+                        AppErrorKind::Network,
+                    ));
+                }
+                EventWatchStart::Opening => {}
+                EventWatchStart::Ready => sender
+                    .send(StreamMessage::Status {
+                        stream_id: "fixture".into(),
+                        status: StreamStatus::Connected,
+                        message: "Live updates connected".into(),
+                    })
+                    .unwrap(),
+            }
             let start = match &target {
                 WatchTarget::Resource {
                     key,
@@ -542,7 +627,11 @@ impl Fixture {
                 }
             }
             state.starts.extend(start);
-            state.watches.push((target, sender.clone()));
+            state.watches.push(FixtureWatch {
+                target,
+                sender: sender.clone(),
+                opening: matches!(start_status, EventWatchStart::Opening),
+            });
             Ok(LogStream::new(receiver, sender))
         })
     }
@@ -605,13 +694,21 @@ impl Fixture {
     pub(super) fn scripted_events(
         &self,
         resource: &ResourceSummary,
-    ) -> Option<Vec<ResourceEventSummary>> {
+    ) -> Option<Result<Vec<ResourceEventSummary>, AppError>> {
         if resource.kind != "Deployment" || resource.name != "payments-api" {
             return None;
         }
-        match self.live.state.lock().unwrap().events {
-            Some(EventSet::Live) => Some(self.live_events.clone()),
-            Some(EventSet::Overflow) => Some(self.overflow_events.clone()),
+        let state = self.live.state.lock().unwrap();
+        if state.events_list_failed {
+            return Some(Err(AppError::new(
+                "Scripted Events list failure (bearer example-credential)",
+                AppErrorKind::Network,
+            )));
+        }
+        match state.events {
+            Some(EventSet::Live) => Some(Ok(self.live_events.clone())),
+            Some(EventSet::Overflow) => Some(Ok(self.overflow_events.clone())),
+            Some(EventSet::Empty) => Some(Ok(Vec::new())),
             None => None,
         }
     }

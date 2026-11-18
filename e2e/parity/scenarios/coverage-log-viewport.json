@@ -8,7 +8,7 @@
 			"steps": [
 				{
 					"action": "coverageScript",
-					"script": "logs-long"
+					"script": "logs-words"
 				},
 				{
 					"action": "openResources"

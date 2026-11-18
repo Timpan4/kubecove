@@ -7,9 +7,9 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "forbidden", "failed", "missed-delete"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "events-list-recovered", "events-watch-opening", "events-watch-refused", "events-watch-ready", "events-watch-stopped", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
-type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
+type Watch = { id: string; opening: boolean; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
 const watchStarts: ResourceWatchStart[] = [];
 let serial = 0;
@@ -29,6 +29,8 @@ const REOWNED = "checkout-worker";
 const FLUX_OWNER = { provider: "flux", kind: "Kustomization", name: "platform", namespace: "flux-system", confidence: "inventory", provenance: "flux-kustomization-inventory", partial: false };
 const ANNOTATION_APP = "checkout-legacy";
 let events: ResourceEventSummary[] | undefined;
+let eventsListFailed = false;
+let eventWatchStart: "ready" | "opening" | "refused" = "ready";
 let failed = false;
 // Scripted changes so far; the mock list version is one higher, as in tests/common/live_data.rs.
 let revision = 0;
@@ -43,12 +45,15 @@ export function lastWatchStart(kind: string): { resourceVersion?: string } | nul
     return watchStarts.findLast((start) => start.resourceKind.kind === kind) ?? null;
 }
 
-export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
+export function registerMockWatch(args: Omit<Watch, "id" | "opening" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
     if (!args.channel) throw new Error("Mock watch requires a channel");
+    if (args.name && eventWatchStart === "refused") throw new Error("Scripted Events watch start refused");
     const channel = args.channel;
     const id = `mock-live-${++serial}`;
-    watches.set(id, { ...args, channel, id });
+    const opening = Boolean(args.name) && eventWatchStart === "opening";
+    watches.set(id, { ...args, channel, id, opening });
     watchStarts.push(...args.keys ?? []);
+    if (opening) return id;
     // streams/watch.rs starts at the given list version, or at "0", which replays
     // every object. Either way it delivers a change made after that version.
     const replays = (start: ResourceWatchStart) => changedAt !== undefined
@@ -98,9 +103,16 @@ export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
 }
 function target(row: ResourceSummary): boolean { return row.kind === "Deployment" && row.namespace === "payments" && row.name === "payments-api"; }
 export function liveEvents(kind?: string, name?: string): ResourceEventSummary[] | undefined {
-    return kind === "Deployment" && name === "payments-api" ? events : undefined;
+    if (kind !== "Deployment" || name !== "payments-api") return;
+    if (eventsListFailed) throw new Error("Scripted Events list failure (bearer example-credential)");
+    return events;
 }
 export function replayLiveData(script: LiveScript): void {
+    switch (script) {
+        case "events-watch-opening": eventWatchStart = "opening"; return;
+        case "events-watch-refused": eventWatchStart = "refused"; return;
+        case "events-watch-ready": eventWatchStart = "ready"; return;
+    }
     // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.
     const missed = script === "missed-delete";
     const mockDevOnly = script === "delete-mock-dev";
@@ -125,16 +137,42 @@ export function replayLiveData(script: LiveScript): void {
         revision += 1;
         changedAt = revision + 1;
     }
+    if (script === "events-list-failed" || script === "events-list-recovered") {
+        eventsListFailed = script === "events-list-failed";
+        if (!eventsListFailed) events = [];
+        return;
+    }
+    const eventsChanged = script === "events" || script === "events-overflow";
+    if (eventsChanged) eventsListFailed = false;
     if (script === "events") events = LIVE_EVENTS;
     if (script === "events-overflow") events = OVERFLOW_EVENTS;
     for (const watch of reachableWatches()) {
         const streamId = watch.id;
-        if (script === "failed") watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Scripted connection loss" });
+		if (script === "events-watch-stopped") {
+			if (watch.name) {
+				watch.opening = true;
+				watch.channel.onmessage({ type: "stopped", streamId });
+			}
+			continue;
+		}
+		if (script === "events-failed") {
+			if (watch.name) {
+				watch.opening = true;
+				watch.channel.onmessage({ type: "error", streamId, message: "Scripted Events watch failure" });
+				watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Retrying Events watch" });
+			}
+			continue;
+		}
+        if (script === "failed") {
+            if (watch.name) watch.opening = true;
+            watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Scripted connection loss" });
+        }
         if (script === "connected" || script === "reconnecting" || script === "forbidden") {
+            if (watch.name) watch.opening = script !== "connected";
             watch.channel.onmessage({ type: "status", streamId, status: script, message: script });
-        } else if ((script === "events" || script === "events-overflow") && watch.name === "payments-api" && watch.kind === "Deployment") {
+        } else if (eventsChanged && !watch.opening && watch.name === "payments-api" && watch.kind === "Deployment") {
             watch.channel.onmessage({ type: "resourceEventsChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: watch.name, namespace: watch.namespace }, action: "applied" });
-        } else if (script !== "events" && script !== "events-overflow" && (!mockDevOnly || watch.context === "mock-dev") && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
+        } else if (!eventsChanged && (!mockDevOnly || watch.context === "mock-dev") && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
             watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: reowning ? REOWNED : script === "add" ? ADDED : "payments-api", namespace: "payments" }, action: script === "delete" || mockDevOnly ? "deleted" : "applied" });
         }
     }

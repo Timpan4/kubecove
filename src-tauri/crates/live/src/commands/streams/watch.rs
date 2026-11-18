@@ -319,6 +319,14 @@ fn event_target(
     }
 }
 
+fn reset_event_watch_version(resource_version: &mut String, status: &Status) {
+    // An internal storage error can make replaying the same revision fail again.
+    // Starting at zero lets the watch build a fresh snapshot.
+    if matches!(status.code, 410 | 500) {
+        *resource_version = "0".to_string();
+    }
+}
+
 pub(super) async fn run_event_watch(
     access: ClusterAccess,
     cluster_context: String,
@@ -355,24 +363,22 @@ pub(super) async fn run_event_watch(
             .fields(&field_selector)
             .timeout(WATCH_TIMEOUT_SECS);
 
-        if !broadcaster.status(StreamStatus::Connected, "Watching events".to_string()) {
-            return;
-        }
-
         match api.watch(&params, &resource_version).await {
             Ok(stream) => {
+                if !broadcaster.status(StreamStatus::Connected, "Watching events".to_string()) {
+                    return;
+                }
                 let mut stream = stream.boxed();
                 while let Some(event) = stream.next().await {
                     match event {
-                        Ok(event) => {
-                            if let Some(message) =
-                                reset_resource_version_for_error(&mut resource_version, &event)
-                            {
-                                if !broadcaster.error(message) {
-                                    return;
-                                }
-                                break;
+                        Ok(WatchEvent::Error(status)) | Err(kube::Error::Api(status)) => {
+                            reset_event_watch_version(&mut resource_version, &status);
+                            if !broadcaster.error(watch_status_message(&status)) {
+                                return;
                             }
+                            break;
+                        }
+                        Ok(event) => {
                             if let Some(next_resource_version) = watch_resource_version(&event) {
                                 resource_version = next_resource_version;
                             }
@@ -387,7 +393,6 @@ pub(super) async fn run_event_watch(
                             }
                         }
                         Err(err) => {
-                            reset_resource_version_for_api_error(&mut resource_version, &err);
                             if !broadcaster.error(err.to_string()) {
                                 return;
                             }
@@ -397,7 +402,9 @@ pub(super) async fn run_event_watch(
                 }
             }
             Err(err) => {
-                reset_resource_version_for_api_error(&mut resource_version, &err);
+                if let kube::Error::Api(status) = &err {
+                    reset_event_watch_version(&mut resource_version, status);
+                }
                 if !broadcaster.error(err.to_string()) {
                     return;
                 }
