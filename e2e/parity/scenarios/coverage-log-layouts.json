@@ -35,7 +35,9 @@
 				{ "action": "filterLogs", "value": "value=null" },
 				{ "action": "expectLogLines", "lines": ["Overflow row"] },
 				{ "action": "filterLogs", "value": "nested=[null,\"1e400\"]" },
-				{ "action": "expectLogLines", "lines": ["Overflow row"] }
+				{ "action": "expectLogLines", "lines": ["Overflow row"] },
+				{ "action": "filterLogs", "value": "request completed" },
+				{ "action": "expectLogLines", "lines": ["request completed"] }
 			]
 		},
 		{

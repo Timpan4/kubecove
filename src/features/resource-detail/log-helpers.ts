@@ -100,19 +100,26 @@ export function filterOrderedParsedLogLines(
 	lines: ParsedLogLine[],
 	filterTerm: string,
 ): ParsedLogLine[] {
+	const phrase = filterTerm.includes(" ");
 	return filterTerm
 		? lines.filter((line) =>
 				logLineSearchText(line).includes(filterTerm) ||
-				// JSON and quoted logfmt can display decoded text absent from the raw line.
-				(line.message.includes('"') && matchesDecodedText(line.structure, filterTerm)),
+				matchesDisplayedText(line, filterTerm, phrase),
 			)
 		: lines;
 }
 
-function matchesDecodedText({ headline, error, fields }: LogStructure, term: string): boolean {
-	return inlineLogText(headline).toLowerCase().includes(term) ||
-		(error !== undefined && inlineLogText(error).toLowerCase().includes(term)) ||
-		fields.some((field) => formatLogField(field).toLowerCase().includes(term));
+function matchesDisplayedText(line: ParsedLogLine, term: string, phrase: boolean): boolean {
+	const quoted = line.message.includes('"');
+	// Replacing a tab or hard break introduces a space into the compact headline.
+	if (!quoted && !phrase) return false;
+	const { headline, error, fields } = line.structure;
+	const matches = (text: string) => {
+		const inline = inlineLogText(text);
+		return (quoted || inline !== text) && inline.toLowerCase().includes(term);
+	};
+	return matches(headline) || (error !== undefined && matches(error)) ||
+		(quoted && fields.some((field) => formatLogField(field).toLowerCase().includes(term)));
 }
 
 function validTimestampMs(value: string | undefined): number | undefined {

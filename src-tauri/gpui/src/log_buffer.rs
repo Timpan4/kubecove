@@ -7,6 +7,7 @@
 
 use crate::logs::{MAX_RETAINED_LOG_LINES, ParsedLogLine, inline_log_text, parse_line};
 use kubecove_lib::models::LogLineSource;
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -83,31 +84,38 @@ impl LogBuffer {
     /// hidden levels. Unleveled lines stay visible, as in the web.
     pub fn visible(&self, term: &str, hidden: [bool; 4], latest_first: bool, out: &mut Vec<u64>) {
         out.clear();
+        let phrase = term.contains(' ');
         // Unquoted logfmt fields already appear in the raw search text.
         let mut token = String::new();
         let shown = |line: &&ParsedLogLine| {
-            line.structure
-                .level
-                .is_none_or(|level| !hidden[level.index()])
-                && (term.is_empty()
-                    || line.search.contains(term)
-                    || (line.raw.contains('"')
-                        && (inline_log_text(&line.structure.headline)
-                            .to_lowercase()
-                            .contains(term)
-                            || line.structure.error.as_ref().is_some_and(|error| {
-                                inline_log_text(error).to_lowercase().contains(term)
-                            })
-                            || line.structure.fields.iter().any(|field| {
-                                token.clear();
-                                field.write_token(&mut token);
-                                if token.is_ascii() {
-                                    token.make_ascii_lowercase();
-                                    token.contains(term)
-                                } else {
-                                    token.to_lowercase().contains(term)
-                                }
-                            }))))
+            let structure = &line.structure;
+            if structure.level.is_some_and(|level| hidden[level.index()]) {
+                return false;
+            }
+            if term.is_empty() || line.search.contains(term) {
+                return true;
+            }
+            let quoted = line.raw.contains('"');
+            if !quoted && !phrase {
+                return false;
+            }
+            let matches = |text: &str| {
+                let inline = inline_log_text(text);
+                (quoted || matches!(&inline, Cow::Owned(_))) && inline.to_lowercase().contains(term)
+            };
+            matches(&structure.headline)
+                || structure.error.as_deref().is_some_and(matches)
+                || (quoted
+                    && structure.fields.iter().any(|field| {
+                        token.clear();
+                        field.write_token(&mut token);
+                        if token.is_ascii() {
+                            token.make_ascii_lowercase();
+                            token.contains(term)
+                        } else {
+                            token.to_lowercase().contains(term)
+                        }
+                    }))
         };
         if latest_first {
             out.extend(self.lines.iter().rev().filter(shown).map(|line| line.index));

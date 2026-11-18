@@ -34,6 +34,7 @@ export function coverageLogs(request: Partial<PodLogStreamRequest>, streamId: st
 		{ type: "logLine", streamId, line: `2026-06-29T10:00:02Z {"msg":"JSON row","error":"first\\nsecond","status":"ready","destination":"${"PaymentsReconciliation".repeat(12)}ENDOFFIELD","elapsed":100.0,"note":"a  b","tabbed":"cache\\twarm","counts":{"10":1,"2":1.0000000000000003,"z":0,"a":1}}` },
 		{ type: "logLine", streamId, line: '2026-06-29T10:00:03Z logfmt row state="cache warm"' },
 		{ type: "logLine", streamId, line: '2026-06-29T10:00:04Z {"message":"Overflow row","value":1e400,"nested":[-1e400,"1e400"]}' },
+		{ type: "logLine", streamId, line: "2026-06-29T10:00:05Z request\tcompleted" },
 	);
 	if (script === "logs-stream") for (let index = 0; index < (request.tailLines ?? 200); index++) messages.push({ type: "logLine", streamId, line: `2026-06-29T10:00:00Z Earlier controlled line ${index + 1}` });
 	return messages;

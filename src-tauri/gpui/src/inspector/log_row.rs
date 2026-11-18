@@ -224,21 +224,18 @@ fn field_chips(fields: &[LogField], term: &str) -> Div {
         }))
 }
 
-fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
+fn compact_summary(
+    line: &ParsedLogLine,
+    headline: &SharedString,
+    term: &str,
+    open: bool,
+) -> StyledText {
     let structure = &line.structure;
-    if open {
-        return highlighted(&structure.headline, term);
-    }
-    let headline = inline_log_text(&structure.headline);
-    if structure.error.is_none() && structure.fields.is_empty() {
-        let headline = match headline {
-            Cow::Borrowed(_) => structure.headline.clone(),
-            Cow::Owned(text) => text.into(),
-        };
-        return highlighted(&headline, term);
+    if open || (structure.error.is_none() && structure.fields.is_empty()) {
+        return highlighted(headline, term);
     }
     let mut text = InlineText::default();
-    text.push(&headline, term, HighlightStyle::default(), false);
+    text.push(headline, term, HighlightStyle::default(), false);
     if let Some(error) = &structure.error {
         text.text.push_str("  ");
         text.push(
@@ -277,6 +274,14 @@ fn one_line_row(
     let structure = &line.structure;
     let index = line.index;
     let open = logs.row_open(index);
+    let headline = if open {
+        structure.headline.clone()
+    } else {
+        match inline_log_text(&structure.headline) {
+            Cow::Borrowed(_) => structure.headline.clone(),
+            Cow::Owned(text) => text.into(),
+        }
+    };
     // The handle is the tab stop: an element's `tab_index` applies only to a
     // handle the element creates, not to one it tracks.
     let focus = logs
@@ -311,7 +316,7 @@ fn one_line_row(
         .font_weight(FontWeight::MEDIUM)
         .when(!open, |summary| summary.flex_1().truncate())
         .when(open, |summary| summary.w_full())
-        .child(compact_summary(line, term, open));
+        .child(compact_summary(line, &headline, term, open));
     let details = open.then(|| {
         div()
             .id(("log-details", position))
@@ -340,7 +345,7 @@ fn one_line_row(
     div()
         .id(("log-row", position))
         .test_support()
-        .aria_label(structure.headline.clone())
+        .aria_label(headline)
         .aria_expanded(open)
         .track_focus(&focus)
         .on_click(cx.listener(move |this, _, _, cx| {

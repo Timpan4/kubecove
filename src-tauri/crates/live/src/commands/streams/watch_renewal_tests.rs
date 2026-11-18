@@ -221,7 +221,7 @@ async fn recover_event_watch_after_error(
         broadcaster,
     );
     tokio::select! {
-        _ = watch => {},
+        () = watch => {},
         Ok(attempt) = failure => panic!("Unexpected Events watch attempt {attempt}"),
     }
 
