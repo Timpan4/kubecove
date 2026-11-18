@@ -1,4 +1,5 @@
 //! Built-in sidebar branches. Descendants are constructed only for open parents.
+use super::sidebar_fold::Row;
 use super::{Inspector, Page};
 use crate::targets::TestSupportExt;
 use crate::{control_motion, model, rbac::RbacView, theme::Tokens, ui};
@@ -70,6 +71,8 @@ pub(super) struct TreeState {
     /// so the tree keeps its scroll position when the drawer closes.
     pub scroll: ScrollHandle,
     pub(super) cache: RefCell<Option<gpui_kit::Entity<super::sidebar_cache::SidebarCache>>>,
+    /// The branches a toggle is opening or closing by height.
+    pub(super) folds: super::sidebar_fold::Folds,
     /// A selection made outside the tree that still has to scroll into view.
     /// Shared with the paint callback that performs the scroll.
     pub(super) reveal: Rc<RefCell<Option<String>>>,
@@ -207,10 +210,27 @@ impl Inspector {
     }
 
     fn toggle_tree_row(&mut self, path: &str, cx: &mut Context<Self>) {
-        if !self.sidebar_tree.open.remove(path) {
+        let open = !self.sidebar_tree.open.remove(path);
+        if open {
             self.sidebar_tree.open.insert(path.to_owned());
         }
+        self.sidebar_tree.folds.start(path, open, cx);
         cx.notify();
+    }
+
+    /// The rows a branch at `path` shows under its own row: `rows()` while it
+    /// is open, cut to the height its fold has reached while it folds.
+    pub(super) fn branch_rows(
+        &self,
+        path: &str,
+        cx: &mut Context<Self>,
+        rows: impl FnOnce(&Self, &mut Context<Self>) -> Vec<Row>,
+    ) -> Vec<Row> {
+        let open = self.sidebar_tree.open.contains(path);
+        match self.sidebar_tree.folds.branch(path, open, cx) {
+            Some(fold) => fold.clip(rows(self, cx)),
+            None => Vec::new(),
+        }
     }
 
     pub(super) fn builtin_branch(
@@ -218,34 +238,38 @@ impl Inspector {
         label: &'static str,
         namespace: Option<&str>,
         cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
+    ) -> Vec<Row> {
         let depth = usize::from(namespace.is_some());
         let path = namespace.map_or_else(|| label.to_owned(), |ns| format!("{ns}/{label}"));
+        let namespace = namespace.map(str::to_owned);
         let mut rows = vec![self.builtin_row(
             path.clone(),
             label.into(),
-            namespace.map(str::to_owned),
+            namespace.clone(),
             depth,
             true,
             cx,
         )];
-        if self.sidebar_tree.open.contains(&path) {
+        rows.extend(self.branch_rows(&path, cx, |this, cx| {
             let kinds = GROUPS
                 .iter()
                 .find(|(name, _)| *name == label)
                 .expect("builtin group")
                 .1;
-            for kind in kinds {
-                rows.push(self.builtin_row(
-                    format!("{path}/{kind}"),
-                    (*kind).into(),
-                    namespace.map(str::to_owned),
-                    depth + 1,
-                    false,
-                    cx,
-                ));
-            }
-        }
+            kinds
+                .iter()
+                .map(|kind| {
+                    this.builtin_row(
+                        format!("{path}/{kind}"),
+                        (*kind).into(),
+                        namespace.clone(),
+                        depth + 1,
+                        false,
+                        cx,
+                    )
+                })
+                .collect()
+        }));
         rows
     }
 
@@ -264,14 +288,16 @@ impl Inspector {
                 true,
                 cx,
             ));
-            if self.sidebar_tree.open.contains(&ns.name) {
+            rows.extend(self.branch_rows(&ns.name, cx, |this, cx| {
+                let mut rows = Vec::new();
                 for (group, _) in &GROUPS[..4] {
-                    rows.extend(self.builtin_branch(group, Some(&ns.name), cx));
+                    rows.extend(this.builtin_branch(group, Some(&ns.name), cx));
                 }
-                rows.extend(self.namespace_custom_rows(&ns.name, cx));
-            }
+                rows.extend(this.namespace_custom_rows(&ns.name, cx));
+                rows
+            }));
         }
-        rows
+        rows.into_iter().map(Row::into_element).collect()
     }
 
     pub(super) fn builtin_row(
@@ -282,7 +308,7 @@ impl Inspector {
         depth: usize,
         expandable: bool,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> Row {
         let is_namespace = namespace.as_deref() == Some(path.as_str());
         let selected = self.sidebar_tree.selected.as_ref().map_or_else(
             || {
@@ -346,7 +372,12 @@ impl Inspector {
             .sidebar_tree
             .reveals(&path, expanded)
             .then(|| self.sidebar_tree.reveal_probe());
-        let focus = self.sidebar_tree.focus_handle(&path, cx);
+        // The element keeps its own copy of the handle, so this is decided before
+        // the row tracks it.
+        let focus = self
+            .sidebar_tree
+            .focus_handle(&path, cx)
+            .tab_stop(!self.sidebar_tree.folds.holds(&path));
         let chevron = path.clone();
         let key_toggle = path.clone();
         let target = RowTarget {
@@ -357,7 +388,7 @@ impl Inspector {
         };
         let key_row = target.clone();
         let click_row = target;
-        div()
+        let row = div()
             .id(SharedString::from(id))
             .test_support()
             .track_focus(&focus)
@@ -449,7 +480,7 @@ impl Inspector {
                     }
                     _ => {}
                 }
-            }))
-            .into_any_element()
+            }));
+        Row::new(row.into_any_element(), ROW_HEIGHT)
     }
 }

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { ChevronRight } from "lucide-svelte";
+	import { slide } from "svelte/transition";
 	import { Button } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
 	import { nodeIdToString, type TreeNode, type TreeNodeId } from "@/lib/tree-nav";
+	import { controlEase } from "./controlEase";
 	import SidebarTreeNode from "./SidebarTreeNode.svelte";
 	import {
 		getResourceGroupVisual,
@@ -51,6 +53,8 @@
 		node.id.type === "namespace" || Boolean(node.children?.length),
 	);
 	const children = $derived(isExpanded ? (getLazyChildren?.(node) ?? node.children) : node.children);
+	/** The Custom Resources section shows a search input above its kinds. */
+	const hasSearch = $derived(node.id.type === "section" && node.id.section === "discovered");
 	const isDisabled = $derived(node.disabled === true);
 	const visual = $derived(getNodeVisual(node));
 	const NodeIcon = $derived(visual.icon);
@@ -96,9 +100,69 @@
 		onNodeSelect(node.id);
 	}
 
+	/** Tailwind's `--default-transition-duration`, which the chevron beside the branch turns over. */
+	const FOLD_MS = 150;
+	/** The expansion the user last asked of this node, until its children have folded to it. */
+	let toggledTo: boolean | null = null;
+
+	function toggleSection() {
+		toggledTo = !isExpanded;
+		onSectionToggle(id);
+	}
+
+	/**
+	 * The children fold open or closed only where the user toggled this node. "Collapse all", a
+	 * reveal and a selection that opens the node show at once, as does reduced motion.
+	 */
+	function foldDuration(): number {
+		if (toggledTo !== isExpanded) return 0;
+		return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : FOLD_MS;
+	}
+
+	/** The children's folding wrapper while it is mounted. */
+	let branch = $state<HTMLElement>();
+
+	// Reduced motion turned on while the children fold ends the fold, as it ends any transition.
+	$effect(() => {
+		const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+		const settle = () => {
+			if (!reduced.matches) return;
+			for (const animation of branch?.getAnimations() ?? []) animation.finish();
+		};
+		reduced.addEventListener("change", settle);
+		return () => reduced.removeEventListener("change", settle);
+	});
+
+	/**
+	 * Svelte reverses a running slide with that slide's options, so a change that shows at once,
+	 * such as "Collapse all" while the children unfold, would still fold back over its time. That
+	 * slide's animation starts right after this event, and is ended as it starts.
+	 */
+	function settleUntoggled(event: Event) {
+		const wrapper = event.currentTarget;
+		if (foldDuration() !== 0 || !(wrapper instanceof Element)) return;
+		queueMicrotask(() => {
+			for (const animation of wrapper.getAnimations()) animation.finish();
+		});
+	}
+
+	/**
+	 * Rows still sliding in take no focus or clicks, as Svelte's outro already makes the sliding
+	 * list inert, so Tab cannot land on a row the slide still clips.
+	 */
+	function beginIntro(event: Event) {
+		settleUntoggled(event);
+		if (event.currentTarget instanceof HTMLElement) event.currentTarget.inert = true;
+	}
+
+	function endIntro(event: Event) {
+		toggledTo = null;
+		if (event.currentTarget instanceof HTMLElement) event.currentTarget.inert = false;
+	}
+
 	function toggleNode(event: MouseEvent) {
 		event.stopPropagation();
-		if (hasChildren) onSectionToggle(id);
+		if (hasChildren) toggleSection();
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -112,10 +176,10 @@
 		if (!hasChildren) return;
 		if (event.key === "ArrowRight" && !isExpanded) {
 			event.preventDefault();
-			onSectionToggle(id);
+			toggleSection();
 		} else if (event.key === "ArrowLeft" && isExpanded) {
 			event.preventDefault();
-			onSectionToggle(id);
+			toggleSection();
 		}
 	}
 </script>
@@ -175,35 +239,47 @@
 			>{node.label}</span
 		>
 	</div>
-	{#if node.id.type === "section" && node.id.section === "discovered" && isExpanded}
-		<div class="px-2 py-1 pl-6">
-			<input
-				class="h-7 w-full rounded-sm border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground"
-				value={customResourceSearch}
-				placeholder="Search custom resources"
-				aria-label="Search custom resources"
-				oninput={(event) => onCustomResourceSearchChange?.(event.currentTarget.value)}
-			/>
+	{#if isExpanded && (hasSearch || (hasChildren && children))}
+		<div
+			bind:this={branch}
+			data-slot="sidebar-branch"
+			transition:slide={{ duration: foldDuration(), easing: controlEase }}
+			onintrostart={beginIntro}
+			onoutrostart={settleUntoggled}
+			onintroend={endIntro}
+			onoutroend={() => (toggledTo = null)}
+		>
+			{#if hasSearch}
+				<div class="px-2 py-1 pl-6">
+					<input
+						class="h-7 w-full rounded-sm border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground"
+						value={customResourceSearch}
+						placeholder="Search custom resources"
+						aria-label="Search custom resources"
+						oninput={(event) => onCustomResourceSearchChange?.(event.currentTarget.value)}
+					/>
+				</div>
+			{/if}
+			{#if hasChildren && children}
+				<ul class="m-0 list-none p-0" role="group">
+					{#each children as child (nodeIdToString(child.id))}
+						<SidebarTreeNode
+							node={child}
+							depth={depth + 1}
+							{selectedNode}
+							{revealKey}
+							{onReveal}
+							{selectedAncestorIds}
+							{expandedSections}
+							{onNodeSelect}
+							{onSectionToggle}
+							{getLazyChildren}
+							{customResourceSearch}
+							{onCustomResourceSearchChange}
+						/>
+					{/each}
+				</ul>
+			{/if}
 		</div>
-	{/if}
-	{#if hasChildren && isExpanded && children}
-		<ul class="m-0 list-none p-0" role="group">
-			{#each children as child (nodeIdToString(child.id))}
-				<SidebarTreeNode
-					node={child}
-					depth={depth + 1}
-					{selectedNode}
-					{revealKey}
-					{onReveal}
-					{selectedAncestorIds}
-					{expandedSections}
-					{onNodeSelect}
-					{onSectionToggle}
-					{getLazyChildren}
-					{customResourceSearch}
-					{onCustomResourceSearchChange}
-				/>
-			{/each}
-		</ul>
 	{/if}
 </li>

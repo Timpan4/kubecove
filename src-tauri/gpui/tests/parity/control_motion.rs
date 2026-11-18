@@ -5,6 +5,10 @@
 //! After `midway`, `back` chooses the first state again and expects the indicator
 //! where it was shown, and `returned` expects it at rest. `instant`, run under
 //! reduced motion, changes the state and expects it there in the same frame.
+//! `ended`, after reduced motion turned on mid-run, expects what `settled` does
+//! without moving the clock. `collapsed`, after another action closed a fold
+//! mid-run, expects the fold over and the branch closed without moving the clock.
+//! `inert`, mid-fold, expects Tab and a click to pass over the branch's rows.
 //! Mirrors `e2e/parity/web-control-motion.ts`.
 use super::*;
 use gpui_kit::ElementId;
@@ -87,6 +91,46 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
         }));
         return;
     }
+    // A fold another action closed, such as Collapse all, shows the branch
+    // closed at once, without the clock moving.
+    if phase == "collapsed" {
+        window.render_frame(cx);
+        let moving = transition(window, cx, target);
+        assert_eq!(
+            Moving::progress(&moving, cx),
+            None,
+            "{target} still folds after it was collapsed"
+        );
+        let painted = paint(window, cx, target).expect("a fold paints the row under it");
+        SEEN.with_borrow(|seen| {
+            let rest = &seen.as_ref().expect("a start check ran first").paint[0];
+            assert_eq!(&painted, rest, "{target} is not closed at once");
+        });
+        return;
+    }
+    // A folding branch's rows take no focus or clicks, as the web's sliding
+    // list is inert. Tab starts from the row whose chevron started the fold.
+    if phase == "inert" {
+        let first = match target {
+            "branch" => "tree:Workloads/Pod",
+            other => panic!("{other} has no inert check"),
+        };
+        window.press("tab", cx);
+        window.render_frame(cx);
+        assert_ne!(
+            window.find(first).focused(),
+            Some(true),
+            "Tab reached a row of {target} while it folds"
+        );
+        window.click(first, cx);
+        window.render_frame(cx);
+        assert_ne!(
+            window.find(first).selected(),
+            Some(true),
+            "a click selected a row of {target} while it folds"
+        );
+        return;
+    }
     if phase == "back" || phase == "returned" {
         if phase == "back" {
             match target {
@@ -148,8 +192,43 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             );
             seen.paint.push(painted);
         }
+        // A fold moves the row under its branch one way: it passes no end
+        // and then snaps back to it.
+        if let ([start, midway, settled], Some(_)) = (&seen.paint[..], row_below(target)) {
+            let [start, midway, settled] =
+                [start, midway, settled].map(|paint| paint[0].parse::<f32>().unwrap());
+            assert!(
+                (start - midway) * (midway - settled) > 0.,
+                "the row under {target} moved {start}, {midway}, {settled}"
+            );
+        }
         (seen.progress, seen.thumb)
     });
+    // A fold reveals rows by the height they lay out at, so a row under it
+    // keeps the sidebar's row height however long the sidebar grows. An ended
+    // fold shows the branch's last row whole, right above that row.
+    if matches!(phase, "settled" | "ended")
+        && let Some((_, below, last)) = row_below(target)
+    {
+        let bounds = |id: &str| window.find(id.to_owned()).bounds();
+        let row = bounds("nav:Workloads").size.height;
+        assert_eq!(
+            bounds(below).size.height,
+            row,
+            "{below} is not as high as a sidebar row"
+        );
+        // A fold builds only the rows it shows.
+        let end = window
+            .try_find(last.to_owned())
+            .unwrap_or_else(|| panic!("{target} does not show {last} at {phase}"))
+            .bounds();
+        assert_eq!(end.size.height, row, "{last} is cut at {phase}");
+        assert_eq!(
+            end.bottom(),
+            bounds(below).top(),
+            "{target} is not fully open at {phase}"
+        );
+    }
     match phase {
         "midway" => {
             let progress = progress.unwrap_or_else(|| panic!("{target} settled at half time"));
@@ -163,7 +242,7 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
                 assert!(moved > 0. && moved < 16., "the thumb moved {moved} px");
             }
         }
-        "settled" => {
+        "settled" | "ended" => {
             assert_eq!(progress, None, "{target} still moves after its duration");
             if target == "switch" {
                 assert_eq!((thumb(window, target) - thumb_start).abs(), 16.);
@@ -182,6 +261,12 @@ fn paint(
 ) -> Option<Vec<String>> {
     if target == "chevron" {
         return None;
+    }
+    // A fold paints nothing of its own. The row under the branch shows it,
+    // measured from the branch's row so that a scroll of the sidebar is left out.
+    if let Some((branch, below, _)) = row_below(target) {
+        let top = |id: &str| f32::from(window.find(id.to_owned()).bounds().origin.y);
+        return Some(vec![(top(below) - top(branch)).to_string()]);
     }
     Some(
         quads(window, cx, target)
@@ -262,13 +347,37 @@ fn change(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -
             reveal(window, "sidebar-tree", "tree-toggle:Workloads", cx);
             sidebar_live::click_sidebar(window, cx, "tree-toggle:Workloads".into());
         }
+        "branch" | "custom-group" => {
+            let toggle = match target {
+                "branch" => "tree-toggle:Workloads",
+                _ => "custom-group:argoproj.io",
+            };
+            // The runner opens branches at once in every other scenario.
+            Moving::set_instant_layout(false, cx);
+            reveal(window, "sidebar-tree", toggle, cx);
+            sidebar_live::click_sidebar(window, cx, toggle.into());
+        }
         other => panic!("unknown motion target {other}"),
     }
     transition(window, cx, target)
 }
 
+/// A folding branch's row, the row under the branch, which moves as the
+/// branch folds, and the branch's last row.
+fn row_below(target: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match target {
+        "branch" => Some(("nav:Workloads", "nav:Network", "tree:Workloads/CronJob")),
+        "custom-group" => Some((
+            "custom-group:argoproj.io",
+            "custom-group:helm.toolkit.fluxcd.io",
+            "custom-kind:argoproj.io/v1alpha1:ApplicationSet",
+        )),
+        _ => None,
+    }
+}
+
 /// The id the target's transition reports under: the `eased` id, the sliding
-/// indicator's id, or the id of the element a `hover_fill` fills.
+/// indicator's id, the id of the element a `hover_fill` fills, or a fold's path.
 fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &str) -> ElementId {
     let id = match target {
         "switch" => format!("switch-thumb:{SETTING}"),
@@ -281,6 +390,8 @@ fn transition(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, target: &st
         }
         "button" => "edit-draft".into(),
         "chevron" => "chevron:Workloads".into(),
+        "branch" => "fold:Workloads".into(),
+        "custom-group" => "fold:custom-group:argoproj.io".into(),
         other => panic!("unknown motion target {other}"),
     };
     ElementId::Name(id.into())

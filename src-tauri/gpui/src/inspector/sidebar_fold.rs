@@ -1,0 +1,460 @@
+//! Sidebar branches open and close by height, as the `slide` transition on the
+//! child list in `SidebarTreeNode.svelte` does on the web: the rows of a branch
+//! the user toggled are revealed from the top over the control transition.
+//!
+//! The tree stays a flat list of rows. While a branch folds, each of its rows
+//! shows the part of its height the fold has reached, and rows past that are
+//! left out. Only a toggle starts a fold. Any other change of a branch's state,
+//! such as "Collapse all" on a branch folding open, ends it at once. A branch
+//! already folding closed has no change to end, so it folds on, as the web's
+//! running outro does. A folding branch's rows take no clicks and are no tab
+//! stops, as the web's sliding list is inert. Time comes from the executor
+//! clock, so test drivers move it. A frame asks for the next one only while a
+//! fold runs. Reduced motion starts none, and neither does a test driver that
+//! asked for `Moving::set_instant_layout`.
+use crate::control_motion::{self, Moving};
+use gpui_kit::{AnyElement, App, ElementId, div, prelude::*, px};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::time::Instant;
+
+/// One run toward open or closed.
+struct Track {
+    open: bool,
+    /// The shown share when the run started: 0 is closed and 1 is open.
+    from: f32,
+    start: Instant,
+    /// A closing run's height in pixels, measured on its first frame. A child
+    /// that opens inside the branch then cannot grow it while it closes. An
+    /// opening run follows its rows' height instead, which only grows it, so
+    /// it ends at the height its rows reach.
+    height: Option<f32>,
+    /// The pixels the branch showed on the last frame.
+    shown: Option<f32>,
+    /// The pixels the branch showed when the user turned it back. The run's
+    /// first frame moves `from` to their share of the rows that frame lays
+    /// out, so the branch turns from where it is, and the run cannot end
+    /// before that frame: a child may have grown the rows since `from` was
+    /// taken, which leaves the turned run longer than `from` says.
+    turned: Option<f32>,
+    /// Whether this frame rendered the branch.
+    seen: bool,
+}
+
+impl Track {
+    /// The shown share at `now` and whether the run still moves. A run that
+    /// starts part way, because the user toggled again, covers the share that
+    /// is left in the same share of the duration.
+    fn at(&self, now: Instant) -> (f32, bool) {
+        let target = if self.open { 1. } else { 0. };
+        let run = control_motion::DURATION.mul_f32((target - self.from).abs());
+        let elapsed = now.saturating_duration_since(self.start);
+        if elapsed >= run {
+            return (target, false);
+        }
+        let t = elapsed.as_secs_f32() / run.as_secs_f32();
+        (
+            self.from + (target - self.from) * control_motion::curve(t),
+            true,
+        )
+    }
+}
+
+/// The branches that are folding, by path.
+#[derive(Default)]
+pub(super) struct Folds {
+    tracks: RefCell<HashMap<String, Track>>,
+}
+
+impl Folds {
+    /// Starts the fold of the branch at `path`, which the user toggled to `open`.
+    pub(super) fn start(&self, path: &str, open: bool, cx: &App) {
+        let mut tracks = self.tracks.borrow_mut();
+        if cx.reduce_motion() || Moving::instant_layout(cx) {
+            tracks.remove(path);
+            return;
+        }
+        let now = cx.background_executor().now();
+        let (from, turned) = tracks
+            .get(path)
+            .map_or((if open { 0. } else { 1. }, None), |track| {
+                // A run turned back again before it drew keeps the pixels the
+                // branch last showed.
+                (track.at(now).0, track.shown.or(track.turned))
+            });
+        tracks.insert(
+            path.to_owned(),
+            Track {
+                open,
+                from,
+                start: now,
+                height: None,
+                shown: None,
+                turned,
+                seen: true,
+            },
+        );
+    }
+
+    /// The pixels the folding branch at `path` shows at `now`, whose rows lay
+    /// out `measured` high this frame, and which showed `turned` pixels when
+    /// the user turned it back before this frame.
+    fn reached(&self, path: &str, measured: f32, now: Instant, turned: Option<f32>) -> f32 {
+        let mut tracks = self.tracks.borrow_mut();
+        let Some(track) = tracks.get_mut(path) else {
+            return measured;
+        };
+        if let Some(turned) = turned
+            && measured > 0.
+        {
+            track.from = (turned / measured).clamp(0., 1.);
+        }
+        let height = if track.open {
+            measured
+        } else {
+            *track.height.get_or_insert(measured)
+        };
+        // Whole pixels, so the rows below the branch stay on the pixel grid.
+        let shown = (height * track.at(now).0).round();
+        track.shown = Some(shown);
+        shown
+    }
+
+    /// Whether the branch at `path` is folding.
+    pub(super) fn folding(&self, path: &str) -> bool {
+        self.tracks.borrow().contains_key(path)
+    }
+
+    /// Whether a branch above the tree row at `path` folds this frame. A branch
+    /// decides that before it builds its rows.
+    pub(super) fn holds(&self, path: &str) -> bool {
+        let tracks = self.tracks.borrow();
+        path.match_indices('/')
+            .any(|(at, _)| tracks.contains_key(&path[..at]))
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.tracks.borrow().is_empty()
+    }
+
+    /// Whether a branch of the namespace tree is folding, which needs every
+    /// namespace row built. The other branches key their folds with a `<kind>:`
+    /// prefix, such as `gitops:`, and no namespace or tree path holds a colon.
+    pub(super) fn tree_folding(&self) -> bool {
+        self.tracks.borrow().keys().any(|path| !path.contains(':'))
+    }
+
+    /// How the branch at `path` shows its rows this frame: `None` when it is
+    /// closed and its fold has ended, so the caller builds no rows for it.
+    /// Tests read a running fold's share under `fold:<path>`.
+    pub(super) fn branch(&self, path: &str, open: bool, cx: &mut App) -> Option<Fold<'_>> {
+        let mut tracks = self.tracks.borrow_mut();
+        let settled = open.then_some(Fold(None));
+        let Some(track) = tracks.get_mut(path) else {
+            return settled;
+        };
+        let now = cx.background_executor().now();
+        let (share, running) = track.at(now);
+        // Taken here, so that only this frame's rows rescale the turn.
+        let turned = track.turned.take();
+        // Reduced motion turned on during a fold ends it, as it does any transition.
+        if track.open != open
+            || (!running && turned.is_none())
+            || Moving::finishing(cx)
+            || cx.reduce_motion()
+        {
+            tracks.remove(path);
+            return settled;
+        }
+        track.seen = true;
+        Moving::record(&ElementId::Name(format!("fold:{path}").into()), share, cx);
+        Some(Fold(Some(Running {
+            now,
+            path: path.to_owned(),
+            turned,
+            folds: self,
+        })))
+    }
+
+    /// Forgets folds whose branch did not render, and reports whether a fold
+    /// needs another frame.
+    pub(super) fn end_frame(&self) -> bool {
+        let mut tracks = self.tracks.borrow_mut();
+        tracks.retain(|_, track| std::mem::take(&mut track.seen));
+        !tracks.is_empty()
+    }
+}
+
+/// A branch that shows rows this frame, and its run if it is folding.
+pub(super) struct Fold<'a>(Option<Running<'a>>);
+
+struct Running<'a> {
+    /// The frame's time.
+    now: Instant,
+    path: String,
+    /// `Track::turned`, on the run's first frame.
+    turned: Option<f32>,
+    folds: &'a Folds,
+}
+
+impl Fold<'_> {
+    /// The branch's `rows` cut to the height the fold has reached, and inert
+    /// while it folds.
+    pub(super) fn clip<T: Folded>(self, mut rows: Vec<T>) -> Vec<T> {
+        let Some(run) = self.0 else {
+            return rows;
+        };
+        let measured: f32 = rows.iter_mut().map(|row| *row.shown()).sum();
+        let mut left = run.folds.reached(&run.path, measured, run.now, run.turned);
+        rows.retain_mut(|row| {
+            row.make_inert();
+            let height = row.shown();
+            *height = height.min(left);
+            left -= *height;
+            *height > 0.
+        });
+        rows
+    }
+}
+
+/// A row that a folding branch cuts and makes inert.
+pub(super) trait Folded {
+    /// The height the row shows, which an inner fold may already have cut.
+    fn shown(&mut self) -> &mut f32;
+    /// Keeps the row from taking clicks and focus while its branch folds.
+    fn make_inert(&mut self);
+}
+
+/// A sidebar row and the height it shows.
+pub(super) struct Row {
+    element: AnyElement,
+    height: f32,
+    shown: f32,
+    inert: bool,
+}
+
+impl Row {
+    /// `element`, which lays out `height` high.
+    pub(super) fn new(element: AnyElement, height: f32) -> Self {
+        Self {
+            element,
+            height,
+            shown: height,
+            inert: false,
+        }
+    }
+
+    pub(super) fn into_element(self) -> AnyElement {
+        let row = if self.inert {
+            inert(self.element)
+        } else {
+            self.element
+        };
+        cut(row, self.height, self.shown)
+    }
+}
+
+impl Folded for Row {
+    fn shown(&mut self) -> &mut f32 {
+        &mut self.shown
+    }
+
+    fn make_inert(&mut self) {
+        self.inert = true;
+    }
+}
+
+/// `row` under a cover that takes the pointer's clicks and hover, though not
+/// its scrolling.
+pub(super) fn inert(row: AnyElement) -> AnyElement {
+    div()
+        .relative()
+        .flex_none()
+        .child(row)
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .block_mouse_except_scroll(),
+        )
+        .into_any_element()
+}
+
+/// `row`, which lays out `height` high, showing its top `shown` pixels.
+pub(super) fn cut(row: AnyElement, height: f32, shown: f32) -> AnyElement {
+    if shown >= height {
+        return row;
+    }
+    div()
+        .flex_none()
+        .h(px(shown))
+        .overflow_hidden()
+        .child(row)
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    //! Failure modes of a fold with a child folding inside it:
+    //! - a closing branch sized from its rows on every frame grows while a
+    //!   child opens, so the rows below it move down before they move up;
+    //! - a branch turned back mid-fold jumps at the turn, or reopens to a
+    //!   height measured before its child opened and then jumps at the end;
+    //! - a branch turned back whose first frame comes late ends its run at once,
+    //!   timed from the share of rows its child has grown since;
+    //! - a branch turned back twice between two frames jumps, having lost the
+    //!   pixels it showed.
+    use super::*;
+    use gpui_kit::TestAppContext;
+
+    /// A row's shown height.
+    impl Folded for f32 {
+        fn shown(&mut self) -> &mut f32 {
+            self
+        }
+
+        fn make_inert(&mut self) {}
+    }
+
+    /// `sidebar_tree::ROW_HEIGHT`.
+    const ROW: f32 = 26.;
+    /// Ten-millisecond frames, so the first frames of a run are seen.
+    const FRAMES: u32 = 15;
+
+    /// The height a namespace branch, toggled to `open`, shows this frame:
+    /// four group rows, the first of which, Workloads, holds seven kind rows.
+    fn namespace(folds: &Folds, open: bool, cx: &mut TestAppContext) -> f32 {
+        cx.update(|cx| {
+            let kinds = folds
+                .branch("ns/Workloads", true, cx)
+                .map_or(Vec::new(), |fold| fold.clip(vec![ROW; 7]));
+            let mut rows = vec![ROW];
+            rows.extend(kinds);
+            rows.extend([ROW; 3]);
+            let shown = folds
+                .branch("ns", open, cx)
+                .map_or(0., |fold| fold.clip(rows).iter().sum());
+            folds.end_frame();
+            shown
+        })
+    }
+
+    /// Opens the namespace's Workloads and closes the namespace in one frame.
+    fn close_while_a_child_opens(folds: &Folds, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            folds.start("ns/Workloads", true, cx);
+            folds.start("ns", false, cx);
+        });
+    }
+
+    fn frame(cx: &mut TestAppContext) {
+        cx.background_executor
+            .advance_clock(control_motion::DURATION / FRAMES);
+    }
+
+    #[gpui_kit::test]
+    fn a_closing_branch_does_not_grow_while_a_child_opens(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        let mut last = namespace(&folds, false, cx);
+        assert_eq!(last, 4. * ROW);
+        for _ in 0..FRAMES {
+            frame(cx);
+            let shown = namespace(&folds, false, cx);
+            assert!(
+                shown <= last,
+                "the closing branch grew from {last} to {shown}"
+            );
+            last = shown;
+        }
+        assert_eq!(last, 0.);
+    }
+
+    #[gpui_kit::test]
+    fn a_branch_turned_back_while_a_child_opens_moves_without_a_jump(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        let mut last = namespace(&folds, false, cx);
+        for _ in 0..FRAMES / 2 {
+            frame(cx);
+            last = namespace(&folds, false, cx);
+        }
+        cx.update(|cx| folds.start("ns", true, cx));
+        assert_eq!(
+            namespace(&folds, true, cx),
+            last,
+            "the branch jumped at the turn"
+        );
+        let mut steps = Vec::new();
+        while folds.folding("ns") {
+            frame(cx);
+            let shown = namespace(&folds, true, cx);
+            assert!(
+                shown >= last,
+                "the opening branch shrank from {last} to {shown}"
+            );
+            steps.push(shown - last);
+            last = shown;
+        }
+        assert_eq!(last, 11. * ROW);
+        // The frame the fold ends on moves the rows below no further than a
+        // frame of the run did.
+        let (end, run) = steps.split_last().unwrap();
+        let largest = run.iter().copied().fold(0., f32::max);
+        assert!(
+            *end <= largest,
+            "the branch jumped {end} px as its fold ended"
+        );
+    }
+
+    #[gpui_kit::test]
+    fn a_branch_turned_back_keeps_folding_when_its_first_frame_is_late(cx: &mut TestAppContext) {
+        // Frames before the turn, and how late its first frame comes. Each
+        // first frame lands after the run timed from the share the branch
+        // showed has ended, but before the run timed from its pixels over the
+        // rows that frame lays out does. The child keeps growing the rows
+        // while that frame is late, so a share taken on any earlier frame
+        // ends the run too soon.
+        for (frames, late_ms) in [(7, 120), (3, 50), (4, 80)] {
+            let folds = Folds::default();
+            close_while_a_child_opens(&folds, cx);
+            namespace(&folds, false, cx);
+            for _ in 0..frames {
+                frame(cx);
+                namespace(&folds, false, cx);
+            }
+            cx.update(|cx| folds.start("ns", true, cx));
+            cx.background_executor
+                .advance_clock(std::time::Duration::from_millis(late_ms));
+            let shown = namespace(&folds, true, cx);
+            assert!(
+                folds.folding("ns") && shown < 11. * ROW,
+                "the branch turned back after {frames} frames and drawn {late_ms} ms late \
+                 opened at once to {shown} px"
+            );
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_branch_turned_back_twice_between_frames_stays_where_it_was(cx: &mut TestAppContext) {
+        let folds = Folds::default();
+        close_while_a_child_opens(&folds, cx);
+        let mut last = namespace(&folds, false, cx);
+        for _ in 0..FRAMES / 2 {
+            frame(cx);
+            last = namespace(&folds, false, cx);
+        }
+        cx.update(|cx| {
+            folds.start("ns", true, cx);
+            folds.start("ns", false, cx);
+        });
+        assert_eq!(
+            namespace(&folds, false, cx),
+            last,
+            "the branch jumped when it was turned back twice"
+        );
+    }
+}

@@ -62,9 +62,9 @@ pub(super) struct HelmPage {
     context: String,
     /// The web's `helmContext`: the context of a release opened from another
     /// workspace context. `None` reads the workspace context.
-    pub(super) requested_context: Option<String>,
+    requested_context: Option<String>,
     /// Set by `open_helm_release`; consumed by the next successful list read.
-    pub(super) target: Option<HelmTarget>,
+    target: Option<HelmTarget>,
     load: Query<HelmReleaseList>,
     /// `helmNamespace`; `None` is All releases.
     namespace: Option<String>,
@@ -120,12 +120,18 @@ impl HelmPage {
         }
     }
 
+    pub(super) fn set_target(&mut self, target: Option<HelmTarget>) -> bool {
+        let changed = target.is_some() || self.requested_context.is_some() || self.target.is_some();
+        self.requested_context = target.as_ref().map(|target| target.context.clone());
+        self.target = target;
+        changed
+    }
+
     /// Applies a workspace's remembered release: its context and target, with
     /// no selection or namespace filter left over from the previous workspace,
     /// as the web's `HelmSurface` starts each workspace with `helmNamespace` unset.
     pub(super) fn restore(&mut self, target: Option<HelmTarget>) {
-        self.requested_context = target.as_ref().map(|target| target.context.clone());
-        self.target = target;
+        self.set_target(target);
         self.namespace = None;
         self.selected = None;
         self.details = HelmDetails::default();
@@ -276,13 +282,7 @@ impl Inspector {
     /// Opens the Helm page on the workspace context, as selecting the Helm node
     /// does in the web: a context or release opened from a resource is dropped.
     pub(super) fn open_helm(&mut self, cx: &mut Context<Self>) {
-        let page = &mut self.helm_page;
-        let changed = page.requested_context.take().is_some() | page.target.take().is_some();
-        if self.page != super::Page::Helm {
-            self.open_page(super::Page::Helm, cx);
-        } else if changed {
-            self.load_helm(cx);
-        }
+        self.open_page(super::Page::Helm, cx);
     }
 
     pub(super) fn cancel_helm_reads(&mut self) {

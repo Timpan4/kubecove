@@ -138,7 +138,7 @@ for (const verb of ["get", "list", "watch", "create", "update", "patch", "delete
 	try { rbacReviews.push({ verb, result: await client.invoke<RbacAccessReviewResult>("review_rbac_access", { request }) }); }
 	catch (error) { rbacReviews.push({ verb, error: error instanceof Error ? error.message : String(error) }); }
 }
-const sessionControls = await exportSessionControls(client, resources);
+const sessionControls = await exportSessionControls(client, contextResources);
 const argoConnected = await exportArgo(client, { base: gitops.applications, many: gitops.manyApplications, "same-name": gitops.sameNameApplications });
 const coverage = await exportCoverage(client, { helm: helm.list, rbac: rbac[clusterContext ?? "mock-dev"], incidents, topology: rustTopology, sessions: liveSessions });
 const logCases = await exportCoverageLogs(client);

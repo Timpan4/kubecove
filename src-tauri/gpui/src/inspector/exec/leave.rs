@@ -1,6 +1,6 @@
 //! `StopExecSessionsDialog.svelte` and `openExecSessions.svelte.ts`.
 use super::super::{
-    Inspector, Page,
+    Inspector, PageDestination,
     controls::{Variant, button},
     overlay_motion::Overlay,
     request::InFlight,
@@ -12,7 +12,7 @@ use kubecove_lib::models::ResourceSummary;
 
 pub(in crate::inspector) enum LeaveIntent {
     Close,
-    Page(Page),
+    Page(PageDestination),
     /// The resource and the tab `open_resource_on` asked for.
     Resource(
         Box<ResourceSummary>,
@@ -45,8 +45,16 @@ impl Inspector {
         intent: LeaveIntent,
         cx: &mut Context<Self>,
     ) -> bool {
+        self.guard_exec_leave(intent, cx).is_none()
+    }
+
+    pub(in crate::inspector) fn guard_exec_leave(
+        &mut self,
+        intent: LeaveIntent,
+        cx: &mut Context<Self>,
+    ) -> Option<LeaveIntent> {
         if !self.can_leave(cx) {
-            return true;
+            return None;
         }
         // A navigation during the stops replaces the one they run for.
         if let LeaveDialog::Stopping {
@@ -54,14 +62,14 @@ impl Inspector {
         } = &mut self.exec.leave
         {
             *pending = intent;
-            return true;
+            return None;
         }
         if self.exec.tabs.iter().any(|tab| tab.blocks_leave()) {
             self.exec.leave = LeaveDialog::Confirming(intent);
             cx.notify();
-            true
+            None
         } else {
-            false
+            Some(intent)
         }
     }
 
@@ -115,7 +123,7 @@ impl Inspector {
     fn leave_for(&mut self, intent: LeaveIntent, window: &mut Window, cx: &mut Context<Self>) {
         match intent {
             LeaveIntent::Close => self.close_detail(cx),
-            LeaveIntent::Page(page) => self.open_page(page, cx),
+            LeaveIntent::Page(destination) => self.navigate_page(destination, cx),
             LeaveIntent::Resource(resource, tab) => {
                 self.open_resource_on(*resource, tab, window, cx)
             }

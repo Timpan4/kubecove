@@ -1,69 +1,81 @@
+import { sharedActions, type WebActions } from "./web-action";
 import { isDeepStrictEqual } from "node:util";
 import type { Page } from "playwright-core";
 import { parse } from "yaml";
-import type { Step } from "./contract";
-import type { YamlEditorDiagnostic } from "./contract-steps";
+import type { YamlEditorDiagnostic } from "./contract-yaml";
 
-export async function yamlEditorAction(page: Page, step: Step) {
-	switch (step.action) {
-		case "expectYamlAbsent": {
-			const document = await yamlDocument(page);
-			for (const fragment of step.fragments) if (document.includes(fragment)) throw new Error(`Unexpected YAML field ${fragment}`);
-			break;
-		}
-		case "clickActionEntry": await page.getByRole("textbox", { name: step.label, exact: true }).locator("xpath=..").getByRole("button", { name: step.button, exact: true }).click(); break;
-		case "fillContainerImage": await page.getByRole("heading", { name: step.container, exact: true }).locator("xpath=..").getByRole("textbox", { name: "Container image", exact: true }).fill(step.value); break;
-		case "openActionEditor": await page.locator(`[data-resource-action="${step.row}"]`).getByRole("button", { name: step.row === "rollback" ? "Roll back" : "Edit", exact: true }).click(); break;
-		case "fillActionField": await page.getByRole("textbox", { name: step.label, exact: true }).fill(step.value); break;
-		case "chooseActionRevision": await page.locator(`input[name="resource-action-revision"][value="${step.revision}"]`).check(); break;
-		case "selectYamlShape": case "selectYamlEncoding":
-			await page.getByRole("combobox", { name: step.action === "selectYamlShape" ? "YAML shape" : "YAML encoding", exact: true }).click();
-			await page.getByRole("option", { name: step.value, exact: true }).click();
-			break;
-		case "expectYamlPicker": await page.getByRole("combobox", { name: step.label, exact: true }).filter({ hasText: step.value }).waitFor(); break;
-		case "replaceYamlDraft": await page.locator(".cm-content[contenteditable=true]").fill(step.value); break;
-		case "formatYaml": await page.getByRole("button", { name: /^Format \(/ }).click(); break;
-		case "expectYamlDocument":
-			if (!isDeepStrictEqual(parse(await yamlDocument(page)), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
-			break;
-		case "foldYamlLine": {
-			// The fold gutter marks a line at the same height as its line number.
-			const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });
-			// The editor mounts after its extensions load, which can follow the tab switch.
-			await number.waitFor();
-			const box = await number.boundingBox();
-			if (!box) throw new Error(`YAML line ${step.line} is not shown`);
-			const markers = page.locator(".cm-foldGutter .cm-gutterElement").filter({ visible: true });
-			for (const marker of await markers.all()) {
-				const markerBox = await marker.boundingBox();
-				if (markerBox && Math.abs(markerBox.y - box.y) < 1) {
-					await marker.locator("span").click();
-					return;
-				}
+export const yamlEditorActions = {
+	async expectYamlAbsent(page, step) {
+		const document = await yamlDocument(page);
+		for (const fragment of step.fragments) if (document.includes(fragment)) throw new Error(`Unexpected YAML field ${fragment}`);
+	},
+	async clickActionEntry(page, step) {
+		await page.getByRole("textbox", { name: step.label, exact: true }).locator("xpath=..").getByRole("button", { name: step.button, exact: true }).click();
+	},
+	async fillContainerImage(page, step) {
+		await page.getByRole("heading", { name: step.container, exact: true }).locator("xpath=..").getByRole("textbox", { name: "Container image", exact: true }).fill(step.value);
+	},
+	async openActionEditor(page, step) {
+		await page.locator(`[data-resource-action="${step.row}"]`).getByRole("button", { name: step.row === "rollback" ? "Roll back" : "Edit", exact: true }).click();
+	},
+	async fillActionField(page, step) {
+		await page.getByRole("textbox", { name: step.label, exact: true }).fill(step.value);
+	},
+	async chooseActionRevision(page, step) {
+		await page.locator(`input[name="resource-action-revision"][value="${step.revision}"]`).check();
+	},
+	...sharedActions(["selectYamlShape", "selectYamlEncoding"], async (page, step) => {
+		await page.getByRole("combobox", { name: step.action === "selectYamlShape" ? "YAML shape" : "YAML encoding", exact: true }).click();
+		await page.getByRole("option", { name: step.value, exact: true }).click();
+	}),
+	async expectYamlPicker(page, step) {
+		await page.getByRole("combobox", { name: step.label, exact: true }).filter({ hasText: step.value }).waitFor();
+	},
+	async replaceYamlDraft(page, step) {
+		await page.locator(".cm-content[contenteditable=true]").fill(step.value);
+	},
+	async formatYaml(page) {
+		await page.getByRole("button", { name: /^Format \(/ }).click();
+	},
+	async expectYamlDocument(page, step) {
+		if (!isDeepStrictEqual(parse(await yamlDocument(page)), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
+	},
+	async foldYamlLine(page, step) {
+		// The fold gutter marks a line at the same height as its line number.
+		const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });
+		// The editor mounts after its extensions load, which can follow the tab switch.
+		await number.waitFor();
+		const box = await number.boundingBox();
+		if (!box) throw new Error(`YAML line ${step.line} is not shown`);
+		const markers = page.locator(".cm-foldGutter .cm-gutterElement").filter({ visible: true });
+		for (const marker of await markers.all()) {
+			const markerBox = await marker.boundingBox();
+			if (markerBox && Math.abs(markerBox.y - box.y) < 1) {
+				await marker.locator("span").click();
+				return;
 			}
-			throw new Error(`YAML line ${step.line} has no fold marker`);
 		}
-		case "expectYamlVisibleLines": {
-			// The editor mounts after its extensions load, and a fold redraws the gutter, so wait for the lines.
-			// Visible as Playwright counts it: a nonempty box without visibility: hidden.
-			await page.waitForFunction((want) => {
-				const numbers: number[] = [];
-				for (const element of document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")) {
-					const box = element.getBoundingClientRect();
-					if (box.width > 0 && box.height > 0 && element.checkVisibility({ visibilityProperty: true })) numbers.push(Number(element.textContent));
-				}
-				return JSON.stringify(numbers) === want;
-			}, JSON.stringify(step.lines)).catch(async () => {
-				const visible = (await page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).allTextContents()).map(Number);
-				throw new Error(`Visible YAML lines ${visible.join(",")}, expected ${step.lines.join(",")}`);
-			});
-			break;
-		}
-		case "expectYamlEditorDiagnostics": await expectEditorDiagnostics(page, step.diagnostics); break;
-		default:
-			throw new Error(`unhandled YAML editor action: ${step.action}`);
-	}
-}
+		throw new Error(`YAML line ${step.line} has no fold marker`);
+	},
+	async expectYamlVisibleLines(page, step) {
+		// The editor mounts after its extensions load, and a fold redraws the gutter, so wait for the lines.
+		// Visible as Playwright counts it: a nonempty box without visibility: hidden.
+		await page.waitForFunction((want) => {
+			const numbers: number[] = [];
+			for (const element of document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")) {
+				const box = element.getBoundingClientRect();
+				if (box.width > 0 && box.height > 0 && element.checkVisibility({ visibilityProperty: true })) numbers.push(Number(element.textContent));
+			}
+			return JSON.stringify(numbers) === want;
+		}, JSON.stringify(step.lines)).catch(async () => {
+			const visible = (await page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).allTextContents()).map(Number);
+			throw new Error(`Visible YAML lines ${visible.join(",")}, expected ${step.lines.join(",")}`);
+		});
+	},
+	async expectYamlEditorDiagnostics(page, step) {
+		await expectEditorDiagnostics(page, step.diagnostics);
+	},
+} satisfies Partial<WebActions>;
 
 /**
  * The whole document of the page's one YAML editor, from the accessor `YamlCodeEditor.svelte`

@@ -32,6 +32,12 @@ const EASING: Easing = Easing::CubicBezier {
     y2: 1.,
 };
 
+/// [`EASING`] at `t` of the duration, for motion that render code samples
+/// itself instead of leaving to an element.
+pub fn curve(t: f32) -> f32 {
+    gpui_kit::base::animation::cubic_bezier(0.4, 0., 0.2, 1.)(t)
+}
+
 /// The color `t` of the way from `from` to `to`. Channels mix premultiplied, as
 /// CSS interpolates colors, so a fade from transparent keeps the target's hue.
 pub fn mix(from: Hsla, to: Hsla, t: f32) -> Hsla {
@@ -84,6 +90,8 @@ pub struct Moving {
     finish: bool,
     /// This frame ends every transition.
     finishing: bool,
+    /// A test driver asked for layout changes without motion.
+    instant_layout: bool,
     /// The state keys of the fills this frame painted. Two fills under one
     /// element id share one state and turn it back and forth without end as
     /// the pointer hovers one of them, so a debug build refuses the second.
@@ -136,7 +144,28 @@ impl Moving {
         cx.refresh_windows();
     }
 
-    fn record(id: &ElementId, value: f32, cx: &mut App) {
+    /// Makes motion that changes the layout, such as a sidebar branch
+    /// unfolding, instant, or lets it run again. A UI test driver whose steps
+    /// open a branch and use its rows in one window update turns it off,
+    /// because its clock cannot move inside that update.
+    #[doc(hidden)]
+    pub fn set_instant_layout(instant: bool, cx: &mut App) {
+        cx.default_global::<Self>().instant_layout = instant;
+    }
+
+    /// Whether a layout change shows at once, after `set_instant_layout`.
+    pub(crate) fn instant_layout(cx: &App) -> bool {
+        cx.try_global::<Self>()
+            .is_some_and(|moving| moving.instant_layout)
+    }
+
+    /// Whether this frame ends every transition, after a test driver's `finish`.
+    pub(crate) fn finishing(cx: &App) -> bool {
+        cx.try_global::<Self>()
+            .is_some_and(|moving| moving.finishing)
+    }
+
+    pub(crate) fn record(id: &ElementId, value: f32, cx: &mut App) {
         cx.default_global::<Self>()
             .progress
             .insert(id.clone(), value);
@@ -156,10 +185,7 @@ fn advance(
     window: &mut Window,
     cx: &mut App,
 ) -> f32 {
-    let jump = jump
-        || cx
-            .try_global::<Moving>()
-            .is_some_and(|moving| moving.finishing);
+    let jump = jump || Moving::finishing(cx);
     let timing = Transition::new(if jump { Duration::ZERO } else { DURATION }).easing(EASING);
     let target = if on { 1. } else { 0. };
     let moved = transition_with_status(id, target, timing, window, cx);

@@ -1,500 +1,66 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { JsonValue } from "../../src/lib/types";
 
-import { integrationStep } from "./contract-integrations";
-import { resourceTableStep } from "./contract-resources";
-import { overlayMotionStep } from "./contract-overlay-motion";
-import { overviewStep } from "./contract-overview";
-import { sessionStep } from "./contract-sessions";
-import { DETAIL_RESIZE_KEYS, LOG_LEVELS, MAP_CONTROLS, MAP_KEYS, PANEL_CONTROLS, RBAC_CATEGORIES, RBAC_RISKS, SORT_COLUMNS, type Step, TABLE_COLUMNS, VERDICTS } from "./contract-steps";
-import { boolean, count, isBoolean, isNumber, isString, object, oneOf, optionalBoolean, string, strings } from "./contract-values";
-import { yamlEditorStep } from "./contract-yaml";
+import { mergeActionMaps } from "./action-maps";
+import { coverageSteps } from "./contract-coverage";
+import { deliverySteps } from "./contract-delivery";
+import { governanceSteps } from "./contract-governance";
+import { integrationsSteps } from "./contract-integrations";
+import { overlayMotionSteps } from "./contract-overlay-motion";
+import { overviewSteps } from "./contract-overview";
+import { resourcesSteps } from "./contract-resources";
+import { sessionsSteps } from "./contract-sessions";
+import { settingsSteps } from "./contract-settings";
+import { yamlSteps } from "./contract-yaml";
+import { isString, object, string } from "./contract-values";
 
-export type { Step } from "./contract-steps";
+const parsers = mergeActionMaps(
+	coverageSteps,
+	deliverySteps,
+	governanceSteps,
+	integrationsSteps,
+	overlayMotionSteps,
+	overviewSteps,
+	resourcesSteps,
+	sessionsSteps,
+	settingsSteps,
+	yamlSteps,
+);
+
+export type Action = keyof typeof parsers;
+export type Step<ActionName extends Action = Action> = {
+	[Name in ActionName]: { action: Name } & ReturnType<(typeof parsers)[Name]>;
+}[ActionName];
 export type Scenario = { id: string; title: string; steps: Step[] };
 export type Contract = { scenarios: Scenario[] };
 
-/** Every action both drivers must implement; `contract.test.ts` checks each driver handles each one. */
-export const ACTIONS = [
-    "overviewHealth", "overviewNamespace", "expectOverviewProblem", "openOverviewProblem", "toggleOverviewProblem", "expectNoOverviewProblem",
-    "expectOverviewShortcuts", "overviewShortcut", "expectActivePage", "expectGitOpsSelection",
-    "expectOverviewScope", "expectCompareTotal",
-    "retryOverview", "expectOverviewRetry",
-    "dragKind",
-    "expectEmptyLauncher", "expectEntryCount", "startWithoutWorkspace", "expectNoWorkspaceShell", "expectPaletteUnavailable",
-    "copyErrorDetail",
-    "expectForegroundLoading", "expectMotion", "setReducedMotion", "expectFriendlyError", "inspectRequiredPermission", "expectPermissionTarget", "returnToSource",
-    "copyResourceName", "expectCopyToast", "dismissCopyToast",
-    "toggleResourcePin", "expectWorkspaceEntry", "openWorkspaceEntry",
-    "reorderKindKey", "resetKindOrder", "expectRemoteHost", "expectRemoteHostTooltip", "expectNoRemoteHost", "dropRemoteConnection",
-    "remoteSessionSignal", "expectRemoteNotice", "expectNoRemoteNotice", "clickRemoteNoticeButton",
-    "configureShellRead", "retryLauncher", "expectLauncherRetry",
-    "overviewOperation", "reviewIncidentAction",
-    "expectTopologyDenied", "expectWatchStart",
-    "mockTiming",
-    "coverageSelect",
-    "coverageCopy",
-    "coverageScript",
-    "coverageCheck",
-    "coverageClick", "coverageFill", "coverageText", "paletteKey", "expectPaletteOpen", "deleteSavedWorkspace", "importDecision", "cancelImport", "searchEvents",
-    "terminalFit",
-    "openNamespaceList", "expectNamespaceRow", "resizeViewport", "openNavigationDrawer", "expectNavigationDrawer", "sidebarKey",
-    "terminalOutput", "terminalSelect", "terminalCopy", "terminalPaste", "terminalScroll", "terminalPrimaryPaste", "terminalDragOutside", "terminalRelease", "terminalFocus", "terminalRightClick", "expectTerminalCursor",
-    "configureArgoMock", "argoControl", "focusArgoResource", "expectNoSavedArgoProfile", "ageArgoProfileId", "copyArgoValue", "configureArgoInventory", "expandArgoDiff", "reconnectArgoProfile", "argoProfileSignIn", "controlClock", "advanceClock",
-    "failWorkspaceContext", "expectWorkspaceReadWarning", "holdWorkspaceContext", "releaseWorkspaceContext", "expectContextsLoading",
-    "editSavedWorkspace", "expectNoSavedWorkspace", "saveWorkspace", "cancelWorkspaceEdit", "toggleWorkspaceContext", "chooseClusterContext", "expectOverviewHealth", "expectDetailContext",
-    "sidebarToggle", "sidebarSelect", "expectSidebarRow", "collapseSidebar", "expectSidebarBranch", "scrollSidebar", "expectSidebarReveal", "refreshPage",
-    "replayPageReads", "focusStalePage", "expectPageText",
-    "toggleDetailDisclosure", "expectNoPageText",
-    "searchCustomKinds", "searchKindPicker", "expectCustomGroup", "toggleKind", "openKindPicker", "closeKindPicker", "selectAllKinds", "expectKindChecked",
-    "openNamespacePicker", "closeNamespacePicker", "selectAllNamespaces", "clearResourceFilters", "searchNamespacePicker", "toggleNamespace", "expectNamespaceChecked", "expectNamespaceTrigger",
-    "selectHealthFilter", "expectHealthFilter", "chooseGitOpsOwner", "setHistoricalReplicaSets",
-    "fillMcpPort", "mcpControl", "expectMcpState", "expectMcpCopy", "expectMcpRequests", "configureMcpSettingsFile", "expectMcpLoadError",
-    "selectArgoPreference", "expectSavedArgoProfile", "configureArgoSync", "selectArgoHistory", "expectArgoWorkspaceTransport", "completeArgoOperation", "confirmArgoTunnel",
-    "connectArgoProfile", "disconnectArgoProfile", "confirmArgoReview", "cancelArgoReview", "reviewArgoOperation", "expectArgoReview", "expectArgoText", "expectArgoPolicy", "argoDocument", "expectArgoPopover", "dismissArgoPopover", "expectArgoCheckbox", "toggleArgoOption", "expectNoArgoControl", "expectArgoFocusInPopover", "tabArgoPopover", "expectArgoTriggerFocus", "expectArgoOptionFocusable","expectArgoOperationState","selectArgoConnection","argoConnectionDialog","fillArgoConnectionField","expectArgoConnectionField",
-    "cancelYamlEdit",
-    "revealSecretValue", "hideSecretValue", "expectSecretValue", "expectYamlLens", "refreshLatencyReport", "clearLatencyReport", "expectLatencyEmpty", "expectLatencyTiming", "openDocumentation", "expectDocumentationRequest", "copyLatencyReport", "expectLatencyReportCopy", "updateStatusControl", "expectUpdateControl",
-    "expectViewTiming", "copyInteractions", "clearInteractions", "expectInteractionCopy", "typeSettingsField",
-    "runTopologySpike", "expectTopologySpikeText",
-    "configurePreset", "presetControl",
-    "replaySessions", "confirmExecLeave",
-    "configureForward", "forwardControl", "expectForwardState", "expectForwardNotice","execControl", "expectExecState",
-    "expectWorkspaceExport", "exportSavedWorkspace", "expectExportedShortcut",
-    "expectAccessibleName", "fillSettingsField", "clickSettingsButton", "clickKubeconfigPathButton", "expectKubeconfigPathBefore", "addPastedKubeconfigPaths", "fillKubeconfigPathDraft", "expectKubeconfigPathDraft", "expectSettingsText", "expectNoSettingsText", "expectRuntimeEndpoint", "expectMaskedToken", "reopenStoredSettings", "configureSettingsMock",
-	"expectLiveState", "expectLiveMenu", "replayLiveData", "expectResourceStatus", "openCustomKind",
-	"selectTopologyNode", "expectTopologyEmpty", "expectUsageFooter", "openUsageTree", "expectNoUsageFooter", "expectUsageProcess", "setTopologyMode", "selectNamespace", "expectTopology", "expectTopologyEdge", "expectTopologyEdgeMotion", "setWindowActive", "expectNoTopologyNode", "expectResourceMetrics", "expectMetricsCard",
-	"expectYamlAbsent",
-	"expectYamlEditorDiagnostics",
-	"clickActionEntry",
-	"fillContainerImage",
-	"openActionEditor", "fillActionField", "chooseActionRevision", "selectYamlShape", "selectYamlEncoding", "replaceYamlDraft", "expectYamlDocument", "expectYamlPicker", "formatYaml", "foldYamlLine", "expectYamlVisibleLines",
-	"openResources", "showYaml", "closeDetail", "expectDetailClosed", "expectEmpty", "refresh", "search", "expectSearch",
-	"expectResource", "openResource", "expectDetail", "expectDetailTab", "expectClusterResource", "expectNoClusterResource", "expectYaml", "openPage", "showTab", "filterEvents",
-	"expectDetailScroll", "expectEvent", "expectEventCount", "expectLiveSessionCount", "filterIncidents", "expectIncidentGuide", "openIncidentResources", "expectGitOpsCount", "expectPortForward",
-	"expectLogLines", "expectLogToolbarFit", "filterLogs", "toggleLogLevel", "expectLogsEmpty", "selectRevision", "expectRevisionDiff", "reviewAction", "editReplicas",
-	"toggleLogRow", "toggleLogExpandAll", "expectLogRowOpen", "copyLogLine", "expectLogTimestampTooltip", "expectRestorePrompt", "restorePromptControl",
-	"expectReview", "showReviewDiff", "expectDeleteReview", "executeReview", "closeReview", "expectNoReview", "expectActionResult", "expectNoActionResult",
-	"editYaml", "applyYaml", "dryRunYaml", "expectDryRun", "expectYamlNotice", "expectNoYamlNotice", "expectYamlReadOnly",
-	"expectNoResource", "openLauncher", "openSavedWorkspace", "expectSavedWorkspace", "expectContextUnavailable", "nameWorkspace", "selectWorkspaceContext", "toggleWorkspaceNamespace",
-	"createWorkspace", "expectOpenWorkspace", "selectRbacCategory", "expectRbacCategory", "filterRbacRisk", "expectRbacItem", "expectNoRbacItem", "selectRbacItem",
-	"investigateRbacSubject", "expectRbacIdentity", "expectRbacGrant", "expectNoRbacGrant", "verifyRbacAccess", "expectRbacVerdict", "openSettings", "closeSettings",
-	"showSettingsSection", "searchSettings", "expectSettingsHeading", "expectSettingRow", "expectNoSettingRow", "expectSettingsEmpty", "setKubeconfigEnvVar",
-	"expectKubeconfigEnvVar", "addServerKubeconfigPath", "moveResourceKindEarlier", "expectResourceKindPosition", "expectDeliveryView", "restartClient", "toggleSetting", "expectSetting", "selectSettingOption", "expectSettingOption", "openPalette", "searchPalette", "expectPaletteResource", "expectNoPaletteResource",
-	"choosePaletteResource", "expectPaletteEntry", "expectNoPaletteEntry", "choosePaletteEntry",
-	"editRbacReviewNote", "expectRbacReviewNote", "saveRbacReview", "expectRbacReview", "clearRbacReview",
-	"openGitOps", "expandNav", "expectGitOpsTable", "expectGitOpsItem", "expectNoGitOpsItem", "openGitOpsDetails", "expectGitOpsGroup", "toggleGitOpsGroup", "expectArgoApplication",
-	"expectArgoSignal", "expectHelmCount", "expectHelmRelease", "expectNoHelmRelease", "openHelmRelease", "selectHelmNamespace", "searchHelm",
-	"expectHelmDetails", "expectHelmContext", "openGitOpsResources", "expectArgoWorkspace", "filterArgoResources", "setDeliveryView",
-    "sortResourceTable", "pressResourceRow", "expectResourceOrder", "toggleResourceGroup", "expectResourceGroup", "openResourceRow", "expectResourceCell", "expectResourceCellFits", "expectResourceColumns", "expectResourceActivity",
-	"clickDetailControl",
-	"openLiveSessionPopover", "expectLiveSessionRow", "liveSessionControl", "expectHealthTooltip", "expectTimestampTooltip", "expectEventTimeTooltip",
-    "panelControl", "expectPanelControl", "skipGraph", "mapKey", "expectMapFocus", "expectNoMapFocus", "expectMapNodeInView", "panMap", "clickMapControl", "expectMapControlFocus", "expectMapZoom", "resizeDetail", "expectDetailResize",
-	"expectYamlDiagnostic", "expectNoYamlDiagnostic", "expectYamlApplyDescription", "expectNoYamlApplyDescription", "expectActionLoadError", "expectNoActionLoadError", "retryActionPermission", "expectActionLock",
-	"expectRowContexts", "filterContexts", "expectResourceSummary", "selectMapContext", "expectMapContext", "mapContextKey", "expectMapContextOptions", "terminalKey",
-	"holdOverlayMotion", "advanceOverlayMotion", "expectOverlayOpacity", "expectNoOverlay",
-] as const satisfies readonly Step["action"][];
-type Missing = Exclude<Step["action"], (typeof ACTIONS)[number]>;
-const allActionsListed: Missing extends never ? true : Missing = true;
-void allActionsListed;
-
-function step<Value>(value: Value): Step {
-	const item = object(value);
-	const areaStep = integrationStep(item) ?? sessionStep(item) ?? resourceTableStep(item) ?? yamlEditorStep(item) ?? overviewStep(item) ?? overlayMotionStep(item);
-	if (areaStep) return areaStep;
-	switch (item.action) {
-        case "sidebarToggle": case "sidebarSelect": return { action: item.action, path: strings(item.path, false) };
-        case "expectSidebarRow": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), selected: boolean(item.selected) };
-        case "collapseSidebar": return { action: item.action };
-        case "expectSidebarBranch": return { action: item.action, page: string(item.page), expanded: boolean(item.expanded) };
-        case "scrollSidebar": return { action: item.action, to: oneOf(["top", "bottom"], item.to, "a sidebar scroll target") };
-        case "expectSidebarReveal": return { action: item.action, path: strings(item.path, false), visible: boolean(item.visible), highlighted: boolean(item.highlighted) };
-        case "expectEmptyLauncher": case "startWithoutWorkspace": case "expectNoWorkspaceShell": case "expectPaletteUnavailable": return { action: item.action };
-        case "expectOverviewShortcuts": return { action: item.action, labels: strings(item.labels, true) };
-        case "overviewShortcut": return { action: item.action, label: string(item.label) };
-        case "expectActivePage": return { action: item.action, page: string(item.page) };
-        case "expectGitOpsSelection": {
-            const selection: Extract<Step, { action: "expectGitOpsSelection" }> = { action: item.action, name: string(item.name) };
-            if (item.namespace !== undefined) selection.namespace = string(item.namespace);
-            return selection;
-        }
-        case "expectOverviewScope": return { action: item.action, labels: strings(item.labels, false) };
-        case "expectCompareTotal": return { action: item.action, title: string(item.title), side: string(item.side), total: count(item.total) };
-        case "retryOverview": case "expectOverviewRetry": return { action: item.action };
-        case "dragKind": return { action: item.action, kind: string(item.kind), target: string(item.target) };
-        case "expectEntryCount": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), count: count(item.count) };
-        case "copyErrorDetail": return { action: item.action, error: oneOf(["contexts", "namespaces", "details"], item.error, "an error panel"), expected: string(item.expected) };
-        case "expectForegroundLoading": {
-            const bar: Extract<Step, { action: "expectForegroundLoading" }> = { action: item.action, active: boolean(item.active) };
-            const sliding = optionalBoolean(item.sliding);
-            if (sliding !== undefined) bar.sliding = sliding;
-            return bar;
-        }
-        case "expectMotion": return { action: item.action, moving: boolean(item.moving) };
-        case "setReducedMotion": return { action: item.action, reduce: boolean(item.reduce) };
-        case "expectFriendlyError": {
-            const friendly: Extract<Step, { action: "expectFriendlyError" }> = { action: item.action, title: string(item.title) };
-            if (item.next !== undefined) friendly.next = string(item.next);
-            if (item.summary !== undefined) friendly.summary = string(item.summary);
-            return friendly;
-        }
-        case "inspectRequiredPermission": case "returnToSource": case "dismissCopyToast": return { action: item.action };
-        case "expectPermissionTarget": return { action: item.action, verb: string(item.verb), resource: string(item.resource) };
-        case "copyResourceName": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name) };
-        case "expectCopyToast": return { action: item.action, text: string(item.text) };
-        case "toggleResourcePin": {
-            const pin: Extract<Step, { action: "toggleResourcePin" }> = { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
-            if (item.context !== undefined) pin.context = string(item.context);
-            if (item.key !== undefined) pin.key = oneOf(["Enter", "Space"] as const, item.key, "a pin key");
-            return pin;
-        }
-        case "expectWorkspaceEntry": case "openWorkspaceEntry": return { action: item.action, panel: oneOf(["Pinned", "Recent"], item.panel, "an entry panel"), label: string(item.label), index: count(item.index), count: count(item.count) };
-        case "reorderKindKey": return { action: item.action, kind: string(item.kind), key: oneOf(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], item.key, "a reorder key") };
-        case "resetKindOrder": return { action: item.action };
-        case "configureShellRead": return { action: item.action, phase: oneOf(["ready", "contexts-failed", "contexts-empty", "namespaces-failed", "namespaces-credential-failed", "namespaces-empty", "resources-failed", "primary-context-missing", "kind-missing", "payments-api-removed", "payments-deployments-forbidden", "payments-ingress-version-changed", "sources-failed", "overview-owner-chain", "overview-many"], item.phase, "a shell read phase") };
-        case "openNamespaceList": case "openNavigationDrawer": return { action: item.action };
-        case "expectNamespaceRow": return { action: item.action, name: string(item.name), age: string(item.age) };
-        case "resizeViewport": return { action: item.action, width: count(item.width), height: count(item.height) };
-        case "expectNavigationDrawer":
-            if (!isBoolean(item.open)) throw new Error("Expected drawer state");
-            return { action: item.action, open: item.open };
-        case "sidebarKey": return { action: item.action, path: strings(item.path, false), key: oneOf(["Enter", "Space", "ArrowLeft", "ArrowRight"], item.key, "a sidebar key") };
-        case "retryLauncher": return { action: item.action, read: oneOf(["contexts", "namespaces"], item.read, "a launcher read") };
-        case "expectLauncherRetry": {
-            const read = oneOf(["contexts", "namespaces"], item.read, "a launcher read");
-            return item.height === undefined ? { action: item.action, read } : { action: item.action, read, height: count(item.height) };
-        }
-        case "overviewOperation": return { action: item.action, destination: oneOf(["Resources", "Workspaces", "Port Forwards", "Incidents"], item.destination, "an overview operation") };
-        case "reviewIncidentAction": return { action: item.action, index: count(item.index) };
-        case "expectTopologyDenied": return { action: item.action };
-        case "expectWatchStart": return { action: item.action, kind: string(item.kind), resourceVersion: item.resourceVersion === null ? null : string(item.resourceVersion) };
-        case "mockTiming": {
-            const control = object(item.control);
-            const timing: import("../../src/lib/tauri-dev-mock-timing").TimingControl = {
-                operation: oneOf(["hold", "dirty", "contend", "release", "fail", "failOnce", "expectRequests", "expectPending", "expectNoRetry", "expectNoError"], control.operation, "a timing operation"),
-                command: string(control.command), context: control.context === "" ? "" : string(control.context),
-            };
-            if (control.kind !== undefined) timing.kind = string(control.kind);
-            if (control.namespace !== undefined) timing.namespace = string(control.namespace);
-            if (control.count !== undefined) timing.count = count(control.count);
-            return { action: item.action, control: timing };
-        }
-        case "coverageSelect": return { action: item.action, label: string(item.label), value: string(item.value) };
-        case "coverageCopy": return { action: item.action, label: string(item.label), text: string(item.text), match: oneOf(["contains", "exact"], item.match, "a clipboard match") };
-        case "coverageScript": return { action: item.action, script: oneOf(["base", "loading", "failed", "empty", "partial", "many", "conflict", "logs-empty", "logs-failed", "logs-options", "logs-long", "logs-stream", "startup-failed", "foreign", "detail-loading", "enrichment-failed", "enrichment-loading", "attention-only", "stop-failed", "stop-pending"], item.script, "a coverage script") };
-        case "coverageCheck": return { action: item.action, check: string(item.check) };
-        case "coverageClick": return { action: item.action, label: string(item.label) };
-        case "coverageFill": return { action: item.action, label: string(item.label), value: item.value === "" ? "" : string(item.value) };
-        case "coverageText": return { action: item.action, text: string(item.text), visible: boolean(item.visible) };
-        case "paletteKey": return { action: item.action, key: oneOf(["ArrowDown", "ArrowUp", "Enter", "Escape"], item.key, "a palette key") };
-        case "expectPaletteOpen": return { action: item.action, open: boolean(item.open) };
-        case "deleteSavedWorkspace": return { action: item.action, name: string(item.name) };
-        case "importDecision": return { action: item.action, choice: oneOf(["Add as new", "Replace", "Skip"], item.choice, "an import decision") };
-        case "cancelImport": return { action: item.action };
-        case "searchEvents": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-        case "failWorkspaceContext": case "expectWorkspaceReadWarning": case "holdWorkspaceContext": case "releaseWorkspaceContext": return { action: item.action, context: string(item.context) };
-        case "expectContextsLoading": return { action: item.action, contexts: strings(item.contexts, true) };
-        case "editSavedWorkspace": case "expectNoSavedWorkspace": return { action: item.action, name: string(item.name) };
-        case "saveWorkspace": case "cancelWorkspaceEdit": return { action: item.action };
-        case "toggleWorkspaceContext": case "chooseClusterContext": case "expectDetailContext": return { action: item.action, context: string(item.context) };
-        case "expectOverviewHealth": return { action: item.action, total: count(item.total) };
-        case "refreshPage": return { action: item.action, page: oneOf(["RBAC", "Incidents"], item.page, "a refresh button page") };
-        case "replayPageReads": return { action: item.action, phase: oneOf(["base", "updated", "failed"], item.phase, "a page read phase") };
-        case "focusStalePage": return { action: item.action, page: oneOf(["GitOps", "Helm", "RBAC", "Incidents"], item.page, "a refreshing page") };
-        case "expectPageText": return { action: item.action, text: string(item.text) };
-        case "toggleDetailDisclosure": return { action: item.action, label: string(item.label) };
-        case "expectNoPageText": return { action: item.action, text: string(item.text) };
-        case "controlClock": return { action: item.action };
-        case "advanceClock": return { action: item.action, ms: count(item.ms) };
-        case "clickDetailControl": return { action: item.action, label: string(item.label) };
-        case "cancelYamlEdit": return { action: item.action };
-        case "revealSecretValue": case "hideSecretValue": case "refreshLatencyReport": case "clearLatencyReport": case "expectLatencyEmpty": case "openDocumentation": return { action: item.action };
-        case "expectSecretValue":
-            if (!isBoolean(item.visible)) throw new Error("Expected Secret visibility");
-            return { action: item.action, visible: item.visible };
-        case "expectYamlLens": {
-            const lens: Extract<Step, { action: "expectYamlLens" }> = { action: item.action, line: count(item.line) };
-            if (item.marked !== undefined) lens.marked = string(item.marked);
-            return lens;
-        }
-        case "expectYamlDiagnostic":
-            if (item.severity !== "error" && item.severity !== "warning" && item.severity !== "info") throw new Error("Expected a diagnostic severity");
-            return { action: item.action, severity: item.severity, source: string(item.source), message: string(item.message), path: string(item.path) };
-        case "expectNoYamlDiagnostic": return { action: item.action, message: string(item.message) };
-        case "expectYamlApplyDescription": return { action: item.action, text: string(item.text) };
-        case "expectNoYamlApplyDescription": return { action: item.action };
-        case "expectActionLoadError": return { action: item.action, text: string(item.text) };
-        case "expectNoActionLoadError": case "retryActionPermission": return { action: item.action };
-        case "expectActionLock": {
-            if (!isBoolean(item.locked)) throw new Error("Expected a lock state");
-            const lock: Extract<Step, { action: "expectActionLock" }> = { action: item.action, row: string(item.row), locked: item.locked };
-            if (item.reason !== undefined) lock.reason = string(item.reason);
-            return lock;
-        }
-        case "expectLatencyTiming": return { action: item.action, command: string(item.command) };
-        case "copyLatencyReport": return { action: item.action };
-        case "expectLatencyReportCopy": return { action: item.action, contains: string(item.contains) };
-        case "expectViewTiming": return { action: item.action, view: oneOf(["resources"], item.view, "a timed view") };
-        case "copyInteractions": case "clearInteractions": return { action: item.action };
-        case "runTopologySpike": return { action: item.action };
-        case "expectTopologySpikeText": return { action: item.action, value: string(item.value) };
-        case "expectInteractionCopy": {
-            if (item.contains === undefined && item.excludes === undefined && item.succeededCommand === undefined) {
-                throw new Error("Expected contains, excludes or succeededCommand");
-            }
-            const copy: Extract<Step, { action: "expectInteractionCopy" }> = { action: item.action };
-            if (item.contains !== undefined) copy.contains = string(item.contains);
-            if (item.excludes !== undefined) copy.excludes = string(item.excludes);
-            if (item.succeededCommand !== undefined) copy.succeededCommand = string(item.succeededCommand);
-            return copy;
-        }
-        case "typeSettingsField": return { action: item.action, field: oneOf(["Server token"], item.field, "a typed settings field"), value: string(item.value) };
-        case "expectUpdateControl": return { action: item.action, label: oneOf(["Check for updates", "Update available", "Checking for updates", "Update check failed", "Downloading update", "Restart to finish update"] as const, item.label, "an update control label") };
-        case "updateStatusControl": return { action: item.action, control: oneOf(["Open", "Check", "Later", "Install", "Relaunch", "Escape"], item.control, "an update control") };
-        case "expectDocumentationRequest": return { action: item.action, url: string(item.url) };
-        case "fillSettingsField": return { action: item.action, field: oneOf(["Server URL", "Server token"], item.field, "a remote field"), value: string(item.value) };
-        case "clickSettingsButton": return { action: item.action, label: string(item.label) };
-        case "clickKubeconfigPathButton": return { action: item.action, value: string(item.value), label: string(item.label) };
-        case "expectKubeconfigPathBefore": return { action: item.action, value: string(item.value), other: string(item.other) };
-        case "addPastedKubeconfigPaths": case "fillKubeconfigPathDraft": return { action: item.action, value: string(item.value) };
-        case "expectKubeconfigPathDraft": return { action: item.action, value: item.value === "" ? "" : string(item.value), enabled: boolean(item.enabled) };
-        case "expectAccessibleName": return { action: item.action, name: string(item.name) };
-        case "expectSettingsText": case "expectNoSettingsText": case "expectRuntimeEndpoint": return { action: item.action, value: string(item.value) };
-        case "expectMaskedToken": case "reopenStoredSettings": return { action: item.action };
-        case "configureSettingsMock": return { action: item.action, script: oneOf(["oidc-server", "oidc-browser-waits", "oidc-sign-in-fails", "oidc-memory-only", "oidc-store-keeps-sign-in", "access-server", "choose-kubeconfig", "choose-workspace", "choose-unavailable-workspace", "choose-application-workspace", "choose-foreign-kind-workspace", "choose-compare-workspace", "choose-last-export", "cancel-dialog", "no-update", "invalid-signature", "update-available", "update-installs", "update-download-waits"], item.script, "a settings script") };
-        case "expectWorkspaceExport": case "exportSavedWorkspace": return { action: item.action, name: string(item.name) };
-        case "expectExportedShortcut": return { action: item.action, name: string(item.name), shortcut: object(item.shortcut) };
-        case "expectResourceStatus": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), status: string(item.status) };
-        case "openCustomKind": return { action: item.action, kind: string(item.kind), surface: oneOf(["sidebar", "picker"], item.surface, "a kind surface") };
-        case "searchCustomKinds": case "searchKindPicker": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-        case "expectCustomGroup": return { action: item.action, group: string(item.group), visible: boolean(item.visible) };
-        case "toggleKind": case "expectKindChecked": return { action: item.action, kind: string(item.kind), checked: boolean(item.checked) };
-        case "openKindPicker": case "closeKindPicker": case "selectAllKinds": return { action: item.action };
-        case "openNamespacePicker": case "closeNamespacePicker": case "selectAllNamespaces": case "clearResourceFilters": return { action: item.action };
-        case "searchNamespacePicker": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-        case "toggleNamespace": case "expectNamespaceChecked": return { action: item.action, namespace: string(item.namespace), checked: boolean(item.checked) };
-        case "expectNamespaceTrigger": return { action: item.action, label: string(item.label) };
-        case "selectHealthFilter": return { action: item.action, label: oneOf(["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"], item.label, "a health filter") };
-        case "expectHealthFilter": return { action: item.action, label: oneOf(["Total", "Healthy", "Unknown", "Not evaluated", "Needs attention", "Degraded", "Restart evidence"], item.label, "a health filter"), pressed: boolean(item.pressed) };
-        case "chooseGitOpsOwner": return { action: item.action, owner: string(item.owner) };
-        case "setHistoricalReplicaSets": return { action: item.action, checked: boolean(item.checked) };
-        case "expectUsageFooter": return { action: item.action, text: string(item.text) };
-        case "expectUsageProcess": return { action: item.action, label: string(item.label) };
-        case "openUsageTree": case "expectNoUsageFooter": return { action: item.action };
-        case "setTopologyMode": return { action: item.action, mode: oneOf(["Ownership", "Network Flow"], item.mode, "a topology mode"), pending: optionalBoolean(item.pending) };
-        case "selectNamespace": return { action: item.action, namespace: string(item.namespace) };
-        case "expectTopology": return { action: item.action, nodes: count(item.nodes), edges: count(item.edges) };
-        case "expectTopologyEdge": return { action: item.action, source: string(item.source), target: string(item.target) };
-        case "expectTopologyEdgeMotion": return { action: item.action, source: string(item.source), target: string(item.target), flow: boolean(item.flow), pulse: boolean(item.pulse) };
-        case "setWindowActive": return { action: item.action, active: boolean(item.active) };
-        case "expectTopologyEmpty": return { action: item.action, title: string(item.title) };
-        case "selectTopologyNode": case "expectNoTopologyNode": return { action: item.action, id: string(item.id) };
-        case "expectResourceMetrics":
-            if (!isString(item.namespace)) throw new Error("Expected namespace");
-            return { action: item.action, kind: string(item.kind), namespace: item.namespace, name: string(item.name), cpu: string(item.cpu), memory: string(item.memory) };
-        case "expectMetricsCard": return { action: item.action, message: string(item.message), contexts: strings(item.contexts, true) };
-		case "expectYamlAbsent": return { action: item.action, fragments: strings(item.fragments, false) };
-		case "clickActionEntry": return { action: item.action, label: string(item.label), button: oneOf(["Add", "Remove", "Restore"], item.button, "an entry action") };
-		case "fillContainerImage": return { action: item.action, container: string(item.container), value: string(item.value) };
-		case "openActionEditor": return { action: item.action, row: oneOf(["image", "environment", "resources", "labels", "annotations", "rollback"], item.row, "an action editor") };
-		case "fillActionField": case "expectYamlPicker": return { action: item.action, label: string(item.label), value: string(item.value) };
-		case "chooseActionRevision": return { action: item.action, revision: count(item.revision) };
-		case "selectYamlShape": case "selectYamlEncoding": case "replaceYamlDraft": case "expectYamlDocument": return { action: item.action, value: string(item.value) };
-		case "formatYaml": return { action: item.action };
-		case "foldYamlLine": return { action: item.action, line: count(item.line) };
-		case "expectYamlVisibleLines":
-			if (!Array.isArray(item.lines)) throw new Error("Expected visible line numbers");
-			return { action: item.action, lines: item.lines.map(count) };
-		case "openResources": case "showYaml": case "closeDetail": case "expectDetailClosed": case "expectEmpty": case "refresh":
-			return { action: item.action };
-		case "search": case "expectSearch": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-		case "expectResource": case "expectDetail": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
-		case "expectClusterResource": case "expectNoClusterResource": return { action: item.action, kind: string(item.kind), name: string(item.name) };
-		case "expectYaml":
-			if (!Array.isArray(item.contains) || !item.contains.length) throw new Error("Expected YAML fragments");
-			return { action: item.action, contains: item.contains.map(string) };
-		case "openPage": return { action: item.action, page: string(item.page) };
-		case "showTab": case "expectDetailTab": return { action: item.action, tab: string(item.tab) };
-		case "filterEvents":
-			if (item.filter !== "All" && item.filter !== "Warnings" && item.filter !== "Normal") throw new Error("Expected an event filter");
-			return { action: item.action, filter: item.filter };
-		case "expectDetailScroll": {
-            if (item.view !== "events" && item.view !== "timeline") throw new Error("Expected event or timeline view");
-            return { action: item.action, view: item.view };
-        }
-        case "expectEvent": return { action: item.action, index: count(item.index), reason: string(item.reason), message: string(item.message) };
-		case "expectEventCount": case "expectLiveSessionCount": return { action: item.action, count: count(item.count) };
-		case "filterIncidents": return { action: item.action, filter: string(item.filter) };
-		case "expectIncidentGuide": return { action: item.action, title: string(item.title) };
-		case "openIncidentResources": return { action: item.action };
-		case "expectGitOpsCount": return { action: item.action, label: string(item.label), count: count(item.count) };
-		case "expectPortForward": return { action: item.action, title: string(item.title) };
-		case "closeReview": case "expectNoReview": case "executeReview": case "expectNoActionResult": case "editYaml": case "applyYaml": case "dryRunYaml": case "expectYamlReadOnly":
-			return { action: item.action };
-		// An empty list asserts that no log row renders.
-		case "expectLogLines": return { action: item.action, lines: strings(item.lines, true) };
-		case "expectLogToolbarFit": return { action: item.action, state: oneOf(["Live", "Paused"], item.state, "a log toolbar state") };
-		case "filterLogs": return { action: item.action, value: item.value === "" ? "" : string(item.value) };
-		case "editReplicas": return { action: item.action, value: string(item.value) };
-		case "toggleLogLevel": {
-			const level = LOG_LEVELS.find((candidate) => candidate === item.level);
-			if (!level) throw new Error("Expected a log level");
-			return { action: item.action, level };
-		}
-		case "expectLogsEmpty": case "expectYamlNotice": case "expectNoYamlNotice": return { action: item.action, title: string(item.title) };
-		case "toggleLogRow": {
-			const row: Extract<Step, { action: "toggleLogRow" }> = { action: item.action, line: string(item.line) };
-			if (item.key !== undefined) row.key = oneOf(["Enter", "Space"] as const, item.key, "a log row key");
-			return row;
-		}
-		case "toggleLogExpandAll": return { action: item.action };
-		case "expectLogRowOpen": return { action: item.action, line: string(item.line), open: boolean(item.open) };
-		case "copyLogLine": return { action: item.action, line: string(item.line), contains: string(item.contains) };
-		case "expectLogTimestampTooltip": return { action: item.action, line: string(item.line), value: string(item.value) };
-		case "expectRestorePrompt": {
-            const prompt: Extract<Step, { action: "expectRestorePrompt" }> = { action: item.action, visible: boolean(item.visible) };
-            if (item.count !== undefined) prompt.count = count(item.count);
-            return prompt;
-        }
-		case "restorePromptControl": return { action: item.action, control: oneOf(["Start saved", "Review", "Skip", "Auto-start"], item.control, "a restore prompt control") };
-		case "selectRevision": case "reviewAction": return { action: item.action, label: string(item.label) };
-		case "expectRevisionDiff":
-			return { action: item.action, selected: string(item.selected), comparison: string(item.comparison), contains: strings(item.contains, false) };
-		case "expectReview":
-			return { action: item.action, title: string(item.title), description: string(item.description), contains: strings(item.contains, false) };
-		case "showReviewDiff":
-			return item.key === undefined ? { action: item.action } : { action: item.action, key: oneOf(["Enter", "Space"] as const, item.key, "a disclosure key") };
-		case "expectDeleteReview":
-			if (!isString(item.controller)) throw new Error("Expected a controller, empty when the target has none");
-			return { action: item.action, name: string(item.name), context: string(item.context), namespace: string(item.namespace), controller: item.controller, consequence: string(item.consequence) };
-		case "expectActionResult": return { action: item.action, text: string(item.text) };
-		case "expectDryRun": return { action: item.action, contains: strings(item.contains, false) };
-		case "expectNoResource":
-			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
-		case "expectPaletteResource": case "expectNoPaletteResource": case "choosePaletteResource":
-			if (!isString(item.namespace)) throw new Error("Expected a resource namespace, empty for cluster resources");
-			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: item.namespace };
-		case "openLauncher": case "createWorkspace": case "openSettings": case "closeSettings": return { action: item.action };
-		case "nameWorkspace": case "searchSettings": case "setKubeconfigEnvVar": case "expectKubeconfigEnvVar": case "addServerKubeconfigPath": case "expectSettingsEmpty": case "searchPalette":
-			return { action: item.action, value: string(item.value) };
-		case "openSavedWorkspace": return { action: item.action, name: string(item.name) };
-		case "expectSavedWorkspace": return { action: item.action, name: string(item.name), summary: string(item.summary) };
-		case "expectContextUnavailable": return { action: item.action, name: string(item.name) };
-		case "selectWorkspaceContext": return { action: item.action, context: string(item.context) };
-		case "toggleWorkspaceNamespace": return { action: item.action, namespace: string(item.namespace) };
-		case "expectOpenWorkspace": return { action: item.action, name: string(item.name), context: string(item.context) };
-		case "selectRbacCategory": case "expectRbacCategory": return { action: item.action, category: oneOf(RBAC_CATEGORIES, item.category, "an RBAC category") };
-		case "filterRbacRisk": return { action: item.action, filter: oneOf(RBAC_RISKS, item.filter, "an RBAC risk filter") };
-		case "expectRbacItem": return { action: item.action, title: string(item.title), risk: string(item.risk) };
-		case "expectNoRbacItem": case "selectRbacItem": return { action: item.action, title: string(item.title) };
-		case "investigateRbacSubject": return { action: item.action, subject: string(item.subject) };
-		case "expectRbacIdentity": return { action: item.action, identity: string(item.identity) };
-		case "expectRbacGrant": case "expectNoRbacGrant": return { action: item.action, grant: string(item.grant) };
-		case "verifyRbacAccess": return { action: item.action, verb: string(item.verb) };
-		case "expectRbacVerdict": return { action: item.action, outcome: oneOf(VERDICTS, item.outcome, "an access review outcome") };
-		case "editRbacReviewNote": case "expectRbacReviewNote":
-			if (!isString(item.value)) throw new Error("Expected review note text");
-			return { action: item.action, value: item.value };
-		case "saveRbacReview":
-			return { action: item.action, disposition: oneOf(["expected", "anomalous"], item.disposition, "a review disposition") };
-		case "expectRbacReview": return { action: item.action, label: string(item.label) };
-		case "clearRbacReview": return { action: item.action };
-		case "showSettingsSection": return { action: item.action, section: string(item.section) };
-		case "expectSettingsHeading": return { action: item.action, heading: string(item.heading) };
-		case "expectSettingRow": case "expectNoSettingRow": return { action: item.action, title: string(item.title) };
-		case "selectSettingOption": case "expectSettingOption": return { action: item.action, setting: string(item.setting), value: string(item.value) };
-        case "moveResourceKindEarlier": return { action: item.action, kind: string(item.kind) };
-        case "expectResourceKindPosition": return { action: item.action, kind: string(item.kind), lane: string(item.lane), index: count(item.index) };
-        case "expectDeliveryView": return { action: item.action, page: string(item.page), mode: string(item.mode) };
-        case "restartClient": return { action: item.action };
-        case "toggleSetting": return { action: item.action, setting: string(item.setting) };
-		case "expectSetting":
-			if (!isBoolean(item.checked)) throw new Error("Expected a checked state");
-			return { action: item.action, setting: string(item.setting), checked: item.checked };
-		case "openPalette":
-			if (item.via !== "button" && item.via !== "shortcut") throw new Error("Expected how the palette opens");
-			return { action: item.action, via: item.via };
-		case "expectPaletteEntry": case "expectNoPaletteEntry": case "choosePaletteEntry": return { action: item.action, label: string(item.label) };
-		case "openGitOps": return { action: item.action };
-		case "openGitOpsResources":
-			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
-		case "expectArgoWorkspace": return { action: item.action, name: string(item.name) };
-		case "filterArgoResources": return { action: item.action, filter: string(item.filter) };
-		case "setDeliveryView": {
-			if (item.page !== "GitOps" && item.page !== "Helm") throw new Error("Expected a delivery page");
-			if (item.mode !== "Cards" && item.mode !== "List") throw new Error("Expected Cards or List");
-			return { action: item.action, page: item.page, mode: item.mode };
-		}
-		case "panelControl": return { action: item.action, control: oneOf(PANEL_CONTROLS, item.control, "a panel control") };
-		case "expectPanelControl": return { action: item.action, control: oneOf(PANEL_CONTROLS, item.control, "a panel control"), present: boolean(item.present) };
-		case "skipGraph": return { action: item.action };
-		case "mapKey": return { action: item.action, key: oneOf(MAP_KEYS, item.key, "a graph key") };
-		case "expectMapFocus": case "expectNoMapFocus": return { action: item.action, id: string(item.id) };
-		case "expectMapNodeInView": {
-			if (!isBoolean(item.inView)) throw new Error("Expected a boolean inView");
-			return { action: item.action, id: string(item.id), inView: item.inView };
-		}
-		case "panMap": {
-			if (!isNumber(item.dx) || !Number.isFinite(item.dx)) throw new Error("Expected a finite dx");
-			if (!isNumber(item.dy) || !Number.isFinite(item.dy)) throw new Error("Expected a finite dy");
-			return { action: item.action, dx: item.dx, dy: item.dy };
-		}
-		case "clickMapControl": case "expectMapControlFocus": return { action: item.action, control: oneOf(MAP_CONTROLS, item.control, "a map control") };
-		case "expectMapZoom": {
-			if (!isNumber(item.zoom) || !Number.isFinite(item.zoom) || item.zoom <= 0) throw new Error("Expected a positive zoom");
-			return { action: item.action, zoom: item.zoom };
-		}
-		case "resizeDetail": return { action: item.action, key: oneOf(DETAIL_RESIZE_KEYS, item.key, "a detail resize key") };
-		case "expectDetailResize": return { action: item.action, value: count(item.value) };
-		case "expandNav": return { action: item.action, page: string(item.page) };
-		case "expectGitOpsTable": return { action: item.action, title: string(item.title), count: count(item.count) };
-		case "expectGitOpsItem": case "expectNoGitOpsItem": case "openGitOpsDetails":
-			return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace) };
-		case "expectGitOpsGroup": return { action: item.action, label: string(item.label), position: count(item.position), count: count(item.count), expanded: boolean(item.expanded) };
-		case "toggleGitOpsGroup": return { action: item.action, label: string(item.label) };
-		case "expectArgoApplication": return { action: item.action, name: string(item.name), health: string(item.health), sync: string(item.sync) };
-		case "expectArgoSignal": return { action: item.action, label: string(item.label), count: count(item.count) };
-		case "expectHelmCount": return { action: item.action, count: count(item.count) };
-		case "expectHelmRelease": case "expectNoHelmRelease": case "openHelmRelease":
-			return { action: item.action, name: string(item.name), namespace: string(item.namespace) };
-		case "selectHelmNamespace": return { action: item.action, namespace: string(item.namespace) };
-		case "searchHelm": return { action: item.action, value: string(item.value) };
-		case "expectHelmDetails": return { action: item.action, title: string(item.title), description: string(item.description), totals: string(item.totals) };
-		case "expectHelmContext": return { action: item.action, context: string(item.context) };
-		case "sortResourceTable": {
-			const sort: Extract<Step, { action: "sortResourceTable" }> = { action: item.action, column: oneOf(SORT_COLUMNS, item.column, "a sortable table column") };
-			if (item.key !== undefined) sort.key = oneOf(["Enter", "Space"] as const, item.key, "a sort key");
-			return sort;
-		}
-		case "expectResourceOrder": return { action: item.action, names: strings(item.names, false) };
-		case "toggleResourceGroup": {
-			const group: Extract<Step, { action: "toggleResourceGroup" }> = { action: item.action, label: string(item.label) };
-			if (item.key !== undefined) group.key = oneOf(["Enter", "Space"] as const, item.key, "a group key");
-			return group;
-		}
-		case "expectResourceGroup": return { action: item.action, label: string(item.label), expanded: boolean(item.expanded) };
-		case "openResourceRow": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column") };
-		case "expectResourceCell": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text) };
-		case "expectResourceCellFits": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), column: oneOf(TABLE_COLUMNS, item.column, "a table column"), text: string(item.text), truncated: optionalBoolean(item.truncated) ?? true };
-		case "expectResourceColumns": return { action: item.action, columns: strings(item.columns, false).map((column) => oneOf(TABLE_COLUMNS, column, "a table column")) };
-		case "expectResourceActivity": return { action: item.action, kind: string(item.kind), name: string(item.name), namespace: string(item.namespace), state: oneOf(["active", "paused"] as const, item.state, "an activity state") };
-		case "openLiveSessionPopover": return { action: item.action };
-		case "expectLiveSessionRow": {
-            const row: Extract<Step, { action: "expectLiveSessionRow" }> = { action: item.action, target: string(item.target), status: string(item.status), controls: strings(item.controls, false) };
-            if (item.local !== undefined) row.local = string(item.local);
-            return row;
-        }
-		case "liveSessionControl": {
-            const control: Extract<Step, { action: "liveSessionControl" }> = { action: item.action, operation: oneOf(["Show", "Reconnect", "Copy", "Stop", "Manage"], item.operation, "a live-session control") };
-            if (item.target !== undefined) control.target = string(item.target);
-            if (item.local !== undefined) control.local = string(item.local);
-            return control;
-        }
-		case "expectHealthTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), state: string(item.state), source: string(item.source), statuses: strings(item.statuses, true), partial: boolean(item.partial) };
-		case "expectTimestampTooltip": return { action: item.action, kind: string(item.kind), namespace: string(item.namespace), name: string(item.name), value: string(item.value) };
-		case "expectEventTimeTooltip": return { action: item.action, index: count(item.index) };
-		default: throw new Error(`Unknown action: ${String(item.action)}`);
-	}
+function isAction(value: JsonValue | undefined): value is Action {
+	return isString(value) && Object.hasOwn(parsers, value);
 }
+
+export function parseStep<Value>(value: Value): Step {
+	const item = object(value);
+	const { action } = item;
+	if (!isAction(action)) throw new Error(`Unknown action: ${String(action)}`);
+	// SAFETY: The checked key selects both the payload parser and the Step discriminant.
+	return { ...parsers[action](item), action } as Step;
+}
+
+export function requireActionCoverage(contract: Contract): void {
+	const exercised = new Set<string>(contract.scenarios.flatMap((scenario) => scenario.steps.map((step) => step.action)));
+	const missing = Object.keys(parsers).filter((action) => !exercised.has(action));
+	if (missing.length) throw new Error(`Missing parity scenarios for actions: ${missing.join(", ")}`);
+}
+
+export function requireRegisteredActions(actions: readonly string[]): void {
+	const registered = new Set(actions);
+	const missing = Object.keys(parsers).filter((action) => !registered.has(action));
+	if (missing.length) throw new Error(`Missing web parity handlers: ${missing.join(", ")}`);
+	const unexpected = actions.filter((action) => !Object.hasOwn(parsers, action));
+	if (unexpected.length) throw new Error(`Unknown web parity handlers: ${unexpected.join(", ")}`);
+}
+
 export function parseContract<Value>(value: Value): Contract {
 	const input = object(value);
 	if (input.fixture !== "browser-mocks" || input.context !== "mock-dev" || !Array.isArray(input.scenarios) || !input.scenarios.length) throw new Error("Invalid parity contract");
@@ -505,7 +71,7 @@ export function parseContract<Value>(value: Value): Contract {
 		if (ids.has(id)) throw new Error(`Duplicate scenario: ${id}`);
 		ids.add(id);
 		if (!Array.isArray(scenario.steps) || !scenario.steps.length) throw new Error(`Missing steps: ${id}`);
-		return { id, title: string(scenario.title), steps: scenario.steps.map(step) };
+		return { id, title: string(scenario.title), steps: scenario.steps.map(parseStep) };
 	}) };
 }
 

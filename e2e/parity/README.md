@@ -97,7 +97,9 @@ PARITY_CHANGED=origin/main bun run e2e:parity
 A UI change in either client lands with a shared scenario that both drivers pass. `contract.test.ts` checks two invariants on every `bun test` run:
 
 1. Every view in `visual/views.ts` has at least one scenario whose ID starts with `<view>.`. Adding a native view to the visual harness without a shared scenario fails the check.
-2. Every action in `ACTIONS` (`contract.ts`) has a handler in both `web.ts` and the modules under `tests/parity/`, dispatched by `parity.rs`.
+2. Every action declared in a `contract-<area>.ts` parser map appears in at least one scenario. The parser keys supply the inventory, and their return types supply the step payload types.
+
+Add a handler in the matching `web-<area>.ts` map and a match arm in the GPUI area module under `tests/parity/`. The web driver checks its registered handlers against the contract type. A full parity run executes every action through both drivers and requires a passing result from both for every scenario. A GPUI match arm outside the dispatch path fails when its scenario reaches that action. Changes to the harness select the full suite in parity CI.
 
 An action names user-visible behavior, not a selector. Each driver maps it to its own UI: GPUI test IDs and labels, and web roles, names and text. When an action cannot be expressed in both clients, the clients have diverged and the divergence is the bug to fix.
 

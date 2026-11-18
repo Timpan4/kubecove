@@ -1,10 +1,8 @@
+import { escapeRegExp } from "./web-locators";
+import type { WebActions } from "./web-action";
 import type { Page } from "playwright-core";
-import type { Step } from "./contract";
 import { tabTo } from "./web-keyboard";
 
-type MultiContextStep = Extract<Step, { action: "expectRowContexts" | "filterContexts" | "expectResourceSummary" | "selectMapContext" | "expectMapContext" | "mapContextKey" | "expectMapContextOptions" }>;
-
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const mapContextSelect = (page: Page) => page.getByRole("combobox", { name: "Map context", exact: true });
 // Bits UI mounts a select's listbox only while it is open, so on the map this is the Map context options.
 const mapContextOptions = (page: Page) => page.getByRole("listbox");
@@ -28,56 +26,52 @@ function rowContexts({ kind, name, namespace, want }: { kind: string; name: stri
 	return want === undefined ? contexts : JSON.stringify(contexts) === want;
 }
 
-export async function multiContextAction(page: Page, step: MultiContextStep): Promise<void> {
-	switch (step.action) {
-		case "expectRowContexts": {
-			const identity = { kind: step.kind, name: step.name, namespace: step.namespace };
-			await page.waitForFunction(rowContexts, { ...identity, want: JSON.stringify(step.contexts) }).catch(async () => {
-				const found = await page.evaluate(rowContexts, identity);
-				throw new Error(`${step.kind} ${step.namespace}/${step.name} rows had contexts ${JSON.stringify(found)}`);
-			});
-			break;
+export const multiContextActions = {
+	async expectRowContexts(page, step) {
+		const identity = { kind: step.kind, name: step.name, namespace: step.namespace };
+		await page.waitForFunction(rowContexts, { ...identity, want: JSON.stringify(step.contexts) }).catch(async () => {
+			const found = await page.evaluate(rowContexts, identity);
+			throw new Error(`${step.kind} ${step.namespace}/${step.name} rows had contexts ${JSON.stringify(found)}`);
+		});
+	},
+	async filterContexts(page, step) {
+		await page.getByRole("button", { name: "Edit context filter", exact: true }).click();
+		const options = page.locator('[data-slot="popover-content"]').filter({ has: page.getByText("Contexts", { exact: true }) }).locator("label");
+		await options.first().waitFor();
+		for (let index = 0; index < await options.count(); index += 1) {
+			const option = options.nth(index);
+			const want = step.contexts.includes((await option.textContent())?.trim() ?? "");
+			const checkbox = option.getByRole("checkbox");
+			if ((await checkbox.getAttribute("aria-checked") === "true") !== want) await checkbox.click();
 		}
-		case "filterContexts": {
-			await page.getByRole("button", { name: "Edit context filter", exact: true }).click();
-			const options = page.locator('[data-slot="popover-content"]').filter({ has: page.getByText("Contexts", { exact: true }) }).locator("label");
-			await options.first().waitFor();
-			for (let index = 0; index < await options.count(); index += 1) {
-				const option = options.nth(index);
-				const want = step.contexts.includes((await option.textContent())?.trim() ?? "");
-				const checkbox = option.getByRole("checkbox");
-				if ((await checkbox.getAttribute("aria-checked") === "true") !== want) await checkbox.click();
-			}
-			await page.keyboard.press("Escape");
-			break;
+		await page.keyboard.press("Escape");
+	},
+	async expectResourceSummary(page, step) {
+		await page.getByText(step.text, { exact: true }).waitFor();
+	},
+	async selectMapContext(page, step) {
+		await mapContextSelect(page).click();
+		await page.getByRole("option", { name: step.context, exact: true }).click();
+	},
+	async mapContextKey(page, step) {
+		// While the options are open, keys go to the select wherever Bits UI keeps focus.
+		if (!(await mapContextOptions(page).isVisible())) await tabTo(page, mapContextSelect(page));
+		await page.keyboard.press(step.key);
+	},
+	async expectMapContextOptions(page, step) {
+		await mapContextOptions(page).waitFor({ state: step.open ? "visible" : "hidden" });
+		if (step.focused !== undefined) {
+			const focused = await mapContextSelect(page).evaluate((node) => node === document.activeElement);
+			if (focused !== step.focused) throw new Error(`Map context trigger focused: ${focused}, expected ${step.focused}`);
 		}
-		case "expectResourceSummary":
-			await page.getByText(step.text, { exact: true }).waitFor();
-			break;
-		case "selectMapContext":
-			await mapContextSelect(page).click();
-			await page.getByRole("option", { name: step.context, exact: true }).click();
-			break;
-		case "mapContextKey":
-			// While the options are open, keys go to the select wherever Bits UI keeps focus.
-			if (!(await mapContextOptions(page).isVisible())) await tabTo(page, mapContextSelect(page));
-			await page.keyboard.press(step.key);
-			break;
-		case "expectMapContextOptions":
-			await mapContextOptions(page).waitFor({ state: step.open ? "visible" : "hidden" });
-			if (step.focused !== undefined) {
-				const focused = await mapContextSelect(page).evaluate((node) => node === document.activeElement);
-				if (focused !== step.focused) throw new Error(`Map context trigger focused: ${focused}, expected ${step.focused}`);
-			}
-			break;
-		case "expectMapContext":
-			// The map header is present, so a missing select is not a map that has not loaded yet.
-			await page.getByRole("button", { name: "Collapse ownership map", exact: true }).waitFor();
-			if (!step.shown) {
-				if (await mapContextSelect(page).count()) throw new Error("The ownership map shows a Map context select");
-				break;
-			}
-			await mapContextSelect(page).filter({ hasText: new RegExp(`^\\s*${escapeRegExp(step.context)}\\s*$`) }).waitFor();
-			break;
-	}
-}
+	},
+	async expectMapContext(page, step) {
+		// The map header is present, so a missing select is not a map that has not loaded yet.
+		await page.getByRole("button", { name: "Collapse ownership map", exact: true }).waitFor();
+		if (!step.shown) {
+			if (await mapContextSelect(page).count()) throw new Error("The ownership map shows a Map context select");
+			return;
+		}
+		await mapContextSelect(page).filter({ hasText: new RegExp(`^\\s*${escapeRegExp(step.context)}\\s*$`) }).waitFor();
+	},
+} satisfies Partial<WebActions>;

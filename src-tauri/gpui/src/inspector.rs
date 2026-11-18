@@ -94,6 +94,7 @@ mod settings_sections;
 mod sidebar;
 mod sidebar_cache;
 mod sidebar_discovery;
+mod sidebar_fold;
 mod sidebar_reveal;
 mod sidebar_tree;
 mod surface;
@@ -150,6 +151,20 @@ pub(crate) enum Page {
     GitOps,
     Helm,
     Namespaces,
+}
+
+enum PageDestination {
+    Page(Page),
+    HelmRelease(helm_page::HelmTarget),
+}
+
+impl PageDestination {
+    fn helm_target(self) -> Option<helm_page::HelmTarget> {
+        match self {
+            Self::Page(_) => None,
+            Self::HelmRelease(target) => Some(target),
+        }
+    }
 }
 
 /// The native workspace: sidebar navigation, header and the active page, laid
@@ -395,26 +410,43 @@ impl Inspector {
     }
 
     fn open_page(&mut self, page: Page, cx: &mut Context<Self>) {
-        if self.page != page && self.defer_exec_leave(exec::LeaveIntent::Page(page), cx) {
+        self.navigate_page(PageDestination::Page(page), cx);
+    }
+
+    fn navigate_page(&mut self, destination: PageDestination, cx: &mut Context<Self>) {
+        let page = match &destination {
+            PageDestination::Page(page) if *page == self.page => {
+                if *page == Page::Helm && self.helm_page.set_target(None) {
+                    self.load_helm(cx);
+                }
+                return;
+            }
+            PageDestination::Page(page) => *page,
+            PageDestination::HelmRelease(_) => Page::Helm,
+        };
+        let Some(exec::LeaveIntent::Page(destination)) =
+            self.guard_exec_leave(exec::LeaveIntent::Page(destination), cx)
+        else {
             return;
+        };
+        self.gitops_page.workspace = None;
+        self.argo.reset_dialog(argo::DialogHost::Page, cx);
+        self.close_detail(cx);
+        self.map.read.cancel();
+        self.set_page(page);
+        if page == Page::Helm {
+            self.helm_page.set_target(destination.helm_target());
         }
-        if self.page != page && self.can_leave(cx) {
-            self.gitops_page.workspace = None;
-            self.argo.reset_dialog(argo::DialogHost::Page, cx);
-            self.close_detail(cx);
-            self.map.read.cancel();
-            self.set_page(page);
-            if matches!(page, Page::Resources | Page::ClusterOverview) {
-                self.load_topology(cx);
-            }
-            if page == Page::Overview {
-                self.load_workspace_overview(false, None, cx);
-            } else {
-                self.workspace_read = None;
-            }
-            self.load_page(cx);
-            cx.notify();
+        if matches!(page, Page::Resources | Page::ClusterOverview) {
+            self.load_topology(cx);
         }
+        if page == Page::Overview {
+            self.load_workspace_overview(false, None, cx);
+        } else {
+            self.workspace_read = None;
+        }
+        self.load_page(cx);
+        cx.notify();
     }
 
     fn select_namespace(
@@ -592,6 +624,7 @@ impl Render for Inspector {
             )
         });
         let drawer = self.navigation_drawer(workspace && compact, window, cx);
+        self.drop_closed_namespace_kinds();
         let probe = self.presentation_frame(started, cx.entity_id());
         let foreground_bar = self.foreground_bar(window, cx);
         let view = div()
