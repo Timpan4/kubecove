@@ -3,15 +3,27 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
     match string(step, "action") {
         "replayLiveData" | "mockTiming" | "expectWatchStart" => {}
         "expectLiveState" => {
+            let notices = [
+                window.try_find("live-notice"),
+                window.try_find("map-live-notice"),
+            ];
             if let Some(notice) = step["notice"].as_str() {
-                assert_eq!(window.find("live-notice").label(), Some(notice));
+                let labels: Vec<_> = notices
+                    .iter()
+                    .flatten()
+                    .filter_map(|node| node.label())
+                    .collect();
+                assert!(
+                    labels.contains(&notice),
+                    "expected {notice:?} in {labels:?}"
+                );
             }
             assert_eq!(
                 window.find("live-label").label(),
                 Some(string(step, "label"))
             );
             if string(step, "label") == "Live" && step["notice"].is_null() {
-                assert!(window.try_find("live-notice").is_none());
+                assert!(notices.iter().all(Option::is_none));
             }
         }
         "expectLiveMenu" => {

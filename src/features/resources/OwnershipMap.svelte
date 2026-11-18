@@ -251,13 +251,15 @@
 			/>
 		</div>
 	{:else if !topology || topology.nodes.length === 0 || !graph}
-		{#if topology && error}{@render mapRefreshError()}{/if}
-		<Empty class="min-h-80 flex-1 border-0">
-			<EmptyHeader>
-				<EmptyTitle>{emptyTitle}</EmptyTitle>
-				<EmptyDescription>{emptyDescription}</EmptyDescription>
-			</EmptyHeader>
-		</Empty>
+		<div class="relative flex min-h-80 flex-1">
+			<Empty class="flex-1 border-0">
+				<EmptyHeader>
+					<EmptyTitle>{emptyTitle}</EmptyTitle>
+					<EmptyDescription>{emptyDescription}</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+			{#if topology && error}{@render mapRefreshError()}{/if}
+		</div>
 	{:else}
 		<p class="border-b px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
 			Drag to pan. Scroll or use controls to zoom. Press Tab to reach graph nodes, or

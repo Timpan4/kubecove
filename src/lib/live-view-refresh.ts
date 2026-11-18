@@ -191,11 +191,12 @@ export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatc
 	};
 }
 
-function recoverFailedRead(queryClient: QueryClient, match: QueryMatch, notify: () => void) {
+function recoverFailedRead(queryClient: QueryClient, match: QueryMatch, retry: (failed: QueryMatch) => void) {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let disposed = false;
-	const failedRead = () => queryClient.getQueryCache().getAll().some((query) =>
-		match(query) && query.isActive() && query.state.status === "error" && query.state.fetchStatus === "idle");
+	const failed: QueryMatch = (query) =>
+		match(query) && query.isActive() && query.state.status === "error" && query.state.fetchStatus === "idle";
+	const failedRead = () => queryClient.getQueryCache().getAll().some(failed);
 	function checkRecovery() {
 		if (disposed) return;
 		if (!failedRead()) {
@@ -204,7 +205,7 @@ function recoverFailedRead(queryClient: QueryClient, match: QueryMatch, notify: 
 		} else if (timer === undefined) {
 			timer = setTimeout(() => {
 				timer = undefined;
-				if (!disposed && failedRead()) notify();
+				if (!disposed && failedRead()) retry(failed);
 			}, RESOURCE_RECOVERY_INTERVAL);
 		}
 	}
@@ -258,7 +259,9 @@ function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 	let read = initial;
 	const throttle = createReadRefresh(queryClient, () => read);
 	const recovery = initial.recoverSeparately
-		? recoverFailedRead(queryClient, (query) => read.refetch !== false && read.match(query), throttle.notify)
+		? recoverFailedRead(queryClient, (query) => read.refetch !== false && read.match(query), (failed) => {
+			void queryClient.refetchQueries({ predicate: failed }, { cancelRefetch: false });
+		})
 		: null;
 	return {
 		get read() {

@@ -204,6 +204,40 @@ describe("detail and event live read recovery", () => {
 });
 
 describe("live view refresh binding", () => {
+	test("retrying a failed read does not queue a refresh of a different visible read", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		let fail = true;
+		let releaseRead!: () => void;
+		const heldRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+		live.observe("ownership", podsKey, { cached: false, gate: async () => {
+			if (fail) throw new Error("topology unavailable");
+		} });
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		live.observe("network", secretsKey, { gate: () => heldRead });
+		const view = (queryKey: QueryKey): LiveView => ({
+			clusterContext: "dev",
+			namespaces: ["shop"],
+			keys: [pods],
+			reads: [{ keys: [pods], match: queryMatchers.exact(queryKey), recoverSeparately: true }],
+			refreshScope: "reads",
+		});
+		const binding = live.bind(view(secretsKey));
+		live.status(0, "connected");
+		live.change(0, "Pod");
+		expect(live.fetches("network")).toBe(1);
+		binding.update(view(podsKey));
+		fail = false;
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("ownership")).toBe(2);
+		binding.update(view(secretsKey));
+		releaseRead();
+		await live.queryClient.getQueryCache().find({ queryKey: secretsKey })?.promise;
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise;
+		expect(live.queryClient.getQueryData(podsKey)).toBe("ownership");
+		expect(live.fetches("network")).toBe(1);
+	});
+
 	// A connected watch alone does not prove its last list succeeded. A final
 	// delete event must recover even when no later event arrives to trigger a read.
 	test("a failed watch refresh exposes stale data and retries without another event", async () => {

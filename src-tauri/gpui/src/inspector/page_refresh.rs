@@ -47,6 +47,11 @@ impl Inspector {
                 .phase("live-refresh", self.observation.refreshing());
             return if refreshing.shown() {
                 LiveStatus::Refreshing
+            } else if self.page == Page::Resources
+                && self.table_open
+                && self.table_refresh_error().is_some()
+            {
+                LiveStatus::RefreshFailed
             } else {
                 self.live.settled_status()
             };

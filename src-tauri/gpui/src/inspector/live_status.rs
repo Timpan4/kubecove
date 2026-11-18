@@ -136,7 +136,11 @@ impl Inspector {
             };
         }
         LiveDetails {
-            refresh_error: self.live.refresh_error.clone(),
+            refresh_error: if self.page == Page::Resources && self.table_open {
+                self.table_refresh_error().map(str::to_owned)
+            } else {
+                self.live.refresh_error.clone()
+            },
             ..details(&self.watch_contexts(), &self.live.reports())
         }
     }
@@ -413,9 +417,13 @@ impl Inspector {
             .when(failed && self.live.error_open, |notice| {
                 notice.child(
                     div().px(px(12.)).pb(px(12.)).children(
-                        self.live
-                            .reload_error_where(|context| self.observation.shows(context))
-                            .map(|message| ui::xs(message.clone())),
+                        self.table_refresh_error()
+                            .or_else(|| {
+                                self.live
+                                    .reload_error_where(|context| self.observation.shows(context))
+                                    .map(String::as_str)
+                            })
+                            .map(|message| ui::xs(message.to_owned())),
                     ),
                 )
             })

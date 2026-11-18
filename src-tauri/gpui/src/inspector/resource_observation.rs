@@ -55,8 +55,8 @@ struct ContextRows {
     shown: bool,
     /// The context's built-in read in the current load runs.
     pending: bool,
-    /// A failed scope refresh left this context's previous rows on screen.
-    refresh_failed: bool,
+    /// The scope refresh failure that left this context's previous rows on screen.
+    refresh_error: Option<String>,
     /// The context's custom-kind read in the current load runs, or waits for its built-ins.
     custom_pending: bool,
     /// The list version of each kind in the context's rows, by `watch_id`.
@@ -184,7 +184,7 @@ impl ResourceObservation {
                     ready: true,
                     shown: true,
                     pending: false,
-                    refresh_failed: false,
+                    refresh_error: None,
                     custom_pending: part.custom_pending,
                     versions: context_versions(context, result.versions),
                     warnings: result
@@ -334,7 +334,7 @@ impl ResourceObservation {
                     }
                 }
                 Err(error) if refresh && part.shown => {
-                    part.refresh_failed = true;
+                    part.refresh_error = Some(context_message(several, &context, &error.message));
                     applied.warnings.push(format!(
                         "Context \"{context}\": {}. Showing the last loaded data.",
                         error.message
@@ -381,9 +381,9 @@ impl ResourceObservation {
     fn refresh_settled(&mut self, result: Result<(), String>) {
         self.read = None;
         let interrupted = std::mem::take(&mut self.custom_interrupted);
-        if result.is_err() {
+        if let Err(error) = &result {
             for part in self.parts.iter_mut().filter(|part| part.shown) {
-                part.refresh_failed = true;
+                part.refresh_error = Some(error.clone());
             }
         }
         match result {
@@ -449,8 +449,15 @@ impl ResourceObservation {
     pub(super) fn context_rows_stale(&self, context: &str) -> bool {
         self.position(context).is_some_and(|index| {
             let part = &self.parts[index];
-            part.shown && (part.pending || part.refresh_failed || self.refreshing())
+            part.shown && (part.pending || part.refresh_error.is_some() || self.refreshing())
         })
+    }
+
+    pub(super) fn shown_refresh_error(&self) -> Option<&str> {
+        self.parts
+            .iter()
+            .filter(|part| part.shown)
+            .find_map(|part| part.refresh_error.as_deref())
     }
 
     /// A context whose rows the table shows still reads them.

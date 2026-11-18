@@ -14,7 +14,7 @@ impl Inspector {
     fn table_status(&self) -> LiveStatus {
         if self.observation.refreshing() {
             LiveStatus::Refreshing
-        } else if self.live.refresh_error.is_some() {
+        } else if self.table_refresh_error().is_some() {
             LiveStatus::RefreshFailed
         } else {
             let status = self
@@ -26,6 +26,13 @@ impl Inspector {
                 status
             }
         }
+    }
+
+    pub(in crate::inspector) fn table_refresh_error(&self) -> Option<&str> {
+        self.live
+            .refresh_error
+            .as_deref()
+            .or_else(|| self.observation.shown_refresh_error())
     }
 
     pub(in crate::inspector) fn notice_freshness(&self) -> NoticeFreshness {
