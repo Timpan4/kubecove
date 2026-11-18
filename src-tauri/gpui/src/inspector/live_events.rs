@@ -103,15 +103,15 @@ impl Inspector {
                             catch_up = true;
                         }
                         let updated = this.update(cx, |this, cx| {
-                            if let Detail::Ready(detail) = &mut this.detail {
+                            if let Detail::Ready(detail) = &mut this.detail
+                                && detail.events.current(number)
+                            {
                                 match result {
                                     Ok(rows) => {
-                                        if detail.events.current(number) {
-                                            detail.events.set_ready(number, rows);
-                                        }
-                                        detail.events.watch_error = None;
+                                        detail.events.set_ready(number, rows);
+                                        detail.events.refresh_error = None;
                                     }
-                                    Err(error) => detail.events.watch_error = Some(error.message),
+                                    Err(error) => detail.events.refresh_error = Some(error.message),
                                 }
                             }
                             cx.notify();

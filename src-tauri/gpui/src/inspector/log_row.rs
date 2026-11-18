@@ -4,6 +4,7 @@ use super::Inspector;
 use super::controls::{Variant, button, red300};
 use super::events::tw;
 use super::logs_state::LogsState;
+use super::overlay_motion::Tooltip;
 use super::timestamp_text;
 use crate::logs::{LogField, LogLevel, ParsedLogLine, highlight_ranges, time_label};
 use crate::model::exact_timestamp;
@@ -12,7 +13,6 @@ use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens, oklch};
 use crate::ui;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
     StyledText, div, prelude::*, px, relative,
@@ -82,10 +82,11 @@ impl InlineText {
         if monospace {
             self.monospace.push((start..end, MONO.into()));
         }
+        let style_unmatched = style != HighlightStyle::default() || monospace;
         let mut cursor = start;
         for matched in highlight_ranges(text, term) {
             let from = start + matched.start;
-            if cursor < from {
+            if style_unmatched && cursor < from {
                 self.highlights.push((cursor..from, style));
             }
             cursor = start + matched.end;
@@ -97,12 +98,12 @@ impl InlineText {
                 },
             ));
         }
-        if cursor < end {
+        if style_unmatched && cursor < end {
             self.highlights.push((cursor..end, style));
         }
     }
 
-    fn fields(&mut self, fields: &[LogField], term: &str, color: Hsla) {
+    fn fields(&mut self, fields: &[LogField], term: &str, color: Hsla, monospace: bool) {
         for (index, field) in fields.iter().enumerate() {
             if index > 0 {
                 self.text.push_str("  ");
@@ -119,10 +120,10 @@ impl InlineText {
                     color: Some(Tokens::muted_foreground()),
                     ..style
                 },
-                true,
+                monospace,
             );
             self.text.push(' ');
-            self.push(&field.value, term, style, true);
+            self.push(&field.value, term, style, monospace);
         }
     }
 
@@ -247,7 +248,12 @@ fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
     }
     if !structure.fields.is_empty() {
         text.text.push_str("  ");
-        text.fields(&structure.fields, term, Tokens::foreground().opacity(0.75));
+        text.fields(
+            &structure.fields,
+            term,
+            Tokens::foreground().opacity(0.75),
+            true,
+        );
     }
     text.render()
 }
@@ -293,12 +299,12 @@ fn one_line_row(
     let summary = div()
         .id(("log-summary", position))
         .test_support()
-        .flex_1()
         .min_w_0()
         .text_size(px(12.))
         .line_height(px(18.))
         .font_weight(FontWeight::MEDIUM)
-        .when(!open, |summary| summary.truncate())
+        .when(!open, |summary| summary.flex_1().truncate())
+        .when(open, |summary| summary.w_full())
         .child(compact_summary(line, term, open));
     let details = open.then(|| {
         div()
@@ -360,7 +366,9 @@ fn one_line_row(
                 .child(
                     div()
                         .flex()
-                        .gap(px(8.))
+                        // An expanded aggregate row gives the message the full width.
+                        .when(open, |row| row.flex_col())
+                        .when(!open, |row| row.gap(px(8.)))
                         .items_start()
                         .children(source)
                         .child(summary),
@@ -456,7 +464,12 @@ pub(super) fn log_row(
             field_chips(&structure.fields, term)
         } else {
             let mut text = InlineText::default();
-            text.fields(&structure.fields, term, Tokens::foreground().opacity(0.85));
+            text.fields(
+                &structure.fields,
+                term,
+                Tokens::foreground().opacity(0.85),
+                false,
+            );
             clip(
                 div()
                     .font_family(MONO)

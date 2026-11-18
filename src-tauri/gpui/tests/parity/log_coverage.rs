@@ -43,6 +43,12 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             assert!(source.right() <= headline.left());
             assert!(source.size.width < headline.size.width);
             assert!(headline.right() <= viewport.right());
+            window.click(("log-summary", 0usize), cx);
+            window.render_frame(cx);
+            let source = window.find(("log-source", 0usize)).bounds();
+            let expanded = window.find(("log-summary", 0usize)).bounds();
+            assert!(source.bottom() <= expanded.top());
+            assert!(expanded.size.width > headline.size.width);
         }
         "log-scroll-back" => {
             let bounds = window.find("log-viewport").bounds();

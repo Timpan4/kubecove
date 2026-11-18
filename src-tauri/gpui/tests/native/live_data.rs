@@ -546,6 +546,17 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
         assert!(window.try_find("event:0").is_none());
     })
     .unwrap();
+    cx.background_executor
+        .advance_clock(std::time::Duration::from_millis(15_000));
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("events-warning").label(),
+            Some("Events refresh failed: Events unavailable")
+        );
+    })
+    .unwrap();
     backend.live.events_fail.store(false, Ordering::SeqCst);
     cx.background_executor
         .advance_clock(std::time::Duration::from_millis(15_000));
@@ -556,6 +567,7 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
             window.find("event:0").label(),
             Some("BackOff Back-off restarting failed container app")
         );
+        assert!(window.try_find("events-warning").is_none());
     })
     .unwrap();
 }

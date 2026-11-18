@@ -14,15 +14,14 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 	} else if (check === "log-compact-wrap") {
 		const row = page.locator("[data-log-row]").first();
 		const summary = row.locator("[data-log-summary]");
-		const collapsed = await summary.evaluate((element) => ({
-			height: element.clientHeight,
-			lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
-			overflows: element.scrollWidth > element.clientWidth,
-		}));
+		const short = page.locator("[data-log-row]").nth(1).locator("[data-log-summary]");
+		await short.waitFor();
+		const [collapsed, control] = await Promise.all([summary.boundingBox(), short.boundingBox()]);
+		const summaryOverflows = await summary.evaluate((element) => element.scrollWidth > element.clientWidth);
 		const viewport = page.locator("[data-log-viewport]");
 		const viewportOverflows = await viewport.evaluate((element) => element.scrollWidth > element.clientWidth);
-		if (collapsed.height !== collapsed.lineHeight) throw new Error("Collapsed log summary spans more than one line");
-		if (!collapsed.overflows) throw new Error("Long log fixture fits without clipping");
+		if (!collapsed || !control || collapsed.height !== control.height) throw new Error("Collapsed log summary spans more than one line");
+		if (!summaryOverflows) throw new Error("Long log fixture fits without clipping");
 		if (viewportOverflows) throw new Error("Collapsed log text creates horizontal scrolling");
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
@@ -34,11 +33,20 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const message = row.getByText("boot payments-api", { exact: true });
 		if (!await source.evaluate((element) => element.scrollWidth > element.clientWidth))
 			throw new Error("Long source fixture should be wider than its column");
-		const [summary, headline] = await Promise.all([row.locator("[data-log-summary]").boundingBox(), message.boundingBox()]);
-		if (!summary || !headline || headline.x + headline.width > summary.x + summary.width)
-			throw new Error("Source leaves too little room for the headline");
+		const [summary, sourceBox, headline] = await Promise.all([
+			row.locator("[data-log-summary]").boundingBox(), source.boundingBox(), message.boundingBox(),
+		]);
+		if (!summary || !sourceBox || !headline || headline.x < sourceBox.x + sourceBox.width ||
+			headline.x + headline.width > summary.x + summary.width ||
+			headline.y >= sourceBox.y + sourceBox.height || headline.y + headline.height <= sourceBox.y)
+			throw new Error("Headline does not fit beside the source on the same line");
 	} else if (check === "log-scroll-back") {
 		const viewport = page.locator("[data-log-viewport]");
+		await page.waitForFunction((element) => {
+			if (!element || element.scrollHeight <= element.clientHeight) return false;
+			// The same one CSS pixel tolerance used for tail-following in ResourceLogsPane.
+			return Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) <= 1;
+		}, await viewport.elementHandle());
 		const height = await viewport.evaluate((element) => element.scrollHeight);
 		await viewport.hover();
 		await page.mouse.wheel(0, -height);

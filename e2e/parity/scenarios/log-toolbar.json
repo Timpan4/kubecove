@@ -15,6 +15,7 @@
 				{ "action": "showTab", "tab": "Logs" },
 				{ "action": "expectLogToolbarFit", "state": "Live" },
 				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "advanceClock", "ms": 15000 },
 				{ "action": "showTab", "tab": "Details" },
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "showTab", "tab": "Events" },

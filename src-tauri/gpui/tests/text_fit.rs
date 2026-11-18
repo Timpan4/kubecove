@@ -28,8 +28,8 @@ mod text_fit {
     use crate::common::Fixture;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
-        AnyWindowHandle, AppContext, Bounds, HeadlessAppContext, Pixels, TextRun, WindowBounds,
-        WindowOptions, px, size,
+        AnyWindowHandle, AppContext, Bounds, Font, FontWeight, HeadlessAppContext, Pixels, TextRun,
+        WindowBounds, WindowOptions, px, size,
     };
     use kubecove_gpui::{
         Inspector,
@@ -104,11 +104,15 @@ mod text_fit {
         });
     }
 
-    /// The width of `text` in the regular sans font, as `ui::xs` and `ui::sm` render it.
-    fn shaped_width(window: &mut gpui_kit::Window, text: &str, font_size: f32) -> Pixels {
+    fn shaped_width(
+        window: &mut gpui_kit::Window,
+        text: &str,
+        font: Font,
+        font_size: f32,
+    ) -> Pixels {
         let run = TextRun {
             len: text.len(),
-            font: gpui_kit::font(SANS),
+            font,
             color: gpui_kit::black(),
             background_color: None,
             underline: None,
@@ -132,7 +136,7 @@ mod text_fit {
         font_size: f32,
         box_width: Pixels,
     ) -> Result<(), String> {
-        let width = shaped_width(window, text, font_size);
+        let width = shaped_width(window, text, gpui_kit::font(SANS), font_size);
         let snapping = px(1. / window.scale_factor());
         if width <= box_width + snapping {
             Ok(())
@@ -240,6 +244,37 @@ mod text_fit {
         });
     }
 
+    fn compact_aggregate_headline_fits(fixture: &Path) {
+        let (mut cx, handle) = open(fixture);
+        for id in [
+            "open-settings",
+            "settings-section:Appearance",
+            "setting-option:Log layout:One line",
+            "settings-back",
+            "open-resources",
+        ] {
+            act(&mut cx, handle, |window, cx| window.click(id, cx));
+        }
+        search(&mut cx, handle, "payments-api");
+        act(&mut cx, handle, |window, cx| {
+            window.click("resource:Deployment:payments:payments-api:mock-dev", cx)
+        });
+        act(&mut cx, handle, |window, cx| window.click("show-logs", cx));
+        act(&mut cx, handle, |window, _| {
+            let source = window.find(("log-source", 0usize)).bounds();
+            let headline = window.find(("log-summary", 0usize)).bounds();
+            let mut font = gpui_kit::font(SANS);
+            font.weight = FontWeight::MEDIUM;
+            let width = shaped_width(window, "boot payments-api", font, 12.);
+            assert!(source.right() <= headline.left());
+            assert!(
+                width <= headline.size.width,
+                "headline is {width:?} wide in a {:?} box",
+                headline.size.width
+            );
+        });
+    }
+
     pub fn run() {
         let Some(fixture) = std::env::var_os("KUBECOVE_PARITY_FIXTURE") else {
             println!(
@@ -254,5 +289,7 @@ mod text_fit {
         println!("text_fit context-column-fits: passed");
         live_log_status_shows_in_full(fixture);
         println!("text_fit live-log-status-shows-in-full: passed");
+        compact_aggregate_headline_fits(fixture);
+        println!("text_fit compact-aggregate-headline-fits: passed");
     }
 }

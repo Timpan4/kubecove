@@ -39,6 +39,7 @@ pub(super) struct EventsState {
     task: Option<Task<()>>,
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
+    pub refresh_error: Option<String>,
     /// The number of the last read started, and of the newest read that
     /// settled into `load`. The first read and the watch's reads overlap.
     started_reads: u64,
@@ -67,6 +68,7 @@ impl EventsState {
             task: None,
             watch: None,
             watch_error: None,
+            refresh_error: None,
             started_reads: 0,
             settled_read: 0,
             _search_changed,
@@ -125,6 +127,7 @@ impl Inspector {
         let read = self.timings.measure("events", read);
         let number = detail.events.begin_read();
         detail.events.load = EventsLoad::Pending;
+        detail.events.refresh_error = None;
         detail.events.layout_key = 0;
         detail.events.layout_source = Arc::default();
         // The detail owns this read, so it only settles into the detail that started it.
