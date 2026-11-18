@@ -68,7 +68,9 @@ export async function mountOwnershipMap(withWarnings = false): Promise<void> {
 	const observer = new MutationObserver((records) => {
 		for (const record of records) {
 			for (const node of record.removedNodes) {
-				if (node instanceof Element && node.matches(".svelte-flow__edge")) counts.edgeRemovals++;
+				if (!(node instanceof Element)) continue;
+				if (node.matches(".svelte-flow__edge")) counts.edgeRemovals++;
+				else counts.edgeRemovals += node.querySelectorAll(".svelte-flow__edge").length;
 			}
 		}
 	});

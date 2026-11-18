@@ -37,13 +37,17 @@ describe("ownership map selection rendering", () => {
 				["empty", true, true],
 			] as const) {
 				if (retainedEmpty) await refresh(true);
-				else {
-					expect((await graph()).edges).toBe(45);
+				const edgeCount = retainedEmpty ? 0 : (await graph()).edges;
+				if (!retainedEmpty) {
+					expect(edgeCount).toBeGreaterThan(0);
 					await expect($("div=Last observed topology warning")).toBeDisplayed();
 				}
 				await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).failOwnershipMapTopology(), FIXTURE);
 				await expect(disclosure).toBeDisplayed();
-				if (retainedEmpty) await focusControl("Map refresh failed");
+				if (retainedEmpty) {
+					await focusControl("Network Flow");
+					await browser.keys("Tab");
+				}
 				else {
 					await focusControl("skip graph");
 					await browser.keys("Enter");
@@ -54,7 +58,13 @@ describe("ownership map selection rendering", () => {
 				await browser.keys("Tab");
 				expect(await focusText()).toBe("Technical detail");
 				await browser.keys("Enter");
-				await expect($("pre=Topology request unavailable")).toBeDisplayed();
+				const technicalDetail = $("details[open] pre");
+				await expect(technicalDetail).toBeDisplayed();
+				expect(await technicalDetail.getText()).toContain("Topology request unavailable");
+				expect(await browser.execute(() => {
+					const detail = document.querySelector("details[open] pre");
+					return detail?.clientHeight === detail?.scrollHeight;
+				})).toBe(true);
 				await browser.keys("Tab");
 				expect(await browser.execute(() => {
 					const control = document.activeElement;
@@ -67,14 +77,14 @@ describe("ownership map selection rendering", () => {
 				if (retainedEmpty) await expect(empty).toBeDisplayed();
 				else {
 					const retained = await graph();
-					expect(retained.edges).toBe(45);
+					expect(retained.edges).toBe(edgeCount);
 					expect(retained.edgeRemovals).toBe(0);
 				}
 				await browser.saveScreenshot(join(artifacts, `ownership-map-error-${label}.png`));
 				await refresh(recoveredEmpty);
 				await expect(disclosure).not.toExist();
 				if (recoveredEmpty) await expect(empty).toBeDisplayed();
-				else expect((await graph()).edges).toBe(45);
+				else expect((await graph()).edges).toBe(edgeCount);
 				expect(await focusText()).toBe("Ownership Map");
 			}
 		} finally {

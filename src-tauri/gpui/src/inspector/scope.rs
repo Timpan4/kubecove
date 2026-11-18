@@ -218,6 +218,7 @@ impl Inspector {
         let request = self.request.clone();
         let starts = self.read_watch_starts(&contexts, cx);
         // Shared, so the Overview's read of the same contexts joins this request instead of issuing another.
+        let scope_started = Instant::now();
         let reads = self.scope_reads(&contexts, starts, refresh, cx);
         self.load_workspace_overview(refresh, Some(reads.clone()), cx);
         // As the web's keepPreviousData does, rows of the same contexts stay
@@ -248,7 +249,7 @@ impl Inspector {
                 if stage == Stage::Custom {
                     if this
                         .update(cx, |this, cx| {
-                            this.apply_custom_arrival(&request, &context, result, cx)
+                            this.apply_custom_arrival(&request, &context, result, scope_started, cx)
                         })
                         .is_err()
                     {
@@ -265,7 +266,7 @@ impl Inspector {
                 let (result, rows) =
                     prepare_arrival(cx.background_executor(), plan.clone(), rows, result).await;
                 let applied = this.update(cx, |this, cx| {
-                    this.apply_arrival(&request, &context, result, rows, cx)
+                    this.apply_arrival(&request, &context, result, rows, scope_started, cx)
                 });
                 if !matches!(applied, Ok(true)) {
                     return;
@@ -315,6 +316,7 @@ impl Inspector {
                 self.scope.namespace.as_deref(),
             ));
             let contexts = self.resource_contexts();
+            let scope_started = Instant::now();
             let read = self.refresh_reads(&contexts, cx);
             let request = self.request.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
@@ -327,7 +329,7 @@ impl Inspector {
                     let apply_started = Instant::now();
                     match this.observation.install_refresh(result) {
                         Ok(applied) => {
-                            this.supersede_kind_reads(&applied.listed);
+                            this.supersede_kind_errors(&applied.listed, scope_started);
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces
                             } else {

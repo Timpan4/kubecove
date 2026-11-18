@@ -20,11 +20,13 @@
 		mode = "full",
 		context = {},
 		class: className = "",
+		scrollTechnicalDetail = true,
 	}: {
 		error: unknown;
 		mode?: FriendlyErrorMode;
 		context?: FriendlyErrorContext;
 		class?: string;
+		scrollTechnicalDetail?: boolean;
 	} = $props();
 
 	let copied = $state(false);
@@ -93,7 +95,7 @@
 				Technical detail
 			</summary>
 			<div class="mt-2 space-y-2">
-				<pre class="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 text-[0.6875rem] leading-relaxed text-muted-foreground">{presentation.technicalDetail}</pre>
+				<pre class={cnfast("whitespace-pre-wrap break-words rounded bg-muted/40 p-2 text-[0.6875rem] leading-relaxed text-muted-foreground", scrollTechnicalDetail && "max-h-40 overflow-auto")}>{presentation.technicalDetail}</pre>
 				<div class="flex items-center gap-2">
 					<Button type="button" variant="outline" size="xs" onclick={copyDetail}>
 						{#if copied}

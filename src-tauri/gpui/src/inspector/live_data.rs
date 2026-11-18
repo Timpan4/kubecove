@@ -136,11 +136,13 @@ impl LiveData {
         )
     }
 
-    pub fn reload_error_where(&self, keep: impl Fn(&str) -> bool) -> Option<&str> {
+    pub fn reload_error_in(&self, context: &str) -> Option<&str> {
         self.watches
-            .values()
-            .filter(|watch| keep(&watch.context))
-            .find_map(|watch| watch.reload_error.as_deref())
+            .iter()
+            .filter(|(_, watch)| watch.context == context)
+            .filter_map(|(id, watch)| watch.reload_error.as_deref().map(|error| (id, error)))
+            .min_by_key(|(id, _)| *id)
+            .map(|(_, error)| error)
     }
 
     /// Each watch for the status menu, in id order, so the first error it
@@ -508,6 +510,8 @@ impl Inspector {
                                 })
                                 .unwrap_or(false);
                         let mut reload = tick && (lost || forbidden || read_failed || missing_kind);
+                        let recovering_kind_only =
+                            missing_kind && !lost && !forbidden && !read_failed && batch.is_empty();
                         // A recovery tick with nothing to recover leaves the view as it is.
                         if tick && batch.is_empty() && !reload {
                             continue;
@@ -621,47 +625,52 @@ impl Inspector {
                                 },
                             )
                             .await;
-                            read_failed = rows.is_err();
-                            let valid = this
-                                .update_in(cx, |this, _window, cx| {
-                                    if this.live.owner != owner {
-                                        return false;
-                                    }
-                                    match rows {
-                                        Ok(KindRows {
-                                            rows,
-                                            resource_version,
-                                        }) => {
-                                            this.queue_live_patch(
-                                                super::resource_observation::Patch {
-                                                    scope: scope.clone(),
-                                                    key: key.clone(),
-                                                    rows,
-                                                    resource_version,
-                                                    names,
-                                                    watch: Some(id.clone()),
-                                                },
-                                                cx,
-                                            );
-                                            if let Some(w) = this.live.watches.get_mut(&id) {
-                                                w.reload_error = None;
-                                                w.catching_up = false;
-                                            }
+                            let Ok(Some(failed)) = this.update_in(cx, |this, _window, cx| {
+                                if this.live.owner != owner {
+                                    return None;
+                                }
+                                let failed = match rows {
+                                    Ok(KindRows {
+                                        rows,
+                                        resource_version,
+                                    }) => {
+                                        this.queue_live_patch(
+                                            super::resource_observation::Patch {
+                                                scope: scope.clone(),
+                                                key: key.clone(),
+                                                rows,
+                                                resource_version,
+                                                names,
+                                                watch: Some(id.clone()),
+                                            },
+                                            cx,
+                                        );
+                                        if let Some(w) = this.live.watches.get_mut(&id) {
+                                            w.reload_error = None;
+                                            w.catching_up = false;
                                         }
-                                        Err(error) => {
-                                            if let Some(w) = this.live.watches.get_mut(&id) {
+                                        false
+                                    }
+                                    Err(error) => {
+                                        let failed = !recovering_kind_only
+                                            || this
+                                                .observation
+                                                .kind_read_failed(&scope.context, &id);
+                                        if let Some(w) = this.live.watches.get_mut(&id) {
+                                            if failed {
                                                 w.reload_error = Some(error.message);
-                                                w.catching_up = false;
                                             }
+                                            w.catching_up = false;
                                         }
+                                        failed
                                     }
-                                    cx.notify();
-                                    true
-                                })
-                                .unwrap_or(false);
-                            if !valid {
+                                };
+                                cx.notify();
+                                Some(failed)
+                            }) else {
                                 return;
-                            }
+                            };
+                            read_failed = failed;
                             if !tick {
                                 cx.background_executor()
                                     .timer(COALESCE.saturating_sub(started.elapsed()))

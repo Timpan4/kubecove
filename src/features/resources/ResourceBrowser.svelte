@@ -474,33 +474,40 @@
 	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
 		&& notice.table.status !== "partial" && notice.table.status !== "polling");
 	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
-		&& !notice.map.sharesTableError
+		&& (!notice.map.sharesTableError || notice.map.status === "reconnecting" || notice.map.status === "connecting")
 		&& notice.map.status !== "partial" && notice.map.status !== "polling");
-	const refreshFailedNotice = "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.";
+	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
 	const tableNotice = $derived(notice.table && (notice.table.error
-		? refreshFailedNotice
-		: liveNoticeText(notice.table.status, tableStale.shown)));
-	const mapNotice = $derived(notice.map && (notice.map.failed
-		? "Showing last observed graph. Map activity indicators are paused until the map refreshes."
-		: notice.map.sharesTableError
-		? tableNotice
-		: notice.map.error
-		? scopeNotice(refreshFailedNotice, "Map")
-		: liveNoticeText(notice.map.status, mapStale.shown)));
+		? "refreshFailed"
+		: watchNotice(notice.table.status, tableStale.shown)));
+	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, mapStale.shown));
+	const mapNotice = $derived.by((): NoticeKind | null => {
+		if (!notice.map) return null;
+		if (notice.map.failed) return "topologyFailed";
+		if (notice.map.error) return "refreshFailed";
+		return mapWatchNotice === tableNotice ? null : mapWatchNotice;
+	});
+	const sharedNotice = $derived(notice.map?.sharesTableError || (!mapNotice && tableNotice === mapWatchNotice));
 	let mapNoticeElement = $state<HTMLDivElement>();
 	let mapPanelElement = $state<HTMLDivElement>();
 	let tableNoticeElement = $state<HTMLDivElement>();
 	let tableHeadingElement = $state<HTMLHeadingElement>();
 	let browserElement = $state<HTMLDivElement>();
 
-	function liveNoticeText(status: string, stale: boolean) {
-		if (status === "partial") return "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.";
-		if (status === "polling") return "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.";
-		return stale ? "Showing last observed state. Activity indicators are paused until live updates recover." : null;
+	function watchNotice(status: string, stale: boolean): NoticeKind | null {
+		if (status === "partial" || status === "polling") return status;
+		return stale ? "stale" : null;
 	}
 
-	function scopeNotice(label: string, panel: "Table" | "Map") {
-		return label.replace("Activity indicators", `${panel} activity indicators`);
+	function noticeText(kind: NoticeKind, panel?: "Table" | "Map") {
+		const activity = panel ? `${panel} activity indicators` : "Activity indicators";
+		switch (kind) {
+			case "refreshFailed": return `Refresh failed. Showing last observed state. ${activity} are paused until live updates recover.`;
+			case "topologyFailed": return "Showing last observed graph. Map activity indicators are paused until the map refreshes.";
+			case "partial": return `Live updates are limited. Readable resources without watch access refresh periodically. ${activity} are paused.`;
+			case "polling": return `Live updates are unavailable. Readable resources refresh periodically. ${activity} are paused.`;
+			case "stale": return `Showing last observed state. ${activity} are paused until live updates recover.`;
+		}
 	}
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
@@ -518,7 +525,7 @@
 		const focused = document.activeElement;
 		const mapMounted = panelsShown && mapPanelOpen;
 		const tableMounted = panelsShown && tablePanelOpen;
-		const hasMapDetails = mapMounted && mapNotice && mapNotice !== tableNotice && notice.map?.error;
+		const hasMapDetails = mapMounted && mapNotice === "refreshFailed";
 		if (!hasMapDetails && mapNoticeElement?.contains(focused)) {
 			(mapMounted ? mapPanelElement : browserElement)?.focus({ preventScroll: true });
 		}
@@ -836,14 +843,14 @@
 		</div>
 	{:else}
 		{#if tableNotice}
-			{@const label = notice.map && !notice.map.sharesTableError && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
+			{@const label = noticeText(tableNotice, notice.map && !sharedNotice ? "Table" : undefined)}
 			<div class="contents" bind:this={tableNoticeElement}>
 				{@render observationNotice(label, notice.table?.error, notice.table?.context)}
 			</div>
 		{/if}
-		{#if mapNotice && mapNotice !== tableNotice}
+		{#if mapNotice}
 			<div class="contents" bind:this={mapNoticeElement}>
-				{@render observationNotice(notice.table && !notice.map?.error ? scopeNotice(mapNotice, "Map") : mapNotice, notice.map?.error)}
+				{@render observationNotice(noticeText(mapNotice, notice.table || notice.map?.error ? "Map" : undefined), notice.map?.error)}
 			</div>
 		{/if}
 		<div

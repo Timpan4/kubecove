@@ -339,10 +339,12 @@ impl Inspector {
         let map = freshness.map.and_then(|status| {
             if status == LiveStatus::RefreshFailed {
                 Some(MAP_STALE)
-            } else if shared_error {
-                None
-            } else if map_error.is_some() {
+            } else if map_error.is_some() && !shared_error {
                 Some("Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.")
+            } else if shared_error {
+                freshness.map_watch.and_then(|watch| {
+                    notice_text(watch, map_stale.shown() && waiting_for_watch(Some(watch)))
+                }).filter(|_| freshness.map_watch != Some(LiveStatus::RefreshFailed))
             } else {
                 notice_text(status, map_stale.shown())
             }
@@ -375,7 +377,8 @@ impl Inspector {
             } else {
                 "live-notice"
             };
-            let error = map_error.filter(|_| freshness.map != Some(LiveStatus::RefreshFailed));
+            let error = map_error
+                .filter(|_| !shared_error && freshness.map != Some(LiveStatus::RefreshFailed));
             notices.push(self.live_notice_panel(NoticeSurface::Map, id, label, error, cx));
         }
         notices

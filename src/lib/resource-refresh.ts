@@ -17,6 +17,14 @@ interface ReadRefresh {
 }
 
 const readsInRefresh = new WeakMap<Query, ReadRefresh>();
+const manualReleaseListeners = new WeakMap<QueryClient, Set<(query: Query) => void>>();
+
+export function onManualRefreshRelease(queryClient: QueryClient, listener: (query: Query) => void): () => void {
+	const listeners = manualReleaseListeners.get(queryClient) ?? new Set();
+	manualReleaseListeners.set(queryClient, listeners);
+	listeners.add(listener);
+	return () => { listeners.delete(listener); };
+}
 
 function refreshState(query: Query): ReadRefresh {
 	const existing = readsInRefresh.get(query);
@@ -109,6 +117,7 @@ export async function refreshCurrentView({
 		state.manual--;
 		flushDeferredRead(query, state);
 		state.notify?.();
+		if (!state.manual) for (const listener of manualReleaseListeners.get(queryClient) ?? []) listener(query);
 	};
 	for (const query of queries) {
 		if (cancelRefetch) {
@@ -121,8 +130,7 @@ export async function refreshCurrentView({
 		else shared.push(query);
 	}
 	try {
-		if (cancelRefetch) await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
-		else await Promise.allSettled(shared.map((query) => query.promise));
+		if (!cancelRefetch) await Promise.allSettled(shared.map((query) => query.promise));
 		await refreshResourceCache(
 			client,
 			clusterContext,
@@ -130,8 +138,12 @@ export async function refreshCurrentView({
 			namespaces,
 			kubeconfigEnvVar,
 		);
-		// Watch changes may have started a new read while cache eviction was pending.
-		if (cancelRefetch) await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
+		// Replace running reads only after eviction succeeds. If it fails, their
+		// results are still needed by the watch that requested them.
+		if (cancelRefetch) {
+			for (const query of queries) if (query.isActive()) refreshState(query).manualRevision++;
+			await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
+		}
 		// Keep the last displayed data while making every selected cache entry stale.
 		const invalidate = (query: Query, throwOnError: boolean) =>
 			queryClient.invalidateQueries(
@@ -147,11 +159,10 @@ export async function refreshCurrentView({
 		const results = await Promise.allSettled(shared.map(async (query) => {
 			const state = readsInRefresh.get(query);
 			const revision = state?.manualRevision ?? 0;
-			if (cancelRefetch && query.isActive()) refreshState(query).manualRevision++;
 			try {
 				await invalidate(query, true);
 			} catch (error) {
-				const replaced = manualRefreshOwns(query) || (readsInRefresh.get(query)?.manualRevision ?? 0) !== revision;
+				const replaced = (readsInRefresh.get(query)?.manualRevision ?? 0) !== revision;
 				if (cancelRefetch || !isCancelledError(error) || !replaced) throw error;
 			} finally {
 				finishManual(query);

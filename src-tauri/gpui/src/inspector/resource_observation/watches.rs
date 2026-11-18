@@ -30,17 +30,6 @@ impl ResourceObservation {
         self.pending.clear();
     }
 
-    pub(in crate::inspector) fn has_kind_patches(&self) -> bool {
-        self.pending.iter().any(|patch| patch.watch.is_none())
-    }
-
-    pub(in crate::inspector) fn discard_kind_patches(&mut self, covered: &HashSet<String>) {
-        self.pending.retain(|patch| {
-            patch.watch.is_some()
-                || !covered.contains(&crate::backend::watch_id(&patch.scope.context, &patch.key))
-        });
-    }
-
     pub(in crate::inspector) fn retain_watches(&mut self, wanted: &HashSet<&str>) {
         self.pending
             .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));

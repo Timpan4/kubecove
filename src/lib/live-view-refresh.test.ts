@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
+import { setImmediate } from "node:timers/promises";
 import { QueryClient, QueryObserver, type QueryKey } from "@tanstack/svelte-query";
 import {
 	bindLiveView,
@@ -8,6 +9,7 @@ import {
 	type LiveViewState,
 } from "./live-view-refresh";
 import { configureQueryCatalog, queryKeys, queryMatchers } from "./queryKeys";
+import { refreshCurrentView } from "./resource-refresh";
 import { RESOURCE_RECOVERY_INTERVAL, watchKeySignature } from "./resource-watch";
 import { createMockChannel, createMockTauriClient } from "./tauri-runtime";
 import type { ResourceWatchStart, StreamMessage, StreamStatus, WatchResourceKey } from "./types";
@@ -205,6 +207,43 @@ describe("detail and event live read recovery", () => {
 });
 
 describe("live view refresh binding", () => {
+	test("a failed topology read retries after manual ownership ends while other reads are held", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		const topology = queryKeys.resourceTopology("dev", ["shop"], "ownership");
+		let fail = true;
+		live.observe("topology", topology, { gate: async () => {
+			if (fail) throw new Error("topology unavailable");
+		} });
+		let startRows!: () => void;
+		let finishRows!: () => void;
+		const rowsStarted = new Promise<void>((resolve) => { startRows = resolve; });
+		const rows = new Promise<void>((resolve) => { finishRows = resolve; });
+		live.observe("rows", podsKey, { gate: () => { startRows(); return rows; } });
+		live.bind({ keys: [pods], reads: [{ keys: [pods], match: queryMatchers.exact(topology), recoverSeparately: true }] });
+		const manual = refreshCurrentView({
+			queryClient: live.queryClient,
+			clusterContext: "dev", keys: [], namespaces: [],
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		void manual.catch(() => {});
+		try {
+			await rowsStarted;
+			const query = live.queryClient.getQueryCache().find({ queryKey: topology });
+			await query?.promise?.catch(() => {});
+			// Let invalidation release its manual ownership after the query fails.
+			await setImmediate();
+			fail = false;
+			jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+			expect(live.fetches("topology")).toBe(2);
+			await query?.promise;
+			expect(live.queryClient.getQueryData(topology)).toBe("topology");
+		} finally {
+			finishRows();
+			await expect(manual).rejects.toThrow("topology unavailable");
+		}
+	});
+
 	test("manual refresh owns the retry while cache eviction is pending", async () => {
 		jest.useFakeTimers();
 		let startEviction!: () => void;

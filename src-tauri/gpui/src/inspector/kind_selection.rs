@@ -10,6 +10,7 @@ use gpui_kit::{
 };
 use kubecove_lib::models::{DiscoveredResourceKind, WatchResourceKey};
 use std::collections::HashSet;
+use std::time::Instant;
 
 pub(super) struct KindSelection {
     pub sidebar: Entity<InputState>,
@@ -24,6 +25,8 @@ pub(super) struct KindSelection {
 pub(super) struct KindRead {
     /// The `watch_id` of the kind in each context read.
     ids: Vec<String>,
+    started: Instant,
+    superseded_errors: HashSet<String>,
     loading: bool,
     _task: gpui_kit::Task<()>,
 }
@@ -31,21 +34,16 @@ pub(super) struct KindRead {
 impl KindSelection {
     /// Whether a checked kind's rows for the watch `id` are still loading.
     pub(super) fn loading(&self, id: &str) -> bool {
-        self.reads
-            .values()
-            .any(|read| read.loading && read.ids.iter().any(|other| other == id))
+        self.reads.values().any(|read| {
+            read.loading
+                && read.ids.iter().any(|other| other == id)
+                && !read.superseded_errors.contains(id)
+        })
     }
 
     pub(super) fn retain_watches(&mut self, wanted: &HashSet<&str>) {
         self.reads
             .retain(|_, read| read.ids.iter().any(|id| wanted.contains(id.as_str())));
-    }
-
-    fn supersede_lists(&mut self, covered: &HashSet<String>) {
-        self.reads.retain(|_, read| {
-            read.ids.retain(|id| !covered.contains(id));
-            !read.ids.is_empty()
-        });
     }
 }
 
@@ -76,18 +74,26 @@ impl KindSelection {
 }
 
 impl Inspector {
-    pub(super) fn supersede_kind_reads(&mut self, listed: &[crate::backend::Listed]) {
-        if listed.is_empty()
-            || (self.kind_selection.reads.is_empty() && !self.observation.has_kind_patches())
-        {
+    pub(super) fn supersede_kind_errors(
+        &mut self,
+        listed: &[crate::backend::Listed],
+        scope_started: Instant,
+    ) {
+        if listed.is_empty() || self.kind_selection.reads.is_empty() {
             return;
         }
-        let covered = listed
+        let covered: HashSet<_> = listed
             .iter()
             .map(|list| crate::backend::watch_id(&list.context, &list.key))
             .collect();
-        self.kind_selection.supersede_lists(&covered);
-        self.observation.discard_kind_patches(&covered);
+        // A list requested later supersedes an earlier error. Successful kind
+        // reads still reconcile against the version of the rows on screen.
+        for read in self.kind_selection.reads.values_mut() {
+            if read.loading && read.started < scope_started {
+                read.superseded_errors
+                    .extend(read.ids.iter().filter(|id| covered.contains(*id)).cloned());
+            }
+        }
     }
 
     pub(super) fn custom_matches(&self, kind: &DiscoveredResourceKind, cx: &Context<Self>) -> bool {
@@ -229,6 +235,7 @@ impl Inspector {
         let read_key = key.clone();
         let namespace = scope.namespace.clone();
         let executor = cx.background_executor().clone();
+        let started = Instant::now();
         // A backend can prepare a snapshot before returning its read future.
         let read = cx.background_executor().spawn(async move {
             let reads = contexts
@@ -262,12 +269,10 @@ impl Inspector {
                 let several = results.len() > 1;
                 for (context, result) in results {
                     let id = crate::backend::watch_id(&context, &key);
-                    if !this
-                        .kind_selection
-                        .reads
-                        .get(&selected)
-                        .is_some_and(|read| read.ids.contains(&id))
-                    {
+                    let Some(read) = this.kind_selection.reads.get(&selected) else {
+                        return;
+                    };
+                    if !read.ids.contains(&id) {
                         continue;
                     }
                     match result {
@@ -288,7 +293,7 @@ impl Inspector {
                             },
                             cx,
                         ),
-                        Err(error) => {
+                        Err(error) if !read.superseded_errors.contains(&id) => {
                             this.observation.record_kind_error(
                                 &context,
                                 &key,
@@ -299,6 +304,7 @@ impl Inspector {
                                 ),
                             );
                         }
+                        Err(_) => {}
                     }
                 }
                 cx.notify();
@@ -308,6 +314,8 @@ impl Inspector {
             id,
             KindRead {
                 ids,
+                started,
+                superseded_errors: HashSet::new(),
                 loading: true,
                 _task: task,
             },

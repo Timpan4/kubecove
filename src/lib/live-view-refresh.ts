@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/svelte-query";
 import type { QueryMatch } from "./queryKeys";
-import { manualRefreshOwns, refreshCurrentView } from "./resource-refresh";
+import { manualRefreshOwns, onManualRefreshRelease, refreshCurrentView } from "./resource-refresh";
 import {
 	observeResourceScope,
 	RESOURCE_RECOVERY_INTERVAL,
@@ -266,6 +266,9 @@ function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 			void queryClient.refetchQueries({ predicate: failed }, { cancelRefetch: false });
 		})
 		: null;
+	const stopRelease = recovery && onManualRefreshRelease(queryClient, (query) => {
+		if (read.match(query)) recovery.check();
+	});
 	return {
 		get read() {
 			return read;
@@ -274,14 +277,12 @@ function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 			read = next;
 			recovery?.check();
 		},
-		checkRecovery() {
-			recovery?.check();
-		},
 		notify() {
 			if (read.refetch === false) void queryClient.invalidateQueries({ predicate: read.match, refetchType: "none" });
 			else throttle.notify();
 		},
 		dispose() {
+			stopRelease?.();
 			recovery?.dispose();
 			throttle.dispose();
 		},
@@ -393,13 +394,7 @@ export function bindLiveView({
 	}
 	apply(view);
 	return {
-		async refresh() {
-			try {
-				return await reread(current.keys, viewReads(), true);
-			} finally {
-				for (const slot of slots) slot.checkRecovery();
-			}
-		},
+		refresh: () => reread(current.keys, viewReads(), true),
 		update(next) {
 			if (!stopped) apply(next);
 		},

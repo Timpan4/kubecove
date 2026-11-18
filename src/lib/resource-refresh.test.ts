@@ -155,12 +155,17 @@ test("manual refresh replaces an uncached watch read started during eviction", a
 	const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
 	let requests = 0;
 	let cancelledWatch = false;
+	let finishInitial!: () => void;
 	const stop = new QueryObserver(queryClient, {
 		queryKey: key,
 		queryFn: async ({ signal }) => {
 			const started = ++requests;
-			if (started <= 2) await new Promise<void>((resolve) => signal.addEventListener("abort", () => {
-				if (started === 2) cancelledWatch = true;
+			if (started === 1) {
+				await new Promise<void>((resolve) => { finishInitial = resolve; });
+				throw new Error("No data yet");
+			}
+			if (started === 2) await new Promise<void>((resolve) => signal.addEventListener("abort", () => {
+				cancelledWatch = true;
 				resolve();
 			}, { once: true }));
 			return started;
@@ -176,6 +181,9 @@ test("manual refresh replaces an uncached watch read started during eviction", a
 			} }),
 		});
 		await evictionStarted;
+		const initial = queryClient.getQueryCache().find({ queryKey: key })?.promise;
+		finishInitial();
+		await initial?.catch(() => {});
 		const watch = queryClient.refetchQueries({ queryKey: key, exact: true });
 		expect(requests).toBe(2);
 		releaseEviction();
@@ -184,6 +192,50 @@ test("manual refresh replaces an uncached watch read started during eviction", a
 		expect(queryClient.getQueryData(key)).toBe(3);
 	} finally {
 		releaseEviction();
+		stop();
+		queryClient.clear();
+	}
+});
+
+test.each([false, true])("failed manual eviction preserves a running catch-up, independent: %s", async (independent) => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+	configureQueryCatalog(queryClient);
+	const key = independent ? queryKeys.resourceTopology("dev", [], "ownership") : queryKeys.resources("dev", []);
+	queryClient.setQueryData(key, "retained");
+	let startRead!: () => void;
+	let finishRead!: () => void;
+	const readStarted = new Promise<void>((resolve) => { startRead = resolve; });
+	const read = new Promise<void>((resolve) => { finishRead = resolve; });
+	let aborted = false;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			signal.addEventListener("abort", () => { aborted = true; });
+			startRead();
+			await read;
+			return "fresh";
+		},
+	}).subscribe(() => {});
+	const refresh = { queryClient, clusterContext: "dev", keys: [], namespaces: [] };
+	try {
+		const recovery = refreshCurrentView({
+			...refresh,
+			cancelRefetch: false,
+			independentReads: independent ? [queryMatchers.exact(key)] : [],
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		await readStarted;
+		const running = queryClient.getQueryCache().find({ queryKey: key })?.promise;
+		await expect(refreshCurrentView({
+			...refresh,
+			client: createMockTauriClient({ refresh_resource_cache: () => { throw new Error("eviction failed"); } }),
+		})).rejects.toThrow("eviction failed");
+		finishRead();
+		await Promise.allSettled([recovery, running]);
+		expect(aborted).toBe(false);
+		expect(queryClient.getQueryData(key)).toBe("fresh");
+	} finally {
+		finishRead();
 		stop();
 		queryClient.clear();
 	}

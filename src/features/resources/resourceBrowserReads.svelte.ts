@@ -187,11 +187,17 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 
 	// A context without shown rows has no table evidence to call stale.
 	const shown = $derived(live.stateOf(scope.shownContexts));
+	const rowRefreshPending = $derived(specs.map(({ specs: spec }) => readRefreshPending(queryCache.find({
+		queryKey: spec.resources.queryKey,
+		exact: true,
+	}))));
+	const shownRowsPending = $derived(scopeQueries.some((query, index) =>
+		scope.shownContexts.includes(contexts[index]) && (rowRefreshPending[index] || query.fetchStatus !== "idle")));
 	const failedTableRead = $derived(scopeQueries.findIndex((query, index) =>
 		query.isError && scope.shownContexts.includes(contexts[index])));
 	const tableError = $derived(scopeQueries[failedTableRead]?.error ?? shown.reloadError);
 	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !tableError
-		&& !scope.isError && !scope.isPlaceholderData);
+		&& !shownRowsPending && !scope.isError && !scope.isPlaceholderData);
 	// Map membership uses rows from this context, even when the table is collapsed.
 	const map = $derived(live.stateOf([mapContext]));
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
@@ -204,7 +210,7 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	// Catch-up can be clearing caches before the topology query starts.
 	const mapCurrent = $derived(mapShown && !topologyRefreshPending && !topology.isError && !topology.isPlaceholderData && topology.fetchStatus === "idle"
 		&& map.status === "connected" && !map.catchingUp && !map.reloadError
-		&& !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
+		&& !rowRefreshPending[mapRead] && !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const mapError = $derived(mapRows?.error ?? map.reloadError);
 	const tableExplainsMapError = $derived(tableShown && (

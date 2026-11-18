@@ -11,7 +11,13 @@
 		topology = next;
 		error = null;
 	}
-	export function failRefresh() { error = new Error("Topology request unavailable"); }
+	export function failRefresh() {
+		const workloads = initialTopology.nodes.filter((node) => node.kind === "Deployment");
+		error = new Error([
+			"Topology request unavailable",
+			...workloads.map((node) => `Unable to read ownership for ${node.namespace}/${node.name}`),
+		].join("\n"));
+	}
 </script>
 
 <div class="dark fixed inset-0 z-10 flex h-screen bg-background p-4 text-foreground" data-ownership-map-harness>

@@ -4,6 +4,7 @@ use crate::inspector::{Inspector, map::TopologyLoad, watch_status::LiveStatus};
 pub(in crate::inspector) struct NoticeFreshness {
     pub table: Option<LiveStatus>,
     pub map: Option<LiveStatus>,
+    pub map_watch: Option<LiveStatus>,
 }
 
 impl Inspector {
@@ -57,8 +58,11 @@ impl Inspector {
     ) -> (Option<&str>, Option<&str>) {
         let table = if freshness.table == Some(LiveStatus::RefreshFailed) {
             self.table_refresh_error().or_else(|| {
-                self.live
-                    .reload_error_where(|context| self.observation.shows(context))
+                self.observation
+                    .contexts()
+                    .iter()
+                    .filter(|context| self.observation.shows(context))
+                    .find_map(|context| self.live.reload_error_in(context))
             })
         } else {
             None
@@ -78,11 +82,12 @@ impl Inspector {
         let context = self.map_context();
         self.observation
             .map_rows_error(context, topology)
-            .or_else(|| self.live.reload_error_where(|watched| watched == context))
+            .or_else(|| self.live.reload_error_in(context))
     }
 
     pub(in crate::inspector) fn notice_freshness(&self) -> NoticeFreshness {
         let table = (self.table_open && self.observation.any_shown()).then(|| self.table_status());
+        let mut map_watch = None;
         let map = match &self.map.topology {
             TopologyLoad::Ready(topology) if self.map_is_open() => Some({
                 if self.map.read.error.is_some() {
@@ -90,6 +95,7 @@ impl Inspector {
                 } else {
                     let context = self.map_context();
                     let status = self.live.watch_status_where(|watched| watched == context);
+                    map_watch = Some(status);
                     // The graph is filtered by this context's rows.
                     if status == LiveStatus::RefreshFailed
                         || (status == LiveStatus::Live
@@ -105,6 +111,10 @@ impl Inspector {
             }),
             _ => None,
         };
-        NoticeFreshness { table, map }
+        NoticeFreshness {
+            table,
+            map,
+            map_watch,
+        }
     }
 }
