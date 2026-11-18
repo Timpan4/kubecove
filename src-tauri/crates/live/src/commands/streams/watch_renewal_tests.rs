@@ -82,7 +82,29 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn event_watch_restarts_after_internal_error_and_reports_only_accepted_connections() {
+async fn event_watch_resets_version_after_in_stream_internal_error() {
+    let (versions, states) = recover_event_watch_after_internal_error(true).await;
+    assert_eq!(versions, ["0", "0"]);
+    assert_eq!(states, ["connected", "error", "reconnecting", "connected"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn event_watch_resets_version_after_http_internal_error() {
+    let (versions, states) = recover_event_watch_after_internal_error(false).await;
+    assert_eq!(versions, ["0", "55", "0"]);
+    assert_eq!(
+        states,
+        [
+            "connected",
+            "reconnecting",
+            "error",
+            "reconnecting",
+            "connected"
+        ]
+    );
+}
+
+async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<String>, Vec<String>) {
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service_requests = requests.clone();
     let service = tower::service_fn(move |request: Request<Body>| {
@@ -96,15 +118,15 @@ async fn event_watch_restarts_after_internal_error_and_reports_only_accepted_con
             "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 500,
             "reason": "InternalError", "message": "etcd event received with PrevKv=nil (type=DELETE)"
         });
-        let (code, body) = match requests.len() {
-            1 => (
+        let (code, body) = match (in_stream, requests.len()) {
+            (true, 1) => (
                 200,
                 format!(
                     "{bookmark}\n{}\n",
                     json!({ "type": "ERROR", "object": error })
                 ),
             ),
-            2 => (500, error.to_string()),
+            (false, 2) => (500, error.to_string()),
             _ => (200, format!("{bookmark}\n")),
         };
         std::future::ready(Ok::<_, std::convert::Infallible>(
@@ -117,10 +139,11 @@ async fn event_watch_restarts_after_internal_error_and_reports_only_accepted_con
     let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
     let observed_messages = messages.clone();
     let channel_requests = requests.clone();
+    let retry_request = if in_stream { 2 } else { 3 };
     let channel = stream_channel(move |message| {
         observed_messages.lock().unwrap().push(message);
-        // Stop once the response to the third request has been reported.
-        if channel_requests.lock().unwrap().len() == 3 {
+        // Stop once the successful retry has reported its state.
+        if channel_requests.lock().unwrap().len() == retry_request {
             Err(())
         } else {
             Ok(())
@@ -146,30 +169,30 @@ async fn event_watch_restarts_after_internal_error_and_reports_only_accepted_con
     )
     .await;
 
-    let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 3);
-    assert!(requests[1].contains("resourceVersion=0"), "{}", requests[1]);
-    let messages = messages.lock().unwrap();
-    let states: Vec<_> = messages
+    let versions = requests
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|uri| {
+            uri.split(['?', '&'])
+                .find_map(|parameter| parameter.strip_prefix("resourceVersion="))
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    let states = messages
+        .lock()
+        .unwrap()
         .iter()
         .map(|message| {
             message["status"]
                 .as_str()
                 .or_else(|| message["type"].as_str())
                 .unwrap()
+                .to_owned()
         })
         .collect();
-    assert_eq!(
-        states,
-        [
-            "connected",
-            "error",
-            "reconnecting",
-            "error",
-            "reconnecting",
-            "connected"
-        ]
-    );
+    (versions, states)
 }
 
 #[tokio::test]

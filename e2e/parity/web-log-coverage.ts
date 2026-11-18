@@ -17,10 +17,16 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const closed = await row.boundingBox();
 		// LogEntry uses an 18px summary and 2px of padding on each edge.
 		if (closed?.height !== 22) throw new Error("Collapsed log row takes more than one line");
+		const summary = row.locator(":scope > div > div:first-child");
+		const summaryOverflows = await summary.evaluate((element) => element.scrollWidth > element.clientWidth);
+		const viewport = row.locator('xpath=ancestor::div[contains(@class,"overflow-auto")][1]');
+		const viewportOverflows = await viewport.evaluate((element) => element.scrollWidth > element.clientWidth);
+		if (!summaryOverflows) throw new Error("Long log fixture fits without clipping");
+		if (viewportOverflows) throw new Error("Collapsed log text creates horizontal scrolling");
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
-		const summary = await row.locator(":scope > div > div:first-child").boundingBox();
-		if (!summary || summary.height <= 18) throw new Error("Expanded log summary did not wrap");
+		const expanded = await summary.boundingBox();
+		if (!expanded || expanded.height <= 18) throw new Error("Expanded log summary did not wrap");
 	} else if (check === "log-scroll-back") {
 		const viewport = page.locator("[data-log-row]").first().locator('xpath=ancestor::div[contains(@class,"overflow-auto")][1]');
 		const height = await viewport.evaluate((element) => element.scrollHeight);
