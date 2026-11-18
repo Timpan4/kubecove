@@ -47,6 +47,12 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		const unknown = await save("unknown-driver", { "result.json": "{}", "scenarios.txt": "one" }, "2026-01-10");
 		await expect(lastRerunSource(root)).rejects.toThrow("set PARITY_DRIVER");
 		expect(await lastRerunSource(root, "web")).toBe(unknown);
+		const malformed = await save("malformed", {
+			"result.json": JSON.stringify({ selectionHashes: { gpui: selectionHash("two") } }),
+		}, "2026-01-11");
+		const diagnostic = `Invalid driver selection hashes in ${join(malformed, "result.json")}`;
+		await expect(lastRerunSource(root, "web")).rejects.toThrow(diagnostic);
+		await expect(rerunSelections(malformed)).rejects.toThrow(diagnostic);
 	} finally {
 		await rm(root, { recursive: true });
 	}
@@ -59,7 +65,7 @@ test("a rerun selects only each driver's failures, including missing results", a
 		await Promise.all([
 			save("web-scenarios.txt", "shared\nweb-only\n"),
 			save("gpui-scenarios.txt", "shared\ngpui-only\n"),
-			save("result.json", '{"driver":'),
+			save("result.json", '{"driver":"both","status":"failed"}'),
 			save("web.json", '{"driver":"web","scenarios":[{"id":"shared","status":"passed"},{"id":"web-only","status":"failed"}]}'),
 			save("gpui.json", '{"driver":"gpui","scenarios":[{"id":"shared","status":"passed"}]}'),
 		]);
@@ -76,6 +82,7 @@ test("unreadable reports leave selected IDs eligible and empty selections stay e
 			writeFile(join(run, "web-scenarios.txt"), "one\ntwo"),
 			writeFile(join(run, "gpui-scenarios.txt"), ""),
 			mkdir(join(run, "web.json")),
+			writeFile(join(run, "result.json"), '{"driver":"web","status":"failed"}'),
 			mkdir(join(run, "gpui.json")),
 		]);
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["one", "two"]), gpui: new Set() });
@@ -89,7 +96,7 @@ test("rerunning an earlier web-only report has no GPUI selection", async () => {
 	try {
 		await Promise.all([
 			writeFile(join(run, "scenarios.txt"), "one\ntwo"),
-			writeFile(join(run, "result.json"), '{"driver":"web"}'),
+			writeFile(join(run, "result.json"), '{"driver":"web","status":"failed"}'),
 			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"}]}'),
 		]);
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
@@ -104,6 +111,7 @@ test("reruns distrust a report for another driver and a duplicate scenario resul
 	try {
 		await Promise.all([
 			save("web-scenarios.txt", "unique\nduplicate\nmissing"),
+			save("result.json", '{"driver":"both","status":"failed"}'),
 			save("gpui-scenarios.txt", "gpui-only"),
 			save("web.json", '{"driver":"web","scenarios":[{"id":"unique","status":"passed"},{"id":"duplicate","status":"passed"},{"id":"duplicate","status":"failed"}]}'),
 			save("gpui.json", '{"driver":"web","scenarios":[{"id":"gpui-only","status":"passed"}]}'),
@@ -149,6 +157,7 @@ test("an unexpected result invalidates the report even if all selected scenarios
 	try {
 		await Promise.all([
 			writeFile(join(run, "web-scenarios.txt"), "selected"),
+			writeFile(join(run, "result.json"), '{"driver":"web","status":"failed"}'),
 			writeFile(join(run, "gpui-scenarios.txt"), ""),
 			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"selected","status":"passed"},{"id":"unexpected","status":"passed"}]}'),
 		]);
@@ -177,13 +186,47 @@ test("a driver error replays its original selection even when one scenario faile
 	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
 	try {
 		await Promise.all([
-			writeFile(join(run, "result.json"), '{"driver":"both","failedDrivers":["web"]}'),
+			writeFile(join(run, "result.json"), '{"driver":"both","status":"failed","failedDrivers":["web"]}'),
 			writeFile(join(run, "web-scenarios.txt"), "one\ntwo"),
 			writeFile(join(run, "gpui-scenarios.txt"), "one"),
 			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"},{"id":"two","status":"failed"}]}'),
 			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
 		]);
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["one", "two"]), gpui: new Set() });
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("passing rows are replayed when the driver outcome is unknown", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			writeFile(join(run, "web-scenarios.txt"), "one"),
+			writeFile(join(run, "gpui-scenarios.txt"), ""),
+			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"}]}'),
+		]);
+		const expected = { web: new Set(["one"]), gpui: new Set<string>() };
+		expect(await rerunSelections(run)).toEqual(expected);
+		await writeFile(join(run, "result.json"), '{"status":');
+		expect(await rerunSelections(run)).toEqual(expected);
+		await writeFile(join(run, "result.json"), '{"status":"failed","failedDrivers":["unknown"]}');
+		expect(await rerunSelections(run)).toEqual(expected);
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("a legacy cleanup error replays the affected driver even when every scenario passed", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			writeFile(join(run, "scenarios.txt"), "one"),
+			writeFile(join(run, "result.json"), '{"driver":"both","status":"failed","error":"Web driver: Error: Could not stop owned Vite process group"}'),
+			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"}]}'),
+			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
+		]);
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["one"]), gpui: new Set() });
 	} finally {
 		await rm(run, { recursive: true });
 	}

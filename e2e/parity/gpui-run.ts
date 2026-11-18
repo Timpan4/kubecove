@@ -91,6 +91,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 		return run;
 	}));
 	await writeFile(join(artifacts, "gpui.log"), runs.map((run, index) => `== shard ${index}/${count} exited ${run.code}\n${run.output}`).join("\n"));
+	const selectedIds = new Set(contract.scenarios.map(({ id }) => id));
 	const results = new Map<string, unknown>();
 	const problems: string[] = [];
 	for (const [index, run] of runs.entries()) {
@@ -98,8 +99,14 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 		try {
 			// SAFETY: the parity test binary writes each shard report as { scenarios }. A report without that array throws in the loop below, and the catch records it as missing.
 			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
-			for (const result of report.scenarios) results.set(result.id, result);
-			reportedFailure = report.scenarios.some(({ status }) => status === "failed");
+			for (const result of report.scenarios) {
+				if (!selectedIds.has(result.id) || results.has(result.id)) {
+					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${result.id}`);
+					continue;
+				}
+				results.set(result.id, result);
+				if (result.status === "failed") reportedFailure = true;
+			}
 		} catch { problems.push(`GPUI shard ${index}/${count} wrote no report`); }
 		// The native harness writes the report, then fails its test if a scenario failed.
 		const scenarioExit = run.code === LIBTEST_FAILURE && reportedFailure;
