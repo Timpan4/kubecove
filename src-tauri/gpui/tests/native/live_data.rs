@@ -551,9 +551,10 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
+        assert!(window.try_find("events-refresh-warning").is_none());
         assert_eq!(
-            window.find("events-warning").label(),
-            Some("Events refresh failed: Events unavailable")
+            window.find("events-error").label(),
+            Some("Failed to load events: Events unavailable")
         );
     })
     .unwrap();
@@ -567,7 +568,7 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
             window.find("event:0").label(),
             Some("BackOff Back-off restarting failed container app")
         );
-        assert!(window.try_find("events-warning").is_none());
+        assert!(window.try_find("events-error").is_none());
     })
     .unwrap();
 }

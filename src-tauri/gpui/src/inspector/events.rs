@@ -99,6 +99,7 @@ impl EventsState {
     /// goes through here, after checking `current(read)`.
     pub fn set_ready(&mut self, read: u64, mut events: Vec<ResourceEventSummary>) {
         self.settled_read = read;
+        self.refresh_error = None;
         incident::sort_events(&mut events);
         let source: Arc<[u8]> = serde_json::to_vec(&events)
             .expect("event models serialize")
@@ -106,6 +107,15 @@ impl EventsState {
         self.layout_key = row_id(&source);
         self.layout_source = source;
         self.load = EventsLoad::Ready(events);
+    }
+
+    pub fn set_failed(&mut self, read: u64, error: String) {
+        self.settled_read = read;
+        if matches!(self.load, EventsLoad::Ready(_)) {
+            self.refresh_error = Some(error);
+        } else {
+            self.load = EventsLoad::Failed(error);
+        }
     }
 
     pub fn is_open(&self, key: &str) -> bool {
@@ -141,7 +151,7 @@ impl Inspector {
                     detail.events.rows = Windowed::default();
                     match result {
                         Ok(events) => detail.events.set_ready(number, events),
-                        Err(error) => detail.events.load = EventsLoad::Failed(error.message),
+                        Err(error) => detail.events.set_failed(number, error.message),
                     }
                 }
                 cx.notify();

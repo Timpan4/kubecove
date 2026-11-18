@@ -261,12 +261,23 @@ mod text_fit {
         });
         act(&mut cx, handle, |window, cx| window.click("show-logs", cx));
         act(&mut cx, handle, |window, _| {
-            let source = window.find(("log-source", 0usize)).bounds();
+            let source = window.find(("log-source", 0usize));
             let headline = window.find(("log-summary", 0usize)).bounds();
+            let text = window.find(("log-row", 0usize)).label().unwrap().to_owned();
+            assert_eq!(text, "boot payments-api");
+            let source_bounds = source.bounds();
+            let source_text = source.label().unwrap().to_owned();
+            let source_width = shaped_width(
+                window,
+                &source_text,
+                gpui_kit::font(kubecove_gpui::theme::MONO),
+                10.5,
+            );
+            assert!(source_width > source_bounds.size.width);
             let mut font = gpui_kit::font(SANS);
             font.weight = FontWeight::MEDIUM;
-            let width = shaped_width(window, "boot payments-api", font, 12.);
-            assert!(source.right() <= headline.left());
+            let width = shaped_width(window, &text, font, 12.);
+            assert!(source_bounds.right() <= headline.left());
             assert!(
                 width <= headline.size.width,
                 "headline is {width:?} wide in a {:?} box",

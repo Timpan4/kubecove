@@ -633,17 +633,6 @@ impl Inspector {
                         _ => return None,
                     })
                 });
-                let events_warning = if matches!(detail.tab, DetailTab::Details | DetailTab::Events) {
-                    if let Some(error) = &detail.events.watch_error {
-                        Some(SharedString::from(format!("Events watch failed: {error}")))
-                    } else {
-                        detail.events.refresh_error.as_ref().map(|error| {
-                            SharedString::from(format!("Events refresh failed: {error}"))
-                        })
-                    }
-                } else {
-                    None
-                };
                 div()
                     .flex()
                     .flex_col()
@@ -665,12 +654,22 @@ impl Inspector {
                             .absolute()
                             .size_0(),
                     )
-                    .children(events_warning.map(|message| {
-                        ui::muted(ui::xs(message.clone()))
-                            .id("events-warning")
-                            .test_support()
-                            .aria_label(message)
-                    }))
+                    .when(matches!(detail.tab, DetailTab::Details | DetailTab::Events), |body| {
+                        body.children(
+                            [
+                                ("events-watch-warning", "Events watch failed", &detail.events.watch_error),
+                                ("events-refresh-warning", "Events refresh failed", &detail.events.refresh_error),
+                            ]
+                            .into_iter()
+                            .filter_map(|(id, heading, error)| {
+                                let message = SharedString::from(format!("{heading}: {}", error.as_ref()?));
+                                Some(ui::muted(ui::xs(message.clone()))
+                                    .id(id)
+                                    .test_support()
+                                    .aria_label(message))
+                            }),
+                        )
+                    })
                     .child(content)
                     .into_any_element()
             }

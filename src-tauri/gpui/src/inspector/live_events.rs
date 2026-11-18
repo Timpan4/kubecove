@@ -107,11 +107,8 @@ impl Inspector {
                                 && detail.events.current(number)
                             {
                                 match result {
-                                    Ok(rows) => {
-                                        detail.events.set_ready(number, rows);
-                                        detail.events.refresh_error = None;
-                                    }
-                                    Err(error) => detail.events.refresh_error = Some(error.message),
+                                    Ok(rows) => detail.events.set_ready(number, rows),
+                                    Err(error) => detail.events.set_failed(number, error.message),
                                 }
                             }
                             cx.notify();

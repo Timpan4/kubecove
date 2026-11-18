@@ -212,8 +212,9 @@
 		{@render time()}
 		{@render badge()}
 		<div class="min-w-0 flex-1">
+			{#if open && sourceLabel}<span data-log-source class="block max-w-[30%] truncate font-mono text-[10.5px] leading-[18px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}
 			<div data-log-summary class="text-[12px] leading-[18px] {open ? '[overflow-wrap:anywhere]' : 'truncate'}">
-				{#if sourceLabel}<span data-log-source class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span
+				{#if !open && sourceLabel}<span data-log-source class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span
 					class="font-medium text-foreground">{@render highlighted(structure.headline)}</span
 				>{#if !open && structure.error}<span
 						class="ml-2 font-mono text-[11px] text-red-600 dark:text-red-300"
@@ -221,8 +222,7 @@
 					>{/if}{#if !open && structure.fields.length > 0}<span
 						class="ml-2 font-mono text-[11px] text-foreground/75"
 						>{#each structure.fields as field, index (index)}<span class="mr-2"
-								><span class="text-muted-foreground">{@render highlighted(field.key)}</span>
-								{@render highlighted(field.value)}</span
+								>{@render highlighted(`${field.key}=${field.value}`)}</span
 							>{/each}</span
 					>{/if}
 			</div>

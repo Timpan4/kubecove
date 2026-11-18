@@ -236,6 +236,8 @@ pub(super) fn events_tab(
         EventsLoad::Failed(error) => {
             return div()
                 .id("events-error")
+                .test_support()
+                .aria_label(format!("Failed to load events: {error}"))
                 .role(gpui_kit::Role::Alert)
                 .p(px(12.))
                 .rounded(px(8.))

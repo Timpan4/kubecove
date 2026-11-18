@@ -83,7 +83,7 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
 
 #[tokio::test(start_paused = true)]
 async fn event_watch_resets_version_after_in_stream_internal_error() {
-    let (versions, states) = recover_event_watch_after_internal_error(true).await;
+    let (versions, states) = recover_event_watch_after_error(true, 500).await;
     assert_eq!(versions, ["0", "0"]);
     assert_eq!(
         states,
@@ -98,23 +98,26 @@ async fn event_watch_resets_version_after_in_stream_internal_error() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn event_watch_resets_version_after_http_internal_error() {
-    let (versions, states) = recover_event_watch_after_internal_error(false).await;
-    assert_eq!(versions, ["0", "55", "0"]);
-    assert_eq!(
-        states,
-        [
-            "connected",
-            "reconnecting",
-            "error",
-            "reconnecting",
-            "connected",
-            "resourceEventsChanged"
-        ]
-    );
+async fn event_watch_uses_the_right_version_after_an_http_error() {
+    for (code, expected_version) in [(410, "0"), (500, "0"), (503, "55")] {
+        let (versions, states) = recover_event_watch_after_error(false, code).await;
+        assert_eq!(versions, ["0", "55", expected_version], "HTTP {code}");
+        assert_eq!(
+            states,
+            [
+                "connected",
+                "reconnecting",
+                "error",
+                "reconnecting",
+                "connected",
+                "resourceEventsChanged"
+            ],
+            "HTTP {code}"
+        );
+    }
 }
 
-async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<String>, Vec<String>) {
+async fn recover_event_watch_after_error(in_stream: bool, code: u16) -> (Vec<String>, Vec<String>) {
     let retry_request = if in_stream { 2 } else { 3 };
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service_requests = requests.clone();
@@ -126,8 +129,8 @@ async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<Strin
             "object": { "apiVersion": "v1", "kind": "Event", "metadata": { "resourceVersion": "55" } }
         });
         let error = json!({
-            "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 500,
-            "reason": "InternalError", "message": "etcd event received with PrevKv=nil (type=DELETE)"
+            "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": code,
+            "message": if code == 500 { "etcd event received with PrevKv=nil (type=DELETE)" } else { "Events watch rejected" }
         });
         let (code, body) = match (in_stream, requests.len()) {
             (true, 1) => (
@@ -137,7 +140,7 @@ async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<Strin
                     json!({ "type": "ERROR", "object": error })
                 ),
             ),
-            (false, 2) => (500, error.to_string()),
+            (false, 2) => (code, error.to_string()),
             (false, 1) => (200, format!("{bookmark}\n")),
             (_, attempt) if attempt == retry_request => (
                 200,

@@ -80,7 +80,8 @@ impl InlineText {
             return;
         }
         if monospace {
-            self.monospace.push((start..end, MONO.into()));
+            self.monospace
+                .push((start..end, SharedString::new_static(MONO)));
         }
         let style_unmatched = style != HighlightStyle::default() || monospace;
         let mut cursor = start;
@@ -103,7 +104,7 @@ impl InlineText {
         }
     }
 
-    fn fields(&mut self, fields: &[LogField], term: &str, color: Hsla, monospace: bool) {
+    fn fields(&mut self, fields: &[LogField], term: &str, color: Hsla) {
         for (index, field) in fields.iter().enumerate() {
             if index > 0 {
                 self.text.push_str("  ");
@@ -120,10 +121,10 @@ impl InlineText {
                     color: Some(Tokens::muted_foreground()),
                     ..style
                 },
-                monospace,
+                false,
             );
             self.text.push(' ');
-            self.push(&field.value, term, style, monospace);
+            self.push(&field.value, term, style, false);
         }
     }
 
@@ -246,12 +247,17 @@ fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
             true,
         );
     }
-    if !structure.fields.is_empty() {
+    let field_style = HighlightStyle {
+        color: Some(Tokens::foreground().opacity(0.75)),
+        font_weight: Some(FontWeight::NORMAL),
+        ..Default::default()
+    };
+    for field in &structure.fields {
         text.text.push_str("  ");
-        text.fields(
-            &structure.fields,
+        text.push(
+            &format!("{}={}", field.key, field.value),
             term,
-            Tokens::foreground().opacity(0.75),
+            field_style,
             true,
         );
     }
@@ -464,12 +470,7 @@ pub(super) fn log_row(
             field_chips(&structure.fields, term)
         } else {
             let mut text = InlineText::default();
-            text.fields(
-                &structure.fields,
-                term,
-                Tokens::foreground().opacity(0.85),
-                false,
-            );
+            text.fields(&structure.fields, term, Tokens::foreground().opacity(0.85));
             clip(
                 div()
                     .font_family(MONO)

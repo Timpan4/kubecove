@@ -24,7 +24,9 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
                 bounds.right() <= window.find("log-viewport").bounds().right(),
                 "{bounds:?}"
             );
-            let collapsed = window.find(summary).bounds().size.height;
+            let summary_bounds = window.find(summary).bounds();
+            assert!(summary_bounds.right() <= bounds.right());
+            let collapsed = summary_bounds.size.height;
             let short = window.find(("log-summary", 1usize)).bounds().size.height;
             assert_eq!(collapsed, short);
             window.click(summary, cx);
