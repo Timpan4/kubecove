@@ -99,7 +99,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.click("helm-resources:platform:metrics-gateway", cx);
         }
         check @ ("emit-log" | "log-wrap" | "log-compact-wrap" | "log-compact-source"
-        | "log-scroll-back" | "log-jump") => super::log_coverage::check(window, cx, check),
+        | "log-expanded-field" | "log-scroll-back" | "log-jump") => {
+            super::log_coverage::check(window, cx, check)
+        }
         "action-filter" => {
             window.find("action-row-replicas");
             assert!(window.try_find("action-row-rollout").is_none());

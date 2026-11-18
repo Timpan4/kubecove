@@ -42,6 +42,7 @@ pub(super) struct ScriptState {
     /// no backend owner. Its ownerRef-only Pod follows either.
     reowned: Option<Reowned>,
     events: Option<EventSet>,
+    events_list_failed: bool,
     /// Scripted changes so far. The mock list version is one higher.
     revision: u64,
     /// The list version that first shows the scripted change.
@@ -74,7 +75,6 @@ fn scripted_target(row: &ResourceSummary) -> bool {
 enum EventSet {
     Live,
     Overflow,
-    Unavailable,
 }
 impl Fixture {
     /// Fixture construction precedes timed notification delivery. NativeBackend
@@ -363,9 +363,17 @@ impl Fixture {
                 state.revision += 1;
                 state.changed_at = Some(state.revision + 1);
             }
-            "events" => state.events = Some(EventSet::Live),
-            "events-overflow" => state.events = Some(EventSet::Overflow),
-            "events-list-failed" => state.events = Some(EventSet::Unavailable),
+            "events" | "events-overflow" => {
+                state.events = Some(if script == "events" {
+                    EventSet::Live
+                } else {
+                    EventSet::Overflow
+                });
+                state.events_list_failed = false;
+            }
+            "events-list-failed" | "events-list-recovered" => {
+                state.events_list_failed = script == "events-list-failed";
+            }
             _ => {}
         }
         if let Some(notifications) = self.live.notifications.lock().unwrap().take() {
@@ -466,6 +474,13 @@ impl Fixture {
                 _ => continue,
             };
             let _ = sender.send(message);
+            if script == "events-failed" {
+                let _ = sender.send(StreamMessage::Status {
+                    stream_id: "fixture".into(),
+                    status: StreamStatus::Reconnecting,
+                    message: "Retrying Events watch".into(),
+                });
+            }
             if script == "failed" {
                 let _ = sender.send(StreamMessage::Status {
                     stream_id: "fixture".into(),
@@ -617,13 +632,16 @@ impl Fixture {
         if resource.kind != "Deployment" || resource.name != "payments-api" {
             return None;
         }
-        match self.live.state.lock().unwrap().events {
-            Some(EventSet::Live) => Some(Ok(self.live_events.clone())),
-            Some(EventSet::Overflow) => Some(Ok(self.overflow_events.clone())),
-            Some(EventSet::Unavailable) => Some(Err(AppError::new(
+        let state = self.live.state.lock().unwrap();
+        if state.events_list_failed {
+            return Some(Err(AppError::new(
                 "Scripted Events list failure (bearer example-credential)",
                 AppErrorKind::Network,
-            ))),
+            )));
+        }
+        match state.events {
+            Some(EventSet::Live) => Some(Ok(self.live_events.clone())),
+            Some(EventSet::Overflow) => Some(Ok(self.overflow_events.clone())),
             None => None,
         }
     }

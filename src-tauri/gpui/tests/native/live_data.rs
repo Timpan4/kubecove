@@ -542,7 +542,8 @@ impl LiveControls {
         let gate = self.events_gate.lock().unwrap().take();
         Box::pin(async move {
             if let Some(gate) = gate {
-                let _ = gate.await;
+                gate.await
+                    .expect("Events read gate dropped before explicit release");
             }
             if fail {
                 return Err(AppError::new("Events unavailable", AppErrorKind::Network));

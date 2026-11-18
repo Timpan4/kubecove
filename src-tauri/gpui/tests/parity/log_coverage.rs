@@ -53,6 +53,14 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             assert_eq!(expanded.left(), source.left());
             assert_eq!(expanded.right(), headline.right());
         }
+        "log-expanded-field" => {
+            let row = ("log-row", 0usize);
+            assert_eq!(window.find(row).label(), Some("JSON row"));
+            window.click(row, cx);
+            window.render_frame(cx);
+            assert!(window.find(("log-details", 0usize)).visible());
+            assert!(window.find(("log-copy", 0usize)).visible());
+        }
         "log-scroll-back" => {
             let bounds = window.find("log-viewport").bounds();
             let elements = window.elements();

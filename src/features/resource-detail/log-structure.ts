@@ -200,23 +200,31 @@ export function highlightSegments(text: string, term: string): HighlightSegment[
 	let found = haystack.indexOf(needle);
 	if (found < 0) return [{ text, match: false }];
 
-	// Lowercasing can expand a character. Keep the original span for each
-	// UTF-16 code unit when normalized offsets differ.
-	const spans: { start: number; end: number }[] = [];
-	if (haystack.length !== text.length) {
-		let start = 0;
-		for (const character of text) {
-			const end = start + character.length;
-			const width = character.toLowerCase().length;
-			for (let unit = 0; unit < width; unit++) spans.push({ start, end });
-			start = end;
-		}
-	}
+	// Map ordered matches back to source characters only when lowercasing
+	// expands the text. Keep just the current character's bounds.
+	const source = haystack.length !== text.length ? text[Symbol.iterator]() : null;
+	let originalStart = 0;
+	let originalEnd = 0;
+	let normalizedCharEnd = 0;
+	const advance = () => {
+		const character = source?.next().value;
+		if (character === undefined) return false;
+		originalStart = originalEnd;
+		originalEnd += character.length;
+		normalizedCharEnd += character.toLowerCase().length;
+		return true;
+	};
 	let cursor = 0;
 	while (found >= 0) {
 		const normalizedEnd = found + needle.length;
-		const start = Math.max(cursor, spans[found]?.start ?? found);
-		const end = spans[normalizedEnd - 1]?.end ?? normalizedEnd;
+		let start = found;
+		let end = normalizedEnd;
+		if (source) {
+			while (normalizedCharEnd <= found && advance()) { /* advance to the first character */ }
+			start = Math.max(cursor, originalStart);
+			while (normalizedCharEnd < normalizedEnd && advance()) { /* advance to the last character */ }
+			end = originalEnd;
+		}
 		if (start > cursor) segments.push({ text: text.slice(cursor, start), match: false });
 		if (end > start) segments.push({ text: text.slice(start, end), match: true });
 		cursor = end;

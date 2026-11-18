@@ -373,29 +373,35 @@ pub fn highlight_ranges(text: &str, term: &str) -> Vec<std::ops::Range<usize>> {
         return Vec::new();
     }
     let haystack = text.to_lowercase();
-    let mut matches = haystack.match_indices(term).peekable();
+    let matches = haystack.match_indices(term);
     if text.is_ascii() {
         return matches
             .map(|(start, matched)| start..start + matched.len())
             .collect();
     }
-    if matches.peek().is_none() {
-        return Vec::new();
-    }
-    // Map normalized byte offsets back to the source characters. Equal total
-    // lengths can still hide offset changes in individual characters.
-    let mut offsets = vec![(0, 0)];
-    let mut normalized = 0;
-    for (start, character) in text.char_indices() {
-        normalized += character.to_lowercase().map(char::len_utf8).sum::<usize>();
-        offsets.push((normalized, start + character.len_utf8()));
-    }
+    // The matches are ordered, so one forward pass maps their byte offsets
+    // to original characters, including characters that expand or shrink.
+    let mut source = text
+        .char_indices()
+        .scan(0, |normalized_end, (start, character)| {
+            *normalized_end += character.to_lowercase().map(char::len_utf8).sum::<usize>();
+            Some((*normalized_end, start..start + character.len_utf8()))
+        })
+        .peekable();
     let mut cursor = 0;
     matches
         .filter_map(|(start, matched)| {
-            let first = offsets.partition_point(|&(offset, _)| offset <= start) - 1;
-            let last = offsets.partition_point(|&(offset, _)| offset < start + matched.len());
-            let range = offsets[first].1.max(cursor)..offsets[last].1;
+            while source.peek().is_some_and(|(end, _)| *end <= start) {
+                source.next();
+            }
+            let original_start = source.peek()?.1.start.max(cursor);
+            while source
+                .peek()
+                .is_some_and(|(end, _)| *end < start + matched.len())
+            {
+                source.next();
+            }
+            let range = original_start..source.peek()?.1.end;
             cursor = range.end;
             (!range.is_empty()).then_some(range)
         })
@@ -446,6 +452,7 @@ mod tests {
             let matches: String = ranges.into_iter().map(|range| &text[range]).collect();
             assert_eq!(matches, expected);
         }
+        assert_eq!(highlight_ranges("İİİ", "\u{0307}i"), vec![0..4, 4..6]);
     }
 
     // Failure modes: logfmt tails that are not pure logfmt must not lose text;

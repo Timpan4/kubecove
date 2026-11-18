@@ -109,27 +109,25 @@ impl InlineText {
     }
 
     fn fields(&mut self, fields: &[LogField], term: &str, color: Hsla) {
+        let style = HighlightStyle {
+            color: Some(color),
+            font_weight: Some(FontWeight::NORMAL),
+            ..Default::default()
+        };
         for (index, field) in fields.iter().enumerate() {
             if index > 0 {
                 self.text.push_str("  ");
             }
-            let style = HighlightStyle {
-                color: Some(color),
-                font_weight: Some(FontWeight::NORMAL),
-                ..Default::default()
-            };
-            self.push(
-                &field.key,
-                term,
-                HighlightStyle {
-                    color: Some(Tokens::muted_foreground()),
-                    ..style
-                },
-                false,
-            );
-            self.text.push(' ');
-            self.push(&field.value, term, style, false);
+            self.field(field, term, style, false);
         }
+    }
+
+    fn field(&mut self, field: &LogField, term: &str, style: HighlightStyle, monospace: bool) {
+        let start = self.text.len();
+        self.text.push_str(&field.key);
+        self.text.push('=');
+        self.text.push_str(&field.value);
+        self.style_tail(start, term, style, monospace);
     }
 
     fn render(self) -> StyledText {
@@ -137,19 +135,6 @@ impl InlineText {
             .with_highlights(self.highlights)
             .with_font_family_overrides(self.monospace)
     }
-}
-
-/// `fieldChips` item: a muted key and its value, both marked for the filter.
-fn field_pair(key: &SharedString, value: &SharedString, term: &str) -> Div {
-    div()
-        .flex()
-        .child(
-            div()
-                .text_color(Tokens::muted_foreground())
-                .child(highlighted(key, term)),
-        )
-        .child(div().w(px(6.3)))
-        .child(highlighted(value, term))
 }
 
 /// The row's time of day in the saved timezone. Its hover text is the exact
@@ -219,7 +204,9 @@ fn field_chips(fields: &[LogField], term: &str) -> Div {
         .font_family(MONO)
         .text_color(Tokens::foreground().opacity(0.85))
         .children(fields.iter().map(|item| {
-            field_pair(&item.key, &item.value, term)
+            let mut text = InlineText::default();
+            text.field(item, term, HighlightStyle::default(), false);
+            div()
                 .whitespace_nowrap()
                 .px(px(6.))
                 .rounded(px(4.))
@@ -228,6 +215,7 @@ fn field_chips(fields: &[LogField], term: &str) -> Div {
                 .bg(Tokens::muted().opacity(0.4))
                 .text_size(px(10.5))
                 .line_height(px(15.))
+                .child(text.render())
         }))
 }
 
@@ -258,11 +246,7 @@ fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
     };
     for field in &structure.fields {
         text.text.push_str("  ");
-        let start = text.text.len();
-        text.text.push_str(&field.key);
-        text.text.push('=');
-        text.text.push_str(&field.value);
-        text.style_tail(start, term, field_style, true);
+        text.field(field, term, field_style, true);
     }
     text.render()
 }

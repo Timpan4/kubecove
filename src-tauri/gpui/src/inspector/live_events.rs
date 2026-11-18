@@ -46,7 +46,7 @@ impl Inspector {
                 loop {
                     let input = receive_or_tick(&mut stream, &mut timer).await;
                     let tick = matches!(input, WatchInput::Tick);
-                    let mut ended = matches!(input, WatchInput::Closed);
+                    let closed = matches!(input, WatchInput::Closed);
                     if tick {
                         timer = Box::pin(cx.background_executor().timer(RECOVERY));
                     }
@@ -54,40 +54,47 @@ impl Inspector {
                         WatchInput::Message(message) => Some(message),
                         WatchInput::Closed | WatchInput::Tick => None,
                     };
-                    let mut refresh = tick && catch_up;
-                    let mut consumed = !tick;
-                    let mut watch_error = None;
-                    // A replay can queue many change notices for one resource.
-                    // Fold the queued notices into one list. New arrivals
-                    // belong to the next pass, so a producer cannot keep this
-                    // drain running on the UI executor.
-                    let queued = stream.messages.len();
-                    let pending =
-                        std::iter::from_fn(|| stream.messages.try_recv().ok()).take(queued);
-                    for event in first.into_iter().chain(pending) {
-                        consumed = true;
-                        match event {
-                            StreamMessage::ResourceEventsChanged { .. } => refresh = true,
-                            StreamMessage::Error { message, .. } => {
-                                watch_error = Some(Some(redact_detail(&message)));
-                                catch_up = true;
+                    // Replays can leave a backlog while the list is pending.
+                    // Fold the current batch off the UI executor in stream order.
+                    let (resumed, caught_up, mut refresh, watch_error, ended) = cx
+                        .background_executor()
+                        .spawn(async move {
+                            let queued = stream.messages.len();
+                            let pending =
+                                std::iter::from_fn(|| stream.messages.try_recv().ok()).take(queued);
+                            let mut needs_catch_up = catch_up;
+                            let mut refresh = tick && catch_up;
+                            let mut error = None;
+                            let mut ended = closed;
+                            for event in first.into_iter().chain(pending) {
+                                match event {
+                                    StreamMessage::ResourceEventsChanged { .. } => refresh = true,
+                                    StreamMessage::Error { message, .. } => {
+                                        error = Some(Some(redact_detail(&message)));
+                                        needs_catch_up = true;
+                                    }
+                                    StreamMessage::Status {
+                                        status: StreamStatus::Connected,
+                                        ..
+                                    } => {
+                                        error = Some(None);
+                                        refresh |= needs_catch_up;
+                                        needs_catch_up = false;
+                                    }
+                                    StreamMessage::Status { .. } => needs_catch_up = true,
+                                    StreamMessage::Stopped { .. } => {
+                                        ended = true;
+                                        break;
+                                    }
+                                    _ => {}
+                                }
                             }
-                            StreamMessage::Status {
-                                status: StreamStatus::Connected,
-                                ..
-                            } => {
-                                watch_error = Some(None);
-                                refresh |= catch_up;
-                                catch_up = false;
-                            }
-                            StreamMessage::Status { .. } => catch_up = true,
-                            StreamMessage::Stopped { .. } => {
-                                ended = true;
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
+                            (stream, needs_catch_up, refresh, error, ended)
+                        })
+                        .await;
+                    stream = resumed;
+                    catch_up = caught_up;
+                    let warning_changed = watch_error.is_some();
                     let mut number = 0;
                     let updated = this.update(cx, |this, cx| {
                         if let Detail::Ready(detail) = &mut this.detail {
@@ -101,8 +108,7 @@ impl Inspector {
                                 number = detail.events.begin_read();
                             }
                         }
-                        // A recovery tick changes nothing shown unless it refreshes.
-                        if consumed || refresh {
+                        if refresh || warning_changed {
                             cx.notify();
                         }
                     });

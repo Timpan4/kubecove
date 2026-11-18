@@ -17,6 +17,7 @@
 				{ "action": "coverageCheck", "check": "log-compact-wrap" },
 				{ "action": "filterLogs", "value": "status=READY" },
 				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "coverageCheck", "check": "log-expanded-field" },
 				{ "action": "filterLogs", "value": "state=cache warm" },
 				{ "action": "expectLogLines", "lines": ["logfmt row"] }
 			]

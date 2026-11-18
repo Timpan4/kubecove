@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "forbidden", "failed", "missed-delete"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "events-list-recovered", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -128,8 +128,8 @@ export function replayLiveData(script: LiveScript): void {
         revision += 1;
         changedAt = revision + 1;
     }
-    if (script === "events-list-failed") {
-        eventsListFailed = true;
+    if (script === "events-list-failed" || script === "events-list-recovered") {
+        eventsListFailed = script === "events-list-failed";
         return;
     }
     const eventsChanged = script === "events" || script === "events-overflow";
@@ -139,7 +139,10 @@ export function replayLiveData(script: LiveScript): void {
     for (const watch of reachableWatches()) {
         const streamId = watch.id;
 		if (script === "events-failed") {
-			if (watch.name) watch.channel.onmessage({ type: "error", streamId, message: "Scripted Events watch failure" });
+			if (watch.name) {
+				watch.channel.onmessage({ type: "error", streamId, message: "Scripted Events watch failure" });
+				watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Retrying Events watch" });
+			}
 			continue;
 		}
         if (script === "failed") watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Scripted connection loss" });

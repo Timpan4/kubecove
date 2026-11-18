@@ -146,6 +146,12 @@ describe("highlightSegments", () => {
 		]);
 	});
 
+	test("highlights overlapping source characters once", () => {
+		const segments = highlightSegments("İİİ", "\u0307i");
+		expect(segments.map(({ text }) => text).join("")).toBe("İİİ");
+		expect(segments.every(({ text, match }) => text.length > 0 && match)).toBe(true);
+	});
+
 	test("marks case-insensitive matches and keeps all text", () => {
 		expect(highlightSegments("Origin origin", "origin")).toEqual([
 			{ text: "Origin", match: true },

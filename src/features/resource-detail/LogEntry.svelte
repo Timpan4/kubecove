@@ -143,8 +143,7 @@
 				<span
 					class="whitespace-nowrap rounded border bg-muted/40 px-1.5 font-mono text-[10.5px] leading-[15px] text-foreground/85"
 				>
-					<span class="text-muted-foreground">{@render highlighted(field.key)}</span>
-					{@render highlighted(field.value)}
+					{@render highlighted(`${field.key}=${field.value}`)}
 				</span>
 			{/each}
 		</div>
@@ -155,10 +154,7 @@
 	{#if structure.fields.length > 0}
 		<div class="font-mono text-[11px] leading-4 text-foreground/85 {extra}">
 			{#each structure.fields as field, index (index)}
-				<span class="mr-2.5"
-					><span class="text-muted-foreground">{@render highlighted(field.key)}</span>
-					{@render highlighted(field.value)}</span
-				>
+				<span class="mr-2.5">{@render highlighted(`${field.key}=${field.value}`)}</span>
 			{/each}
 		</div>
 	{/if}

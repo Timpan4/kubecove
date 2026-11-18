@@ -25,7 +25,14 @@ fn event_sender(backend: &Controlled) -> mpsc::UnboundedSender<StreamMessage> {
     let streams = backend.live.streams.lock().unwrap();
     let (_, sender) = streams
         .iter()
-        .find(|(target, tx)| matches!(target, WatchTarget::Events(_)) && !tx.is_closed())
+        .find(|(target, tx)| {
+            matches!(target, WatchTarget::Events(resource)
+                if resource.cluster == "mock-dev"
+                    && resource.kind == "Deployment"
+                    && resource.namespace.as_deref() == Some("payments")
+                    && resource.name == "payments-api")
+                && !tx.is_closed()
+        })
         .expect("selected resource has an Events watch");
     sender.clone()
 }
@@ -198,4 +205,31 @@ fn notice_during_a_pending_event_refresh_triggers_another_read(cx: &mut TestAppC
     cx.run_until_parked();
     advance(cx, 250);
     assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 3);
+}
+
+#[gpui_kit::test]
+fn a_stale_initial_failure_does_not_replace_a_successful_watch_read(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.live.events_gate.lock().unwrap() = Some(gate);
+    backend.live.events_fail.store(true, Ordering::SeqCst);
+    let handle = open_events(cx, backend.clone());
+
+    backend.live.events_fail.store(false, Ordering::SeqCst);
+    notify_events(cx, &backend, 1);
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 2);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
+    })
+    .unwrap();
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
+        assert!(window.try_find("events-error").is_none());
+        assert!(window.try_find("events-refresh-warning").is_none());
+    })
+    .unwrap();
 }

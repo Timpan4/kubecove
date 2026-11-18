@@ -144,6 +144,7 @@
 	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
+	let eventsWatchRecovering = $state(false);
 	const showEventsWarnings = $derived(
 		activeTab === "details" || activeTab === "events",
 	);
@@ -221,7 +222,7 @@
 	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
 		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
-		refetchInterval: realtimeEventsWatchError
+		refetchInterval: eventsWatchRecovering
 			? (query) => query.state.status === "success" ? RESOURCE_RECOVERY_INTERVAL : false
 			: false,
 	}));
@@ -374,22 +375,23 @@
 		let cancelled = false;
 		let streamId: string | null = null;
 		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
-		let needsCatchUp = false;
+		eventsWatchRecovering = false;
+		realtimeEventsWatchError = null;
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
 				realtimeEventsWatchError = messageFromError(event.message);
-				needsCatchUp = true;
+				eventsWatchRecovering = true;
 				return;
 			}
 			if (event.type === "status") {
 				if (event.status === "connected") {
 					realtimeEventsWatchError = null;
-					if (needsCatchUp) {
-						needsCatchUp = false;
+					if (eventsWatchRecovering) {
+						eventsWatchRecovering = false;
 						refresh.notify();
 					}
-				} else needsCatchUp = true;
+				} else eventsWatchRecovering = true;
 				return;
 			}
 			if (event.type === "resourceEventsChanged") refresh.notify();
@@ -413,6 +415,7 @@
 			.catch((cause: unknown) => {
 				if (cancelled) return;
 				realtimeEventsWatchError = messageFromError(cause);
+				eventsWatchRecovering = true;
 			});
 		return () => {
 			cancelled = true;
