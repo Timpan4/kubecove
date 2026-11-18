@@ -293,7 +293,7 @@
 	}));
 	const reads = resourceBrowserReads(client, () => ({
 		readContext: workspaceReadContext, fetchKeys, namespaces: selectedNamespaces, topologyMode, mapPanelOpen,
-		customResourcesEnabled, focusedApplication: gitOpsFocusApplication,
+		tablePanelOpen, customResourcesEnabled, focusedApplication: gitOpsFocusApplication,
 	}));
 	const live = reads.live;
 	// The Context column, filter and search show only when the workspace has more than one context.
@@ -325,8 +325,7 @@
 	const topologyQuery = reads.topology;
 	const updatesCurrent = $derived(reads.freshness.tableCurrent);
 	const mapUpdatesCurrent = $derived(reads.freshness.mapCurrent);
-	const noticeLive = $derived(reads.freshness.notice.live);
-	const noticeCurrent = $derived(reads.freshness.notice.current);
+	const notice = $derived(reads.freshness.notice);
 
 	const namespaceOptions = $derived(reads.namespaces);
 	const kindOptions = $derived(
@@ -472,8 +471,46 @@
 	const contextsLoadingText = $derived(contextsLoadingNotice(resourcesQuery.loadingContexts));
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
-	const staleNotice = loadingDelay(() => !noticeCurrent && !noticeLive.reloadError
-		&& noticeLive.status !== "partial" && noticeLive.status !== "polling");
+	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
+		&& notice.table.status !== "partial" && notice.table.status !== "polling");
+	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
+		&& (!notice.map.sharesTableError || notice.map.status === "reconnecting" || notice.map.status === "connecting")
+		&& notice.map.status !== "partial" && notice.map.status !== "polling");
+	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
+	// Keep the minimum display time after combined recovery. During split recovery, name the panel still stale.
+	const allCurrent = $derived(notice.table?.current !== false && notice.map?.current !== false);
+	const tableNotice = $derived(notice.table && (notice.table.error
+		? "refreshFailed"
+		: watchNotice(notice.table.status, (allCurrent || !notice.table.current) && tableStale.shown)));
+	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, (allCurrent || !notice.map.current) && mapStale.shown));
+	const mapNotice = $derived.by((): NoticeKind | null => {
+		if (!notice.map) return null;
+		if (notice.map.failed) return "topologyFailed";
+		if (notice.map.error) return "refreshFailed";
+		return mapWatchNotice === tableNotice ? null : mapWatchNotice;
+	});
+	const sharedNotice = $derived(notice.map?.sharesTableError || (!mapNotice && tableNotice === mapWatchNotice));
+	let mapNoticeElement = $state<HTMLDivElement>();
+	let mapPanelElement = $state<HTMLDivElement>();
+	let tableNoticeElement = $state<HTMLDivElement>();
+	let tableHeadingElement = $state<HTMLHeadingElement>();
+	let browserElement = $state<HTMLDivElement>();
+
+	function watchNotice(status: string, stale: boolean): NoticeKind | null {
+		if (status === "partial" || status === "polling") return status;
+		return stale ? "stale" : null;
+	}
+
+	function noticeText(kind: NoticeKind, panel?: "Table" | "Map") {
+		const activity = panel ? `${panel} activity indicators` : "Activity indicators";
+		switch (kind) {
+			case "refreshFailed": return `Refresh failed. Showing last observed state. ${activity} are paused until live updates recover.`;
+			case "topologyFailed": return "Showing last observed graph. Map activity indicators are paused until the map refreshes.";
+			case "partial": return `Live updates are limited. Readable resources without watch access refresh periodically. ${activity} are paused.`;
+			case "polling": return `Live updates are unavailable. Readable resources refresh periodically. ${activity} are paused.`;
+			case "stale": return `Showing last observed state. ${activity} are paused until live updates recover.`;
+		}
+	}
 	const resourceError = $derived(
 		workspaceReadContext.sourceError
 			? workspaceReadContext.sourceError
@@ -484,6 +521,20 @@
 	const errorReplacesBrowser = $derived(Boolean(resourceError && (!resourcesQuery.data || workspaceReadContext.sourceError)));
 	// With every kind unchecked the top bar stays, so the kind picker can bring one back without a scope reset.
 	const topBarShown = $derived(Boolean(clusterContext) && (fetchKeys.length === 0 || (!errorReplacesBrowser && !loading.active)));
+	const panelsShown = $derived(Boolean(clusterContext) && fetchKeys.length > 0 && !errorReplacesBrowser && !loading.active);
+
+	$effect.pre(() => {
+		const focused = document.activeElement;
+		const mapMounted = panelsShown && mapPanelOpen;
+		const tableMounted = panelsShown && tablePanelOpen;
+		const hasMapDetails = mapMounted && mapNotice === "refreshFailed";
+		if (!hasMapDetails && mapNoticeElement?.contains(focused)) {
+			(mapMounted ? mapPanelElement : browserElement)?.focus({ preventScroll: true });
+		}
+		if (!(tableMounted && tableNotice && notice.table?.error) && tableNoticeElement?.contains(focused)) {
+			(tableMounted ? tableHeadingElement : browserElement)?.focus({ preventScroll: true });
+		}
+	});
 
 	$effect(() => {
 		onPathStateChange({
@@ -679,9 +730,23 @@
 	{/key}
 {/snippet}
 
-<div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
-	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
-		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
+{#snippet observationNotice(label: string, error: unknown, context?: string)}
+	{#if error}
+		<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
+			<summary class="cursor-pointer px-3 py-2"><span role="status">{label}</span></summary>
+			<div class="px-3 pb-3">
+				{#if context}<p class="pb-2">Context {context}</p>{/if}
+				<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} />
+			</div>
+		</details>
+	{:else}
+		<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{label}</p>
+	{/if}
+{/snippet}
+
+<div class="flex h-full min-h-0 min-w-0 flex-col gap-3" bind:this={browserElement} tabindex="-1">
+	{#if resourcesQuery.data && !resourcesQuery.isPlaceholderData}
+		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} contextRefreshFailed={resourcesQuery.isError} />
 	{/if}
 	{#if contextsLoading.shown && resourcesQuery.loadingContexts.length > 0}
 		<p role="status" class="flex items-center gap-2 text-xs text-muted-foreground" data-contexts-loading>
@@ -779,21 +844,16 @@
 			{/if}
 		</div>
 	{:else}
-		{#if noticeLive.reloadError}
-			<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
-				<summary class="cursor-pointer px-3 py-2"><span role="status">Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.</span></summary>
-				<div class="px-3 pb-3"><FriendlyError error={noticeLive.reloadError} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
-			</details>
-		{:else if (resourcesQuery.data || topologyQuery.data) && (noticeLive.status === "partial" || noticeLive.status === "polling" || staleNotice.shown)}
-			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-				{#if noticeLive.status === "partial"}
-					Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.
-				{:else if noticeLive.status === "polling"}
-					Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.
-				{:else}
-					Showing last observed state. Activity indicators are paused until live updates recover.
-				{/if}
-			</p>
+		{#if tableNotice}
+			{@const label = noticeText(tableNotice, notice.map && !sharedNotice ? "Table" : undefined)}
+			<div class="contents" bind:this={tableNoticeElement}>
+				{@render observationNotice(label, notice.table?.error, notice.table?.context)}
+			</div>
+		{/if}
+		{#if mapNotice}
+			<div class="contents" bind:this={mapNoticeElement}>
+				{@render observationNotice(noticeText(mapNotice, notice.table || notice.map?.error ? "Map" : undefined), notice.map?.error)}
+			</div>
 		{/if}
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
@@ -807,7 +867,7 @@
 						: "grid min-h-0 min-w-0 flex-1 grid-cols-[3rem_3rem] gap-3"}
 		>
 			{#if mapPanelOpen}
-				<div class="h-full min-h-[400px] min-w-0">
+				<div class="h-full min-h-[400px] min-w-0" bind:this={mapPanelElement} tabindex="-1">
 					{#if OwnershipMapComponent && !ownershipMapLoading.active}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
@@ -880,7 +940,7 @@
 						<div class="min-w-0">
 							<div class="flex min-w-0 items-center gap-2">
 								<Table2 class="size-4 shrink-0 text-muted-foreground" />
-								<h2 class="truncate text-sm font-semibold">Resource Table</h2>
+								<h2 class="truncate text-sm font-semibold" bind:this={tableHeadingElement} tabindex="-1">Resource Table</h2>
 							</div>
 							<p class="mt-0.5 text-xs text-muted-foreground">
 								{tableModel.totalRows} resources{multiContext ? ` · ${reads.contexts.length} contexts` : ""} · page {tableModel.safePageIndex + 1} of {tableModel.pageCount}

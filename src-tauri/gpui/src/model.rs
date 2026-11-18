@@ -11,7 +11,7 @@ use kubecove_lib::models::{
 pub use rows::Visible;
 pub(crate) use rows::{
     Added, KindFilter, ObservedNames, PreparedRows, RowsId, identity_hash, identity_hash_of,
-    reconcile,
+    reconcile, watch_lists,
 };
 use std::collections::{HashMap, HashSet};
 

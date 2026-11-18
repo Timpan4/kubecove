@@ -42,7 +42,7 @@ pub(super) struct LiveData {
     pub selected: Option<DiscoveredResourceKind>,
     pub kind_locked: bool,
     pub refresh_error: Option<String>,
-    pub error_open: bool,
+    pub error_open: Option<super::live_status::NoticeSurface>,
     discovery: Option<Task<()>>,
     catalog_task: Option<Task<()>>,
     /// Kind discovery's warnings, which join the scope read's on each apply.
@@ -97,13 +97,6 @@ impl Registration {
             WatchPhase::Running { link, .. } => link.messages(),
         }
     }
-
-    fn messages(&self) -> impl Iterator<Item = &String> {
-        let [error, denied] = self.link_messages();
-        [error, denied, self.reload_error.as_ref()]
-            .into_iter()
-            .flatten()
-    }
 }
 
 impl LiveData {
@@ -132,10 +125,10 @@ impl LiveData {
         )
     }
 
-    /// [`Self::settled_status`] of the watches whose context `keep` accepts.
-    pub fn settled_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
+    /// The status of the watches whose context `keep` accepts.
+    pub fn watch_status_where(&self, keep: impl Fn(&str) -> bool) -> LiveStatus {
         watch_status::aggregate(
-            self.refresh_error.is_some(),
+            false,
             self.watches
                 .values()
                 .filter(|watch| keep(&watch.context))
@@ -143,10 +136,13 @@ impl LiveData {
         )
     }
 
-    pub fn messages(&self) -> impl Iterator<Item = &String> {
-        self.refresh_error
+    pub fn reload_error_in(&self, context: &str) -> Option<&str> {
+        self.watches
             .iter()
-            .chain(self.watches.values().flat_map(Registration::messages))
+            .filter(|(_, watch)| watch.context == context)
+            .filter_map(|(id, watch)| watch.reload_error.as_deref().map(|error| (id, error)))
+            .min_by_key(|(id, _)| *id)
+            .map(|(_, error)| error)
     }
 
     /// Each watch for the status menu, in id order, so the first error it
@@ -326,7 +322,8 @@ impl Inspector {
             contexts,
             self.scope.namespace,
         );
-        if owner != self.live.owner {
+        let owner_changed = owner != self.live.owner;
+        if owner_changed {
             self.live.watches.clear();
             self.observation.discard_patches();
             self.live.owner = owner;
@@ -357,11 +354,12 @@ impl Inspector {
             .collect();
         // A changed kind selection keeps the watches of the kinds it still
         // holds, as `update` in resource-watch.ts keeps unchanged keys' streams.
-        if kinds_changed {
+        if owner_changed || kinds_changed {
             let wanted: HashSet<&str> = pairs.iter().map(|(_, _, id)| id.as_str()).collect();
             self.live
                 .watches
                 .retain(|id, _| wanted.contains(id.as_str()));
+            self.kind_selection.retain_watches(&wanted);
             self.observation.retain_watches(&wanted);
         }
         for (context, key, watch) in pairs {
@@ -459,6 +457,7 @@ impl Inspector {
                                                     resource_version,
                                                     names: None,
                                                     watch: Some(id.clone()),
+                                                    kind_recovery: None,
                                                 },
                                                 cx,
                                             );
@@ -506,9 +505,18 @@ impl Inspector {
                         if closed {
                             lost = true;
                         }
+                        let missing_kind = if tick {
+                            this.update(cx, |this, _| {
+                                this.observation.kind_error_started(&scope.context, &id)
+                            })
+                            .ok()
+                            .flatten()
+                        } else {
+                            None
+                        };
                         let mut reload = tick && (lost || forbidden || read_failed);
                         // A recovery tick with nothing to recover leaves the view as it is.
-                        if tick && batch.is_empty() && !reload {
+                        if tick && batch.is_empty() && !reload && missing_kind.is_none() {
                             continue;
                         }
                         let mut names = Some(crate::model::ObservedNames::default());
@@ -541,6 +549,9 @@ impl Inspector {
                                 _ => {}
                             }
                         }
+                        // Connected messages can renew a healthy watch without requesting a relist.
+                        let kind_recovery = missing_kind.filter(|_| !reload && !lost && !forbidden);
+                        reload |= missing_kind.is_some();
                         // After a failed reload, rows it should have changed may be
                         // stale, so the next reload lists the kind, not just its names.
                         if tick || read_failed {
@@ -551,6 +562,12 @@ impl Inspector {
                             .update_in(cx, |this, _window, cx| {
                                 if this.live.owner != owner {
                                     return false;
+                                }
+                                if reload
+                                    && names.is_some()
+                                    && this.observation.kind_read_failed(&scope.context, &id)
+                                {
+                                    names = None;
                                 }
                                 let Some(w) = this.live.watches.get_mut(&id) else {
                                     return false;
@@ -614,47 +631,52 @@ impl Inspector {
                                 },
                             )
                             .await;
-                            read_failed = rows.is_err();
-                            let valid = this
-                                .update_in(cx, |this, _window, cx| {
-                                    if this.live.owner != owner {
-                                        return false;
-                                    }
-                                    match rows {
-                                        Ok(KindRows {
-                                            rows,
-                                            resource_version,
-                                        }) => {
-                                            this.queue_live_patch(
-                                                super::resource_observation::Patch {
-                                                    scope: scope.clone(),
-                                                    key: key.clone(),
-                                                    rows,
-                                                    resource_version,
-                                                    names,
-                                                    watch: Some(id.clone()),
-                                                },
-                                                cx,
-                                            );
-                                            if let Some(w) = this.live.watches.get_mut(&id) {
-                                                w.reload_error = None;
-                                                w.catching_up = false;
-                                            }
+                            let Ok(Some(failed)) = this.update_in(cx, |this, _window, cx| {
+                                if this.live.owner != owner {
+                                    return None;
+                                }
+                                let failed = match rows {
+                                    Ok(KindRows {
+                                        rows,
+                                        resource_version,
+                                    }) => {
+                                        this.queue_live_patch(
+                                            super::resource_observation::Patch {
+                                                scope: scope.clone(),
+                                                key: key.clone(),
+                                                rows,
+                                                resource_version,
+                                                names,
+                                                watch: Some(id.clone()),
+                                                kind_recovery,
+                                            },
+                                            cx,
+                                        );
+                                        if let Some(w) = this.live.watches.get_mut(&id) {
+                                            w.reload_error = None;
+                                            w.catching_up = false;
                                         }
-                                        Err(error) => {
-                                            if let Some(w) = this.live.watches.get_mut(&id) {
+                                        false
+                                    }
+                                    Err(error) => {
+                                        // A retry for a selected-kind list belongs to its existing error.
+                                        // A newer list can retire it without clearing the watch's own errors.
+                                        let failed = kind_recovery.is_none();
+                                        if let Some(w) = this.live.watches.get_mut(&id) {
+                                            if failed {
                                                 w.reload_error = Some(error.message);
-                                                w.catching_up = false;
                                             }
+                                            w.catching_up = false;
                                         }
+                                        failed
                                     }
-                                    cx.notify();
-                                    true
-                                })
-                                .unwrap_or(false);
-                            if !valid {
+                                };
+                                cx.notify();
+                                Some(failed)
+                            }) else {
                                 return;
-                            }
+                            };
+                            read_failed = failed;
                             if !tick {
                                 cx.background_executor()
                                     .timer(COALESCE.saturating_sub(started.elapsed()))
@@ -686,6 +708,9 @@ impl Inspector {
         patch: super::resource_observation::Patch,
         cx: &mut Context<Self>,
     ) {
+        if patch.superseded(&self.observation) {
+            return;
+        }
         if patch.watch.is_some() {
             self.invalidate_topology(&patch.scope, cx);
         }
@@ -702,6 +727,9 @@ impl Inspector {
         self.visible.release_source();
         self.row_index.invalidate();
         for patch in pending {
+            if patch.superseded(&self.observation) {
+                continue;
+            }
             self.row_changes.notice(&patch);
             let rows = self.patch_kind(
                 &patch.scope,

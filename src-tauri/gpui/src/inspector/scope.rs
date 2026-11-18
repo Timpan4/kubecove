@@ -2,7 +2,7 @@
 
 use super::Inspector;
 use super::load_trace::{LoadKind, LoadTrace};
-use super::resource_observation::{ScopeRows, all_failed, union_namespaces};
+use super::resource_observation::{ScopeRows, union_namespaces};
 use super::scope_arrivals::prepare_arrival;
 use crate::backend::{Read, Scope, ScopeResult};
 use crate::model::PreparedRows;
@@ -18,7 +18,12 @@ use kubecove_lib::models::{AppError, ResourceSummary};
 use std::{rc::Rc, time::Instant};
 
 /// One context's read, shareable while in flight with the Overview's read.
-type SharedRead = Shared<Read<ScopeResult>>;
+type ReadResult = (Instant, Result<ScopeResult, AppError>);
+type SharedRead = Shared<BoxFuture<'static, ReadResult>>;
+
+fn started_read(read: Read<ScopeResult>, started: Instant) -> BoxFuture<'static, ReadResult> {
+    read.map(move |result| (started, result)).boxed()
+}
 
 /// Which of a context's two reads answered.
 #[derive(PartialEq, Eq)]
@@ -32,21 +37,24 @@ async fn arrive(
     stage: Stage,
     context: String,
     read: SharedRead,
-) -> (Stage, String, Result<ScopeResult, AppError>) {
-    let result = read.await;
-    (stage, context, result)
+) -> (Stage, String, Instant, Result<ScopeResult, AppError>) {
+    let (started, result) = read.await;
+    (stage, context, started, result)
 }
 
 /// Prepares the rows of every context that answered on the background
 /// executor, in context rank order, so applying the read on the UI thread
-/// only swaps them in. Fails only when every context failed.
+/// only swaps them in. Keeps the result of every context for installation.
 async fn prepare_off_thread(
     executor: &BackgroundExecutor,
     contexts: Vec<String>,
     mut results: ContextResults<ScopeResult>,
-) -> Result<ScopeRows, AppError> {
+) -> ScopeRows {
     if !results.is_empty() && results.iter().all(|(_, result)| result.is_err()) {
-        return Err(all_failed(results));
+        return ScopeRows {
+            results,
+            rows: PreparedRows::default(),
+        };
     }
     // Results come in plan order, so the rows come in context rank order.
     // Joining them copies every row, so it runs with the preparation.
@@ -62,7 +70,7 @@ async fn prepare_off_thread(
             (results, rows)
         })
         .await;
-    Ok(ScopeRows { results, rows })
+    ScopeRows { results, rows }
 }
 
 /// The builtin and custom reads of every workspace context, shareable while in
@@ -82,7 +90,12 @@ fn settle_shared(reads: &[(String, SharedRead)]) -> Settled<ScopeResult> {
     settle(
         reads
             .iter()
-            .map(|(context, read)| (context.clone(), Box::pin(read.clone()) as Read<ScopeResult>))
+            .map(|(context, read)| {
+                (
+                    context.clone(),
+                    read.clone().map(|(_, result)| result).boxed(),
+                )
+            })
             .collect(),
     )
 }
@@ -241,11 +254,11 @@ impl Inspector {
                 .into_iter()
                 .map(|(context, read)| arrive(Stage::Builtin, context, read))
                 .collect();
-            while let Some((stage, context, result)) = arrivals.next().await {
+            while let Some((stage, context, scope_started, result)) = arrivals.next().await {
                 if stage == Stage::Custom {
                     if this
                         .update(cx, |this, cx| {
-                            this.apply_custom_arrival(&request, &context, result, cx)
+                            this.apply_custom_arrival(&request, &context, result, scope_started, cx)
                         })
                         .is_err()
                     {
@@ -262,7 +275,7 @@ impl Inspector {
                 let (result, rows) =
                     prepare_arrival(cx.background_executor(), plan.clone(), rows, result).await;
                 let applied = this.update(cx, |this, cx| {
-                    this.apply_arrival(&request, &context, result, rows, cx)
+                    this.apply_arrival(&request, &context, result, rows, scope_started, cx)
                 });
                 if !matches!(applied, Ok(true)) {
                     return;
@@ -312,6 +325,7 @@ impl Inspector {
                 self.scope.namespace.as_deref(),
             ));
             let contexts = self.resource_contexts();
+            let scope_started = Instant::now();
             let read = self.refresh_reads(&contexts, cx);
             let request = self.request.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
@@ -322,8 +336,9 @@ impl Inspector {
                         return;
                     }
                     let apply_started = Instant::now();
-                    match this.observation.install_refresh(result) {
+                    match this.observation.install_refresh(result, scope_started) {
                         Ok(applied) => {
+                            this.supersede_kind_errors(&applied.listed, scope_started);
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces
                             } else {
@@ -342,7 +357,7 @@ impl Inspector {
                 });
             });
             self.observation.start_refresh(task);
-            self.load_topology(cx);
+            self.refresh_topology(cx);
             self.load_inventory(true, cx);
             self.load_page(cx);
         }
@@ -380,11 +395,15 @@ impl Inspector {
         cx: &Context<Self>,
     ) -> SharedScopeReads {
         if self.focused_application().is_some() {
+            let started = Instant::now();
             let read = self.application_resources_read(refresh, cx);
             let read = self.timings.measure("list_resource_scope", read);
             return SharedScopeReads {
                 contexts: contexts.to_vec(),
-                builtin: vec![(self.scope.context.clone(), read.shared())],
+                builtin: vec![(
+                    self.scope.context.clone(),
+                    started_read(read, started).shared(),
+                )],
                 custom: Vec::new(),
             };
         }
@@ -395,6 +414,7 @@ impl Inspector {
                 context: context.clone(),
                 namespace: self.scope.namespace.clone(),
             };
+            let custom_started = Instant::now();
             if let Some(first) = self.backend.scope_custom_resources(scope.clone()) {
                 let backend = self.backend.clone();
                 let scope = scope.clone();
@@ -406,19 +426,20 @@ impl Inspector {
                             .expect("custom read remains available")
                     })
                 });
-                custom.push((context.clone(), read.shared()));
+                custom.push((context.clone(), started_read(read, custom_started).shared()));
             }
             let backend = self.backend.clone();
             let mut refresh = refresh;
             let executor = cx.background_executor().clone();
             let timings = self.timings.clone();
             let list = move || {
+                let started = Instant::now();
                 let read = crate::read_retry::read(executor, move || {
                     backend.scope_builtin_resources(scope.clone(), std::mem::take(&mut refresh))
                 });
-                timings.measure("list_resource_scope", read)
+                started_read(timings.measure("list_resource_scope", read), started)
             };
-            let read: Read<ScopeResult> = match start {
+            let read: BoxFuture<'static, ReadResult> = match start {
                 Some(start) => Box::pin(async move {
                     start.await;
                     list().await

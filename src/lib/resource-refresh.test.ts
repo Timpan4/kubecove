@@ -77,6 +77,221 @@ test("cache clearing never rejoins a discovery read started before refresh", asy
 	expect(calls).toBe(2);
 });
 
+test.each(["before", "during", "after"] as const)("uncached topology refresh when automatic eviction finishes %s manual refresh", async (timing) => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	configureQueryCatalog(queryClient);
+	const key = queryKeys.resources("dev", []);
+	const calls: string[] = [];
+	let releaseEviction!: () => void;
+	let startEviction!: () => void;
+	const eviction = new Promise<void>((resolve) => { releaseEviction = resolve; });
+	const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+	let releaseAutomaticEviction!: () => void;
+	let startAutomaticEviction!: () => void;
+	const automaticEviction = new Promise<void>((resolve) => { releaseAutomaticEviction = resolve; });
+	const automaticEvictionStarted = new Promise<void>((resolve) => { startAutomaticEviction = resolve; });
+	let held = true;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			calls.push("read");
+			if (held) await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+			return "fresh";
+		},
+	}).subscribe(() => {});
+	const refresh = { queryClient, clusterContext: "dev", keys: [], namespaces: [] };
+	try {
+		const recovery = refreshCurrentView({
+			...refresh,
+			cancelRefetch: false,
+			independentReads: [queryMatchers.exact(key)],
+			client: createMockTauriClient({ refresh_resource_cache: async () => {
+				startAutomaticEviction();
+				if (timing !== "before") await automaticEviction;
+				return { clearedEntries: 1 };
+			} }),
+		});
+		if (timing !== "before") await automaticEvictionStarted;
+		else await recovery;
+		held = false;
+		const manual = refreshCurrentView({
+			...refresh,
+			client: createMockTauriClient({ refresh_resource_cache: async () => {
+				startEviction();
+				await eviction;
+				return { clearedEntries: 1 };
+			} }),
+		});
+		await evictionStarted;
+		if (timing === "during") {
+			releaseAutomaticEviction();
+			await recovery;
+		}
+		expect(calls).toEqual(["read"]);
+		releaseEviction();
+		await manual;
+		expect(calls).toEqual(["read", "read"]);
+		if (timing === "after") {
+			releaseAutomaticEviction();
+			await recovery;
+			expect(calls).toEqual(["read", "read", "read"]);
+		}
+		expect(queryClient.getQueryData(key)).toBe("fresh");
+	} finally {
+		releaseAutomaticEviction();
+		releaseEviction();
+		stop();
+		queryClient.clear();
+	}
+});
+
+test("manual refresh replaces an uncached watch read started during eviction", async () => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	configureQueryCatalog(queryClient);
+	const key = queryKeys.resources("dev", []);
+	let releaseEviction!: () => void;
+	let startEviction!: () => void;
+	const eviction = new Promise<void>((resolve) => { releaseEviction = resolve; });
+	const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+	let requests = 0;
+	let cancelledWatch = false;
+	let finishInitial!: () => void;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			const started = ++requests;
+			if (started === 1) {
+				await new Promise<void>((resolve) => { finishInitial = resolve; });
+				throw new Error("No data yet");
+			}
+			if (started === 2) await new Promise<void>((resolve) => signal.addEventListener("abort", () => {
+				cancelledWatch = true;
+				resolve();
+			}, { once: true }));
+			return started;
+		},
+	}).subscribe(() => {});
+	try {
+		const manual = refreshCurrentView({
+			queryClient, clusterContext: "dev", keys: [], namespaces: [],
+			client: createMockTauriClient({ refresh_resource_cache: async () => {
+				startEviction();
+				await eviction;
+				return { clearedEntries: 1 };
+			} }),
+		});
+		await evictionStarted;
+		const initial = queryClient.getQueryCache().find({ queryKey: key })?.promise;
+		finishInitial();
+		await initial?.catch(() => {});
+		const watch = queryClient.refetchQueries({ queryKey: key, exact: true });
+		expect(requests).toBe(2);
+		releaseEviction();
+		await Promise.all([manual, watch]);
+		expect(cancelledWatch).toBe(true);
+		expect(queryClient.getQueryData(key)).toBe(3);
+	} finally {
+		releaseEviction();
+		stop();
+		queryClient.clear();
+	}
+});
+
+test.each([false, true])("failed manual eviction preserves a running catch-up, independent: %s", async (independent) => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+	configureQueryCatalog(queryClient);
+	const key = independent ? queryKeys.resourceTopology("dev", [], "ownership") : queryKeys.resources("dev", []);
+	queryClient.setQueryData(key, "retained");
+	let startRead!: () => void;
+	let finishRead!: () => void;
+	const readStarted = new Promise<void>((resolve) => { startRead = resolve; });
+	const read = new Promise<void>((resolve) => { finishRead = resolve; });
+	let aborted = false;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			signal.addEventListener("abort", () => { aborted = true; });
+			startRead();
+			await read;
+			return "fresh";
+		},
+	}).subscribe(() => {});
+	const refresh = { queryClient, clusterContext: "dev", keys: [], namespaces: [] };
+	try {
+		const recovery = refreshCurrentView({
+			...refresh,
+			cancelRefetch: false,
+			independentReads: independent ? [queryMatchers.exact(key)] : [],
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		await readStarted;
+		const running = queryClient.getQueryCache().find({ queryKey: key })?.promise;
+		await expect(refreshCurrentView({
+			...refresh,
+			client: createMockTauriClient({ refresh_resource_cache: () => { throw new Error("eviction failed"); } }),
+		})).rejects.toThrow("eviction failed");
+		finishRead();
+		await Promise.allSettled([recovery, running]);
+		expect(aborted).toBe(false);
+		expect(queryClient.getQueryData(key)).toBe("fresh");
+	} finally {
+		finishRead();
+		stop();
+		queryClient.clear();
+	}
+});
+
+test("automatic catch-up ignores a read cancellation superseded by manual eviction", async () => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	configureQueryCatalog(queryClient);
+	const key = queryKeys.resources("dev", []);
+	let startEviction!: () => void;
+	let releaseEviction!: () => void;
+	let startAutomaticRead!: () => void;
+	const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+	const eviction = new Promise<void>((resolve) => { releaseEviction = resolve; });
+	const automaticReadStarted = new Promise<void>((resolve) => { startAutomaticRead = resolve; });
+	let requests = 0;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			const started = ++requests;
+			if (started === 1) throw new Error("No data yet");
+			if (started === 2) {
+				startAutomaticRead();
+				await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+			}
+			return started;
+		},
+	}).subscribe(() => {});
+	const refresh = { queryClient, clusterContext: "dev", keys: [], namespaces: [] };
+	try {
+		await queryClient.getQueryCache().find({ queryKey: key })?.promise?.catch(() => {});
+		const manual = refreshCurrentView({
+			...refresh,
+			client: createMockTauriClient({ refresh_resource_cache: async () => {
+				startEviction();
+				await eviction;
+				return { clearedEntries: 1 };
+			} }),
+		});
+		await evictionStarted;
+		const recovery = refreshCurrentView({
+			...refresh, cancelRefetch: false,
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		await automaticReadStarted;
+		releaseEviction();
+		const [warnings] = await Promise.all([recovery, manual]);
+		expect(warnings).toEqual([]);
+		expect(queryClient.getQueryData(key)).toBe(3);
+	} finally {
+		releaseEviction();
+		stop();
+		queryClient.clear();
+	}
+});
+
 test("refresh evicts backend data before reloading only active reads in the selected source/context", async () => {
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: Infinity } },

@@ -185,6 +185,34 @@
       ]
     },
     {
+      "id": "resources.partial-refresh-keeps-selected-map-live",
+      "title": "A failed read keeps that context's rows stale while the other context's map stays live",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "setWindowActive", "active": true },
+        { "action": "search", "value": "payments-api" },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "mockTiming", "control": { "operation": "fail", "kind": "forbidden", "command": "list_resource_scope", "context": "admin@solid-k8s" } },
+        { "action": "refresh" },
+        { "action": "expectLiveState", "label": "Refresh failed", "notice": "Refresh failed. Showing last observed state. Table activity indicators are paused until live updates recover." },
+        { "action": "expectRowContexts", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "contexts": ["mock-dev", "admin@solid-k8s"] },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "coverageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover.", "visible": false },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "admin@solid-k8s" } },
+        { "action": "refresh" },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "coverageText", "text": "Refresh failed. Showing last observed state. Table activity indicators are paused until live updates recover.", "visible": false }
+      ]
+    },
+    {
       "id": "resources.multi-context-watch-isolation",
       "title": "A watch deletion in one context leaves the same-named object of the other context",
       "steps": [

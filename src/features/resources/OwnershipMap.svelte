@@ -79,6 +79,19 @@
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);
 	let afterGraphElement = $state<HTMLDivElement>();
+	let mapHeading = $state<HTMLDivElement>();
+	let refreshErrorDetails = $state<HTMLDetailsElement>();
+	let errorBranch: "graph" | "empty" | null = null;
+
+	$effect.pre(() => {
+		const next = error && topology && !loading.active && !isError
+			? (topology.nodes.length && graph ? "graph" : "empty")
+			: null;
+		if (next !== errorBranch && refreshErrorDetails?.contains(document.activeElement)) {
+			mapHeading?.focus();
+		}
+		errorBranch = next;
+	});
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
 	const selectedStandaloneExpansionId = $derived(
@@ -171,7 +184,7 @@
 
 <svelte:window onfocus={() => (windowActive = true)} onblur={() => (windowActive = false)} />
 
-<div class="flex h-full min-h-[400px] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm">
+<div class="relative flex h-full min-h-[400px] min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-surface-1 shadow-sm">
 	<div class="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
 		<div class="flex min-w-0 items-center gap-2">
 			{#if onMapToggle}
@@ -193,7 +206,7 @@
 				<GitBranch />
 			{/if}
 			<div class="min-w-0">
-				<div class="truncate text-xs font-semibold">{title}</div>
+				<div class="truncate text-xs font-semibold" bind:this={mapHeading} tabindex="-1">{title}</div>
 				<div class="text-[0.6875rem] text-muted-foreground">
 					{#if focusedGraph}
 						{graph?.nodes.length ?? 0} focused / {topology?.nodes.length ?? 0} nodes
@@ -251,12 +264,15 @@
 			/>
 		</div>
 	{:else if !topology || topology.nodes.length === 0 || !graph}
-		<Empty class="min-h-80 flex-1 border-0">
-			<EmptyHeader>
-				<EmptyTitle>{emptyTitle}</EmptyTitle>
-				<EmptyDescription>{emptyDescription}</EmptyDescription>
-			</EmptyHeader>
-		</Empty>
+		<div class="relative flex min-h-0 flex-1">
+			<Empty class="flex-1 border-0">
+				<EmptyHeader>
+					<EmptyTitle>{emptyTitle}</EmptyTitle>
+					<EmptyDescription>{emptyDescription}</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+			{#if topology && error}{@render mapRefreshError()}{/if}
+		</div>
 	{:else}
 		<p class="border-b px-3 py-1.5 text-[0.6875rem] text-muted-foreground">
 			Drag to pan. Scroll or use controls to zoom. Press Tab to reach graph nodes, or
@@ -268,7 +284,7 @@
 			>skip graph</Button>.
 		</p>
 		<div
-			class="min-h-80 flex-1"
+			class="relative min-h-0 flex-1"
 			bind:clientWidth={viewportWidth}
 			bind:clientHeight={viewportHeight}
 		>
@@ -310,8 +326,9 @@
 					<Controls position="top-left" orientation="horizontal" showLock={false} />
 				</SvelteFlow>
 			{/if}
+			<div class="absolute inset-x-0 bottom-0" bind:this={afterGraphElement} tabindex="-1"></div>
+			{#if error}{@render mapRefreshError()}{/if}
 		</div>
-		<div bind:this={afterGraphElement} tabindex="-1"></div>
 		{#if topology.warnings.length > 0}
 			<div class="flex flex-col gap-1 border-t px-3 py-2 text-[0.6875rem] text-muted-foreground">
 				<div class="font-semibold text-foreground">Topology warnings</div>
@@ -325,3 +342,10 @@
 		{/if}
 	{/if}
 </div>
+
+{#snippet mapRefreshError()}
+	<details bind:this={refreshErrorDetails} data-map-refresh-error class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
+		<summary class="cursor-pointer">Map refresh failed</summary>
+		<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} scrollTechnicalDetail={false} />
+	</details>
+{/snippet}

@@ -14,7 +14,13 @@ export interface OwnershipMapRenderCounts {
 	updateMs: number;
 }
 
-let control: { stop(): Promise<void>; select(nodeId: string | null): void; refresh(): void; take(): OwnershipMapRenderCounts } | undefined;
+let control: {
+	stop(): Promise<void>;
+	select(nodeId: string | null): void;
+	refresh(empty?: boolean): void;
+	failRefresh(): void;
+	take(): OwnershipMapRenderCounts;
+} | undefined;
 
 function topology(): ResourceTopology {
 	const nodes: ResourceTopology["nodes"] = [];
@@ -37,11 +43,15 @@ function topology(): ResourceTopology {
 	return { nodes, edges, warnings: [] };
 }
 
-export async function mountOwnershipMap(): Promise<void> {
+export async function mountOwnershipMap(withWarnings = false): Promise<void> {
 	await control?.stop();
 	const target = document.createElement("div");
 	document.body.append(target);
-	const component = mount(OwnershipMapHarness, { target, props: { initialTopology: topology() } });
+	const readyTopology = () => ({ ...topology(), warnings: withWarnings ? ["Last observed topology warning"] : [] });
+	const component = mount(OwnershipMapHarness, { target, props: {
+		initialTopology: readyTopology(),
+		contexts: withWarnings ? ["ownership-map", "another-context"] : [],
+	} });
 	const counts = { edgeRemovals: 0, handleMeasurements: 0, updateMs: 0 };
 	// Time the synchronous Svelte update that applies one change to the map.
 	const timed = (change: () => void) => {
@@ -58,14 +68,17 @@ export async function mountOwnershipMap(): Promise<void> {
 	const observer = new MutationObserver((records) => {
 		for (const record of records) {
 			for (const node of record.removedNodes) {
-				if (node instanceof Element && node.matches(".svelte-flow__edge")) counts.edgeRemovals++;
+				if (!(node instanceof Element)) continue;
+				if (node.matches(".svelte-flow__edge")) counts.edgeRemovals++;
+				else counts.edgeRemovals += node.querySelectorAll(".svelte-flow__edge").length;
 			}
 		}
 	});
 	observer.observe(target, { childList: true, subtree: true });
 	control = {
 		select: (nodeId) => timed(() => component.select(nodeId)),
-		refresh: () => timed(() => component.refresh(topology())),
+		refresh: (empty) => timed(() => component.refresh(empty ? { nodes: [], edges: [], warnings: [] } : readyTopology())),
+		failRefresh: () => component.failRefresh(),
 		take() {
 			const taken = { edges: target.querySelectorAll(".svelte-flow__edge").length, ...counts };
 			counts.edgeRemovals = 0;
@@ -94,5 +107,6 @@ export async function settleOwnershipMap(): Promise<OwnershipMapRenderCounts> {
 }
 
 export function selectOwnershipMapNode(nodeId: string | null): void { control?.select(nodeId); }
-export function refreshOwnershipMapTopology(): void { control?.refresh(); }
+export function refreshOwnershipMapTopology(empty?: boolean): void { control?.refresh(empty); }
+export function failOwnershipMapTopology(): void { control?.failRefresh(); }
 export async function stopOwnershipMap(): Promise<void> { await control?.stop(); }

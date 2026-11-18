@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/svelte-query";
 import type { QueryMatch } from "./queryKeys";
-import { refreshCurrentView } from "./resource-refresh";
+import { manualRefreshOwns, onManualRefreshRelease, refreshCurrentView } from "./resource-refresh";
 import {
 	observeResourceScope,
 	RESOURCE_RECOVERY_INTERVAL,
@@ -34,6 +34,8 @@ export interface LiveRead {
 	 * not showing or that another live view keeps fresh.
 	 */
 	refetch?: boolean;
+	/** Recover this read's errors without marking the whole view's watches stale. */
+	recoverSeparately?: boolean;
 	/**
 	 * The list version of the rows this read shows, by watch key signature, so a
 	 * watch starts at those rows. Null while the rows load. A key without an
@@ -70,6 +72,7 @@ export interface LiveViewState {
 	message: string;
 	error: string | null;
 	reloadError: string | null;
+	reloadContext?: string;
 	warnings: string[];
 }
 
@@ -96,13 +99,15 @@ export function combineLiveViewStates(states: readonly { clusterContext: string;
 	if (active.length === 0) return IDLE_LIVE_VIEW;
 	const [worst] = [...active].sort((left, right) =>
 		STATUS_SEVERITY.indexOf(left.state.status) - STATUS_SEVERITY.indexOf(right.state.status));
+	const failedReload = active.find(({ state }) => state.reloadError !== null);
 	const mixedPolling = worst.state.status === "polling" && active.some(({ state }) => state.status !== "polling");
 	return {
 		status: mixedPolling ? "partial" : worst.state.status,
 		catchingUp: active.some(({ state }) => state.catchingUp),
 		message: named(worst.clusterContext, worst.state.message) ?? "",
 		error: active.map(({ clusterContext, state }) => named(clusterContext, state.error)).find(Boolean) ?? null,
-		reloadError: active.map(({ clusterContext, state }) => named(clusterContext, state.reloadError)).find(Boolean) ?? null,
+		reloadError: failedReload ? named(failedReload.clusterContext, failedReload.state.reloadError) : null,
+		reloadContext: failedReload?.clusterContext,
 		warnings: active.flatMap(({ clusterContext, state }) => state.warnings.map((warning) => `${clusterContext}: ${warning}`)),
 	};
 }
@@ -160,9 +165,14 @@ export function createWatchRefreshThrottle(refresh: () => Promise<void>) {
 }
 
 /** Throttled refresh of the reads `match()` selects, read at each refresh. A change seen while one of them runs refreshes them again once it ends. */
-function createReadRefresh(queryClient: QueryClient, match: () => QueryMatch, beforeRefresh?: () => void) {
+function createReadRefresh(queryClient: QueryClient, read: () => Pick<LiveRead, "match" | "refetch">, beforeRefresh?: () => void) {
 	const throttle = createWatchRefreshThrottle(async () => {
-		const filter = { predicate: match() };
+		const { match, refetch } = read();
+		const filter = { predicate: match };
+		if (refetch === false) {
+			await queryClient.invalidateQueries({ ...filter, refetchType: "none" });
+			return;
+		}
 		const alreadyFetching = queryClient.isFetching({ ...filter, type: "active" }) > 0;
 		beforeRefresh?.();
 		await queryClient.invalidateQueries(filter, { cancelRefetch: false });
@@ -173,11 +183,23 @@ function createReadRefresh(queryClient: QueryClient, match: () => QueryMatch, be
 
 /** Throttled refresh of the reads `match` selects. A change seen while one of them runs refreshes them again once it ends. */
 export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatch, beforeRefresh?: () => void) {
-	const refresh = createReadRefresh(queryClient, () => match, beforeRefresh);
+	const refresh = createReadRefresh(queryClient, () => ({ match }), beforeRefresh);
+	const recovery = recoverFailedRead(queryClient, match, refresh.notify);
+	return {
+		notify: refresh.notify,
+		dispose() {
+			recovery.dispose();
+			refresh.dispose();
+		},
+	};
+}
+
+function recoverFailedRead(queryClient: QueryClient, match: QueryMatch, retry: (failed: QueryMatch) => void) {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let disposed = false;
-	const failedRead = () => queryClient.getQueryCache().getAll().some((query) =>
-		match(query) && query.isActive() && query.state.status === "error" && query.state.fetchStatus === "idle");
+	const failed: QueryMatch = (query) =>
+		match(query) && query.isActive() && query.state.status === "error" && query.state.fetchStatus === "idle";
+	const failedRead = () => queryClient.getQueryCache().getAll().some(failed);
 	function checkRecovery() {
 		if (disposed) return;
 		if (!failedRead()) {
@@ -186,7 +208,7 @@ export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatc
 		} else if (timer === undefined) {
 			timer = setTimeout(() => {
 				timer = undefined;
-				if (!disposed && failedRead()) refresh.notify();
+				if (!disposed && failedRead()) retry(failed);
 			}, RESOURCE_RECOVERY_INTERVAL);
 		}
 	}
@@ -195,12 +217,11 @@ export function createLiveReadRefresh(queryClient: QueryClient, match: QueryMatc
 	});
 	checkRecovery();
 	return {
-		notify: refresh.notify,
+		check: checkRecovery,
 		dispose() {
 			disposed = true;
 			if (timer !== undefined) clearTimeout(timer);
 			unsubscribe();
-			refresh.dispose();
 		},
 	};
 }
@@ -239,19 +260,32 @@ function watchGroup(key: WatchResourceKey): string {
 /** A declared read's refresh. The throttle outlives read-set changes, so a pending refresh still runs for what the view shows now. */
 function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 	let read = initial;
-	const throttle = createReadRefresh(queryClient, () => read.match);
+	const throttle = createReadRefresh(queryClient, () => read);
+	const recovery = initial.recoverSeparately
+		? recoverFailedRead(queryClient, (query) => !manualRefreshOwns(query) && read.refetch !== false && read.match(query), (failed) => {
+			void queryClient.refetchQueries({ predicate: failed }, { cancelRefetch: false });
+		})
+		: null;
+	const stopRelease = recovery && onManualRefreshRelease(queryClient, (query) => {
+		if (read.match(query)) recovery.check();
+	});
 	return {
 		get read() {
 			return read;
 		},
 		set(next: LiveRead) {
 			read = next;
+			recovery?.check();
 		},
 		notify() {
 			if (read.refetch === false) void queryClient.invalidateQueries({ predicate: read.match, refetchType: "none" });
 			else throttle.notify();
 		},
-		dispose: () => throttle.dispose(),
+		dispose() {
+			stopRelease?.();
+			recovery?.dispose();
+			throttle.dispose();
+		},
 	};
 }
 
@@ -297,17 +331,23 @@ export function bindLiveView({
 			namespaces: [...current.namespaces],
 			reads: matches,
 			cancelRefetch,
+			independentReads: cancelRefetch ? undefined : current.reads.filter((read) => read.recoverSeparately).map((read) => read.match),
 		});
 	// One handler set for the binding's lifetime; it reads the current view when it runs.
 	const handlers: ResourceScopeHandlers = {
 		readError: () => {
 			const failed = queryClient.getQueryCache().findAll({
 				predicate: (query) => query.isActive() && query.state.status === "error"
-					&& refetched().some((read) => read.match(query)),
+					&& refetched().some((read) => !read.recoverSeparately && read.match(query)),
 			})[0];
 			return failed ? messageFromError(failed.state.error) : null;
 		},
-		onState: (state) => onState({ ...state, reloadError: state.reloadError ?? null, warnings: state.warnings ?? [] }),
+		onState: (state) => onState({
+			...state,
+			reloadError: state.reloadError ?? null,
+			reloadContext: state.reloadError ? current.clusterContext : undefined,
+			warnings: state.warnings ?? [],
+		}),
 		startVersion: (key) => startVersion(current, key),
 		onChange: (_event, key) => {
 			for (const slot of slots) if (keptFreshBy(slot.read, key)) slot.notify();
@@ -328,8 +368,11 @@ export function bindLiveView({
 		current = next;
 		next.reads.forEach((read, index) => {
 			const slot = slots[index];
-			if (slot) slot.set(read);
-			else slots.push(createReadSlot(queryClient, read));
+			if (slot && slot.read.recoverSeparately === read.recoverSeparately) slot.set(read);
+			else {
+				slot?.dispose();
+				slots[index] = createReadSlot(queryClient, read);
+			}
 		});
 		for (const slot of slots.splice(next.reads.length)) slot.dispose();
 		if (next.keys.length === 0) {

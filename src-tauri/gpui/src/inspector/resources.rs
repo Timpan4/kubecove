@@ -473,13 +473,12 @@ impl Inspector {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let width = self.section_width(window);
-        if self.shown_live_status() != LiveStatus::RefreshFailed {
-            self.live.error_open = false;
-        }
+        let freshness = self.notice_freshness();
+        self.reset_hidden_diagnostic(&freshness);
         let stacked = !matches!(self.detail, Detail::Closed);
         self.rebuild_map();
         self.sync_map_motion(window, cx);
-        self.sync_map_edge_motion(window, cx);
+        self.sync_map_edge_motion(freshness.map == Some(LiveStatus::Live), window, cx);
         self.sync_map_focus(window, cx);
         let loading = self
             .loading
@@ -550,7 +549,7 @@ impl Inspector {
                         .gap(px(12.))
                         .when_some(reveal, |body, opacity| body.opacity(opacity))
                         .child(self.top_bar(width, cx))
-                        .children(self.live_notice(cx))
+                        .children(self.live_notice(freshness, cx))
                         .children(self.contexts_waiting_notice())
                         .children(self.page_warnings().enumerate().map(|(index, warning)| {
                             div()

@@ -62,13 +62,19 @@ impl Inspector {
         context: &str,
         result: Result<ScopeResult, AppError>,
         rows: PreparedRows,
+        scope_started: Instant,
         cx: &mut Context<Self>,
     ) -> bool {
         if !Rc::ptr_eq(&self.request, request) {
             return false;
         }
         let apply_started = Instant::now();
-        let applied = self.observation.install_arrival(context, result, rows);
+        if let Ok(snapshot) = &result {
+            self.supersede_kind_errors(&snapshot.listed, scope_started);
+        }
+        let applied = self
+            .observation
+            .install_arrival(context, result, rows, scope_started);
         if let Some(namespaces) = applied.namespaces {
             self.namespaces = namespaces;
         }
@@ -95,13 +101,17 @@ impl Inspector {
         request: &Rc<()>,
         context: &str,
         result: Result<ScopeResult, AppError>,
+        scope_started: Instant,
         cx: &mut Context<Self>,
     ) {
         if !Rc::ptr_eq(&self.request, request) {
             return;
         }
         let apply_started = Instant::now();
-        self.apply_custom_resources(context, result, cx);
+        if let Ok(snapshot) = &result {
+            self.supersede_kind_errors(&snapshot.listed, scope_started);
+        }
+        self.apply_custom_resources(context, result, scope_started, cx);
         self.note_apply(
             LoadKind::Scope,
             apply_started.elapsed(),

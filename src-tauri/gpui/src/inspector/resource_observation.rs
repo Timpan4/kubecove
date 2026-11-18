@@ -1,16 +1,25 @@
-//! Resource observation owns shown rows, list versions, and staged watch changes.
+//! Resource observation owns shown rows, list versions, staged watch changes,
+//! and the freshness of the evidence the resource browser displays.
 use super::{Load, custom_resources::CustomLoad, request::InFlight};
-use crate::backend::{ListVersions, ScopeResult, context_versions};
+use crate::backend::{ListVersions, Listed, ScopeResult, context_versions, watch_id};
 use crate::model::PreparedRows;
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+    time::Instant,
+};
 
+mod freshness;
 mod snapshots;
 mod watches;
 use crate::workspaces::reads::ContextResults;
+pub(super) use freshness::NoticeFreshness;
 use gpui_kit::Task;
-use kubecove_lib::models::{AppError, NamespaceSummary, ResourceSummary};
+use kubecove_lib::models::{
+    AppError, NamespaceSummary, ResourceSummary, ResourceTopology, WatchResourceKey,
+};
 pub(super) use snapshots::{
-    ScopeRows, all_failed, context_message, rank_order, same_contexts, union_namespaces,
+    ScopeRows, context_message, rank_order, same_contexts, union_namespaces,
 };
 pub(super) use watches::Patch;
 
@@ -52,6 +61,10 @@ struct ContextRows {
     shown: bool,
     /// The context's built-in read in the current load runs.
     pending: bool,
+    /// A failed scope read left this context without a current snapshot.
+    refresh_error: Option<String>,
+    /// Reads of newly selected kinds that have yet to obtain a list.
+    kind_errors: BTreeMap<String, KindReadError>,
     /// The context's custom-kind read in the current load runs, or waits for its built-ins.
     custom_pending: bool,
     /// The list version of each kind in the context's rows, by `watch_id`.
@@ -60,6 +73,39 @@ struct ContextRows {
     warnings: Vec<String>,
     /// The namespaces of the context's rows, for the namespace picker.
     namespaces: Vec<NamespaceSummary>,
+}
+
+impl ContextRows {
+    fn read_error(&self, uses_kind: impl Fn(&WatchResourceKey) -> bool) -> Option<&str> {
+        self.refresh_error.as_deref().or_else(|| {
+            self.kind_errors
+                .values()
+                .find(|error| uses_kind(&error.key))
+                .map(|error| error.message.as_str())
+        })
+    }
+
+    fn clear_listed_errors(&mut self, listed: &[Listed], scope_started: Instant) {
+        if self.kind_errors.is_empty() {
+            return;
+        }
+        for list in listed {
+            let id = watch_id(&list.context, &list.key);
+            if self
+                .kind_errors
+                .get(&id)
+                .is_some_and(|error| error.started < scope_started)
+            {
+                self.kind_errors.remove(&id);
+            }
+        }
+    }
+}
+
+struct KindReadError {
+    key: WatchResourceKey,
+    message: String,
+    started: Instant,
 }
 
 /// What applying every context's read changes outside `ResourceObservation`.
@@ -71,6 +117,8 @@ pub(super) struct Applied {
     pub(super) warnings: Vec<String>,
     /// Contexts whose refresh failed, so the table keeps their last rows.
     pub(super) kept: Vec<String>,
+    /// Successful lists that supersede pending reads of individual kinds.
+    pub(super) listed: Vec<Listed>,
 }
 
 /// The scope read in flight. Dropping it cancels the read.
@@ -167,7 +215,12 @@ impl ResourceObservation {
 
     /// Applies one context's built-in read, whose rows the caller took. A
     /// failed context shows no rows, one warning and no custom kinds.
-    fn context_settled(&mut self, context: &str, result: Result<ScopeResult, &AppError>) {
+    fn context_settled(
+        &mut self,
+        context: &str,
+        result: Result<ScopeResult, &AppError>,
+        scope_started: Instant,
+    ) {
         let several = self.contexts.len() > 1;
         let Some(index) = self.position(context) else {
             return;
@@ -175,10 +228,12 @@ impl ResourceObservation {
         let part = &mut self.parts[index];
         match result {
             Ok(result) => {
+                part.clear_listed_errors(&result.listed, scope_started);
                 *part = ContextRows {
                     ready: true,
                     shown: true,
                     pending: false,
+                    kind_errors: std::mem::take(&mut part.kind_errors),
                     custom_pending: part.custom_pending,
                     versions: context_versions(context, result.versions),
                     warnings: result
@@ -187,6 +242,7 @@ impl ResourceObservation {
                         .map(|warning| context_message(several, context, warning))
                         .collect(),
                     namespaces: result.namespaces,
+                    ..ContextRows::default()
                 };
                 self.status = Load::Ready;
             }
@@ -194,6 +250,8 @@ impl ResourceObservation {
                 // A failed context reads no custom kinds.
                 let custom = part.custom_pending;
                 *part = ContextRows {
+                    refresh_error: Some(context_message(several, context, &error.message)),
+                    kind_errors: std::mem::take(&mut part.kind_errors),
                     warnings: vec![format!("Context \"{context}\": {}", error.message)],
                     ..ContextRows::default()
                 };
@@ -252,6 +310,7 @@ impl ResourceObservation {
         &mut self,
         context: &str,
         result: Result<ScopeResult, AppError>,
+        scope_started: Instant,
     ) -> Vec<ResourceSummary> {
         let several = self.contexts.len() > 1;
         let Some(part) = self
@@ -265,6 +324,7 @@ impl ResourceObservation {
         let rows = match result {
             Ok(result) => {
                 self.custom_ok = true;
+                part.clear_listed_errors(&result.listed, scope_started);
                 part.versions
                     .extend(context_versions(context, result.versions));
                 part.warnings.extend(
@@ -292,7 +352,12 @@ impl ResourceObservation {
     /// A failed context shows no rows and one warning. In a `refresh`, a
     /// context whose rows show keeps its part and rows when it fails, kept
     /// rows whose reload the refresh cancelled included.
-    fn apply_parts(&mut self, results: ContextResults<ScopeResult>, refresh: bool) -> Applied {
+    fn apply_parts(
+        &mut self,
+        results: ContextResults<ScopeResult>,
+        refresh: bool,
+        scope_started: Instant,
+    ) -> Applied {
         let several = results.len() > 1;
         let mut applied = Applied::default();
         for (context, result) in results {
@@ -304,9 +369,12 @@ impl ResourceObservation {
             let part = &mut self.parts[index];
             match result {
                 Ok(result) => {
+                    part.clear_listed_errors(&result.listed, scope_started);
+                    applied.listed.extend(result.listed);
                     *part = ContextRows {
                         ready: true,
                         shown: true,
+                        kind_errors: std::mem::take(&mut part.kind_errors),
                         versions: context_versions(&context, result.versions),
                         warnings: result
                             .warnings
@@ -328,6 +396,7 @@ impl ResourceObservation {
                     }
                 }
                 Err(error) if refresh && part.shown => {
+                    part.refresh_error = Some(context_message(several, &context, &error.message));
                     applied.warnings.push(format!(
                         "Context \"{context}\": {}. Showing the last loaded data.",
                         error.message
@@ -337,6 +406,8 @@ impl ResourceObservation {
                 }
                 Err(error) => {
                     *part = ContextRows {
+                        refresh_error: Some(context_message(several, &context, &error.message)),
+                        kind_errors: std::mem::take(&mut part.kind_errors),
                         warnings: vec![format!("Context \"{context}\": {}", error.message)],
                         ..ContextRows::default()
                     };
@@ -432,6 +503,85 @@ impl ResourceObservation {
     pub(super) fn shows(&self, context: &str) -> bool {
         self.position(context)
             .is_some_and(|index| self.parts[index].shown)
+    }
+
+    pub(super) fn context_rows_loading(&self, context: &str) -> bool {
+        self.position(context).is_some_and(|index| {
+            let part = &self.parts[index];
+            part.pending || self.refreshing()
+        })
+    }
+
+    pub(super) fn map_rows_error(
+        &self,
+        context: &str,
+        topology: &ResourceTopology,
+    ) -> Option<&str> {
+        let part = &self.parts[self.position(context)?];
+        part.read_error(|key| {
+            topology
+                .nodes
+                .iter()
+                .any(|node| crate::model::watch_lists(context, key, &node.summary))
+        })
+    }
+
+    pub(super) fn context_scope_error(&self, context: &str) -> Option<&str> {
+        self.parts[self.position(context)?].refresh_error.as_deref()
+    }
+
+    pub(super) fn shown_refresh_error(&self) -> Option<&str> {
+        self.parts
+            .iter()
+            .filter(|part| part.shown)
+            .find_map(|part| part.read_error(|_| true))
+    }
+
+    pub(super) fn record_kind_error(
+        &mut self,
+        context: &str,
+        key: &WatchResourceKey,
+        message: String,
+        started: Instant,
+    ) {
+        if let Some(index) = self.position(context) {
+            self.parts[index].kind_errors.insert(
+                watch_id(context, key),
+                KindReadError {
+                    key: key.clone(),
+                    message,
+                    started,
+                },
+            );
+        }
+    }
+
+    pub(super) fn kind_read_failed(&self, context: &str, watch_id: &str) -> bool {
+        self.kind_error_started(context, watch_id).is_some()
+    }
+
+    pub(super) fn kind_error_started(&self, context: &str, watch_id: &str) -> Option<Instant> {
+        self.parts[self.position(context)?]
+            .kind_errors
+            .get(watch_id)
+            .map(|error| error.started)
+    }
+
+    pub(super) fn clear_listed_kind_errors(&mut self, listed: &[Listed], started: Instant) {
+        for list in listed {
+            if let Some(index) = self.position(&list.context) {
+                self.parts[index].clear_listed_errors(std::slice::from_ref(list), started);
+            }
+        }
+    }
+
+    pub(super) fn kind_relisted(&mut self, context: &str, key: &WatchResourceKey) {
+        if let Some(index) = self.position(context) {
+            let failures = &mut self.parts[index].kind_errors;
+            if !failures.is_empty() {
+                failures.remove(&watch_id(context, key));
+            }
+        }
     }
 
     /// A context whose rows the table shows still reads them.

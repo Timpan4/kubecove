@@ -7,6 +7,7 @@ use futures_util::future::{BoxFuture, FutureExt, join_all};
 use gpui_kit::Context;
 use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
 use std::collections::HashSet;
+use std::time::Instant;
 
 pub(in crate::inspector) struct Patch {
     pub scope: Scope,
@@ -15,6 +16,19 @@ pub(in crate::inspector) struct Patch {
     pub resource_version: Option<String>,
     pub names: Option<ObservedNames>,
     pub watch: Option<String>,
+    /// A retry for a failed selected-kind list only applies while that error remains current.
+    pub kind_recovery: Option<Instant>,
+}
+
+impl Patch {
+    pub(in crate::inspector) fn superseded(&self, observation: &ResourceObservation) -> bool {
+        self.kind_recovery.is_some_and(|started| {
+            self.watch
+                .as_deref()
+                .and_then(|id| observation.kind_error_started(&self.scope.context, id))
+                != Some(started)
+        })
+    }
 }
 
 impl ResourceObservation {
@@ -31,9 +45,17 @@ impl ResourceObservation {
     }
 
     pub(in crate::inspector) fn retain_watches(&mut self, wanted: &HashSet<&str>) {
-        self.pending
-            .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));
+        self.pending.retain(|patch| match &patch.watch {
+            Some(id) => wanted.contains(id.as_str()),
+            None => {
+                wanted.contains(crate::backend::watch_id(&patch.scope.context, &patch.key).as_str())
+            }
+        });
         self.starts.retain(|id, _| wanted.contains(id.as_str()));
+        for part in &mut self.parts {
+            part.kind_errors
+                .retain(|id, _| wanted.contains(id.as_str()));
+        }
     }
 
     /// Each patch waits for its own lists and for shared row preparation.

@@ -1,10 +1,79 @@
-import type { Query, QueryClient } from "@tanstack/svelte-query";
+import { isCancelledError, type Query, type QueryClient } from "@tanstack/svelte-query";
+import { createSubscriber } from "svelte/reactivity";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
 import { queryMatchers, type QueryMatch } from "./queryKeys";
 import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
+
+interface ReadRefresh {
+	manual: number;
+	manualRevision: number;
+	waiting: boolean;
+	deferred?: { manualRevision: number; refetch: () => Promise<void> };
+	subscribe: () => void;
+	notify?: () => void;
+}
+
+const readsInRefresh = new WeakMap<Query, ReadRefresh>();
+const manualReleaseListeners = new WeakMap<QueryClient, Set<(query: Query) => void>>();
+
+export function onManualRefreshRelease(queryClient: QueryClient, listener: (query: Query) => void): () => void {
+	const listeners = manualReleaseListeners.get(queryClient) ?? new Set();
+	manualReleaseListeners.set(queryClient, listeners);
+	listeners.add(listener);
+	return () => { listeners.delete(listener); };
+}
+
+function refreshState(query: Query): ReadRefresh {
+	const existing = readsInRefresh.get(query);
+	if (existing) return existing;
+	const state: ReadRefresh = {
+		manual: 0,
+		manualRevision: 0,
+		waiting: false,
+		subscribe: createSubscriber((notify) => {
+			state.notify = notify;
+			return () => { state.notify = undefined; };
+		}),
+	};
+	readsInRefresh.set(query, state);
+	return state;
+}
+
+export function readRefreshPending(query: Query | undefined): boolean {
+	if (!query) return false;
+	const state = refreshState(query);
+	state.subscribe();
+	return state.manual > 0 || state.deferred !== undefined;
+}
+
+export function manualRefreshOwns(query: Query): boolean {
+	return Boolean(readsInRefresh.get(query)?.manual);
+}
+
+function flushDeferredRead(query: Query, state: ReadRefresh) {
+	const deferred = state.deferred;
+	if (!deferred || state.manual || state.waiting) return;
+	// A manual read that started after this eviction already covers it.
+	if (state.manualRevision !== deferred.manualRevision) {
+		state.deferred = undefined;
+		state.notify?.();
+		return;
+	}
+	if (query.state.fetchStatus !== "idle" && query.promise) {
+		state.waiting = true;
+		void Promise.allSettled([query.promise]).then(() => {
+			state.waiting = false;
+			flushDeferredRead(query, state);
+		});
+		return;
+	}
+	state.deferred = undefined;
+	void deferred.refetch();
+	state.notify?.();
+}
 
 export async function refreshCurrentView({
 	client,
@@ -15,6 +84,7 @@ export async function refreshCurrentView({
 	namespaces,
 	reads,
 	cancelRefetch = true,
+	independentReads = [],
 }: {
 	client: TauriClient;
 	queryClient: QueryClient;
@@ -26,6 +96,8 @@ export async function refreshCurrentView({
 	reads?: readonly QueryMatch[];
 	/** Automatic recovery waits for running reads before clearing caches. */
 	cancelRefetch?: boolean;
+	/** Reads refreshed after eviction without holding up watch catch-up. */
+	independentReads?: readonly QueryMatch[];
 }): Promise<string[]> {
 	// Capture the exact active reads. Navigation during refresh must not broaden its scope.
 	const inCurrentView = queryMatchers.currentView(clusterContext, kubeconfigEnvVar);
@@ -36,29 +108,74 @@ export async function refreshCurrentView({
 				predicate: (query) => inCurrentView(query) && (!reads || reads.some((read) => read(query))),
 			}),
 	);
-	const predicate = (query: Query) => queries.has(query);
-	if (!cancelRefetch) {
-		await Promise.allSettled([...queries].map((query) => query.promise));
-	} else await queryClient.cancelQueries({ predicate });
-	await refreshResourceCache(
-		client,
-		clusterContext,
-		keys,
-		namespaces,
-		kubeconfigEnvVar,
-	);
-	// Keep the last displayed data while making every selected cache entry stale.
-	const results = await Promise.allSettled([...queries].map((query) =>
-		queryClient.invalidateQueries(
-			{ predicate: (current) => current === query, refetchType: "active" },
-			{ throwOnError: true, cancelRefetch },
-		),
-	));
-	const warnings: string[] = [];
-	for (const result of results) {
-		if (result.status !== "rejected") continue;
-		if (friendlyErrorBucket(result.reason) !== "forbiddenRbac") throw result.reason;
-		warnings.push(messageFromError(result.reason));
+	const shared: Query[] = [];
+	const independent: Query[] = [];
+	const manual = new Set<Query>();
+	const finishManual = (query: Query) => {
+		if (!manual.delete(query)) return;
+		const state = refreshState(query);
+		state.manual--;
+		flushDeferredRead(query, state);
+		state.notify?.();
+		if (!state.manual) for (const listener of manualReleaseListeners.get(queryClient) ?? []) listener(query);
+	};
+	for (const query of queries) {
+		if (cancelRefetch) {
+			const state = refreshState(query);
+			state.manual++;
+			manual.add(query);
+			state.notify?.();
+		}
+		if (!cancelRefetch && independentReads.some((match) => match(query))) independent.push(query);
+		else shared.push(query);
 	}
-	return [...new Set(warnings)];
+	try {
+		if (!cancelRefetch) await Promise.allSettled(shared.map((query) => query.promise));
+		await refreshResourceCache(
+			client,
+			clusterContext,
+			keys,
+			namespaces,
+			kubeconfigEnvVar,
+		);
+		// Replace running reads only after eviction succeeds. If it fails, their
+		// results are still needed by the watch that requested them.
+		if (cancelRefetch) {
+			for (const query of queries) if (query.isActive()) refreshState(query).manualRevision++;
+			await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
+		}
+		// Keep the last displayed data while making every selected cache entry stale.
+		const invalidate = (query: Query, throwOnError: boolean) =>
+			queryClient.invalidateQueries(
+				{ predicate: (current) => current === query, refetchType: "active" },
+				{ throwOnError, cancelRefetch },
+			);
+		for (const query of independent) {
+			const state = refreshState(query);
+			state.deferred = { manualRevision: state.manualRevision, refetch: () => invalidate(query, false) };
+			state.notify?.();
+			flushDeferredRead(query, state);
+		}
+		const results = await Promise.allSettled(shared.map(async (query) => {
+			const state = readsInRefresh.get(query);
+			const revision = state?.manualRevision ?? 0;
+			try {
+				await invalidate(query, true);
+			} catch (error) {
+				const replaced = (readsInRefresh.get(query)?.manualRevision ?? 0) !== revision;
+				if (cancelRefetch || !isCancelledError(error) || !replaced) throw error;
+			} finally {
+				finishManual(query);
+			}
+		}));
+		const warnings: string[] = [];
+		for (const result of results) {
+			if (result.status !== "rejected") continue;
+			if (friendlyErrorBucket(result.reason) !== "forbiddenRbac") throw result.reason;
+			warnings.push(messageFromError(result.reason));
+		}
+		return [...new Set(warnings)];
+	} finally {
+		for (const query of manual) finishManual(query);
+	}
 }

@@ -1,9 +1,10 @@
-import { createQueries, createQuery } from "@tanstack/svelte-query";
+import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 import type { ArgoApplicationTarget } from "@/lib/argo-application-inspection";
 import { diagnosticLog } from "@/lib/diagnostics";
 import type { KindFetchKey } from "@/lib/kind-identity";
 import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 import { cancelledQueryRetry } from "@/lib/query-retry";
+import { readRefreshPending } from "@/lib/resource-refresh";
 import { type ContextMetricsRead, metricsCard, resourceMetricIndex } from "@/lib/resource-metrics";
 import { isAppError, listNamespaces, listResourceKinds, type TauriClient } from "@/lib/tauri";
 import type {
@@ -25,6 +26,7 @@ export interface ResourceBrowserReadInput {
 	namespaces: string[];
 	topologyMode: TopologyMode;
 	mapPanelOpen: boolean;
+	tablePanelOpen: boolean;
 	customResourcesEnabled: boolean;
 	focusedApplication: ArgoApplicationTarget | null;
 }
@@ -35,6 +37,7 @@ export interface ResourceBrowserReadInput {
  * per context. A focused Argo CD Application reads only the primary context.
  */
 export function resourceBrowserReads(client: TauriClient, input: () => ResourceBrowserReadInput) {
+	const queryCache = useQueryClient().getQueryCache();
 	const current = $derived(input());
 	const primary = $derived(current.readContext.clusterContext);
 	const sourceReady = $derived(current.readContext.sourceReady);
@@ -184,14 +187,51 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 
 	// A context without shown rows has no table evidence to call stale.
 	const shown = $derived(live.stateOf(scope.shownContexts));
-	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !shown.reloadError
-		&& !scope.isError && !scope.isPlaceholderData
-		&& (!current.mapPanelOpen || (!topology.isError && !topology.isPlaceholderData)));
-	// The map can show its context's topology before that context's rows arrive.
-	const map = $derived(live.stateOf([...scope.shownContexts, mapContext]));
-	const mapCurrent = $derived(tableCurrent && map.status === "connected" && !map.catchingUp && !map.reloadError);
+	const rowRefreshPending = $derived(specs.map(({ specs: spec }) => readRefreshPending(queryCache.find({
+		queryKey: spec.resources.queryKey,
+		exact: true,
+	}))));
+	const shownRowsPending = $derived(scopeQueries.some((query, index) =>
+		scope.shownContexts.includes(contexts[index]) && (rowRefreshPending[index] || query.fetchStatus !== "idle")));
+	const failedTableRead = $derived(scopeQueries.findIndex((query, index) =>
+		query.isError && scope.shownContexts.includes(contexts[index])));
+	const tableError = $derived(scopeQueries[failedTableRead]?.error ?? shown.reloadError);
+	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !tableError
+		&& !shownRowsPending && !scope.isError && !scope.isPlaceholderData);
+	// Map membership uses rows from this context, even when the table is collapsed.
+	const map = $derived(live.stateOf([mapContext]));
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
-	const notice = $derived({ live: mapShown ? map : shown, current: mapShown ? mapCurrent : tableCurrent });
+	const mapRead = $derived(contexts.indexOf(mapContext));
+	const mapRows = $derived(scopeQueries[mapRead]);
+	const topologyRefreshPending = $derived(readRefreshPending(queryCache.find({
+		queryKey: mapSpecs.topology.queryKey,
+		exact: true,
+	})));
+	// Catch-up can be clearing caches before the topology query starts.
+	const mapCurrent = $derived(mapShown && !topologyRefreshPending && !topology.isError && !topology.isPlaceholderData && topology.fetchStatus === "idle"
+		&& map.status === "connected" && !map.catchingUp && !map.reloadError
+		&& !rowRefreshPending[mapRead] && !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
+	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
+	const mapError = $derived(mapRows?.error ?? map.reloadError);
+	const tableExplainsMapError = $derived(tableShown && (
+		(failedTableRead >= 0 && failedTableRead === mapRead)
+		|| (failedTableRead < 0 && !mapRows?.error && Boolean(shown.reloadError) && shown.reloadContext === mapContext)
+	));
+	const notice = $derived({
+		table: tableShown ? {
+			status: shown.status,
+			current: tableCurrent,
+			error: tableError,
+			context: contexts.length > 1 ? contexts[failedTableRead] : undefined,
+		} : null,
+		map: mapShown ? {
+			status: map.status,
+			current: mapCurrent,
+			failed: topology.isError,
+			error: !topology.isError && !tableExplainsMapError ? mapError : null,
+			sharesTableError: tableExplainsMapError,
+		} : null,
+	});
 	const freshness = {
 		get tableCurrent() { return tableCurrent; },
 		get mapCurrent() { return mapCurrent; },

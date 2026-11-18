@@ -52,13 +52,21 @@ impl Inspector {
 
     /// The context the map reads: the chosen one while it is still a workspace
     /// context, else the primary context.
-    pub(super) fn map_context(&self) -> String {
+    pub(super) fn map_context(&self) -> &str {
         self.map
             .context
-            .as_ref()
-            .filter(|chosen| self.workspace_contexts().contains(chosen))
-            .cloned()
-            .unwrap_or_else(|| self.scope.context.clone())
+            .as_deref()
+            .filter(|chosen| {
+                !chosen.is_empty()
+                    && self.scope_workspace().is_some_and(|workspace| {
+                        workspace.context == *chosen
+                            || workspace
+                                .group
+                                .iter()
+                                .any(|member| member.as_str() == *chosen)
+                    })
+            })
+            .unwrap_or(&self.scope.context)
     }
 
     fn choose_map_context(&mut self, context: String, cx: &mut Context<Self>) {
@@ -124,7 +132,7 @@ impl Inspector {
         if contexts.len() < 2 {
             return None;
         }
-        let current = self.map_context();
+        let current = self.map_context().to_owned();
         let open = self.map.context_open;
         let highlight = self.map.context_highlight;
         let shown = self.overlay_motion.sample(Overlay::MapContext, open);

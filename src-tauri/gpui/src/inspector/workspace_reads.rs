@@ -74,14 +74,17 @@ impl Inspector {
     }
 
     pub(super) fn workspace_contexts(&self) -> Vec<String> {
+        self.scope_workspace().map_or_else(
+            || vec![self.scope.context.clone()],
+            |saved| saved.contexts().into_iter().map(str::to_owned).collect(),
+        )
+    }
+
+    pub(super) fn scope_workspace(&self) -> Option<&crate::workspaces::SavedWorkspace> {
         self.launcher
             .active
             .and_then(|id| self.launcher.saved.iter().find(|saved| saved.id == id))
             .filter(|saved| saved.context == self.scope.context)
-            .map_or_else(
-                || vec![self.scope.context.clone()],
-                |saved| saved.contexts().into_iter().map(str::to_owned).collect(),
-            )
     }
 
     pub(super) fn workspace_resources_read(

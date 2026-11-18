@@ -38,6 +38,9 @@ impl Inspector {
         {
             return rows;
         }
+        if names.is_none() {
+            self.observation.kind_relisted(&scope.context, key);
+        }
         // Where the cluster read's rows show, its kinds patch there, so a
         // selected cluster kind on Resources never shows a second, stale copy.
         let cluster_rows = self.cluster_source(&scope.context, key);

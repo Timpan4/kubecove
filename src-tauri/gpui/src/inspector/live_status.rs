@@ -3,17 +3,51 @@
 use super::{
     Inspector, Page,
     overlay_motion::Overlay,
+    resource_observation::NoticeFreshness,
     surface,
     watch_status::{Connection, LiveStatus, WatchLink},
 };
 use crate::targets::TestSupportExt;
 use crate::theme::{Palette, Tokens};
 use crate::ui;
-use gpui_kit::{AnyElement, Context, Div, MouseButton, deferred, div, prelude::*, px};
+use gpui_kit::{
+    AnyElement, Context, Div, MouseButton, SharedString, deferred, div, prelude::*, px,
+};
 
 /// The notice for watches that open, recover or catch up.
 const STALE: &str =
     "Showing last observed state. Activity indicators are paused until live updates recover.";
+const MAP_STALE: &str =
+    "Showing last observed graph. Map activity indicators are paused until the map refreshes.";
+
+fn notice_text(status: LiveStatus, stale: bool) -> Option<&'static str> {
+    match status {
+        LiveStatus::RefreshFailed => Some(
+            "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.",
+        ),
+        LiveStatus::PollingLimited => Some(
+            "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused.",
+        ),
+        LiveStatus::LiveLimited => Some(
+            "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.",
+        ),
+        _ if stale => Some(STALE),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum NoticeSurface {
+    Table,
+    Map,
+}
+
+fn waiting_for_watch(status: Option<LiveStatus>) -> bool {
+    matches!(
+        status,
+        Some(LiveStatus::Connecting | LiveStatus::Reconnecting | LiveStatus::CatchingUp)
+    )
+}
 
 const REFRESH_HINT: &str =
     "Clear cached data for this view and fetch it again. Filters and selection are preserved.";
@@ -29,7 +63,6 @@ pub(super) struct WatchReport<'a> {
     /// Why the watch's last automatic reload failed.
     pub reload_error: Option<&'a str>,
 }
-
 /// What the status menu lists for a view, as `ResourceLiveStatusMenu.svelte`
 /// reads it from `LiveViewState`.
 #[derive(Default)]
@@ -109,7 +142,11 @@ impl Inspector {
             };
         }
         LiveDetails {
-            refresh_error: self.live.refresh_error.clone(),
+            refresh_error: if self.page == Page::Resources {
+                self.visible_refresh_error().map(str::to_owned)
+            } else {
+                self.live.refresh_error.clone()
+            },
             ..details(&self.watch_contexts(), &self.live.reports())
         }
     }
@@ -283,88 +320,163 @@ impl Inspector {
             .child(button)
     }
 
-    pub(super) fn live_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let status = self.shown_live_status();
-        // Watches that connect or recover within the show delay show no notice,
-        // and a shown notice stays for the minimum visible time, as loading
-        // indicators do. Failed and limited states are not transient.
-        let stale = self.loading.phase(
-            "live-notice",
-            matches!(
-                status,
-                LiveStatus::Connecting | LiveStatus::Reconnecting | LiveStatus::CatchingUp
-            ),
-        );
-        let failed = status == LiveStatus::RefreshFailed;
-        let label = match status {
-            LiveStatus::RefreshFailed => {
-                "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover."
+    pub(super) fn live_notice(
+        &self,
+        freshness: NoticeFreshness,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let table_stale = self
+            .loading
+            .phase("table-live-notice", waiting_for_watch(freshness.table));
+        let map_stale = self
+            .loading
+            .phase("map-live-notice", waiting_for_watch(freshness.map));
+        let table = freshness
+            .table
+            .and_then(|status| notice_text(status, table_stale.shown()));
+        let (table_error, map_error) = self.notice_read_errors(&freshness);
+        let shared_error = self.shared_read_error(table_error, map_error);
+        let map = freshness.map.and_then(|status| {
+            if status == LiveStatus::RefreshFailed {
+                Some(MAP_STALE)
+            } else if map_error.is_some() && !shared_error {
+                Some("Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.")
+            } else if shared_error {
+                freshness.map_watch.and_then(|watch| {
+                    notice_text(watch, map_stale.shown() && waiting_for_watch(Some(watch)))
+                }).filter(|_| freshness.map_watch != Some(LiveStatus::RefreshFailed))
+            } else {
+                notice_text(status, map_stale.shown())
             }
-            LiveStatus::PollingLimited => {
-                "Live updates are unavailable. Readable resources refresh periodically. Activity indicators are paused."
-            }
-            LiveStatus::LiveLimited => {
-                "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused."
-            }
-            _ if stale.shown() => STALE,
-            _ => return None,
-        };
-        Some(
-            div()
-                .id("live-notice")
-                .test_support()
-                .aria_label(label)
-                .role(gpui_kit::Role::Status)
-                .flex()
-                .flex_col()
-                .flex_none()
-                .rounded(px(6.))
-                .border_1()
-                .border_color(Palette::amber500(0.3))
-                .text_color(Palette::amber300())
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .px(px(12.))
-                        .py(px(8.))
-                        .when(failed, |row| {
-                            row.child(ui::icon(
-                                if self.live.error_open {
-                                    "chevron-down"
-                                } else {
-                                    "chevron-right"
-                                },
-                                12.,
-                                Palette::amber300(),
-                            ))
-                        })
-                        .child(ui::xs(label)),
+        });
+        let mut notices = Vec::new();
+        if let Some(label) = table {
+            let label = if freshness.map.is_some() && !shared_error && map != table {
+                SharedString::from(
+                    label.replace("Activity indicators", "Table activity indicators"),
                 )
-                .when(failed, |notice| {
-                    notice
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.live.error_open = !this.live.error_open;
-                            cx.notify();
-                        }))
-                })
-                .when(failed && self.live.error_open, |notice| {
-                    notice.child(
-                        div().px(px(12.)).pb(px(12.)).children(
-                            self.live
-                                .messages()
-                                .next()
-                                .map(|message| ui::xs(message.clone())),
-                        ),
-                    )
-                })
-                .into_any_element(),
-        )
+            } else {
+                SharedString::from(label)
+            };
+            notices.push(self.live_notice_panel(
+                NoticeSurface::Table,
+                "live-notice",
+                label,
+                table_error,
+                cx,
+            ));
+        }
+        if let Some(label) = map.filter(|_| map != table) {
+            let label = if freshness.table.is_some() {
+                SharedString::from(label.replace("Activity indicators", "Map activity indicators"))
+            } else {
+                SharedString::from(label)
+            };
+            let id = if table.is_some() {
+                "map-live-notice"
+            } else {
+                "live-notice"
+            };
+            let error = map_error
+                .filter(|_| !shared_error && freshness.map != Some(LiveStatus::RefreshFailed));
+            notices.push(self.live_notice_panel(NoticeSurface::Map, id, label, error, cx));
+        }
+        notices
+    }
+
+    fn shared_read_error(&self, table: Option<&str>, map: Option<&str>) -> bool {
+        table.zip(map).is_some_and(|(table, map)| {
+            std::ptr::eq(table, map)
+                || (self
+                    .live
+                    .refresh_error
+                    .as_deref()
+                    .is_some_and(|error| std::ptr::eq(error, table))
+                    && self
+                        .observation
+                        .context_scope_error(self.map_context())
+                        .is_some_and(|error| std::ptr::eq(error, map)))
+        })
+    }
+
+    pub(super) fn reset_hidden_diagnostic(&mut self, freshness: &NoticeFreshness) {
+        if let Some(surface) = self.live.error_open {
+            let (table, map) = self.notice_read_errors(freshness);
+            let shown = match surface {
+                NoticeSurface::Table => table.is_some(),
+                NoticeSurface::Map => {
+                    map.is_some()
+                        && freshness.map != Some(LiveStatus::RefreshFailed)
+                        && !self.shared_read_error(table, map)
+                }
+            };
+            if !shown {
+                self.live.error_open = None;
+            }
+        }
+    }
+
+    fn live_notice_panel(
+        &self,
+        surface: NoticeSurface,
+        id: &'static str,
+        label: SharedString,
+        error: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let expanded = self.live.error_open == Some(surface);
+        div()
+            .id(id)
+            .test_support()
+            .aria_label(label.clone())
+            .role(gpui_kit::Role::Status)
+            .flex()
+            .flex_col()
+            .flex_none()
+            .rounded(px(6.))
+            .border_1()
+            .border_color(Palette::amber500(0.3))
+            .text_color(Palette::amber300())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .px(px(12.))
+                    .py(px(8.))
+                    .when(error.is_some(), |row| {
+                        row.child(ui::icon(
+                            if expanded {
+                                "chevron-down"
+                            } else {
+                                "chevron-right"
+                            },
+                            12.,
+                            Palette::amber300(),
+                        ))
+                    })
+                    .child(ui::xs(label)),
+            )
+            .when(error.is_some(), |notice| {
+                notice
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.live.error_open =
+                            (this.live.error_open != Some(surface)).then_some(surface);
+                        cx.notify();
+                    }))
+            })
+            .when(error.is_some() && expanded, |notice| {
+                notice.child(
+                    div()
+                        .px(px(12.))
+                        .pb(px(12.))
+                        .children(error.map(|message| ui::xs(message.to_owned()))),
+                )
+            })
+            .into_any_element()
     }
 }
-
 impl Inspector {
     /// The notice for workspace contexts still reading their rows while other
     /// contexts' rows show, delayed like other loading indicators, as
@@ -397,21 +509,5 @@ impl Inspector {
                 .child(ui::muted(ui::xs(label)))
                 .into_any_element(),
         )
-    }
-}
-
-impl Inspector {
-    /// Only contexts with shown rows contribute to table freshness.
-    pub(super) fn shown_live_status(&self) -> LiveStatus {
-        if self.observation.refreshing() {
-            LiveStatus::Refreshing
-        } else {
-            self.live
-                .settled_status_where(|context| self.observation.shows(context))
-        }
-    }
-
-    pub(super) fn updates_current(&self) -> bool {
-        !self.observation.shown_loading() && self.shown_live_status() == LiveStatus::Live
     }
 }

@@ -159,25 +159,28 @@ struct Watch<'a> {
 impl Watch<'_> {
     /// Whether this watch lists `row`.
     fn lists(self, row: &ResourceSummary) -> bool {
-        let key = self.key;
-        row.cluster == self.context
-            && row.kind == key.resource_kind.kind
-            && (key.resource_kind.api_version.is_some() || row.dynamic != Some(true))
-            && key
-                .resource_kind
-                .api_version
-                .as_ref()
-                .is_none_or(|api| row.api_version.as_ref() == Some(api))
-            && key
-                .namespace
-                .as_ref()
-                .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
+        watch_lists(self.context, self.key, row)
     }
 
     /// The slot hash of the row this watch lists under a name.
     fn slot(self, namespace: Option<&str>, name: &str) -> u64 {
         slot_hash(self.context, &self.key.resource_kind.kind, namespace, name)
     }
+}
+
+pub(crate) fn watch_lists(context: &str, key: &WatchResourceKey, row: &ResourceSummary) -> bool {
+    row.cluster == context
+        && row.kind == key.resource_kind.kind
+        && (key.resource_kind.api_version.is_some() || row.dynamic != Some(true))
+        && key
+            .resource_kind
+            .api_version
+            .as_ref()
+            .is_none_or(|api| row.api_version.as_ref() == Some(api))
+        && key
+            .namespace
+            .as_ref()
+            .is_none_or(|ns| row.namespace.as_ref() == Some(ns))
 }
 
 fn slot_hash(cluster: &str, kind: &str, namespace: Option<&str>, name: &str) -> u64 {

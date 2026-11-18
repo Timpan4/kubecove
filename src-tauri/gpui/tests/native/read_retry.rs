@@ -31,7 +31,8 @@ fn cancelled_topology_uses_two_delays_then_exposes_failure(cx: &mut TestAppConte
     assert_eq!(backend.retry.calls.load(Ordering::SeqCst), initial);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.try_find("map-error").is_none());
+        assert!(window.try_find("map-refresh-error").is_none());
+        assert!(window.try_find("map-counts").is_some());
     })
     .unwrap();
     tick(cx, 1);
@@ -42,14 +43,15 @@ fn cancelled_topology_uses_two_delays_then_exposes_failure(cx: &mut TestAppConte
     assert_eq!(backend.retry.calls.load(Ordering::SeqCst), initial + 2);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.try_find("map-error").is_some());
+        assert!(window.try_find("map-refresh-error").is_some());
+        assert!(window.try_find("map-counts").is_some());
     })
     .unwrap();
     refresh(cx, handle);
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.try_find("map-error").is_none());
+        assert!(window.try_find("map-refresh-error").is_none());
         assert!(window.try_find("map-counts").is_some());
     })
     .unwrap();
@@ -119,7 +121,8 @@ fn other_topology_errors_wait_for_manual_refresh(cx: &mut TestAppContext) {
     assert_eq!(backend.retry.calls.load(Ordering::SeqCst), calls);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.try_find("map-error").is_some());
+        assert!(window.try_find("map-refresh-error").is_some());
+        assert!(window.try_find("map-counts").is_some());
     })
     .unwrap();
 }

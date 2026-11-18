@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
+import { setImmediate } from "node:timers/promises";
 import { QueryClient, QueryObserver, type QueryKey } from "@tanstack/svelte-query";
 import {
 	bindLiveView,
@@ -8,6 +9,7 @@ import {
 	type LiveViewState,
 } from "./live-view-refresh";
 import { configureQueryCatalog, queryKeys, queryMatchers } from "./queryKeys";
+import { refreshCurrentView } from "./resource-refresh";
 import { RESOURCE_RECOVERY_INTERVAL, watchKeySignature } from "./resource-watch";
 import { createMockChannel, createMockTauriClient } from "./tauri-runtime";
 import type { ResourceWatchStart, StreamMessage, StreamStatus, WatchResourceKey } from "./types";
@@ -100,7 +102,7 @@ const secrets = { resourceKind: { kind: "Secret" }, namespace: "shop" };
 const podsKey = queryKeys.resources("dev", [{ kind: "Pod", namespace: "shop" }]);
 const secretsKey = queryKeys.resources("dev", [{ kind: "Secret", namespace: "shop" }]);
 
-function liveHarness() {
+function liveHarness(evictCache?: () => Promise<void>) {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
 	configureQueryCatalog(queryClient);
 	const channels: ReturnType<typeof createMockChannel<StreamMessage>>[] = [];
@@ -119,8 +121,9 @@ function liveHarness() {
 			stopped.push(streamId);
 			return true;
 		},
-		refresh_resource_cache: ({ keys }: { keys: WatchResourceKey[] }) => {
+		refresh_resource_cache: async ({ keys }: { keys: WatchResourceKey[] }) => {
 			evicted.push(keys);
+			await evictCache?.();
 			return { clearedEntries: 0 };
 		},
 	});
@@ -204,6 +207,117 @@ describe("detail and event live read recovery", () => {
 });
 
 describe("live view refresh binding", () => {
+	test("a failed topology read retries after manual ownership ends while other reads are held", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		const topology = queryKeys.resourceTopology("dev", ["shop"], "ownership");
+		let fail = true;
+		live.observe("topology", topology, { gate: async () => {
+			if (fail) throw new Error("topology unavailable");
+		} });
+		let startRows!: () => void;
+		let finishRows!: () => void;
+		const rowsStarted = new Promise<void>((resolve) => { startRows = resolve; });
+		const rows = new Promise<void>((resolve) => { finishRows = resolve; });
+		live.observe("rows", podsKey, { gate: () => { startRows(); return rows; } });
+		live.bind({ keys: [pods], reads: [{ keys: [pods], match: queryMatchers.exact(topology), recoverSeparately: true }] });
+		const manual = refreshCurrentView({
+			queryClient: live.queryClient,
+			clusterContext: "dev", keys: [], namespaces: [],
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		void manual.catch(() => {});
+		try {
+			await rowsStarted;
+			const query = live.queryClient.getQueryCache().find({ queryKey: topology });
+			await query?.promise?.catch(() => {});
+			// Let invalidation release its manual ownership after the query fails.
+			await setImmediate();
+			fail = false;
+			jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+			expect(live.fetches("topology")).toBe(2);
+			await query?.promise;
+			expect(live.queryClient.getQueryData(topology)).toBe("topology");
+		} finally {
+			finishRows();
+			await expect(manual).rejects.toThrow("topology unavailable");
+		}
+	});
+
+	test("manual refresh owns the retry while cache eviction is pending", async () => {
+		jest.useFakeTimers();
+		let startEviction!: () => void;
+		let finishEviction!: () => void;
+		const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+		const eviction = new Promise<void>((resolve) => { finishEviction = resolve; });
+		const live = liveHarness(() => {
+			startEviction();
+			return eviction;
+		});
+		let fail = true;
+		live.observe("topology", podsKey, { cached: false, gate: async () => {
+			if (fail) throw new Error("topology unavailable");
+		} });
+		live.observe("network", secretsKey, { cached: false, gate: async () => {
+			if (fail) throw new Error("network unavailable");
+		} });
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		await live.queryClient.getQueryCache().find({ queryKey: secretsKey })?.promise?.catch(() => {});
+		const view = (key: QueryKey): LiveView => ({
+			clusterContext: "dev", namespaces: ["shop"], keys: [pods], refreshScope: "reads",
+			reads: [{ keys: [pods], match: queryMatchers.exact(key), recoverSeparately: true }],
+		});
+		const binding = live.bind(view(podsKey));
+		live.status(0, "connected");
+		const refresh = binding.refresh();
+		await evictionStarted;
+		fail = false;
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("topology")).toBe(1);
+		binding.update(view(secretsKey));
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await live.queryClient.getQueryCache().find({ queryKey: secretsKey })?.promise;
+		expect(live.fetches("network")).toBe(2);
+		expect(live.fetches("topology")).toBe(1);
+		finishEviction();
+		await refresh;
+		expect(live.fetches("topology")).toBe(2);
+	});
+
+	test("retrying a failed read does not queue a refresh of a different visible read", async () => {
+		jest.useFakeTimers();
+		const live = liveHarness();
+		let fail = true;
+		let releaseRead!: () => void;
+		const heldRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+		live.observe("ownership", podsKey, { cached: false, gate: async () => {
+			if (fail) throw new Error("topology unavailable");
+		} });
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		live.observe("network", secretsKey, { gate: () => heldRead });
+		const view = (queryKey: QueryKey): LiveView => ({
+			clusterContext: "dev",
+			namespaces: ["shop"],
+			keys: [pods],
+			reads: [{ keys: [pods], match: queryMatchers.exact(queryKey), recoverSeparately: true }],
+			refreshScope: "reads",
+		});
+		const binding = live.bind(view(secretsKey));
+		live.status(0, "connected");
+		live.change(0, "Pod");
+		expect(live.fetches("network")).toBe(1);
+		binding.update(view(podsKey));
+		fail = false;
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("ownership")).toBe(2);
+		binding.update(view(secretsKey));
+		releaseRead();
+		await live.queryClient.getQueryCache().find({ queryKey: secretsKey })?.promise;
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise;
+		expect(live.queryClient.getQueryData(podsKey)).toBe("ownership");
+		expect(live.fetches("network")).toBe(1);
+	});
+
 	// A connected watch alone does not prove its last list succeeded. A final
 	// delete event must recover even when no later event arrives to trigger a read.
 	test("a failed watch refresh exposes stale data and retries without another event", async () => {
