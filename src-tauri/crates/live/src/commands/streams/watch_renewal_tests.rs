@@ -102,6 +102,12 @@ async fn event_watch_resets_version_after_in_stream_internal_error() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn event_watch_resumes_from_a_bookmark_received_before_an_in_stream_503() {
+    let (versions, _) = recover_event_watch_after_error(EventWatchError::Envelope, 503).await;
+    assert_eq!(versions, ["0", "55", "56"]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn event_watch_uses_the_right_version_after_an_http_error() {
     for (code, expected_version) in [(410, "0"), (500, "0"), (503, "55")] {
         let (versions, states) = recover_event_watch_after_error(EventWatchError::Http, code).await;
@@ -137,16 +143,26 @@ async fn recover_event_watch_after_error(
     let service = tower::service_fn(move |request: Request<Body>| {
         let mut requests = service_requests.lock().unwrap();
         requests.push(request.uri().to_string());
-        let bookmark = json!({
-            "type": "BOOKMARK",
-            "object": { "apiVersion": "v1", "kind": "Event", "metadata": { "resourceVersion": "55" } }
-        });
+        let bookmark = |version| {
+            json!({
+                "type": "BOOKMARK",
+                "object": { "apiVersion": "v1", "kind": "Event", "metadata": { "resourceVersion": version } }
+            })
+        };
         let error = json!({
             "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": code,
             "message": if code == 500 { "etcd event received with PrevKv=nil (type=DELETE)" } else { "Events watch rejected" }
         });
         let (code, body) = match (reply, requests.len()) {
-            (_, 1) => (200, format!("{bookmark}\n")),
+            (_, 1) => (200, format!("{}\n", bookmark("55"))),
+            (EventWatchError::Envelope, 2) if code == 503 => (
+                200,
+                format!(
+                    "{}\n{}\n",
+                    bookmark("56"),
+                    json!({ "type": "ERROR", "object": error })
+                ),
+            ),
             (EventWatchError::Envelope, 2) => (
                 200,
                 format!("{}\n", json!({ "type": "ERROR", "object": error })),
@@ -168,7 +184,12 @@ async fn recover_event_watch_after_error(
                     })
                 ),
             ),
-            (_, attempt) => panic!("unexpected Events watch attempt {attempt}"),
+            (_, attempt) => (
+                503,
+                json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure",
+                    "code": 503, "message": format!("Unexpected Events watch attempt {attempt}") })
+                .to_string(),
+            ),
         };
         std::future::ready(Ok::<_, std::convert::Infallible>(
             Response::builder()
@@ -179,15 +200,22 @@ async fn recover_event_watch_after_error(
     });
     let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
     let observed_messages = messages.clone();
+    let observed_requests = requests.clone();
     let channel = stream_channel(move |message| {
         let delivered = message["type"] == "resourceEventsChanged";
         if delivered {
             assert_eq!(message["target"]["name"], "app");
             assert_eq!(message["action"], "added");
         }
+        // Close on an unexpected retry so missing Event delivery fails the assertions.
+        let unexpected_retry =
+            message["type"] == "error" && observed_requests.lock().unwrap().len() > 3;
         observed_messages.lock().unwrap().push(message);
-        // The mock refuses extra requests if the reopened stream never delivers its Event.
-        if delivered { Err(()) } else { Ok(()) }
+        if delivered || unexpected_retry {
+            Err(())
+        } else {
+            Ok(())
+        }
     });
     let registry = StreamRegistry::default();
     let (_, broadcaster, _) = registry.subscribe_event(

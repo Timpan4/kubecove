@@ -6,6 +6,11 @@ const FIRST_EVENT: &str = "BackOff Back-off restarting failed container app";
 
 fn open_events(cx: &mut TestAppContext, backend: Arc<Controlled>) -> AnyWindowHandle {
     let handle = open(cx, backend);
+    show_deployment_events(cx, handle);
+    handle
+}
+
+fn show_deployment_events(cx: &mut TestAppContext, handle: AnyWindowHandle) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
@@ -18,7 +23,6 @@ fn open_events(cx: &mut TestAppContext, backend: Arc<Controlled>) -> AnyWindowHa
     })
     .unwrap();
     cx.run_until_parked();
-    handle
 }
 
 fn event_sender(backend: &Controlled) -> mpsc::UnboundedSender<StreamMessage> {
@@ -215,6 +219,30 @@ fn a_refused_watch_start_still_refreshes_events(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_pending_watch_start_still_refreshes_events(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open(cx, backend.clone());
+    let (release, opening) = tokio::sync::oneshot::channel();
+    *backend.live.gate.lock().unwrap() = Some(opening);
+    show_deployment_events(cx, handle);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
+    })
+    .unwrap();
+
+    backend.live.events_empty.store(true, Ordering::SeqCst);
+    advance(cx, 15_000);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("empty:No events").visible());
+    })
+    .unwrap();
+    release.send(()).unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
 fn notice_during_a_pending_event_refresh_triggers_another_read(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     open_events(cx, backend.clone());
@@ -254,6 +282,29 @@ fn a_stale_initial_failure_does_not_replace_a_successful_watch_read(cx: &mut Tes
         assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
         assert!(window.try_find("events-error").is_none());
         assert!(window.try_find("events-refresh-warning").is_none());
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_stale_initial_snapshot_does_not_replace_a_newer_empty_snapshot(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.live.events_gate.lock().unwrap() = Some(gate);
+    let handle = open_events(cx, backend.clone());
+    backend.live.events_empty.store(true, Ordering::SeqCst);
+    notify_events(cx, &backend, 1);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("empty:No events").visible());
+    })
+    .unwrap();
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("empty:No events").visible());
+        assert!(window.try_find("event:0").is_none());
     })
     .unwrap();
 }

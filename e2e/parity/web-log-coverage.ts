@@ -20,7 +20,6 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const row = page.locator("[data-log-row]").first();
 		const summary = row.locator("[data-log-summary]");
 		const headline = row.locator("[data-log-headline]");
-		const fullHeadline = await headline.textContent();
 		const short = page.locator("[data-log-row]").nth(1).locator("[data-log-summary]");
 		await short.waitFor();
 		const [collapsed, control] = await Promise.all([summary.boundingBox(), short.boundingBox()]);
@@ -32,7 +31,8 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		if (viewportOverflows) throw new Error("Collapsed log text creates horizontal scrolling");
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
-		if (await headline.textContent() !== fullHeadline) throw new Error("Expanded log row lost part of the headline");
+		if (!(await headline.textContent())?.endsWith("ENDOFHEADLINE"))
+			throw new Error("Expanded log row lost the fixture's final text");
 		const expanded = await summary.boundingBox();
 		if (!expanded || expanded.height <= collapsed.height) throw new Error("Expanded log summary did not wrap");
 		if (await summary.evaluate((element) =>
@@ -72,11 +72,10 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 			throw new Error("Expanded message does not have the full width below the source");
 	} else if (check === "log-expanded-field") {
 		const row = page.locator("[data-log-row]").first();
-		const highlight = row.locator("mark").filter({ hasText: /^status=ready$/ });
-		await highlight.waitFor();
+		await row.locator("[data-log-summary] mark").filter({ hasText: /^status=ready$/ }).waitFor();
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
-		await highlight.waitFor();
+		await row.locator("[data-log-details] mark").filter({ hasText: /^status=ready$/ }).waitFor();
 		const longField = row.getByText(/destination=.*ENDOFFIELD/);
 		if (await longField.evaluate((element) =>
 			element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight))

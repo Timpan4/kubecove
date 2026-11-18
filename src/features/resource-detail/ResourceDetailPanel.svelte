@@ -43,6 +43,7 @@
 	import { argoApplicationReads } from "@/lib/argo-application-inspection";
 	import { createLiveReadRefresh } from "@/lib/live-view-refresh";
 	import { queryMatchers, type QueryMatch } from "@/lib/queryKeys";
+	import { isTransientQueryError } from "@/lib/query-retry";
 	import { RESOURCE_RECOVERY_INTERVAL } from "@/lib/resource-watch";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
@@ -144,7 +145,7 @@
 	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
-	let eventsWatchRecovering = $state(false);
+	let eventsWatchPhase = $state<"opening" | "connected" | "recovering">("opening");
 	const showEventsWarnings = $derived(
 		activeTab === "details" || activeTab === "events",
 	);
@@ -222,7 +223,7 @@
 	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
 		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
-		refetchInterval: eventsWatchRecovering
+		refetchInterval: eventsWatchPhase !== "connected"
 			? (query) => query.state.status === "success" ? RESOURCE_RECOVERY_INTERVAL : false
 			: false,
 	}));
@@ -373,55 +374,62 @@
 	$effect(() => {
 		if (!eventsEnabled) return;
 		let cancelled = false;
-		let streamId: string | null = null;
+		let retireAttempt: (() => void) | undefined;
+		let retryTimer: ReturnType<typeof setTimeout> | undefined;
 		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
-		eventsWatchRecovering = false;
+		const target = readSpec.eventWatch;
+		const source = kubeconfigSourceKey;
+		eventsWatchPhase = "opening";
 		realtimeEventsWatchError = null;
-		const channel = createStreamChannel((event: StreamMessage) => {
-			if (cancelled) return;
+		function receive(event: StreamMessage) {
 			if (event.type === "error") {
 				realtimeEventsWatchError = messageFromError(event.message);
-				eventsWatchRecovering = true;
+				eventsWatchPhase = "recovering";
 				return;
 			}
 			if (event.type === "status") {
 				if (event.status === "connected") {
 					realtimeEventsWatchError = null;
-					if (eventsWatchRecovering) {
-						eventsWatchRecovering = false;
-						refresh.notify();
-					}
-				} else eventsWatchRecovering = true;
+					if (eventsWatchPhase === "recovering") refresh.notify();
+					eventsWatchPhase = "connected";
+				} else eventsWatchPhase = "recovering";
 				return;
 			}
 			if (event.type === "resourceEventsChanged") refresh.notify();
-		}, client);
-		void startResourceEventWatch(
-			client,
-			readSpec.eventWatch.cluster,
-			readSpec.eventWatch.kind,
-			readSpec.eventWatch.name,
-			readSpec.eventWatch.namespace,
-			channel,
-			kubeconfigSourceKey,
-		)
-			.then((id) => {
-				if (cancelled) {
-					void stopStream(client, id);
-					return;
-				}
-				streamId = id;
-			})
-			.catch((cause: unknown) => {
-				if (cancelled) return;
-				realtimeEventsWatchError = messageFromError(cause);
-				eventsWatchRecovering = true;
-			});
+		}
+		function connect() {
+			retryTimer = undefined;
+			let closed = false;
+			let streamId: string | null = null;
+			const channel = createStreamChannel((event: StreamMessage) => {
+				if (!closed) receive(event);
+			}, client);
+			const close = () => {
+				if (closed) return;
+				closed = true;
+				closeStreamChannel(channel);
+				if (streamId) void stopStream(client, streamId);
+			};
+			retireAttempt = close;
+			void startResourceEventWatch(client, target.cluster, target.kind, target.name, target.namespace, channel, source)
+				.then((id) => {
+					if (closed) void stopStream(client, id);
+					else streamId = id;
+				})
+				.catch((cause: unknown) => {
+					close();
+					if (cancelled) return;
+					realtimeEventsWatchError = messageFromError(cause);
+					eventsWatchPhase = "recovering";
+					if (isTransientQueryError(cause)) retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);
+				});
+		}
+		connect();
 		return () => {
 			cancelled = true;
+			if (retryTimer !== undefined) clearTimeout(retryTimer);
 			refresh.dispose();
-			if (streamId) void stopStream(client, streamId);
-			closeStreamChannel(channel);
+			retireAttempt?.();
 		};
 	});
 

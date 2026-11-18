@@ -43,6 +43,7 @@ pub(super) struct ScriptState {
     reowned: Option<Reowned>,
     events: Option<EventSet>,
     events_list_failed: bool,
+    event_watch_start: EventWatchStart,
     /// Scripted changes so far. The mock list version is one higher.
     revision: u64,
     /// The list version that first shows the scripted change.
@@ -76,6 +77,14 @@ enum EventSet {
     Live,
     Overflow,
     Empty,
+}
+
+#[derive(Clone, Copy, Default)]
+enum EventWatchStart {
+    #[default]
+    Ready,
+    Opening,
+    Refused,
 }
 impl Fixture {
     /// Fixture construction precedes timed notification delivery. NativeBackend
@@ -378,6 +387,9 @@ impl Fixture {
                     state.events = Some(EventSet::Empty);
                 }
             }
+            "events-watch-opening" => state.event_watch_start = EventWatchStart::Opening,
+            "events-watch-refused" => state.event_watch_start = EventWatchStart::Refused,
+            "events-watch-ready" => state.event_watch_start = EventWatchStart::Ready,
             _ => {}
         }
         if let Some(notifications) = self.live.notifications.lock().unwrap().take() {
@@ -517,14 +529,28 @@ impl Fixture {
                     .unwrap();
                 return Ok(LogStream::new(receiver, sender));
             }
-            sender
-                .send(StreamMessage::Status {
-                    stream_id: "fixture".into(),
-                    status: StreamStatus::Connected,
-                    message: "Live updates connected".into(),
-                })
-                .unwrap();
             let mut state = live.lock().unwrap();
+            let start_status = if matches!(target, WatchTarget::Events(_)) {
+                state.event_watch_start
+            } else {
+                EventWatchStart::Ready
+            };
+            match start_status {
+                EventWatchStart::Refused => {
+                    return Err(AppError::new(
+                        "Scripted Events watch start refused",
+                        AppErrorKind::Network,
+                    ));
+                }
+                EventWatchStart::Opening => {}
+                EventWatchStart::Ready => sender
+                    .send(StreamMessage::Status {
+                        stream_id: "fixture".into(),
+                        status: StreamStatus::Connected,
+                        message: "Live updates connected".into(),
+                    })
+                    .unwrap(),
+            }
             let start = match &target {
                 WatchTarget::Resource {
                     key,

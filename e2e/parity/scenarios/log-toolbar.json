@@ -54,6 +54,39 @@
 			]
 		},
 		{
+			"id": "logs.events.awaiting-first-connection",
+			"title": "The Events list refreshes while the first watch waits for Connected",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "replayLiveData", "script": "events-watch-opening" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "expectEventCount", "count": 2 },
+				{ "action": "replayLiveData", "script": "events-list-recovered" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": true, "text": "No events" }
+			]
+		},
+		{
+			"id": "logs.events.retry-watch-start",
+			"title": "A transient watch-start error recovers live Events without reopening the inspector",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "replayLiveData", "script": "events-watch-refused" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch start refused" },
+				{ "action": "replayLiveData", "script": "events-watch-ready" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch start refused" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+			]
+		},
+		{
 			"id": "logs.pod.toolbar-live",
 			"title": "A multi-container Pod's live Logs toolbar keeps its status clear of the container picker and buttons, and its buttons inside the detail panel",
 			"steps": [

@@ -5,8 +5,10 @@
 use gpui_kit::SharedString;
 use kubecove_lib::models::LogLineSource;
 use regex::Regex;
+use serde::Serialize;
 use serde_json::Value;
 use std::fmt;
+use std::io;
 use std::sync::LazyLock;
 
 /// `MAX_RETAINED_LOG_LINES`; the backend clamps tail requests to the same value.
@@ -128,9 +130,30 @@ fn unquote(value: &str) -> String {
 
 /// `stringValue`: strings stay raw, anything else is its JSON text.
 fn string_value(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
+    if let Value::String(text) = value {
+        return text.clone();
+    }
+    let mut serializer = serde_json::Serializer::with_formatter(Vec::new(), JavaScriptNumbers);
+    value
+        .serialize(&mut serializer)
+        .expect("JSON log value serializes");
+    String::from_utf8(serializer.into_inner()).expect("JSON is UTF-8")
+}
+
+/// JSON.parse stores integers and decimals as ECMAScript numbers.
+struct JavaScriptNumbers;
+
+impl serde_json::ser::Formatter for JavaScriptNumbers {
+    fn write_i64<W: io::Write + ?Sized>(&mut self, writer: &mut W, value: i64) -> io::Result<()> {
+        self.write_f64(writer, value as f64)
+    }
+
+    fn write_u64<W: io::Write + ?Sized>(&mut self, writer: &mut W, value: u64) -> io::Result<()> {
+        self.write_f64(writer, value as f64)
+    }
+
+    fn write_f64<W: io::Write + ?Sized>(&mut self, writer: &mut W, value: f64) -> io::Result<()> {
+        writer.write_all(ryu_js::Buffer::new().format_finite(value).as_bytes())
     }
 }
 

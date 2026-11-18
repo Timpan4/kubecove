@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "events-list-recovered", "forbidden", "failed", "missed-delete"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "events-list-recovered", "events-watch-opening", "events-watch-refused", "events-watch-ready", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -30,6 +30,7 @@ const FLUX_OWNER = { provider: "flux", kind: "Kustomization", name: "platform", 
 const ANNOTATION_APP = "checkout-legacy";
 let events: ResourceEventSummary[] | undefined;
 let eventsListFailed = false;
+let eventWatchStart: "ready" | "opening" | "refused" = "ready";
 let failed = false;
 // Scripted changes so far; the mock list version is one higher, as in tests/common/live_data.rs.
 let revision = 0;
@@ -46,10 +47,12 @@ export function lastWatchStart(kind: string): { resourceVersion?: string } | nul
 
 export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
     if (!args.channel) throw new Error("Mock watch requires a channel");
+    if (args.name && eventWatchStart === "refused") throw new Error("Scripted Events watch start refused");
     const channel = args.channel;
     const id = `mock-live-${++serial}`;
     watches.set(id, { ...args, channel, id });
     watchStarts.push(...args.keys ?? []);
+    if (args.name && eventWatchStart === "opening") return id;
     // streams/watch.rs starts at the given list version, or at "0", which replays
     // every object. Either way it delivers a change made after that version.
     const replays = (start: ResourceWatchStart) => changedAt !== undefined
@@ -104,6 +107,10 @@ export function liveEvents(kind?: string, name?: string): ResourceEventSummary[]
     return events;
 }
 export function replayLiveData(script: LiveScript): void {
+    if (script === "events-watch-opening" || script === "events-watch-refused" || script === "events-watch-ready") {
+        eventWatchStart = script === "events-watch-opening" ? "opening" : script === "events-watch-refused" ? "refused" : "ready";
+        return;
+    }
     // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.
     const missed = script === "missed-delete";
     const mockDevOnly = script === "delete-mock-dev";

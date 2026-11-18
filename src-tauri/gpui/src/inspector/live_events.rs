@@ -7,7 +7,8 @@ use super::{
     live_data::{COALESCE, RECOVERY, WatchInput, receive_or_tick},
 };
 use crate::backend::WatchTarget;
-use gpui_kit::{Context, Window};
+use futures_util::future::{Either, select};
+use gpui_kit::{AsyncWindowContext, Context, Window};
 use kubecove_lib::models::{StreamMessage, StreamStatus};
 
 impl Inspector {
@@ -20,13 +21,33 @@ impl Inspector {
         let backend = self.backend.clone();
         // The detail owns this watch, so it only writes into the detail that started it.
         detail.events.watch = Some(cx.spawn_in(window, async move |this, cx| {
+            let refresh_events = async |cx: &mut AsyncWindowContext| {
+                let Ok(Some(number)) = this.update(cx, |this, _| {
+                    this.events_state().map(|events| events.begin_read())
+                }) else {
+                    return false;
+                };
+                let result = backend.events(resource.clone(), uid.clone()).await;
+                this.update(cx, |this, cx| this.apply_events_read(number, result, cx))
+                    .is_ok()
+            };
             let mut catch_up = false;
             let mut timer = Box::pin(cx.background_executor().timer(RECOVERY));
             loop {
-                let mut stream = match backend
-                    .watch(WatchTarget::Events(Box::new(resource.clone())))
-                    .await
-                {
+                let mut opening = backend.watch(WatchTarget::Events(Box::new(resource.clone())));
+                let opened = loop {
+                    match select(opening.as_mut(), timer.as_mut()).await {
+                        Either::Left((result, _)) => break result,
+                        Either::Right(((), _)) => {
+                            timer = Box::pin(cx.background_executor().timer(RECOVERY));
+                            catch_up = true;
+                            if !refresh_events(cx).await {
+                                return;
+                            }
+                        }
+                    }
+                };
+                let mut stream = match opened {
                     Ok(stream) => stream,
                     Err(error) => {
                         // Events may change while no watch runs, so the next
@@ -40,21 +61,13 @@ impl Inspector {
                         });
                         timer.as_mut().await;
                         timer = Box::pin(cx.background_executor().timer(RECOVERY));
-                        let Ok(Some(number)) = this.update(cx, |this, _| {
-                            this.events_state().map(|events| events.begin_read())
-                        }) else {
-                            return;
-                        };
-                        let result = backend.events(resource.clone(), uid.clone()).await;
-                        if this
-                            .update(cx, |this, cx| this.apply_events_read(number, result, cx))
-                            .is_err()
-                        {
+                        if !refresh_events(cx).await {
                             return;
                         }
                         continue;
                     }
                 };
+                let mut awaiting_connection = true;
                 loop {
                     let input = receive_or_tick(&mut stream, &mut timer).await;
                     let tick = matches!(input, WatchInput::Tick);
@@ -68,14 +81,15 @@ impl Inspector {
                     };
                     // Replays can leave a backlog while the list is pending.
                     // Fold the current batch off the UI executor in stream order.
-                    let (resumed, caught_up, mut refresh, watch_error, ended) = cx
+                    let (resumed, caught_up, connecting, mut refresh, watch_error, ended) = cx
                         .background_executor()
                         .spawn(async move {
                             let queued = stream.messages.len();
                             let pending =
                                 std::iter::from_fn(|| stream.messages.try_recv().ok()).take(queued);
-                            let mut needs_catch_up = catch_up;
-                            let mut refresh = tick && catch_up;
+                            let mut connecting = awaiting_connection;
+                            let mut needs_catch_up = catch_up || (tick && connecting);
+                            let mut refresh = tick && needs_catch_up;
                             let mut error = None;
                             let mut ended = closed;
                             for event in first.into_iter().chain(pending) {
@@ -92,6 +106,7 @@ impl Inspector {
                                         error = Some(None);
                                         refresh |= needs_catch_up;
                                         needs_catch_up = false;
+                                        connecting = false;
                                     }
                                     StreamMessage::Status { .. } => needs_catch_up = true,
                                     StreamMessage::Stopped { .. } => {
@@ -101,13 +116,13 @@ impl Inspector {
                                     _ => {}
                                 }
                             }
-                            (stream, needs_catch_up, refresh, error, ended)
+                            (stream, needs_catch_up, connecting, refresh, error, ended)
                         })
                         .await;
                     stream = resumed;
                     catch_up = caught_up;
+                    awaiting_connection = connecting;
                     let warning_changed = watch_error.is_some();
-                    let mut number = 0;
                     let updated = this.update(cx, |this, cx| {
                         if let Detail::Ready(detail) = &mut this.detail {
                             refresh |= tick
@@ -115,9 +130,6 @@ impl Inspector {
                                     || detail.events.refresh_error.is_some());
                             if let Some(error) = watch_error {
                                 detail.events.watch_error = error;
-                            }
-                            if refresh {
-                                number = detail.events.begin_read();
                             }
                         }
                         if refresh || warning_changed {
@@ -129,10 +141,7 @@ impl Inspector {
                     }
                     if refresh {
                         let started = std::time::Instant::now();
-                        let result = backend.events(resource.clone(), uid.clone()).await;
-                        let updated =
-                            this.update(cx, |this, cx| this.apply_events_read(number, result, cx));
-                        if updated.is_err() {
+                        if !refresh_events(cx).await {
                             return;
                         }
                         cx.background_executor()
