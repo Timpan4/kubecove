@@ -396,7 +396,7 @@ test("a failed legacy coverage run replays the recorded selection, including pre
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
 		const selected = { web: new Set(["one", "two"]), gpui: new Set(["one", "two"]) };
 		expect(await rerunSelections(run, { coverage: true })).toEqual({ ...selected, coveragePublication: "unknown" });
-		const artifacts = "/home/o'connor/checkout/e2e/artifacts";
+		const artifacts = "/home/o'; connor/checkout/e2e/artifacts";
 		const source = `${artifacts}/parity-original-run/coverage-map.json`;
 		const target = `${artifacts}/parity-coverage-map.json`;
 		for (const error of [

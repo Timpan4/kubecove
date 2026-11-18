@@ -198,7 +198,7 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, { 
 }
 
 function isLegacyDefaultMapCopyError(error: string): boolean {
-	const [, from, to] = error.match(/\bcopyfile '([^\r\n]+?)' -> '([^\r\n]+?)'(?=; |$)/) ?? [];
+	const [, from, to] = error.match(/\bcopyfile '([^\r\n]+?[/\\]coverage-map\.json)' -> '([^\r\n]+?[/\\]parity-coverage-map\.json)'(?=; |$)/) ?? [];
 	if (!from || !to) return false;
 	const source = from.replaceAll("\\", "/");
 	const destination = to.replaceAll("\\", "/");
