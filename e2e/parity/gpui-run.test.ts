@@ -33,18 +33,24 @@ console.log(JSON.stringify({
 `, { mode: 0o755 }),
 			writeFile(executable, `#!/usr/bin/env bun
 const scenarios = [
-	{ id: "one", status: "passed" },
+	{ id: "one", status: process.env.TEST_EXIT === "invalid-status" ? "invalid" : "passed" },
 	{ id: "two", status: process.env.TEST_EXIT === "all-passed" ? "passed" : "failed" },
+	{ id: "three", status: "passed" },
 ];
-await Bun.write(process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-0.json", JSON.stringify({ scenarios }));
+if (process.env.TEST_EXIT === "incomplete") scenarios.pop();
+const driver = process.env.TEST_EXIT === "wrong-driver" ? "web" : "gpui";
+await Bun.write(process.env.KUBECOVE_E2E_ARTIFACTS + "/gpui-0.json", JSON.stringify({ driver, scenarios }));
 if (process.env.TEST_EXIT === "killed") process.kill(process.pid, "SIGKILL");
 process.exit(101);
 `, { mode: 0o755 }),
 		]);
 		for (const { exit, driverFailed, ids } of [
 			{ exit: "scenario-failed", driverFailed: false, ids: ["two"] },
-			{ exit: "all-passed", driverFailed: true, ids: ["one", "two"] },
-			{ exit: "killed", driverFailed: true, ids: ["one", "two"] },
+			{ exit: "all-passed", driverFailed: true, ids: ["one", "two", "three"] },
+			{ exit: "killed", driverFailed: true, ids: ["one", "two", "three"] },
+			{ exit: "wrong-driver", driverFailed: true, ids: ["one", "two", "three"] },
+			{ exit: "invalid-status", driverFailed: true, ids: ["one", "two", "three"] },
+			{ exit: "incomplete", driverFailed: true, ids: ["one", "two", "three"] },
 		]) {
 			const artifacts = join(directory, exit);
 			await mkdir(artifacts);
@@ -54,8 +60,8 @@ import { runGpui } from "./e2e/parity/gpui-run";
 import { rerunSelections } from "./e2e/parity/rerun";
 
 const artifacts = process.env.TEST_ARTIFACTS;
-const scenarios = ["one", "two"].map((id) => ({ id, title: id, steps: [] }));
-await Bun.write(join(artifacts, "scenarios.txt"), "one\\ntwo");
+const scenarios = ["one", "two", "three"].map((id) => ({ id, title: id, steps: [] }));
+await Bun.write(join(artifacts, "scenarios.txt"), scenarios.map(({ id }) => id).join("\\n"));
 const problem = await runGpui({ scenarios }, artifacts, { path: "", exit: Promise.resolve(0) }, 1, new AbortController().signal, () => {});
 await Bun.write(join(artifacts, "result.json"), JSON.stringify({
 	driver: "gpui", status: "failed", failedDrivers: problem ? ["gpui"] : [],

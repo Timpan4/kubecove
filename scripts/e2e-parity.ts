@@ -5,8 +5,8 @@ import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
 import { type Contract, loadContract, requireActionCoverage, requireViewCoverage } from "../e2e/parity/contract";
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
-import { type Driver, parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
-import { DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
+import { completeDriverResults, type Driver, parseDriver } from "../e2e/parity/merge-reports";
+import { type CoverageMapFailure, DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { holdFrameIsolation } from "./gpui-frame-process";
@@ -75,7 +75,8 @@ process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 let resultDriver: Driver | "both" = driver ?? "both";
 let selectionHashes: Record<Driver, string> | undefined;
-let coverageMapFailed = false;
+let coverageMapFailure: CoverageMapFailure | null = null;
+let coveragePublicationRequested = false;
 const failedDrivers = new Set<Driver>();
 const fail = (message: string) => { failure = failure ? `${failure}; ${message}` : message; };
 const driverFailed = (name: Driver, message: string) => {
@@ -87,7 +88,6 @@ async function writeSelections(selection: Record<Driver, Contract>) {
 		web: selection.web.scenarios.map(({ id }) => id).join("\n"),
 		gpui: selection.gpui.scenarios.map(({ id }) => id).join("\n"),
 	};
-	selectionHashes = { web: selectionHash(contents.web), gpui: selectionHash(contents.gpui) };
 	await Promise.all((["web", "gpui"] as const).map(async (name) => {
 		const path = join(artifacts, driverSelectionFile[name]);
 		await writeFile(`${path}.tmp`, contents[name]);
@@ -96,10 +96,11 @@ async function writeSelections(selection: Record<Driver, Contract>) {
 	const allIds = new Set([...selection.web.scenarios, ...selection.gpui.scenarios].map(({ id }) => id));
 	// The report collector uses the combined list to find artifacts with work.
 	if (allIds.size) await writeFile(join(artifacts, "scenarios.txt"), [...allIds].join("\n"));
+	selectionHashes = { web: selectionHash(contents.web), gpui: selectionHash(contents.gpui) };
 }
 
 /** Runs the requested drivers on the selected scenarios and records failures through `fail`. */
-async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[]) {
+async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[], publishCoverageMap: boolean) {
 	const positive = (name: string, fallback: number) => {
 		const value = Number(process.env[name] ?? fallback);
 		if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer: ${process.env[name]}`);
@@ -128,25 +129,40 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 	}
 	await Promise.all(runs);
 	controller.signal.throwIfAborted();
-	const reportProblems = await Promise.all(executed.map(async (name) => {
+	const reports = await Promise.all(executed.map(async (name) => {
 		try {
 			const report = JSON.parse(await readFile(join(artifacts, `${name}.json`), "utf8"));
-			validateDriverReport(selection[name], name, report);
-		} catch (error) { return `${name} report: ${String(error)}`; }
+			return { name, results: completeDriverResults(selection[name], name, report) };
+		} catch (error) { return { name, error: `${name} report: ${String(error)}` }; }
 	}));
-	for (const problem of reportProblems) if (problem) fail(problem);
-	if (coverage) {
-		try {
-			// Scenarios that failed stay out of the map, so selection always runs them.
-			const map = await writeRunMap(artifacts, join(artifacts, "coverage-map.json"));
-			mark("coverageMap");
-			console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
-			const narrowed = ["PARITY_PREFIX", "PARITY_SCENARIOS", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_RERUN", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
-			if (!narrowed) await copyFile(join(artifacts, "coverage-map.json"), resolve(DEFAULT_MAP));
-		} catch (error) {
-			coverageMapFailed = true;
-			fail(`Coverage map: ${String(error)}`);
+	const passed = { web: new Set<string>(), gpui: new Set<string>() };
+	for (const { name, results, error } of reports) {
+		if (!results) {
+			driverFailed(name, error);
+			continue;
 		}
+		const failed = results.find(({ status }) => status === "failed");
+		if (failed) fail(`${name} report: Error: Invalid ${name} result: ${failed.id}`);
+		for (const { id, status } of results) if (status === "passed") passed[name].add(id);
+	}
+	if (!coverage) return;
+	if (failedDrivers.size) return;
+	try {
+		// Only complete, validated reports can contribute coverage rows.
+		const bothPassed = new Set([...passed.web].filter((id) => passed.gpui.has(id)));
+		const path = join(artifacts, "coverage-map.json");
+		const map = await writeRunMap(artifacts, path, bothPassed);
+		mark("coverageMap");
+		console.log(`Coverage map: ${map.scenarios.length} scenarios, ${Object.keys(map.files).length} files`);
+		if (publishCoverageMap) {
+			coverageMapFailure = "publication";
+			const temporary = join(artifacts, "default-map.tmp");
+			await copyFile(path, temporary);
+			await rename(temporary, resolve(DEFAULT_MAP));
+		}
+		coverageMapFailure = null;
+	} catch (error) {
+		fail(`Coverage map ${coverageMapFailure}: ${String(error)}`);
 	}
 }
 
@@ -165,17 +181,24 @@ try {
 	};
 	const selection = { web: selectedFor("web"), gpui: selectedFor("gpui") };
 	const executed = (["web", "gpui"] as const).filter((name) => selection[name].scenarios.length);
+	const narrowed = ["PARITY_PREFIX", "PARITY_SCENARIOS", "PARITY_EXCLUDE", "PARITY_CHANGED", "PARITY_SUITE_SHARD"].some((name) => process.env[name]);
+	const fullSelection = executed.length === 2 && executed.every((name) => selection[name].scenarios.length === contract.scenarios.length);
+	if (failed?.publishCoverageMap && !narrowed && !fullSelection) {
+		throw new Error("The recorded selection does not cover the current suite. Run PARITY_COVERAGE=1 without PARITY_RERUN to publish the default map.");
+	}
+	coveragePublicationRequested = coverage && !narrowed && fullSelection && (!rerun || failed?.publishCoverageMap === true);
 	if (!executed.length && !rerun && !process.env.PARITY_CHANGED) throw new Error("No parity scenarios selected");
 	if (executed.length === 1) resultDriver = executed[0];
 	await writeSelections(selection);
 	if (executed.includes("web")) await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: [] }));
 	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios from ${rerun}`);
 	if (executed.length) {
+		if (coverage) coverageMapFailure = "generation";
 		// Frame measurements wait for this run, and this run waits for one in progress.
 		const isolation = await holdFrameIsolation("shared", controller.signal);
 		try {
 			controller.signal.throwIfAborted();
-			await runDrivers(selection, executed);
+			await runDrivers(selection, executed, coveragePublicationRequested);
 		}
 		finally { if (isolation.state === "held") await isolation.release(); }
 	} else if (rerun) console.log("Nothing to rerun: no earlier failures match this selection.");
@@ -187,18 +210,22 @@ finally {
 	const interrupted = controller.signal.aborted;
 	if (interrupted && !failure) fail("Interrupted");
 	mark("total");
-	await writeFile(join(artifacts, "result.json"), JSON.stringify({
+	const resultPath = join(artifacts, "result.json");
+	await writeFile(`${resultPath}.tmp`, JSON.stringify({
 		level: "UI integration with mocks",
 		driver: resultDriver,
 		selectionFormat: DRIVER_SELECTION_FORMAT,
+		selectionRecorded: selectionHashes !== undefined,
 		selectionHashes,
 		failedDrivers: [...failedDrivers],
-		coverageMapFailed,
+		coverageMapFailure,
+		coveragePublicationRequested,
 		interrupted,
 		status: failure ? "failed" : "passed",
 		error: failure,
 		phases,
 	}, null, 2));
+	await rename(`${resultPath}.tmp`, resultPath);
 	console.log(`Parity artifacts: ${artifacts}`);
 }
 if (failure) { console.error(failure); process.exitCode = 1; }

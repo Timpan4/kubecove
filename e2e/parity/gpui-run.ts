@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
 import { COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
+import { driverScenarioResults } from "./merge-reports";
 import { driverSelectionFile } from "./rerun";
 
 type Spawned = { code: number; output: string; signaled: boolean };
@@ -97,23 +98,24 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	for (const [index, run] of runs.entries()) {
 		let reportedFailure = false;
 		try {
-			// SAFETY: the parity test binary writes each shard report as { scenarios }. A report without that array throws in the loop below, and the catch records it as missing.
-			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
-			for (const result of report.scenarios) {
-				if (!selectedIds.has(result.id) || results.has(result.id)) {
-					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${result.id}`);
+			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8"));
+			for (const { id, status, result } of driverScenarioResults("gpui", report)) {
+				if (!selectedIds.has(id) || results.has(id)) {
+					problems.push(`Unexpected or duplicate GPUI result from shard ${index}/${count}: ${id}`);
 					continue;
 				}
-				results.set(result.id, result);
-				if (result.status === "failed") reportedFailure = true;
+				results.set(id, result);
+				if (status === "failed") reportedFailure = true;
 			}
-		} catch { problems.push(`GPUI shard ${index}/${count} wrote no report`); }
+		} catch (error) { problems.push(`GPUI shard ${index}/${count} did not produce a valid report: ${String(error)}`); }
 		// The native harness writes the report, then fails its test if a scenario failed.
 		const scenarioExit = run.code === LIBTEST_FAILURE && reportedFailure;
 		if (run.signaled || (run.code !== 0 && !scenarioExit)) {
 			problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
 		}
 	}
+	const missing = [...selectedIds].filter((id) => !results.has(id));
+	if (missing.length) problems.push(`Missing GPUI results: ${missing.join(", ")}`);
 	const scenarios = contract.scenarios.flatMap((scenario) => results.has(scenario.id) ? [results.get(scenario.id)] : []);
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));
 	if (coverage) {

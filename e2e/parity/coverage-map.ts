@@ -192,14 +192,6 @@ export async function readMap(path: string): Promise<CoverageMap> {
 	}
 }
 
-async function passed(artifacts: string, driver: string): Promise<Set<string>> {
-	try {
-		// SAFETY: a driver report is written as { driver, scenarios }. A report of another shape throws in the filter below, and the catch returns no passes.
-		const report = JSON.parse(await readFile(join(artifacts, `${driver}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
-		return new Set(report.scenarios.filter((result) => result.status === "passed").map((result) => result.id));
-	} catch { return new Set(); }
-}
-
 async function gitHead(): Promise<string> {
 	const git = Bun.spawn(["git", "rev-parse", "HEAD"], { stdout: "pipe" });
 	const commit = (await new Response(git.stdout).text()).trim();
@@ -211,16 +203,15 @@ async function gitHead(): Promise<string> {
  * Builds the map for one run from its per-scenario files in `<artifacts>/coverage/`. Only
  * scenarios both drivers passed and recorded count; selection always runs the others.
  */
-export async function writeRunMap(artifacts: string, out: string): Promise<CoverageMap> {
+export async function writeRunMap(artifacts: string, out: string, passedByBoth: ReadonlySet<string>): Promise<CoverageMap> {
 	const directory = join(artifacts, "coverage");
 	const ids = (await readFile(join(artifacts, "scenarios.txt"), "utf8")).split("\n").filter(Boolean);
-	const [web, gpui] = await Promise.all([passed(artifacts, "web"), passed(artifacts, "gpui")]);
 	const names = new Set(await readdir(directory));
 	// SAFETY: each per-scenario file is written by startCodeCoverage().save as { id, files }. writeRunMap checks the id below.
 	const read = async (name: string) => names.has(name) ? JSON.parse(await readFile(join(directory, name), "utf8")) as ScenarioCoverage : undefined;
 	const records: ScenarioCoverage[] = [];
 	for (const [index, id] of ids.entries()) {
-		if (!web.has(id) || !gpui.has(id)) continue;
+		if (!passedByBoth.has(id)) continue;
 		const [webFiles, gpuiFiles] = await Promise.all([read(`web-${index}.json`), read(`gpui-${index}.json`)]);
 		if (webFiles?.id !== id || gpuiFiles?.id !== id) continue;
 		records.push({ id, files: { ...webFiles.files, ...gpuiFiles.files } });

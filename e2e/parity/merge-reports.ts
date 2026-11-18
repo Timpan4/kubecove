@@ -13,18 +13,34 @@ export function parseDriver<Value>(value: Value): Driver {
 	throw new Error(`Invalid parity driver: ${String(value)}`);
 }
 
-/** Requires exactly one passing result for every selected scenario from this driver. */
-export function validateDriverReport<Report>(contract: Contract, driver: Driver, report: Report): void {
+export function driverScenarioResults<Report>(driver: Driver, report: Report) {
 	const input = object(report);
 	if (input.driver !== driver) throw new Error(`Expected ${driver} report`);
 	if (!Array.isArray(input.scenarios)) throw new Error(`Missing scenarios: ${driver}`);
-	const expected = new Set(contract.scenarios.map(({ id }) => id));
-	for (const value of input.scenarios) {
+	return input.scenarios.map((value) => {
 		const result = object(value);
 		const id = string(result.id);
-		if (!expected.delete(id) || result.status !== "passed") throw new Error(`Invalid ${driver} result: ${id}`);
+		const status = result.status;
+		if (status !== "passed" && status !== "failed") throw new Error(`Invalid ${driver} result: ${id}`);
+		return { id, status, result };
+	});
+}
+
+/** Requires one result per selected ID and preserves ordinary scenario failures. */
+export function completeDriverResults<Report>(contract: Contract, driver: Driver, report: Report) {
+	const results = driverScenarioResults(driver, report);
+	const expected = new Set(contract.scenarios.map(({ id }) => id));
+	for (const { id } of results) {
+		if (!expected.delete(id)) throw new Error(`Invalid ${driver} result: ${id}`);
 	}
 	if (expected.size) throw new Error(`Missing ${driver} results: ${[...expected].join(", ")}`);
+	return results;
+}
+
+/** Requires exactly one passing result for every selected scenario from this driver. */
+export function validateDriverReport<Report>(contract: Contract, driver: Driver, report: Report): void {
+	const failed = completeDriverResults(contract, driver, report).find(({ status }) => status === "failed");
+	if (failed) throw new Error(`Invalid ${driver} result: ${failed.id}`);
 }
 
 /** Concatenation preserves duplicate IDs, so validateReports rejects overlapping shards. */
