@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
@@ -6,7 +6,7 @@ import { type Contract, loadContract, requireActionCoverage, requireViewCoverage
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { type Driver, parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
-import { DRIVER_SELECTION_FORMAT, rerunSelections } from "../e2e/parity/rerun";
+import { DRIVER_SELECTION_FORMAT, lastRerunSource, rerunSelections } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { holdFrameIsolation } from "./gpui-frame-process";
@@ -55,29 +55,8 @@ async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 	return selected;
 }
 
-/**
- * The newest earlier run that finished and recorded its selection. A run that is still going
- * has no result.json, and one that failed before selecting has no scenarios.txt.
- */
-async function lastRun(): Promise<string> {
-	const root = resolve("e2e/artifacts");
-	const runs = await Promise.all((await readdir(root)).filter((name) => name.startsWith("parity-")).map(async (name) => {
-		try {
-			await stat(join(root, name, "scenarios.txt"));
-			// An interrupted run never reached most scenarios, so its results say nothing about them.
-			// SAFETY: the finally block below writes result.json with an optional string `error`, which is all this reads.
-			const result = JSON.parse(await readFile(join(root, name, "result.json"), "utf8")) as { error?: string };
-			if (result.error?.includes("Interrupted")) return undefined;
-			return { path: join(root, name), time: (await stat(join(root, name, "result.json"))).mtimeMs };
-		} catch { return undefined; }
-	}));
-	const newest = runs.flatMap((run) => run ? [run] : []).sort((left, right) => right.time - left.time)[0];
-	if (!newest) throw new Error("PARITY_RERUN=last found no finished parity run");
-	return newest.path;
-}
-
 const driver = process.env.PARITY_DRIVER ? parseDriver(process.env.PARITY_DRIVER) : undefined;
-const rerun = process.env.PARITY_RERUN === "last" ? await lastRun() : process.env.PARITY_RERUN;
+const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts")) : process.env.PARITY_RERUN;
 // PARITY_COVERAGE=1 records the coverage map (e2e/parity/README.md); normal runs leave it off.
 const coverage = process.env.PARITY_COVERAGE === "1";
 if (coverage && driver) throw new Error("PARITY_COVERAGE requires both drivers");
@@ -97,18 +76,19 @@ process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 let resultDriver: Driver | "both" = driver ?? "both";
 const fail = (message: string) => { failure = failure ? `${failure}; ${message}` : message; };
-/** Runs the requested drivers on the selected scenarios and records failures through `fail`. */
-async function runDrivers(selection: Record<Driver, Contract>) {
-	const executed = (["web", "gpui"] as const).filter((name) => selection[name].scenarios.length);
-	resultDriver = executed.length === 1 ? executed[0] : "both";
-	const allIds = new Set(executed.flatMap((name) => selection[name].scenarios.map((scenario) => scenario.id)));
+async function writeSelections(selection: Record<Driver, Contract>) {
 	await Promise.all((["web", "gpui"] as const).map(async (name) => {
 		const path = join(artifacts, `${name}-scenarios.txt`);
 		await writeFile(`${path}.tmp`, selection[name].scenarios.map((scenario) => scenario.id).join("\n"));
 		await rename(`${path}.tmp`, path);
 	}));
-	// Publish the combined list for older readers after both driver selections are complete.
-	await writeFile(join(artifacts, "scenarios.txt"), [...allIds].join("\n"));
+	const allIds = new Set([...selection.web.scenarios, ...selection.gpui.scenarios].map(({ id }) => id));
+	// The report collector uses the combined list to find artifacts with work.
+	if (allIds.size) await writeFile(join(artifacts, "scenarios.txt"), [...allIds].join("\n"));
+}
+
+/** Runs the requested drivers on the selected scenarios and records failures through `fail`. */
+async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[]) {
 	const positive = (name: string, fallback: number) => {
 		const value = Number(process.env[name] ?? fallback);
 		if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer: ${process.env[name]}`);
@@ -167,19 +147,22 @@ try {
 		return { scenarios: scenarios.filter(({ id }) => ids.has(id)) };
 	};
 	const selection = { web: selectedFor("web"), gpui: selectedFor("gpui") };
+	const executed = (["web", "gpui"] as const).filter((name) => selection[name].scenarios.length);
+	if (!executed.length && !rerun && !process.env.PARITY_CHANGED) throw new Error("No parity scenarios selected");
+	if (executed.length === 1) resultDriver = executed[0];
+	await writeSelections(selection);
 	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios from ${rerun}`);
-	if (selection.web.scenarios.length || selection.gpui.scenarios.length) {
+	if (executed.length) {
 		// Frame measurements wait for this run, and this run waits for one in progress.
 		const isolation = await holdFrameIsolation("shared", controller.signal);
 		try {
 			controller.signal.throwIfAborted();
-			await runDrivers(selection);
+			await runDrivers(selection, executed);
 		}
 		finally { if (isolation.state === "held") await isolation.release(); }
 	} else if (rerun) console.log("Nothing to rerun: no earlier failures match this selection.");
 	// A change no scenario can observe, or a CI shard with no share of a small selection.
-	else if (process.env.PARITY_CHANGED) console.log("No parity scenarios selected by the changes.");
-	else throw new Error("No parity scenarios selected");
+	else console.log("No parity scenarios selected by the changes.");
 } catch (error) { fail(String(error)); }
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);

@@ -1,7 +1,30 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DRIVER_SELECTION_FORMAT, rerunSelections } from "./rerun";
+import { DRIVER_SELECTION_FORMAT, lastRerunSource, rerunSelections } from "./rerun";
+
+test("last picks the newest finished run with a complete nonempty selection", async () => {
+	const root = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	const versioned = JSON.stringify({ selectionFormat: DRIVER_SELECTION_FORMAT });
+	const save = async (name: string, files: Record<string, string>, date: string) => {
+		const run = join(root, `parity-${name}`);
+		await mkdir(run);
+		await Promise.all(Object.entries(files).map(([file, contents]) => writeFile(join(run, file), contents)));
+		await utimes(join(run, "result.json"), new Date(date), new Date(date));
+		return run;
+	};
+	try {
+		const legacy = await save("legacy", { "result.json": "{}", "scenarios.txt": "one" }, "2026-01-01");
+		expect(await lastRerunSource(root)).toBe(legacy);
+		const modern = await save("modern", { "result.json": versioned, "web-scenarios.txt": "one", "gpui-scenarios.txt": "" }, "2026-01-02");
+		const noop = await save("noop", { "result.json": versioned, "web-scenarios.txt": "", "gpui-scenarios.txt": "" }, "2026-01-03");
+		await save("partial", { "result.json": versioned, "web-scenarios.txt": "one", "scenarios.txt": "one" }, "2026-01-04");
+		expect(await rerunSelections(noop)).toEqual({ web: new Set(), gpui: new Set() });
+		expect(await lastRerunSource(root)).toBe(modern);
+	} finally {
+		await rm(root, { recursive: true });
+	}
+});
 
 test("a rerun selects only each driver's failures, including missing results", async () => {
 	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));

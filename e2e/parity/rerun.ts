@@ -1,9 +1,31 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { object, string } from "./contract-values";
+import { isString, object, string } from "./contract-values";
 import { type Driver, parseDriver } from "./merge-reports";
 
 export const DRIVER_SELECTION_FORMAT = "driver-files-v1";
+
+/** Finds the newest finished, non-interrupted run that recorded work. */
+export async function lastRerunSource(root: string): Promise<string> {
+	const names = await readdir(root);
+	const runs = await Promise.all(names.filter((name) => name.startsWith("parity-")).map(async (name) => {
+		const path = join(root, name);
+		const resultPath = join(path, "result.json");
+		try {
+			const result = object(JSON.parse(await readFile(resultPath, "utf8")));
+			if (isString(result.error) && result.error.includes("Interrupted")) return undefined;
+			if (result.selectionFormat === DRIVER_SELECTION_FORMAT) {
+				const web = await stat(join(path, "web-scenarios.txt"));
+				const gpui = await stat(join(path, "gpui-scenarios.txt"));
+				if (!web.isFile() || !gpui.isFile() || (!web.size && !gpui.size)) return undefined;
+			} else if (!(await stat(join(path, "scenarios.txt"))).isFile()) return undefined;
+			return { path, time: (await stat(resultPath)).mtimeMs };
+		} catch { return undefined; }
+	}));
+	const newest = runs.flatMap((run) => run ? [run] : []).sort((left, right) => right.time - left.time)[0];
+	if (!newest) throw new Error("PARITY_RERUN=last found no finished parity run");
+	return newest.path;
+}
 
 async function readRunFile(run: string, name: string): Promise<string | undefined> {
 	try {
