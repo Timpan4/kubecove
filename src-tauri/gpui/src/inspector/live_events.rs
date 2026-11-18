@@ -3,6 +3,7 @@ use super::{
     Inspector,
     detail::Detail,
     events::EventsLoad,
+    friendly_error::redact_detail,
     live_data::{COALESCE, RECOVERY, WatchInput, receive_or_tick},
 };
 use crate::backend::WatchTarget;
@@ -33,7 +34,7 @@ impl Inspector {
                         catch_up = true;
                         let _ = this.update(cx, |this, cx| {
                             if let Detail::Ready(detail) = &mut this.detail {
-                                detail.events.watch_error = Some(error.message);
+                                detail.events.watch_error = Some(redact_detail(&error.message));
                             }
                             cx.notify();
                         });
@@ -57,14 +58,18 @@ impl Inspector {
                     let mut consumed = !tick;
                     let mut watch_error = None;
                     // A replay can queue many change notices for one resource.
-                    // Fold them into one list and apply statuses in stream order.
-                    let pending = std::iter::from_fn(|| stream.messages.try_recv().ok());
+                    // Fold the queued notices into one list. New arrivals
+                    // belong to the next pass, so a producer cannot keep this
+                    // drain running on the UI executor.
+                    let queued = stream.messages.len();
+                    let pending =
+                        std::iter::from_fn(|| stream.messages.try_recv().ok()).take(queued);
                     for event in first.into_iter().chain(pending) {
                         consumed = true;
                         match event {
                             StreamMessage::ResourceEventsChanged { .. } => refresh = true,
                             StreamMessage::Error { message, .. } => {
-                                watch_error = Some(Some(message));
+                                watch_error = Some(Some(redact_detail(&message)));
                                 catch_up = true;
                             }
                             StreamMessage::Status {

@@ -43,12 +43,12 @@
 				{ "action": "replayLiveData", "script": "events-list-failed" },
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "advanceClock", "ms": 15000 },
-				{ "action": "coverageText", "visible": true, "text": "Events refresh failed: Scripted Events list failure" },
+				{ "action": "coverageText", "visible": true, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" },
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" },
 				{ "action": "replayLiveData", "script": "events" },
 				{ "action": "advanceClock", "ms": 15000 },
-				{ "action": "coverageText", "visible": false, "text": "Events refresh failed: Scripted Events list failure" },
+				{ "action": "coverageText", "visible": false, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" },
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
 			]

@@ -99,8 +99,9 @@ export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
 }
 function target(row: ResourceSummary): boolean { return row.kind === "Deployment" && row.namespace === "payments" && row.name === "payments-api"; }
 export function liveEvents(kind?: string, name?: string): ResourceEventSummary[] | undefined {
-    if (eventsListFailed && kind === "Deployment" && name === "payments-api") throw new Error("Scripted Events list failure");
-    return kind === "Deployment" && name === "payments-api" ? events : undefined;
+    if (kind !== "Deployment" || name !== "payments-api") return;
+    if (eventsListFailed) throw new Error("Scripted Events list failure (bearer example-credential)");
+    return events;
 }
 export function replayLiveData(script: LiveScript): void {
     // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.

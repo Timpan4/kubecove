@@ -85,10 +85,12 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
 async fn event_watch_resets_version_after_in_stream_internal_error() {
     for reply in [EventWatchError::Envelope, EventWatchError::BareStatus] {
         let (versions, states) = recover_event_watch_after_error(reply, 500).await;
-        assert_eq!(versions, ["0", "0"]);
+        assert_eq!(versions, ["0", "55", "0"]);
         assert_eq!(
             states,
             [
+                "connected",
+                "reconnecting",
                 "connected",
                 "error",
                 "reconnecting",
@@ -130,11 +132,6 @@ async fn recover_event_watch_after_error(
     reply: EventWatchError,
     code: u16,
 ) -> (Vec<String>, Vec<String>) {
-    let retry_request = if matches!(reply, EventWatchError::Http) {
-        3
-    } else {
-        2
-    };
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service_requests = requests.clone();
     let service = tower::service_fn(move |request: Request<Body>| {
@@ -149,17 +146,14 @@ async fn recover_event_watch_after_error(
             "message": if code == 500 { "etcd event received with PrevKv=nil (type=DELETE)" } else { "Events watch rejected" }
         });
         let (code, body) = match (reply, requests.len()) {
-            (EventWatchError::Envelope, 1) => (
+            (_, 1) => (200, format!("{bookmark}\n")),
+            (EventWatchError::Envelope, 2) => (
                 200,
-                format!(
-                    "{bookmark}\n{}\n",
-                    json!({ "type": "ERROR", "object": error })
-                ),
+                format!("{}\n", json!({ "type": "ERROR", "object": error })),
             ),
-            (EventWatchError::BareStatus, 1) => (200, format!("{bookmark}\n{error}\n")),
+            (EventWatchError::BareStatus, 2) => (200, format!("{error}\n")),
             (EventWatchError::Http, 2) => (code, error.to_string()),
-            (EventWatchError::Http, 1) => (200, format!("{bookmark}\n")),
-            (_, attempt) if attempt == retry_request => (
+            (_, 3) => (
                 200,
                 format!(
                     "{}\n",

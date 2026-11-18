@@ -621,7 +621,7 @@ impl Fixture {
             Some(EventSet::Live) => Some(Ok(self.live_events.clone())),
             Some(EventSet::Overflow) => Some(Ok(self.overflow_events.clone())),
             Some(EventSet::Unavailable) => Some(Err(AppError::new(
-                "Scripted Events list failure",
+                "Scripted Events list failure (bearer example-credential)",
                 AppErrorKind::Network,
             ))),
             None => None,

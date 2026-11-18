@@ -21,12 +21,17 @@ fn open_events(cx: &mut TestAppContext, backend: Arc<Controlled>) -> AnyWindowHa
     handle
 }
 
-fn notify_events(cx: &mut TestAppContext, backend: &Controlled, notices: usize) {
+fn event_sender(backend: &Controlled) -> mpsc::UnboundedSender<StreamMessage> {
     let streams = backend.live.streams.lock().unwrap();
     let (_, sender) = streams
         .iter()
         .find(|(target, tx)| matches!(target, WatchTarget::Events(_)) && !tx.is_closed())
         .expect("selected resource has an Events watch");
+    sender.clone()
+}
+
+fn notify_events(cx: &mut TestAppContext, backend: &Controlled, notices: usize) {
+    let sender = event_sender(backend);
     let event = StreamMessage::ResourceEventsChanged {
         stream_id: "native".into(),
         target: WatchResourceTarget {
@@ -40,7 +45,6 @@ fn notify_events(cx: &mut TestAppContext, backend: &Controlled, notices: usize) 
     for _ in 0..notices {
         sender.send(event.clone()).unwrap();
     }
-    drop(streams);
     cx.run_until_parked();
 }
 
@@ -55,7 +59,7 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     backend.live.events_fail.store(true, Ordering::SeqCst);
     let handle = open_events(cx, backend.clone());
-    advance(cx, 15_000);
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 1);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(window.try_find("event:0").is_none());
@@ -99,7 +103,12 @@ fn successful_event_snapshot_survives_refresh_failure(cx: &mut TestAppContext) {
     for after_existing_snapshot in [false, true] {
         if after_existing_snapshot {
             advance(cx, 250);
+            let before_refresh = backend.live.events_reads.load(Ordering::SeqCst);
             notify_events(cx, &backend, 1);
+            assert_eq!(
+                backend.live.events_reads.load(Ordering::SeqCst),
+                before_refresh + 1
+            );
         }
         cx.update_window(handle, |_, window, cx| {
             window.render_frame(cx);
@@ -130,4 +139,63 @@ fn successful_event_snapshot_survives_refresh_failure(cx: &mut TestAppContext) {
         assert!(window.try_find("events-refresh-warning").is_none());
     })
     .unwrap();
+}
+
+#[gpui_kit::test]
+fn connected_catches_up_when_no_events_are_replayed(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open_events(cx, backend.clone());
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
+    })
+    .unwrap();
+
+    let sender = event_sender(&backend);
+    sender
+        .send(StreamMessage::Error {
+            stream_id: "native".into(),
+            message: "Watch disconnected".into(),
+        })
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("events-watch-warning").is_some());
+        assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
+    })
+    .unwrap();
+    backend.live.events_empty.store(true, Ordering::SeqCst);
+    sender
+        .send(StreamMessage::Status {
+            stream_id: "native".into(),
+            status: StreamStatus::Connected,
+            message: "Watch connected".into(),
+        })
+        .unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("event:0").is_none());
+        assert!(window.try_find("events-watch-warning").is_none());
+    })
+    .unwrap();
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 2);
+}
+
+#[gpui_kit::test]
+fn notice_during_a_pending_event_refresh_triggers_another_read(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    open_events(cx, backend.clone());
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.live.events_gate.lock().unwrap() = Some(gate);
+    notify_events(cx, &backend, 1);
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 2);
+    notify_events(cx, &backend, 1);
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 2);
+
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    advance(cx, 250);
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 3);
 }

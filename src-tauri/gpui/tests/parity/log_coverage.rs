@@ -47,10 +47,11 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             assert!(headline.right() <= viewport.right());
             window.click(("log-summary", 0usize), cx);
             window.render_frame(cx);
-            let source = window.find(("log-source", 0usize)).bounds();
+            let expanded_source = window.find(("log-source", 0usize)).bounds();
             let expanded = window.find(("log-summary", 0usize)).bounds();
-            assert!(source.bottom() <= expanded.top());
-            assert!(expanded.size.width > headline.size.width);
+            assert!(expanded_source.bottom() <= expanded.top());
+            assert_eq!(expanded.left(), source.left());
+            assert_eq!(expanded.right(), headline.right());
         }
         "log-scroll-back" => {
             let bounds = window.find("log-viewport").bounds();

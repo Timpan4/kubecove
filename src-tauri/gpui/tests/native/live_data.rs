@@ -59,6 +59,7 @@ fn ended_streams_restart_on_the_web_recovery_tick(cx: &mut TestAppContext) {
 #[derive(Default)]
 pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
+    events_empty: AtomicBool,
     events_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     events_reads: std::sync::atomic::AtomicUsize,
     /// Whether opening a watch fails.
@@ -537,6 +538,7 @@ impl LiveControls {
     pub fn events(&self) -> Read<Vec<ResourceEventSummary>> {
         self.events_reads.fetch_add(1, Ordering::SeqCst);
         let fail = self.events_fail.load(Ordering::SeqCst);
+        let empty = self.events_empty.load(Ordering::SeqCst);
         let gate = self.events_gate.lock().unwrap().take();
         Box::pin(async move {
             if let Some(gate) = gate {
@@ -544,6 +546,9 @@ impl LiveControls {
             }
             if fail {
                 return Err(AppError::new("Events unavailable", AppErrorKind::Network));
+            }
+            if empty {
+                return Ok(Vec::new());
             }
             Ok(serde_json::from_value(json!([
                 {"eventType": "Normal", "reason": "Pulled", "message": "Image present.", "count": 1, "lastSeen": "8m", "lastSeenAt": "2026-06-29T09:52:00Z", "source": "kubelet", "namespace": "payments"},

@@ -86,7 +86,6 @@ export function logLineSearchText(line: ParsedLogLine): string {
 	let text = line.raw;
 	if (line.source?.podName) text += ` ${line.source.podName}`;
 	if (line.source?.container) text += ` ${line.source.container}`;
-	for (const { key, value } of line.structure.fields) text += ` ${key}=${value}`;
 	return text.toLowerCase();
 }
 
@@ -102,7 +101,10 @@ export function filterOrderedParsedLogLines(
 	filterTerm: string,
 ): ParsedLogLine[] {
 	return filterTerm
-		? lines.filter((line) => logLineSearchText(line).includes(filterTerm))
+		? lines.filter((line) =>
+				logLineSearchText(line).includes(filterTerm) ||
+				line.structure.fields.some(({ key, value }) => `${key}=${value}`.toLowerCase().includes(filterTerm)),
+			)
 		: lines;
 }
 

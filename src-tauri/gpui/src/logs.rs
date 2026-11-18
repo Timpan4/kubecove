@@ -74,7 +74,7 @@ pub struct ParsedLogLine {
     pub timestamp: Option<SharedString>,
     /// `LogEntry`'s `sourceLabel`: `pod/container`, the Pod alone, or empty.
     pub source_label: SharedString,
-    /// `logLineSearchText`: raw text, source and displayed field tokens, lowercased.
+    /// `logLineSearchText`: raw text and source, lowercased.
     pub search: String,
 }
 
@@ -349,12 +349,6 @@ pub fn parse_line(line: &str, source: Option<&LogLineSource>, index: u64) -> Par
             search.push_str(&part.to_lowercase());
         }
     }
-    for field in &structure.fields {
-        search.push(' ');
-        search.push_str(&field.key.to_lowercase());
-        search.push('=');
-        search.push_str(&field.value.to_lowercase());
-    }
     let source_label = source.map_or(SharedString::default(), |source| {
         match source.container.as_deref() {
             Some(container) if !container.is_empty() => {
@@ -379,22 +373,33 @@ pub fn highlight_ranges(text: &str, term: &str) -> Vec<std::ops::Range<usize>> {
         return Vec::new();
     }
     let haystack = text.to_lowercase();
-    // Lowercasing can change byte lengths outside ASCII; ranges would not map back.
-    if haystack.len() != text.len() {
+    let mut matches = haystack.match_indices(term).peekable();
+    if text.is_ascii() {
+        return matches
+            .map(|(start, matched)| start..start + matched.len())
+            .collect();
+    }
+    if matches.peek().is_none() {
         return Vec::new();
     }
-    let mut ranges = Vec::new();
-    let mut cursor = 0;
-    while let Some(found) = haystack[cursor..].find(term) {
-        let start = cursor + found;
-        let end = start + term.len();
-        if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
-            break;
-        }
-        ranges.push(start..end);
-        cursor = end;
+    // Map normalized byte offsets back to the source characters. Equal total
+    // lengths can still hide offset changes in individual characters.
+    let mut offsets = vec![(0, 0)];
+    let mut normalized = 0;
+    for (start, character) in text.char_indices() {
+        normalized += character.to_lowercase().map(char::len_utf8).sum::<usize>();
+        offsets.push((normalized, start + character.len_utf8()));
     }
-    ranges
+    let mut cursor = 0;
+    matches
+        .filter_map(|(start, matched)| {
+            let first = offsets.partition_point(|&(offset, _)| offset <= start) - 1;
+            let last = offsets.partition_point(|&(offset, _)| offset < start + matched.len());
+            let range = offsets[first].1.max(cursor)..offsets[last].1;
+            cursor = range.end;
+            (!range.is_empty()).then_some(range)
+        })
+        .collect()
 }
 
 /// Names the Logs tab's container picker offers for a Pod: regular containers,
@@ -428,6 +433,20 @@ pub fn container_options(status: Option<&Value>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn highlight_preserves_field_spans_when_lowercase_changes_byte_width() {
+        for (text, term, expected) in [
+            ("İD=READY", "ready", "READY"),
+            ("İD=READY", "i", "İ"),
+            ("KİİD=READY", "ı", ""),
+            ("KİİD=READY", "ready", "READY"),
+        ] {
+            let ranges = highlight_ranges(text, term);
+            let matches: String = ranges.into_iter().map(|range| &text[range]).collect();
+            assert_eq!(matches, expected);
+        }
+    }
 
     // Failure modes: logfmt tails that are not pure logfmt must not lose text;
     // `msg` beside a prose headline must stay visible; JSON key order must

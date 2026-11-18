@@ -4,6 +4,7 @@
 
 use super::Inspector;
 use super::detail::Detail;
+use super::friendly_error::redact_detail;
 use super::windowed::{Windowed, row_id};
 use crate::incident::{self, EventFilter, SignalTone};
 use crate::theme::{Tokens, oklch};
@@ -116,6 +117,7 @@ impl EventsState {
             return;
         }
         self.settled_read = read;
+        let error = redact_detail(&error);
         if matches!(self.load, EventsLoad::Ready(_)) {
             self.refresh_error = Some(error);
         } else {

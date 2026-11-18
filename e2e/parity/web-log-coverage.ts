@@ -1,5 +1,10 @@
 import type { Page } from "playwright-core";
 
+function clipsHorizontalOverflow(element: Element): boolean {
+	return element.scrollWidth > element.clientWidth &&
+		["clip", "hidden"].includes(getComputedStyle(element).overflowX);
+}
+
 export async function checkLogCoverage(page: Page, check: string): Promise<void> {
 	if (check === "emit-log") {
 		await page.evaluate("import('/src/lib/tauri-dev-mock-coverage.ts').then(m => m.emitCoverageLog())");
@@ -17,9 +22,7 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const short = page.locator("[data-log-row]").nth(1).locator("[data-log-summary]");
 		await short.waitFor();
 		const [collapsed, control] = await Promise.all([summary.boundingBox(), short.boundingBox()]);
-		const clipsOverflow = await summary.evaluate((element) =>
-			element.scrollWidth > element.clientWidth &&
-			["clip", "hidden"].includes(getComputedStyle(element).overflowX));
+		const clipsOverflow = await summary.evaluate(clipsHorizontalOverflow);
 		const viewport = page.locator("[data-log-viewport]");
 		const viewportOverflows = await viewport.evaluate((element) => element.scrollWidth > element.clientWidth);
 		if (!collapsed || !control || collapsed.height !== control.height) throw new Error("Collapsed log summary spans more than one line");
@@ -37,8 +40,8 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const source = row.locator("[data-log-source]");
 		const message = row.locator("[data-log-headline]");
 		if (await message.textContent() !== "boot payments-api") throw new Error("Missing aggregate log headline");
-		if (!await source.evaluate((element) => element.scrollWidth > element.clientWidth))
-			throw new Error("Long source fixture should be wider than its column");
+		if (!await source.evaluate(clipsHorizontalOverflow))
+			throw new Error("Long log source should overflow and clip inside its column");
 		const summary = row.locator("[data-log-summary]");
 		const [summaryBox, sourceBox, headline] = await Promise.all([
 			summary.boundingBox(), source.boundingBox(), message.evaluate((element) => {

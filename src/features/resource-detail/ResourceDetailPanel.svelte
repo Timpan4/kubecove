@@ -21,6 +21,7 @@
 		formatExactTimestamp,
 	} from "@/components/timestamp-format";
 	import { diagnosticLog } from "@/lib/diagnostics";
+	import { messageFromError } from "@/lib/error-redaction";
 	import {
 		closeStreamChannel,
 		createStreamChannel,
@@ -377,7 +378,7 @@
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
-				realtimeEventsWatchError = event.message;
+				realtimeEventsWatchError = messageFromError(event.message);
 				needsCatchUp = true;
 				return;
 			}
@@ -411,7 +412,7 @@
 			})
 			.catch((cause: unknown) => {
 				if (cancelled) return;
-				realtimeEventsWatchError = cause instanceof Error ? cause.message : String(cause);
+				realtimeEventsWatchError = messageFromError(cause);
 			});
 		return () => {
 			cancelled = true;
@@ -556,7 +557,7 @@
 	{/if}
 	{#if showEventsWarnings && eventsQuery.isRefetchError}
 		<p class="text-muted-foreground text-xs">
-			Events refresh failed: {String(eventsQuery.error?.message ?? eventsQuery.error)}
+			Events refresh failed: {messageFromError(eventsQuery.error)}
 		</p>
 	{/if}
 

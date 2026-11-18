@@ -197,13 +197,30 @@ export function highlightSegments(text: string, term: string): HighlightSegment[
 	if (!needle) return [{ text, match: false }];
 	const haystack = text.toLowerCase();
 	const segments: HighlightSegment[] = [];
-	let cursor = 0;
 	let found = haystack.indexOf(needle);
+	if (found < 0) return [{ text, match: false }];
+
+	// Lowercasing can expand a character. Keep the original span for each
+	// UTF-16 code unit when normalized offsets differ.
+	const spans: { start: number; end: number }[] = [];
+	if (haystack.length !== text.length) {
+		let start = 0;
+		for (const character of text) {
+			const end = start + character.length;
+			const width = character.toLowerCase().length;
+			for (let unit = 0; unit < width; unit++) spans.push({ start, end });
+			start = end;
+		}
+	}
+	let cursor = 0;
 	while (found >= 0) {
-		if (found > cursor) segments.push({ text: text.slice(cursor, found), match: false });
-		segments.push({ text: text.slice(found, found + needle.length), match: true });
-		cursor = found + needle.length;
-		found = haystack.indexOf(needle, cursor);
+		const normalizedEnd = found + needle.length;
+		const start = Math.max(cursor, spans[found]?.start ?? found);
+		const end = spans[normalizedEnd - 1]?.end ?? normalizedEnd;
+		if (start > cursor) segments.push({ text: text.slice(cursor, start), match: false });
+		if (end > start) segments.push({ text: text.slice(start, end), match: true });
+		cursor = end;
+		found = haystack.indexOf(needle, normalizedEnd);
 	}
 	if (cursor < text.length || segments.length === 0) {
 		segments.push({ text: text.slice(cursor), match: false });

@@ -83,12 +83,25 @@ impl LogBuffer {
     /// hidden levels. Unleveled lines stay visible, as in the web.
     pub fn visible(&self, term: &str, hidden: [bool; 4], latest_first: bool, out: &mut Vec<u64>) {
         out.clear();
+        let mut token = String::new();
         let shown = |line: &&ParsedLogLine| {
-            (term.is_empty() || line.search.contains(term))
-                && line
-                    .structure
-                    .level
-                    .is_none_or(|level| !hidden[level.index()])
+            line.structure
+                .level
+                .is_none_or(|level| !hidden[level.index()])
+                && (term.is_empty()
+                    || line.search.contains(term)
+                    || line.structure.fields.iter().any(|field| {
+                        token.clear();
+                        token.push_str(&field.key);
+                        token.push('=');
+                        token.push_str(&field.value);
+                        if token.is_ascii() {
+                            token.make_ascii_lowercase();
+                            token.contains(term)
+                        } else {
+                            token.to_lowercase().contains(term)
+                        }
+                    }))
         };
         if latest_first {
             out.extend(self.lines.iter().rev().filter(shown).map(|line| line.index));
