@@ -24,6 +24,20 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		await save("interrupted", { "result.json": '{"driver":"both","interrupted":true}', "scenarios.txt": "one" }, "2026-01-06");
 		expect(await rerunSelections(noop)).toEqual({ web: new Set(), gpui: new Set() });
 		expect(await lastRerunSource(root)).toBe(modern);
+		const gpuiOnly = await save("gpui-only", {
+			"result.json": JSON.stringify({ selectionHashes: { web: selectionHash(""), gpui: selectionHash("two") } }),
+			"web-scenarios.txt": "",
+			"gpui-scenarios.txt": "two",
+		}, "2026-01-07");
+		expect(await lastRerunSource(root)).toBe(gpuiOnly);
+		expect(await lastRerunSource(root, "web")).toBe(modern);
+		await save("corrupt", {
+			"result.json": JSON.stringify({ selectionHashes: { web: selectionHash("one"), gpui: selectionHash("") } }),
+			"web-scenarios.txt": "on",
+			"gpui-scenarios.txt": "",
+		}, "2026-01-08");
+		await expect(lastRerunSource(root, "web")).rejects.toThrow("do not match result.json");
+		expect(await lastRerunSource(root, "gpui")).toBe(gpuiOnly);
 	} finally {
 		await rm(root, { recursive: true });
 	}
@@ -145,17 +159,32 @@ test("legacy results with unknown driver selection need an explicit driver", asy
 	}
 });
 
-test("a driver error keeps a complete passing driver eligible for replay", async () => {
+test("a driver error replays its original selection even when one scenario failed", async () => {
 	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
 	try {
 		await Promise.all([
 			writeFile(join(run, "result.json"), '{"driver":"both","failedDrivers":["web"]}'),
-			writeFile(join(run, "web-scenarios.txt"), "one"),
+			writeFile(join(run, "web-scenarios.txt"), "one\ntwo"),
 			writeFile(join(run, "gpui-scenarios.txt"), "one"),
-			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"}]}'),
+			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"},{"id":"two","status":"failed"}]}'),
 			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
 		]);
-		expect(await rerunSelections(run)).toEqual({ web: new Set(["one"]), gpui: new Set() });
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["one", "two"]), gpui: new Set() });
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("the shared list detects missing IDs when driver selection hashes are unavailable", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			writeFile(join(run, "result.json"), '{"driver":'),
+			writeFile(join(run, "web-scenarios.txt"), "one"),
+			writeFile(join(run, "gpui-scenarios.txt"), ""),
+			writeFile(join(run, "scenarios.txt"), "one\ntwo"),
+		]);
+		await expect(rerunSelections(run)).rejects.toThrow("do not match scenarios.txt");
 	} finally {
 		await rm(run, { recursive: true });
 	}

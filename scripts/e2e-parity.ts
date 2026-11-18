@@ -106,7 +106,7 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		return value;
 	};
 	const jobs = positive("PARITY_JOBS", Math.max(1, Math.floor(availableParallelism() / 2)));
-	const webJobs = positive("PARITY_WEB_JOBS", jobs);
+	const webJobs = executed.includes("web") ? positive("PARITY_WEB_JOBS", jobs) : jobs;
 	// The GPUI test processes render the same browser-mock responses the web driver reads.
 	// Only they read the fixture, so the web driver and the GPUI build start during the export.
 	const fixture = join(artifacts, "fixture.json");

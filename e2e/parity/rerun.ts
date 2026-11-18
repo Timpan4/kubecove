@@ -20,14 +20,26 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 		try {
 			const result = object(JSON.parse(await readFile(resultPath, "utf8")));
 			if (result.interrupted === true || (isString(result.error) && result.error.includes("Interrupted"))) return undefined;
-			const { web, gpui } = await recordedSelections(path, result, requested);
-			if (!web.size && !gpui.size) return undefined;
-			return { path, time: (await stat(resultPath)).mtimeMs };
+			return { path, result, time: (await stat(resultPath)).mtimeMs };
 		} catch { return undefined; }
 	}));
-	const newest = runs.flatMap((run) => run ? [run] : []).sort((left, right) => right.time - left.time)[0];
-	if (!newest) throw new Error("PARITY_RERUN=last found no finished parity run");
-	return newest.path;
+	const newestFirst = runs.flatMap((run) => run ? [run] : []).sort((left, right) => right.time - left.time);
+	const emptyHash = selectionHash("");
+	for (const { path, result } of newestFirst) {
+		const committed = result.selectionHashes !== undefined;
+		if (committed) {
+			const hashes = object(result.selectionHashes);
+			const hasWork = requested ? hashes[requested] !== emptyHash : hashes.web !== emptyHash || hashes.gpui !== emptyHash;
+			if (!hasWork) continue;
+		}
+		try {
+			const selected = await recordedSelections(path, result, requested);
+			if (requested ? selected[requested].size : selected.web.size || selected.gpui.size) return path;
+		} catch (error) {
+			if (committed) throw error;
+		}
+	}
+	throw new Error("PARITY_RERUN=last found no finished parity run");
 }
 
 async function readRunFile(run: string, name: string): Promise<string | undefined> {
@@ -68,19 +80,30 @@ async function recordedSelections(run: string, metadata: ReturnType<typeof objec
 		if (hashes.web !== selectionHash(web) || hashes.gpui !== selectionHash(gpui)) {
 			throw new Error(`Selection files in ${run} do not match result.json. Restore the recorded driver selections before rerunning.`);
 		}
-	} else if (selected.web.size || selected.gpui.size) {
-		// Earlier results recorded the effective mode but no selection hashes.
+		return selected;
+	}
+	// Earlier results recorded the effective mode and sometimes a shared list.
+	if (selected.web.size || selected.gpui.size) {
 		const executed = (["web", "gpui"] as const).filter((name) => selected[name].size);
 		const recorded = executed.length === 1 ? executed[0] : "both";
 		if ((metadata.driver === "web" || metadata.driver === "gpui" || metadata.driver === "both") && metadata.driver !== recorded) {
 			throw new Error(`Selection files in ${run} do not match the recorded driver. Restore the recorded driver selections before rerunning.`);
 		}
 	}
+	const shared = await readRunFile(run, "scenarios.txt");
+	if (shared !== undefined) {
+		const recorded = scenarioIds(shared);
+		const union = new Set([...selected.web, ...selected.gpui]);
+		if (recorded.size !== union.size || [...recorded].some((id) => !union.has(id))) {
+			throw new Error(`Driver selections in ${run} do not match scenarios.txt. Restore the recorded driver selections before rerunning.`);
+		}
+	}
 	return selected;
 }
 
 async function failedScenarios(run: string, driver: Driver, ids: Set<string>, driverFailed: boolean): Promise<Set<string>> {
-	if (!ids.size) return ids;
+	// Failures outside scenario execution can depend on the original selection.
+	if (!ids.size || driverFailed) return ids;
 
 	const results = new Map<string, boolean>();
 	try {
@@ -96,10 +119,7 @@ async function failedScenarios(run: string, driver: Driver, ids: Set<string>, dr
 		// An unreadable or incomplete report cannot prove that any of its scenarios passed.
 		return ids;
 	}
-	const remaining = new Set([...ids].filter((id) => !results.get(id)));
-	// A driver can report every scenario as passed and then fail during cleanup.
-	if (!remaining.size && driverFailed) return ids;
-	return remaining;
+	return new Set([...ids].filter((id) => !results.get(id)));
 }
 
 /** Reads the recorded selection for each driver, including reports from older runners. */

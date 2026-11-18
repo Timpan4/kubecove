@@ -5,7 +5,7 @@ import type { Contract } from "./contract";
 import { COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
 import { driverSelectionFile } from "./rerun";
 
-type Spawned = { code: number; output: string };
+type Spawned = { code: number; output: string; signaled: boolean };
 
 export function parityRebuildReason(output: string): string | undefined {
 	const dirty = output.match(/target="parity"[^\n]*cargo::compiler::fingerprint:\s+dirty: (.+)/)?.[1];
@@ -26,7 +26,7 @@ async function spawnGroup(command: string[], env: Record<string, string | undefi
 	signal.addEventListener("abort", cancel, { once: true });
 	try {
 		const code = await child.exited;
-		return { code, output: (await output).join("\n") };
+		return { code, output: (await output).join("\n"), signaled: child.signalCode !== null };
 	} finally { signal.removeEventListener("abort", cancel); }
 }
 
@@ -91,11 +91,14 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	const results = new Map<string, unknown>();
 	const problems: string[] = [];
 	for (const [index, run] of runs.entries()) {
-		if (run.code !== 0) problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
 		try {
 			// SAFETY: the parity test binary writes each shard report as { scenarios }. A report without that array throws in the loop below, and the catch records it as missing.
-			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8")) as { scenarios: { id: string }[] };
+			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
 			for (const result of report.scenarios) results.set(result.id, result);
+			// The native harness writes the report, then fails its test if a scenario failed.
+			if (run.signaled || (run.code !== 0 && !report.scenarios.some(({ status }) => status === "failed"))) {
+				problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
+			}
 		} catch { problems.push(`GPUI shard ${index}/${count} wrote no report`); }
 	}
 	const scenarios = contract.scenarios.flatMap((scenario) => results.has(scenario.id) ? [results.get(scenario.id)] : []);
