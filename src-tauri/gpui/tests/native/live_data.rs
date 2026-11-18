@@ -60,6 +60,7 @@ fn ended_streams_restart_on_the_web_recovery_tick(cx: &mut TestAppContext) {
 pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
     events_empty: AtomicBool,
+    events_open_fails: AtomicBool,
     events_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     events_reads: std::sync::atomic::AtomicUsize,
     /// Whether opening a watch fails.
@@ -559,7 +560,10 @@ impl LiveControls {
         })
     }
     pub fn open(&self, target: WatchTarget) -> Read<LogStream> {
-        if self.open_fails.load(Ordering::SeqCst) {
+        if self.open_fails.load(Ordering::SeqCst)
+            || (matches!(target, WatchTarget::Events(_))
+                && self.events_open_fails.load(Ordering::SeqCst))
+        {
             return Box::pin(async { Err(AppError::new("watch refused", AppErrorKind::Network)) });
         }
         let (sender, messages) = mpsc::unbounded_channel();

@@ -40,6 +40,18 @@ impl Inspector {
                         });
                         timer.as_mut().await;
                         timer = Box::pin(cx.background_executor().timer(RECOVERY));
+                        let Ok(Some(number)) = this.update(cx, |this, _| {
+                            this.events_state().map(|events| events.begin_read())
+                        }) else {
+                            return;
+                        };
+                        let result = backend.events(resource.clone(), uid.clone()).await;
+                        if this
+                            .update(cx, |this, cx| this.apply_events_read(number, result, cx))
+                            .is_err()
+                        {
+                            return;
+                        }
                         continue;
                     }
                 };
@@ -118,15 +130,8 @@ impl Inspector {
                     if refresh {
                         let started = std::time::Instant::now();
                         let result = backend.events(resource.clone(), uid.clone()).await;
-                        let updated = this.update(cx, |this, cx| {
-                            if let Detail::Ready(detail) = &mut this.detail {
-                                match result {
-                                    Ok(rows) => detail.events.set_ready(number, rows),
-                                    Err(error) => detail.events.set_failed(number, error.message),
-                                }
-                            }
-                            cx.notify();
-                        });
+                        let updated =
+                            this.update(cx, |this, cx| this.apply_events_read(number, result, cx));
                         if updated.is_err() {
                             return;
                         }

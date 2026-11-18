@@ -38,6 +38,8 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		if (await summary.evaluate((element) =>
 			element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth))
 			throw new Error("Expanded log summary still clips its text");
+		if (await viewport.evaluate((element) => element.scrollWidth > element.clientWidth))
+			throw new Error("Expanded log message creates horizontal scrolling");
 	} else if (check === "log-compact-source") {
 		const row = page.locator("[data-log-row]").first();
 		const source = row.locator("[data-log-source]");
@@ -75,6 +77,12 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
 		await highlight.waitFor();
+		const longField = row.getByText(/destination=.*ENDOFFIELD/);
+		if (await longField.evaluate((element) =>
+			element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight))
+			throw new Error("Expanded log field does not fit its chip");
+		if (await page.locator("[data-log-viewport]").evaluate((element) => element.scrollWidth > element.clientWidth))
+			throw new Error("Expanded log fields create horizontal scrolling");
 	} else if (check === "log-scroll-back") {
 		const viewport = page.locator("[data-log-viewport]");
 		await page.waitForFunction((element) => {

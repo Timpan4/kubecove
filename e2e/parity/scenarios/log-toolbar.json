@@ -11,10 +11,7 @@
 				{ "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
 				{ "action": "showTab", "tab": "Logs" },
 				{ "action": "expectLogToolbarFit", "state": "Live" },
-				{ "action": "showTab", "tab": "Events" },
 				{ "action": "replayLiveData", "script": "events-failed" },
-				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
-				{ "action": "showTab", "tab": "Logs" },
 				{ "action": "expectLogToolbarFit", "state": "Live" },
 				{ "action": "coverageCheck", "check": "emit-log" },
 				{ "action": "filterLogs", "value": "Newest controlled line" },
@@ -53,7 +50,7 @@
 				{ "action": "advanceClock", "ms": 15000 },
 				{ "action": "coverageText", "visible": false, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" },
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
-				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+				{ "action": "coverageText", "visible": true, "text": "No events" }
 			]
 		},
 		{

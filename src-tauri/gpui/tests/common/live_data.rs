@@ -75,6 +75,7 @@ fn scripted_target(row: &ResourceSummary) -> bool {
 enum EventSet {
     Live,
     Overflow,
+    Empty,
 }
 impl Fixture {
     /// Fixture construction precedes timed notification delivery. NativeBackend
@@ -373,6 +374,9 @@ impl Fixture {
             }
             "events-list-failed" | "events-list-recovered" => {
                 state.events_list_failed = script == "events-list-failed";
+                if !state.events_list_failed {
+                    state.events = Some(EventSet::Empty);
+                }
             }
             _ => {}
         }
@@ -642,6 +646,7 @@ impl Fixture {
         match state.events {
             Some(EventSet::Live) => Some(Ok(self.live_events.clone())),
             Some(EventSet::Overflow) => Some(Ok(self.overflow_events.clone())),
+            Some(EventSet::Empty) => Some(Ok(Vec::new())),
             None => None,
         }
     }

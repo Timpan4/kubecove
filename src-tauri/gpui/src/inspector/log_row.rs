@@ -200,14 +200,19 @@ fn field_chips(fields: &[LogField], term: &str) -> Div {
     div()
         .flex()
         .flex_wrap()
+        .w_full()
+        .min_w_0()
         .gap(px(3.))
         .font_family(MONO)
         .text_color(Tokens::foreground().opacity(0.85))
-        .children(fields.iter().map(|item| {
+        .children(fields.iter().enumerate().map(|(index, item)| {
             let mut text = InlineText::default();
             text.field(item, term, HighlightStyle::default(), false);
             div()
-                .whitespace_nowrap()
+                .id(("log-field", index))
+                .test_support()
+                .max_w_full()
+                .min_w_0()
                 .px(px(6.))
                 .rounded(px(4.))
                 .border_1()
@@ -306,6 +311,8 @@ fn one_line_row(
             .flex()
             .flex_col()
             .items_start()
+            .w_full()
+            .min_w_0()
             .gap(px(4.))
             .pt(px(2.))
             .pb(px(4.))

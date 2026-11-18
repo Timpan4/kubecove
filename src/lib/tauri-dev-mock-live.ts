@@ -130,6 +130,7 @@ export function replayLiveData(script: LiveScript): void {
     }
     if (script === "events-list-failed" || script === "events-list-recovered") {
         eventsListFailed = script === "events-list-failed";
+        if (!eventsListFailed) events = [];
         return;
     }
     const eventsChanged = script === "events" || script === "events-overflow";

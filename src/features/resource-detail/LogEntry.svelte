@@ -138,10 +138,10 @@
 
 {#snippet fieldChips()}
 	{#if structure.fields.length > 0}
-		<div class="flex flex-wrap gap-[3px]">
+		<div class="flex w-full min-w-0 flex-wrap gap-[3px]">
 			{#each structure.fields as field, index (index)}
 				<span
-					class="whitespace-nowrap rounded border bg-muted/40 px-1.5 font-mono text-[10.5px] leading-[15px] text-foreground/85"
+					class="max-w-full min-w-0 rounded border bg-muted/40 px-1.5 font-mono text-[10.5px] leading-[15px] whitespace-normal [overflow-wrap:anywhere] text-foreground/85"
 				>
 					{@render highlighted(`${field.key}=${field.value}`)}
 				</span>

@@ -28,9 +28,9 @@ export function coverageLogs(request: Partial<PodLogStreamRequest>, streamId: st
 	if (script === "logs-failed") messages.push({ type: "error", streamId, message: "Controlled log stream failure" });
 	if (script === "logs-options") messages.push({ type: "logLine", streamId, line: `2026-06-29T10:00:00Z Selected ${request.container} tail ${request.tailLines} since ${request.sinceSeconds ?? "any"}` });
 	if (script === "logs-long") messages.push(
-		{ type: "logLine", streamId, line: `2026-06-29T10:00:00Z ${"Long wrapped evidence ".repeat(40)}` },
+		{ type: "logLine", streamId, line: `2026-06-29T10:00:00Z ${"LongWrappedEvidence".repeat(40)}ENDOFHEADLINE` },
 		{ type: "logLine", streamId, line: "2026-06-29T10:00:01Z Short line" },
-		{ type: "logLine", streamId, line: '2026-06-29T10:00:02Z {"msg":"JSON row","status":"ready"}' },
+		{ type: "logLine", streamId, line: `2026-06-29T10:00:02Z {"msg":"JSON row","status":"ready","destination":"${"payments-reconciliation".repeat(12)}ENDOFFIELD"}` },
 		{ type: "logLine", streamId, line: '2026-06-29T10:00:03Z logfmt row state="cache warm"' },
 	);
 	if (script === "logs-stream") for (let index = 0; index < (request.tailLines ?? 200); index++) messages.push({ type: "logLine", streamId, line: `2026-06-29T10:00:00Z Earlier controlled line ${index + 1}` });

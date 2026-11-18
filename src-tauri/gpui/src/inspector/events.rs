@@ -14,7 +14,7 @@ use gpui_kit::{
     AppContext, Context, Div, Entity, FontWeight, Hsla, SharedString, Subscription, Task, Window,
     div, prelude::*, px,
 };
-use kubecove_lib::models::ResourceEventSummary;
+use kubecove_lib::models::{AppError, ResourceEventSummary};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -151,15 +151,7 @@ impl Inspector {
         // The detail owns this read, so it only settles into the detail that started it.
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Detail::Ready(detail) = &mut this.detail {
-                    match result {
-                        Ok(events) => detail.events.set_ready(number, events),
-                        Err(error) => detail.events.set_failed(number, error.message),
-                    }
-                }
-                cx.notify();
-            });
+            let _ = this.update(cx, |this, cx| this.apply_events_read(number, result, cx));
         }));
         self.watch_events(window, cx);
     }
@@ -169,6 +161,22 @@ impl Inspector {
             Detail::Ready(detail) => Some(&mut detail.events),
             _ => None,
         }
+    }
+
+    pub(super) fn apply_events_read(
+        &mut self,
+        number: u64,
+        result: Result<Vec<ResourceEventSummary>, AppError>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(events) = self.events_state() else {
+            return;
+        };
+        match result {
+            Ok(rows) => events.set_ready(number, rows),
+            Err(error) => events.set_failed(number, error.message),
+        }
+        cx.notify();
     }
 }
 

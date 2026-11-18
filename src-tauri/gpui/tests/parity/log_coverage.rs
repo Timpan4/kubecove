@@ -60,6 +60,11 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             window.render_frame(cx);
             assert!(window.find(("log-details", 0usize)).visible());
             assert!(window.find(("log-copy", 0usize)).visible());
+            let details = window.within(("log-details", 0usize));
+            let short = details.find(("log-field", 0usize)).bounds();
+            let long = details.find(("log-field", 1usize)).bounds();
+            assert!(long.right() <= window.find("log-viewport").bounds().right());
+            assert!(long.size.height > short.size.height);
         }
         "log-scroll-back" => {
             let bounds = window.find("log-viewport").bounds();

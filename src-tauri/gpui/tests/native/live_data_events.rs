@@ -160,15 +160,16 @@ fn connected_catches_up_when_no_events_are_replayed(cx: &mut TestAppContext) {
 
     let sender = event_sender(&backend);
     sender
-        .send(StreamMessage::Error {
+        .send(StreamMessage::Status {
             stream_id: "native".into(),
-            message: "Watch disconnected".into(),
+            status: StreamStatus::Reconnecting,
+            message: "Watch reconnecting".into(),
         })
         .unwrap();
     cx.run_until_parked();
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
-        assert!(window.try_find("events-watch-warning").is_some());
+        assert!(window.try_find("events-watch-warning").is_none());
         assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
     })
     .unwrap();
@@ -184,7 +185,30 @@ fn connected_catches_up_when_no_events_are_replayed(cx: &mut TestAppContext) {
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(window.try_find("event:0").is_none());
-        assert!(window.try_find("events-watch-warning").is_none());
+        assert!(window.find("empty:No events").visible());
+    })
+    .unwrap();
+    assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 2);
+}
+
+#[gpui_kit::test]
+fn a_refused_watch_start_still_refreshes_events(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.live.events_open_fails.store(true, Ordering::SeqCst);
+    let handle = open_events(cx, backend.clone());
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
+        assert!(window.find("events-watch-warning").visible());
+    })
+    .unwrap();
+
+    backend.live.events_empty.store(true, Ordering::SeqCst);
+    advance(cx, 15_000);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("empty:No events").visible());
+        assert!(window.find("events-watch-warning").visible());
     })
     .unwrap();
     assert_eq!(backend.live.events_reads.load(Ordering::SeqCst), 2);
