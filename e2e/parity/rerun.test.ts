@@ -14,6 +14,7 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		return run;
 	};
 	try {
+		await expect(lastRerunSource(join(root, "missing"))).rejects.toThrow("found no finished parity run");
 		const both = '{"driver":"both"}';
 		const legacy = await save("legacy", { "result.json": both, "scenarios.txt": "one" }, "2026-01-01");
 		expect(await lastRerunSource(root)).toBe(legacy);
@@ -38,6 +39,14 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		}, "2026-01-08");
 		await expect(lastRerunSource(root, "web")).rejects.toThrow("do not match result.json");
 		expect(await lastRerunSource(root, "gpui")).toBe(gpuiOnly);
+		const finished = await save("finished", {
+			"result.json": '{"driver":"both","interrupted":false,"error":"Interrupted system call"}',
+			"scenarios.txt": "one",
+		}, "2026-01-09");
+		expect(await lastRerunSource(root)).toBe(finished);
+		const unknown = await save("unknown-driver", { "result.json": "{}", "scenarios.txt": "one" }, "2026-01-10");
+		await expect(lastRerunSource(root)).rejects.toThrow("set PARITY_DRIVER");
+		expect(await lastRerunSource(root, "web")).toBe(unknown);
 	} finally {
 		await rm(root, { recursive: true });
 	}
@@ -124,6 +133,11 @@ test("a versioned artifact requires driver selections even if only the shared li
 			writeFile(join(run, "scenarios.txt"), "web-only\ngpui-only"),
 			writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", selectionFormat: DRIVER_SELECTION_FORMAT })),
 		]);
+		await expect(rerunSelections(run)).rejects.toThrow("Missing web and GPUI selections");
+		await writeFile(join(run, "result.json"), JSON.stringify({
+			driver: "both",
+			selectionHashes: { web: selectionHash("web-only"), gpui: selectionHash("gpui-only") },
+		}));
 		await expect(rerunSelections(run)).rejects.toThrow("Missing web and GPUI selections");
 	} finally {
 		await rm(run, { recursive: true });

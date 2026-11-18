@@ -62,7 +62,6 @@ const coverage = process.env.PARITY_COVERAGE === "1";
 if (coverage && driver) throw new Error("PARITY_COVERAGE requires both drivers");
 const artifacts = resolve("e2e/artifacts", `parity-${crypto.randomUUID()}`);
 await mkdir(artifacts, { recursive: true });
-if (driver !== "gpui") await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: [] }));
 await writeFile(join(artifacts, "vite.log"), "Web driver did not start.\n");
 await writeFile(join(artifacts, "gpui.log"), "Native driver did not start.\n");
 // Seconds from the start of the run to the end of each phase, recorded in result.json.
@@ -128,10 +127,11 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 	}
 	await Promise.all(runs);
 	controller.signal.throwIfAborted();
-	const reports = await Promise.all(executed.map(async (name) => JSON.parse(await readFile(join(artifacts, `${name}.json`), "utf8"))));
-	for (const [index, name] of executed.entries()) {
-		try { validateDriverReport(selection[name], name, reports[index]); }
-		catch (error) { fail(String(error)); }
+	for (const name of executed) {
+		try {
+			const report = JSON.parse(await readFile(join(artifacts, `${name}.json`), "utf8"));
+			validateDriverReport(selection[name], name, report);
+		} catch (error) { fail(`${name} report: ${String(error)}`); }
 	}
 	if (coverage) {
 		// Scenarios that failed stay out of the map, so selection always runs them.
@@ -161,6 +161,7 @@ try {
 	if (!executed.length && !rerun && !process.env.PARITY_CHANGED) throw new Error("No parity scenarios selected");
 	if (executed.length === 1) resultDriver = executed[0];
 	await writeSelections(selection);
+	if (executed.includes("web")) await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: [] }));
 	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios from ${rerun}`);
 	if (executed.length) {
 		// Frame measurements wait for this run, and this run waits for one in progress.

@@ -7,19 +7,29 @@ import type { Driver } from "./merge-reports";
 export const DRIVER_SELECTION_FORMAT = "driver-files-v1";
 export const driverSelectionFile = { web: "web-scenarios.txt", gpui: "gpui-scenarios.txt" };
 
+class MissingLegacyDriver extends Error {}
+
+function isMissingFile<Value>(error: Value): boolean {
+	return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 export function selectionHash(contents: string): string {
 	return createHash("sha256").update(contents).digest("hex");
 }
 
 /** Finds the newest finished, non-interrupted run that recorded work. */
 export async function lastRerunSource(root: string, requested?: Driver): Promise<string> {
-	const names = await readdir(root);
+	const names = await readdir(root).catch((error) => {
+		if (isMissingFile(error)) return [];
+		throw error;
+	});
 	const runs = await Promise.all(names.filter((name) => name.startsWith("parity-")).map(async (name) => {
 		const path = join(root, name);
 		const resultPath = join(path, "result.json");
 		try {
 			const result = object(JSON.parse(await readFile(resultPath, "utf8")));
-			if (result.interrupted === true || (isString(result.error) && result.error.includes("Interrupted"))) return undefined;
+			if (result.interrupted === true) return undefined;
+			if (result.interrupted === undefined && isString(result.error) && result.error.includes("Interrupted")) return undefined;
 			return { path, result, time: (await stat(resultPath)).mtimeMs };
 		} catch { return undefined; }
 	}));
@@ -36,7 +46,7 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 			const selected = await recordedSelections(path, result, requested);
 			if (requested ? selected[requested].size : selected.web.size || selected.gpui.size) return path;
 		} catch (error) {
-			if (committed) throw error;
+			if (committed || error instanceof MissingLegacyDriver) throw error;
 		}
 	}
 	throw new Error("PARITY_RERUN=last found no finished parity run");
@@ -46,7 +56,7 @@ async function readRunFile(run: string, name: string): Promise<string | undefine
 	try {
 		return await readFile(join(run, name), "utf8");
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+		if (isMissingFile(error)) return undefined;
 		throw error;
 	}
 }
@@ -60,14 +70,15 @@ async function recordedSelections(run: string, metadata: ReturnType<typeof objec
 		readRunFile(run, driverSelectionFile.web),
 		readRunFile(run, driverSelectionFile.gpui),
 	]);
-	if (web === undefined && gpui === undefined && metadata.selectionFormat !== DRIVER_SELECTION_FORMAT) {
+	if (web === undefined && gpui === undefined && metadata.selectionHashes === undefined && metadata.selectionFormat !== DRIVER_SELECTION_FORMAT) {
 		const ids = scenarioIds(await readFile(join(run, "scenarios.txt"), "utf8"));
+		if (!ids.size) return { web: ids, gpui: ids };
 		const previous = metadata.driver;
 		if (previous === "both") return { web: ids, gpui: ids };
 		const selected = previous === "web" || previous === "gpui" ? previous : requested;
 		if (selected === "web") return { web: ids, gpui: new Set() };
 		if (selected === "gpui") return { web: new Set(), gpui: ids };
-		throw new Error(`Legacy driver metadata is missing or invalid in ${run}. Restore result.json or set PARITY_DRIVER.`);
+		throw new MissingLegacyDriver(`Legacy driver metadata is missing or invalid in ${run}. Restore result.json or set PARITY_DRIVER.`);
 	}
 	if (web === undefined || gpui === undefined) {
 		const missing = [web === undefined ? "web" : "", gpui === undefined ? "GPUI" : ""].filter(Boolean);

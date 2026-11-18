@@ -7,6 +7,9 @@ import { driverSelectionFile } from "./rerun";
 
 type Spawned = { code: number; output: string; signaled: boolean };
 
+// Rust libtest's ERROR_EXIT_CODE for a failed test.
+const LIBTEST_FAILURE = 101;
+
 export function parityRebuildReason(output: string): string | undefined {
 	const dirty = output.match(/target="parity"[^\n]*cargo::compiler::fingerprint:\s+dirty: (.+)/)?.[1];
 	if (dirty) return dirty.trim();
@@ -91,15 +94,18 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	const results = new Map<string, unknown>();
 	const problems: string[] = [];
 	for (const [index, run] of runs.entries()) {
+		let reportedFailure = false;
 		try {
 			// SAFETY: the parity test binary writes each shard report as { scenarios }. A report without that array throws in the loop below, and the catch records it as missing.
 			const report = JSON.parse(await readFile(join(artifacts, `gpui-${index}.json`), "utf8")) as { scenarios: { id: string; status: string }[] };
 			for (const result of report.scenarios) results.set(result.id, result);
-			// The native harness writes the report, then fails its test if a scenario failed.
-			if (run.signaled || (run.code !== 0 && !report.scenarios.some(({ status }) => status === "failed"))) {
-				problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
-			}
+			reportedFailure = report.scenarios.some(({ status }) => status === "failed");
 		} catch { problems.push(`GPUI shard ${index}/${count} wrote no report`); }
+		// The native harness writes the report, then fails its test if a scenario failed.
+		const scenarioExit = run.code === LIBTEST_FAILURE && reportedFailure;
+		if (run.signaled || (run.code !== 0 && !scenarioExit)) {
+			problems.push(`GPUI shard ${index}/${count} exited ${run.code}`);
+		}
 	}
 	const scenarios = contract.scenarios.flatMap((scenario) => results.has(scenario.id) ? [results.get(scenario.id)] : []);
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));
