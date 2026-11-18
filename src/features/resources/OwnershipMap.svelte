@@ -311,9 +311,9 @@
 					<Controls position="top-left" orientation="horizontal" showLock={false} />
 				</SvelteFlow>
 			{/if}
+			<div class="absolute inset-x-0 bottom-0" bind:this={afterGraphElement} tabindex="-1"></div>
 			{#if error}{@render mapRefreshError()}{/if}
 		</div>
-		<div bind:this={afterGraphElement} tabindex="-1"></div>
 		{#if topology.warnings.length > 0}
 			<div class="flex flex-col gap-1 border-t px-3 py-2 text-[0.6875rem] text-muted-foreground">
 				<div class="font-semibold text-foreground">Topology warnings</div>
