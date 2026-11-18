@@ -195,10 +195,10 @@ try {
 	if (!executed.length && !rerun && !process.env.PARITY_CHANGED) throw new Error("No parity scenarios selected");
 	if (executed.length === 1) resultDriver = executed[0];
 	await writeSelections(selection);
+	if (coverage && executed.length) coverageMapFailure = "generation";
 	if (executed.includes("web")) await writeFile(join(artifacts, "web.json"), JSON.stringify({ driver: "web", scenarios: [] }));
 	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios from ${rerun}`);
 	if (executed.length) {
-		if (coverage) coverageMapFailure = "generation";
 		// Frame measurements wait for this run, and this run waits for one in progress.
 		const isolation = await holdFrameIsolation("shared", controller.signal);
 		try {

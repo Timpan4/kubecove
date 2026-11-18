@@ -9,6 +9,7 @@ type RunOutcome = {
 	coverageMapFailure?: CoverageMapFailure;
 	coveragePublicationRequested?: boolean;
 	runLevelFailed?: boolean;
+	interrupted?: boolean;
 	error?: string;
 };
 
@@ -90,6 +91,12 @@ test("last picks the newest finished run with a complete nonempty selection", as
 		}, "2026-01-14");
 		await expect(lastRerunSource(root)).rejects.toThrow("Unsupported parity selection format");
 		await expect(rerunSelections(unsupported)).rejects.toThrow("Unsupported parity selection format");
+		const lost = await save("lost-recorded-selection", {
+			"result.json": JSON.stringify({ selectionRecorded: true, selectionFormat: DRIVER_SELECTION_FORMAT, status: "failed" }),
+		}, "2026-01-15");
+		const missing = `Missing web and GPUI selections in ${lost}`;
+		await expect(lastRerunSource(root)).rejects.toThrow(missing);
+		await expect(rerunSelections(lost)).rejects.toThrow(missing);
 	} finally {
 		await rm(root, { recursive: true });
 	}
@@ -440,6 +447,22 @@ test("a run-level failure replays both selections even when a scenario also fail
 			error: "Error: Invalid web result: two",
 		})["result.json"]);
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["two"]), gpui: new Set() });
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("an explicit retry of an interrupted run repeats the recorded selection", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			...Object.entries(driverFiles("one\ntwo", "one", {
+				status: "failed", failedDrivers: [], interrupted: true, runLevelFailed: false,
+			})).map(([file, contents]) => writeFile(join(run, file), contents)),
+			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"one","status":"passed"},{"id":"two","status":"failed"}]}'),
+			writeFile(join(run, "gpui.json"), '{"driver":"gpui","scenarios":[{"id":"one","status":"passed"}]}'),
+		]);
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["one", "two"]), gpui: new Set(["one"]) });
 	} finally {
 		await rm(run, { recursive: true });
 	}

@@ -16,6 +16,11 @@ function isMissingFile<Value>(error: Value): boolean {
 	return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
+function wasInterrupted(metadata: ReturnType<typeof object>): boolean {
+	return metadata.interrupted === true ||
+		(metadata.interrupted === undefined && isString(metadata.error) && metadata.error.includes("Interrupted"));
+}
+
 export function selectionHash(contents: string): string {
 	return createHash("sha256").update(contents).digest("hex");
 }
@@ -54,8 +59,7 @@ export async function lastRerunSource(root: string, requested?: Driver): Promise
 		try {
 			const result = object(JSON.parse(await readFile(resultPath, "utf8")));
 			if (result.selectionRecorded === false) return undefined;
-			if (result.interrupted === true) return undefined;
-			if (result.interrupted === undefined && isString(result.error) && result.error.includes("Interrupted")) return undefined;
+			if (wasInterrupted(result)) return undefined;
 			return { path, result, time };
 		} catch { return { path, result: undefined, time }; }
 	}));
@@ -107,7 +111,7 @@ async function recordedSelections(
 		readRunFile(run, driverSelectionFile.web),
 		readRunFile(run, driverSelectionFile.gpui),
 	]);
-	const modern = metadata.selectionFormat !== undefined || hashes || web !== undefined || gpui !== undefined;
+	const modern = metadata.selectionRecorded === true || metadata.selectionFormat !== undefined || hashes || web !== undefined || gpui !== undefined;
 	if (!modern) {
 		const previous = metadata.driver;
 		if (requested && (previous === "web" || previous === "gpui") && previous !== requested) {
@@ -122,7 +126,8 @@ async function recordedSelections(
 		if (previous === "gpui") return { web: new Set(), gpui: ids };
 		throw new Error(`Legacy driver metadata is missing or invalid in ${run}. Restore result.json before rerunning.`);
 	}
-	if (skipUnrecorded && !hashes && !web && !gpui && !(await readRunFile(run, "scenarios.txt"))) {
+	if (skipUnrecorded && metadata.selectionRecorded !== true && !hashes && !web && !gpui &&
+		!(await readRunFile(run, "scenarios.txt"))) {
 		return { web: new Set(), gpui: new Set() };
 	}
 	if (web === undefined || gpui === undefined) {
@@ -217,7 +222,7 @@ export async function rerunSelections(run: string, { coverage = false } = {}): P
 			return { ...recorded, coveragePublication: copyFailed ? "retry" : "unknown" };
 		}
 	}
-	if (metadata.runLevelFailed === true) return recorded;
+	if (metadata.runLevelFailed === true || wasInterrupted(metadata)) return recorded;
 	// A scenario report cannot establish that driver cleanup succeeded.
 	if (metadata.status !== "passed" && metadata.status !== "failed") return recorded;
 	const failedDrivers = metadata.failedDrivers;
