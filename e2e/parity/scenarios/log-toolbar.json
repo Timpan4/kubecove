@@ -73,6 +73,43 @@
 			]
 		},
 		{
+			"id": "logs.events.replaces-stopped-watch",
+			"title": "A stopped Events watch refreshes and resumes live changes",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "expectEventCount", "count": 2 },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "replayLiveData", "script": "events-watch-stopped" },
+				{ "action": "replayLiveData", "script": "events-list-recovered" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": true, "text": "No events" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+			]
+		},
+		{
+			"id": "logs.events.polls-during-reconnect",
+			"title": "Events changes missed during reconnect arrive through the fallback list",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "expectEventCount", "count": 2 },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "replayLiveData", "script": "reconnecting" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "coverageText", "visible": false, "text": "Newest scripted event" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
+			]
+		},
+		{
 			"id": "logs.events.retry-watch-start",
 			"title": "A transient watch-start error recovers live Events without reopening the inspector",
 			"steps": [

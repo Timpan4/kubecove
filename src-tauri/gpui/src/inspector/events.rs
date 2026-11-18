@@ -5,6 +5,7 @@
 use super::Inspector;
 use super::detail::Detail;
 use super::friendly_error::redact_detail;
+use super::live_data::COALESCE;
 use super::windowed::{Windowed, row_id};
 use crate::incident::{self, EventFilter, SignalTone};
 use crate::theme::{Tokens, oklch};
@@ -17,6 +18,8 @@ use gpui_kit::{
 use kubecove_lib::models::{AppError, ResourceEventSummary};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::mpsc;
 
 pub(super) enum EventsLoad {
     Pending,
@@ -38,15 +41,9 @@ pub(super) struct EventsState {
     /// The Events tab's rows.
     pub rows: Windowed,
     task: Option<Task<()>>,
-    fallback: Option<Task<()>>,
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
     pub refresh_error: Option<String>,
-    /// The first read and the watch's reads overlap. A newer failure can
-    /// accompany the last successful snapshot, even if that snapshot arrives later.
-    started_reads: u64,
-    settled_read: u64,
-    snapshot_read: u64,
     _search_changed: Subscription,
 }
 
@@ -69,21 +66,11 @@ impl EventsState {
             overrides: HashMap::new(),
             rows: Windowed::default(),
             task: None,
-            fallback: None,
             watch: None,
             watch_error: None,
             refresh_error: None,
-            started_reads: 0,
-            settled_read: 0,
-            snapshot_read: 0,
             _search_changed,
         }
-    }
-
-    /// Numbers a read as it starts.
-    pub fn begin_read(&mut self) -> u64 {
-        self.started_reads += 1;
-        self.started_reads
     }
 
     pub fn events(&self) -> &[ResourceEventSummary] {
@@ -93,12 +80,7 @@ impl EventsState {
         }
     }
 
-    /// Stores the newest successful read and the timeline's layout source.
-    pub fn set_ready(&mut self, read: u64, mut events: Vec<ResourceEventSummary>) {
-        if read <= self.snapshot_read {
-            return;
-        }
-        self.snapshot_read = read;
+    fn set_ready(&mut self, mut events: Vec<ResourceEventSummary>) {
         incident::sort_events(&mut events);
         let source: Arc<[u8]> = serde_json::to_vec(&events)
             .expect("event models serialize")
@@ -108,20 +90,11 @@ impl EventsState {
         }
         self.layout_key = row_id(&source);
         self.layout_source = source;
-        let previous = std::mem::replace(&mut self.load, EventsLoad::Ready(events));
-        if read > self.settled_read {
-            self.settled_read = read;
-            self.refresh_error = None;
-        } else if let EventsLoad::Failed(error) = previous {
-            self.refresh_error = Some(error);
-        }
+        self.load = EventsLoad::Ready(events);
+        self.refresh_error = None;
     }
 
-    pub fn set_failed(&mut self, read: u64, error: String) {
-        if read <= self.settled_read {
-            return;
-        }
-        self.settled_read = read;
+    fn set_failed(&mut self, error: String) {
         let error = redact_detail(&error);
         if matches!(self.load, EventsLoad::Ready(_)) {
             self.refresh_error = Some(error);
@@ -145,20 +118,41 @@ impl Inspector {
             return;
         };
         let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
-        let read = self.backend.events(detail.data.summary.clone(), uid);
-        let read = self.timings.measure("events", read);
-        let number = detail.events.begin_read();
+        let resource = detail.data.summary.clone();
+        let backend = self.backend.clone();
+        let read = self
+            .timings
+            .measure("events", backend.events(resource.clone(), uid.clone()));
         detail.events.load = EventsLoad::Pending;
         detail.events.refresh_error = None;
         detail.events.layout_key = 0;
         detail.events.layout_source = Arc::default();
         detail.events.rows = Windowed::default();
-        // The detail owns this read, so it only settles into the detail that started it.
+        // A single slot keeps one trailing refresh while the detail reads or cools down.
+        let (refresh, mut requested) = mpsc::channel(1);
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
-            let _ = this.update(cx, |this, cx| this.apply_events_read(number, result, cx));
+            if this
+                .update(cx, |this, cx| this.apply_events_read(result, cx))
+                .is_err()
+            {
+                return;
+            }
+            while requested.recv().await.is_some() {
+                let started = Instant::now();
+                let result = backend.events(resource.clone(), uid.clone()).await;
+                if this
+                    .update(cx, |this, cx| this.apply_events_read(result, cx))
+                    .is_err()
+                {
+                    return;
+                }
+                cx.background_executor()
+                    .timer(COALESCE.saturating_sub(started.elapsed()))
+                    .await;
+            }
         }));
-        self.watch_events(window, cx);
+        self.watch_events(refresh, window, cx);
     }
 
     pub(super) fn events_state(&mut self) -> Option<&mut EventsState> {
@@ -168,30 +162,8 @@ impl Inspector {
         }
     }
 
-    pub(super) fn start_events_fallback(&mut self, cx: &mut Context<Self>) {
-        let Detail::Ready(detail) = &mut self.detail else {
-            return;
-        };
-        if detail.events.fallback.is_some() {
-            return;
-        }
-        let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
-        let read = self.backend.events(detail.data.summary.clone(), uid);
-        let number = detail.events.begin_read();
-        detail.events.fallback = Some(cx.spawn(async move |this, cx| {
-            let result = read.await;
-            let _ = this.update(cx, |this, cx| {
-                if let Some(events) = this.events_state() {
-                    events.fallback = None;
-                }
-                this.apply_events_read(number, result, cx);
-            });
-        }));
-    }
-
-    pub(super) fn apply_events_read(
+    fn apply_events_read(
         &mut self,
-        number: u64,
         result: Result<Vec<ResourceEventSummary>, AppError>,
         cx: &mut Context<Self>,
     ) {
@@ -199,8 +171,8 @@ impl Inspector {
             return;
         };
         match result {
-            Ok(rows) => events.set_ready(number, rows),
-            Err(error) => events.set_failed(number, error.message),
+            Ok(rows) => events.set_ready(rows),
+            Err(error) => events.set_failed(error.message),
         }
         cx.notify();
     }

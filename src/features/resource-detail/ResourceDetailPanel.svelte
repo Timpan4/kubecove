@@ -13,6 +13,7 @@
 
 <script lang="ts">
 	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import { untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/svelte";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
@@ -202,7 +203,6 @@
 			});
 	}
 	const detailsQueryKey = $derived(readSpec.detailsQueryKey);
-	const eventsQueryKey = $derived(readSpec.eventsQueryKey);
 
 	$effect(() => {
 		const key = resourceKey;
@@ -376,9 +376,11 @@
 		let cancelled = false;
 		let retireAttempt: (() => void) | undefined;
 		let retryTimer: ReturnType<typeof setTimeout> | undefined;
-		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
-		const target = readSpec.eventWatch;
 		const source = kubeconfigSourceKey;
+		const scope = resourceKey;
+		const { eventsQueryKey, eventWatch: target } = untrack(() => readSpec);
+		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
+		diagnosticLog("detail.events.watch", { key: scope });
 		eventsWatchPhase = "opening";
 		realtimeEventsWatchError = null;
 		function receive(event: StreamMessage) {
@@ -390,11 +392,16 @@
 			if (event.type === "status") {
 				if (event.status === "connected") {
 					realtimeEventsWatchError = null;
-					const needsCatchUp = eventsWatchPhase === "recovering" ||
-						(eventsWatchPhase === "opening" && (eventsQuery.isFetched || eventsQuery.isFetching));
+					const needsCatchUp = eventsWatchPhase !== "connected";
 					eventsWatchPhase = "connected";
 					if (needsCatchUp) refresh.notify();
 				} else eventsWatchPhase = "recovering";
+				return;
+			}
+			if (event.type === "stopped") {
+				retireAttempt?.();
+				eventsWatchPhase = "recovering";
+				retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);
 				return;
 			}
 			if (event.type === "resourceEventsChanged") refresh.notify();
@@ -410,17 +417,17 @@
 				if (closed) return;
 				closed = true;
 				closeStreamChannel(channel);
-				if (streamId) void stopStream(client, streamId);
+				if (streamId) void stopStream(client, streamId).catch(() => {});
 			};
 			retireAttempt = close;
 			void startResourceEventWatch(client, target.cluster, target.kind, target.name, target.namespace, channel, source)
 				.then((id) => {
-					if (closed) void stopStream(client, id);
+					if (closed) void stopStream(client, id).catch(() => {});
 					else streamId = id;
 				})
 				.catch((cause: unknown) => {
+					if (cancelled || closed) return;
 					close();
-					if (cancelled) return;
 					realtimeEventsWatchError = messageFromError(cause);
 					eventsWatchPhase = "recovering";
 					if (isTransientQueryError(cause)) retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);

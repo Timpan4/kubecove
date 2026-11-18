@@ -137,6 +137,8 @@ async fn recover_event_watch_after_error(
 ) -> (Vec<String>, Vec<String>) {
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service_requests = requests.clone();
+    let (unexpected_request, failure) = tokio::sync::oneshot::channel();
+    let unexpected_request = Mutex::new(Some(unexpected_request));
     let service = tower::service_fn(move |request: Request<Body>| {
         let mut requests = service_requests.lock().unwrap();
         requests.push(request.uri().to_string());
@@ -169,18 +171,18 @@ async fn recover_event_watch_after_error(
                         "object": {
                             "apiVersion": "v1",
                             "kind": "Event",
-                            "metadata": { "name": "app.started", "namespace": "default", "resourceVersion": "56" },
+                            "metadata": { "name": "app.started", "namespace": "default", "resourceVersion": "57" },
                             "involvedObject": { "kind": "Pod", "name": "app", "namespace": "default" }
                         }
                     })
                 ),
             ),
-            (_, attempt) => (
-                503,
-                json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure",
-                    "code": 503, "message": format!("Unexpected Events watch attempt {attempt}") })
-                .to_string(),
-            ),
+            (_, attempt) => {
+                if let Some(unexpected_request) = unexpected_request.lock().unwrap().take() {
+                    let _ = unexpected_request.send(attempt);
+                }
+                (503, String::new())
+            }
         };
         std::future::ready(Ok::<_, std::convert::Infallible>(
             Response::builder()
@@ -191,22 +193,14 @@ async fn recover_event_watch_after_error(
     });
     let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
     let observed_messages = messages.clone();
-    let observed_requests = requests.clone();
     let channel = stream_channel(move |message| {
         let delivered = message["type"] == "resourceEventsChanged";
         if delivered {
             assert_eq!(message["target"]["name"], "app");
             assert_eq!(message["action"], "added");
         }
-        // Close on an unexpected retry so missing Event delivery fails the assertions.
-        let unexpected_retry =
-            message["type"] == "error" && observed_requests.lock().unwrap().len() > 3;
         observed_messages.lock().unwrap().push(message);
-        if delivered || unexpected_retry {
-            Err(())
-        } else {
-            Ok(())
-        }
+        if delivered { Err(()) } else { Ok(()) }
     });
     let registry = StreamRegistry::default();
     let (_, broadcaster, _) = registry.subscribe_event(
@@ -218,15 +212,18 @@ async fn recover_event_watch_after_error(
         Some("default"),
         channel,
     );
-    run_event_watch(
+    let watch = run_event_watch(
         FixedClusterAccess::new(Client::new(service, "default")).access(),
         "dev".into(),
         "Pod".into(),
         "app".into(),
         Some("default".into()),
         broadcaster,
-    )
-    .await;
+    );
+    tokio::select! {
+        _ = watch => {},
+        Ok(attempt) = failure => panic!("Unexpected Events watch attempt {attempt}"),
+    }
 
     let versions = requests
         .lock()

@@ -183,7 +183,7 @@ function clearRemoteState(): void {
 }
 
 function rewriteChannelMarkers(serialized: string, used: Set<number>): JsonValue {
-	const rewritten = serialized.replace(/"__TAURI_CHANNEL__:(\d+)"/g, (_marker, id: string) => {
+	const rewritten = serialized.replace(/"__CHANNEL__:(\d+)"/g, (_marker, id: string) => {
 		const channelId = Number(id);
 		if (!Number.isSafeInteger(channelId) || !channels.has(channelId)) {
 			throw new Error("Remote stream channel is no longer subscribed.");
@@ -199,11 +199,13 @@ function subscribe<T>(onMessage: (message: T) => void): Channel<T> {
 	const channel = new Channel<T>(onMessage);
 	const channelId = getChannelId(channel);
 	const ready = invoke("remote_subscribe_channel", { channelId, channel }).then(() => undefined);
+	// The command can reject before it gets as far as awaiting the subscription.
+	void ready.catch(() => {});
 	const originalCleanup = channel["cleanupCallback"];
 	const cleanup = (unregister = true) => {
 		if (!channels.has(channelId)) return;
 		channels.delete(channelId);
-		originalCleanup?.();
+		originalCleanup?.call(channel);
 		if (unregister) void invoke("remote_unsubscribe_channel", { channelId }).catch(() => {});
 	};
 	channel["cleanupCallback"] = cleanup;

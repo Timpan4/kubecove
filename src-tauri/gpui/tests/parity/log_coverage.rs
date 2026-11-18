@@ -48,6 +48,7 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             let headline = window.find(("log-summary", 0usize)).bounds();
             let viewport = window.find("log-viewport").bounds();
             assert!(source.right() <= headline.left());
+            assert!(source.top() < headline.bottom() && headline.top() < source.bottom());
             assert!(source.size.width < headline.size.width);
             assert!(headline.right() <= viewport.right());
             window.click(("log-summary", 0usize), cx);

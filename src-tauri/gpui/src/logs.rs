@@ -128,6 +128,9 @@ static FIELD: LazyLock<Regex> =
     LazyLock::new(|| regex(r#"^\s*([A-Za-z_][A-Za-z0-9_.-]*)=("(?:[^"\\]|\\.)*"|\S*)"#));
 static QUOTED: LazyLock<Regex> = LazyLock::new(|| regex(r#"^"(?:[^"\\]|\\.)*"$"#));
 static ESCAPE: LazyLock<Regex> = LazyLock::new(|| regex(r"\\(.)"));
+static JSON_STRING_OR_NUMBER: LazyLock<Regex> = LazyLock::new(|| {
+    regex(r#""(?:[^"\\]|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"#)
+});
 
 const LEVEL_KEYS: &[&str] = &["level", "lvl", "severity"];
 const MESSAGE_KEYS: &[&str] = &["msg", "message"];
@@ -236,8 +239,30 @@ fn field(key: impl Into<SharedString>, value: impl Into<SharedString>) -> LogFie
     }
 }
 
+fn parse_json_value(text: &str) -> Option<Value> {
+    if let Ok(value) = serde_json::from_str(text) {
+        return Some(value);
+    }
+    // JSON.stringify emits null for numbers that JSON.parse rounded to infinity.
+    // Retry only if an overflowing number occurred outside quoted strings.
+    let mut normalized = String::new();
+    let mut offset = 0;
+    for token in JSON_STRING_OR_NUMBER.find_iter(text) {
+        if token.as_str().parse::<f64>().is_ok_and(f64::is_infinite) {
+            normalized.push_str(&text[offset..token.start()]);
+            normalized.push_str("null");
+            offset = token.end();
+        }
+    }
+    if offset == 0 {
+        return None;
+    }
+    normalized.push_str(&text[offset..]);
+    serde_json::from_str(&normalized).ok()
+}
+
 fn parse_json(text: &str) -> Option<LogStructure> {
-    let Value::Object(mut entries) = serde_json::from_str(text).ok()? else {
+    let Value::Object(mut entries) = parse_json_value(text)? else {
         return None;
     };
     order_object_keys(&mut entries);

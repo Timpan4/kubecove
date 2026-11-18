@@ -417,8 +417,16 @@ impl Fixture {
             opening,
         } in &mut state.watches
         {
-            if script == "connected" {
-                *opening = false;
+            if matches!(watch, WatchTarget::Events(_)) {
+                match script {
+                    "connected" => *opening = false,
+                    "reconnecting"
+                    | "forbidden"
+                    | "failed"
+                    | "events-failed"
+                    | "events-watch-stopped" => *opening = true,
+                    _ => {}
+                }
             }
             if matches!(script, "burst" | "burst-reset") {
                 if let WatchTarget::Resource { scope, key, .. } = watch
@@ -457,6 +465,11 @@ impl Fixture {
                 ),
             };
             let message = match script {
+                "events-watch-stopped" if matches!(watch, WatchTarget::Events(_)) => {
+                    StreamMessage::Stopped {
+                        stream_id: "fixture".into(),
+                    }
+                }
                 "events-failed" if matches!(watch, WatchTarget::Events(_)) => {
                     StreamMessage::Error {
                         stream_id: "fixture".into(),

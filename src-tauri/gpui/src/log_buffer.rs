@@ -5,7 +5,7 @@
 //! (A `logs/` directory would match `src-tauri/.gitignore`, so this module
 //! sits beside `logs.rs`.)
 
-use crate::logs::{MAX_RETAINED_LOG_LINES, ParsedLogLine, parse_line};
+use crate::logs::{MAX_RETAINED_LOG_LINES, ParsedLogLine, inline_log_text, parse_line};
 use kubecove_lib::models::LogLineSource;
 use std::collections::VecDeque;
 
@@ -91,18 +91,23 @@ impl LogBuffer {
                 .is_none_or(|level| !hidden[level.index()])
                 && (term.is_empty()
                     || line.search.contains(term)
-                    || (!line.structure.fields.is_empty()
-                        && line.raw.contains('"')
-                        && line.structure.fields.iter().any(|field| {
-                            token.clear();
-                            field.write_token(&mut token);
-                            if token.is_ascii() {
-                                token.make_ascii_lowercase();
-                                token.contains(term)
-                            } else {
-                                token.to_lowercase().contains(term)
-                            }
-                        })))
+                    || (line.raw.contains('"')
+                        && (inline_log_text(&line.structure.headline)
+                            .to_lowercase()
+                            .contains(term)
+                            || line.structure.error.as_ref().is_some_and(|error| {
+                                inline_log_text(error).to_lowercase().contains(term)
+                            })
+                            || line.structure.fields.iter().any(|field| {
+                                token.clear();
+                                field.write_token(&mut token);
+                                if token.is_ascii() {
+                                    token.make_ascii_lowercase();
+                                    token.contains(term)
+                                } else {
+                                    token.to_lowercase().contains(term)
+                                }
+                            }))))
         };
         if latest_first {
             out.extend(self.lines.iter().rev().filter(shown).map(|line| line.index));
