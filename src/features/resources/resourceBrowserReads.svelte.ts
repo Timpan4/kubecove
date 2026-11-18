@@ -1,7 +1,6 @@
 import { createQueries, createQuery } from "@tanstack/svelte-query";
 import type { ArgoApplicationTarget } from "@/lib/argo-application-inspection";
 import { diagnosticLog } from "@/lib/diagnostics";
-import { messageFromError } from "@/lib/error-redaction";
 import type { KindFetchKey } from "@/lib/kind-identity";
 import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 import { cancelledQueryRetry } from "@/lib/query-retry";
@@ -186,24 +185,25 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 
 	// A context without shown rows has no table evidence to call stale.
 	const shown = $derived(live.stateOf(scope.shownContexts));
-	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !shown.reloadError
+	const failedTableRead = $derived(scopeQueries.findIndex((query, index) =>
+		query.isError && scope.shownContexts.includes(contexts[index])));
+	const tableError = $derived(scopeQueries[failedTableRead]?.error ?? shown.reloadError);
+	const tableCurrent = $derived(shown.status === "connected" && !shown.catchingUp && !tableError
 		&& !scope.isError && !scope.isPlaceholderData);
 	// Map membership uses rows from this context, even when the table is collapsed.
 	const map = $derived(live.stateOf([mapContext]));
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
-	const mapRows = $derived(scopeQueries[contexts.indexOf(mapContext)]);
+	const mapRead = $derived(contexts.indexOf(mapContext));
+	const mapRows = $derived(scopeQueries[mapRead]);
 	// Catch-up can be clearing caches before the topology query starts.
 	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData && topology.fetchStatus === "idle"
 		&& map.status === "connected" && !map.catchingUp && !map.reloadError
 		&& !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const mapError = $derived(mapRows?.error ?? map.reloadError);
-	const mapErrorMessage = $derived(mapError ? messageFromError(mapError) : null);
-	const tableExplainsMapError = $derived(tableShown && mapErrorMessage !== null
-		&& scope.shownContexts.includes(mapContext)
-		&& (shown.reloadError === mapErrorMessage || shown.reloadError === `${mapContext}: ${mapErrorMessage}`));
+	const tableExplainsMapError = $derived(tableShown && failedTableRead >= 0 && failedTableRead === mapRead);
 	const notice = $derived({
-		table: tableShown ? { status: shown.status, current: tableCurrent, error: shown.reloadError } : null,
+		table: tableShown ? { status: shown.status, current: tableCurrent, error: tableError } : null,
 		map: mapShown ? {
 			status: map.status,
 			current: mapCurrent,

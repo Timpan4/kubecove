@@ -6,8 +6,44 @@ import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
 
-const deferredInvalidations = new WeakMap<Query, Promise<unknown>>();
-const manualReads = new WeakMap<Query, { revision: number; pending: number }>();
+interface ReadRefresh {
+	manual: number;
+	manualRevision: number;
+	waiting: boolean;
+	deferred?: { manualRevision: number; refetch: () => Promise<void> };
+}
+
+const readsInRefresh = new WeakMap<Query, ReadRefresh>();
+
+function refreshState(query: Query): ReadRefresh {
+	const state = readsInRefresh.get(query) ?? { manual: 0, manualRevision: 0, waiting: false };
+	readsInRefresh.set(query, state);
+	return state;
+}
+
+export function manualRefreshOwns(query: Query): boolean {
+	return Boolean(readsInRefresh.get(query)?.manual);
+}
+
+function flushDeferredRead(query: Query, state: ReadRefresh) {
+	const deferred = state.deferred;
+	if (!deferred || state.manual || state.waiting) return;
+	// A manual read that started after this eviction already covers it.
+	if (state.manualRevision !== deferred.manualRevision) {
+		state.deferred = undefined;
+		return;
+	}
+	if (query.state.fetchStatus !== "idle" && query.promise) {
+		state.waiting = true;
+		void Promise.allSettled([query.promise]).then(() => {
+			state.waiting = false;
+			flushDeferredRead(query, state);
+		});
+		return;
+	}
+	state.deferred = undefined;
+	void deferred.refetch();
+}
 
 export async function refreshCurrentView({
 	client,
@@ -43,23 +79,11 @@ export async function refreshCurrentView({
 			}),
 	);
 	const shared: Query[] = [];
-	const independent = new Map<Query, number>();
-	const manual: { pending: number }[] = [];
+	const independent: Query[] = [];
 	for (const query of queries) {
-		let state = manualReads.get(query);
-		if (cancelRefetch) {
-			state ??= { revision: 0, pending: 0 };
-			manualReads.set(query, state);
-			state.revision++;
-			state.pending++;
-			manual.push(state);
-			deferredInvalidations.delete(query);
-		}
-		if (!cancelRefetch && independentReads.some((match) => match(query))) {
-			if (!state?.pending) independent.set(query, state?.revision ?? 0);
-		} else {
-			shared.push(query);
-		}
+		if (cancelRefetch) refreshState(query).manual++;
+		if (!cancelRefetch && independentReads.some((match) => match(query))) independent.push(query);
+		else shared.push(query);
 	}
 	try {
 		if (cancelRefetch) await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
@@ -77,17 +101,15 @@ export async function refreshCurrentView({
 				{ predicate: (current) => current === query, refetchType: "active" },
 				{ throwOnError, cancelRefetch },
 			);
-		for (const [query, revision] of independent) {
-			if ((manualReads.get(query)?.revision ?? 0) !== revision || deferredInvalidations.has(query)) continue;
-			const settled = Promise.allSettled([query.promise]);
-			deferredInvalidations.set(query, settled);
-			void settled.then(() => {
-				if (deferredInvalidations.get(query) !== settled) return;
-				deferredInvalidations.delete(query);
-				return invalidate(query, false);
-			});
+		for (const query of independent) {
+			const state = refreshState(query);
+			state.deferred = { manualRevision: state.manualRevision, refetch: () => invalidate(query, false) };
+			flushDeferredRead(query, state);
 		}
-		const results = await Promise.allSettled(shared.map((query) => invalidate(query, true)));
+		const results = await Promise.allSettled(shared.map((query) => {
+			if (cancelRefetch && query.isActive()) refreshState(query).manualRevision++;
+			return invalidate(query, true);
+		}));
 		const warnings: string[] = [];
 		for (const result of results) {
 			if (result.status !== "rejected") continue;
@@ -96,6 +118,12 @@ export async function refreshCurrentView({
 		}
 		return [...new Set(warnings)];
 	} finally {
-		for (const state of manual) state.pending--;
+		if (cancelRefetch) {
+			for (const query of queries) {
+				const state = refreshState(query);
+				state.manual--;
+				flushDeferredRead(query, state);
+			}
+		}
 	}
 }

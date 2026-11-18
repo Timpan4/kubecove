@@ -419,12 +419,14 @@ impl ResourceObservation {
 
     /// Applies the refresh. A failure keeps rows the table shows; without
     /// rows, as when Refresh is pressed during a first load, it fails the load.
-    fn refresh_settled(&mut self, result: Result<(), String>) {
+    fn refresh_settled(&mut self, requested: &[String], result: Result<(), String>) {
         self.read = None;
         let interrupted = std::mem::take(&mut self.custom_interrupted);
         if let Err(error) = &result {
-            for part in self.parts.iter_mut().filter(|part| part.shown) {
-                part.refresh_error = Some(error.clone());
+            for context in requested {
+                if let Some(index) = self.position(context) {
+                    self.parts[index].refresh_error = Some(error.clone());
+                }
             }
         }
         match result {

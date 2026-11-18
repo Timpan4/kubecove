@@ -77,7 +77,7 @@ test("cache clearing never rejoins a discovery read started before refresh", asy
 	expect(calls).toBe(2);
 });
 
-test.each([false, true])("manual eviction supersedes an uncached topology retry, overlapping eviction: %s", async (overlap) => {
+test.each(["before", "during", "after"] as const)("uncached topology refresh when automatic eviction finishes %s manual refresh", async (timing) => {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	configureQueryCatalog(queryClient);
 	const key = queryKeys.resources("dev", []);
@@ -107,11 +107,11 @@ test.each([false, true])("manual eviction supersedes an uncached topology retry,
 			independentReads: [queryMatchers.exact(key)],
 			client: createMockTauriClient({ refresh_resource_cache: async () => {
 				startAutomaticEviction();
-				if (overlap) await automaticEviction;
+				if (timing !== "before") await automaticEviction;
 				return { clearedEntries: 1 };
 			} }),
 		});
-		if (overlap) await automaticEvictionStarted;
+		if (timing !== "before") await automaticEvictionStarted;
 		else await recovery;
 		held = false;
 		const manual = refreshCurrentView({
@@ -123,7 +123,7 @@ test.each([false, true])("manual eviction supersedes an uncached topology retry,
 			} }),
 		});
 		await evictionStarted;
-		if (overlap) {
+		if (timing === "during") {
 			releaseAutomaticEviction();
 			await recovery;
 		}
@@ -131,6 +131,11 @@ test.each([false, true])("manual eviction supersedes an uncached topology retry,
 		releaseEviction();
 		await manual;
 		expect(calls).toEqual(["read", "read"]);
+		if (timing === "after") {
+			releaseAutomaticEviction();
+			await recovery;
+			expect(calls).toEqual(["read", "read", "read"]);
+		}
 		expect(queryClient.getQueryData(key)).toBe("fresh");
 	} finally {
 		releaseAutomaticEviction();

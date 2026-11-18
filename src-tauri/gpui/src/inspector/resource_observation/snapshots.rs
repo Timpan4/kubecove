@@ -191,6 +191,7 @@ impl ResourceObservation {
     /// Retires initial watch starts even when refresh replaced their first list.
     pub(in crate::inspector) fn install_refresh(
         &mut self,
+        contexts: &[String],
         result: Result<ScopeRows, AppError>,
     ) -> Result<Applied, String> {
         self.starts.clear();
@@ -202,11 +203,11 @@ impl ResourceObservation {
                 let span = crate::frame_profile::scope("scope", "swap_rows");
                 self.data = Rc::new(self.keep_failed_contexts(rows, &applied.kept));
                 drop(span);
-                self.refresh_settled(Ok(()));
+                self.refresh_settled(contexts, Ok(()));
                 Ok(applied)
             }
             Err(error) => {
-                self.refresh_settled(Err(error.message.clone()));
+                self.refresh_settled(contexts, Err(error.message.clone()));
                 Err(error.message)
             }
         }

@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/svelte-query";
 import type { QueryMatch } from "./queryKeys";
-import { refreshCurrentView } from "./resource-refresh";
+import { manualRefreshOwns, refreshCurrentView } from "./resource-refresh";
 import {
 	observeResourceScope,
 	RESOURCE_RECOVERY_INTERVAL,
@@ -255,11 +255,11 @@ function watchGroup(key: WatchResourceKey): string {
 }
 
 /** A declared read's refresh. The throttle outlives read-set changes, so a pending refresh still runs for what the view shows now. */
-function createReadSlot(queryClient: QueryClient, initial: LiveRead, recoveryAllowed: () => boolean) {
+function createReadSlot(queryClient: QueryClient, initial: LiveRead) {
 	let read = initial;
 	const throttle = createReadRefresh(queryClient, () => read);
 	const recovery = initial.recoverSeparately
-		? recoverFailedRead(queryClient, (query) => recoveryAllowed() && read.refetch !== false && read.match(query), (failed) => {
+		? recoverFailedRead(queryClient, (query) => !manualRefreshOwns(query) && read.refetch !== false && read.match(query), (failed) => {
 			void queryClient.refetchQueries({ predicate: failed }, { cancelRefetch: false });
 		})
 		: null;
@@ -308,7 +308,6 @@ export function bindLiveView({
 }): LiveViewBinding {
 	let current = view;
 	let stopped = false;
-	let manualRefreshes = 0;
 	let observer: ResourceScopeObserver | null = null;
 	// Slots are kept by declared position. A changed read set re-points each slot.
 	const slots: ReturnType<typeof createReadSlot>[] = [];
@@ -363,7 +362,7 @@ export function bindLiveView({
 			if (slot && slot.read.recoverSeparately === read.recoverSeparately) slot.set(read);
 			else {
 				slot?.dispose();
-				slots[index] = createReadSlot(queryClient, read, () => manualRefreshes === 0);
+				slots[index] = createReadSlot(queryClient, read);
 			}
 		});
 		for (const slot of slots.splice(next.reads.length)) slot.dispose();
@@ -387,12 +386,9 @@ export function bindLiveView({
 	apply(view);
 	return {
 		async refresh() {
-			manualRefreshes++;
-			for (const slot of slots) slot.checkRecovery();
 			try {
 				return await reread(current.keys, viewReads(), true);
 			} finally {
-				manualRefreshes--;
 				for (const slot of slots) slot.checkRecovery();
 			}
 		},

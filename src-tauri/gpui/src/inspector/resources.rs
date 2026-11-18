@@ -474,9 +474,7 @@ impl Inspector {
     ) -> impl IntoElement {
         let width = self.section_width(window);
         let freshness = self.notice_freshness();
-        if self.live.error_open.is_some() && self.notice_read_errors(&freshness) == (None, None) {
-            self.live.error_open = None;
-        }
+        self.reset_hidden_diagnostic(&freshness);
         let stacked = !matches!(self.detail, Detail::Closed);
         self.rebuild_map();
         self.sync_map_motion(window, cx);

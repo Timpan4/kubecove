@@ -219,16 +219,26 @@ describe("live view refresh binding", () => {
 		live.observe("topology", podsKey, { cached: false, gate: async () => {
 			if (fail) throw new Error("topology unavailable");
 		} });
+		live.observe("network", secretsKey, { cached: false, gate: async () => {
+			if (fail) throw new Error("network unavailable");
+		} });
 		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
-		const binding = live.bind({
-			keys: [pods], refreshScope: "reads",
-			reads: [{ keys: [pods], match: queryMatchers.exact(podsKey), recoverSeparately: true }],
+		await live.queryClient.getQueryCache().find({ queryKey: secretsKey })?.promise?.catch(() => {});
+		const view = (key: QueryKey): LiveView => ({
+			clusterContext: "dev", namespaces: ["shop"], keys: [pods], refreshScope: "reads",
+			reads: [{ keys: [pods], match: queryMatchers.exact(key), recoverSeparately: true }],
 		});
+		const binding = live.bind(view(podsKey));
 		live.status(0, "connected");
 		const refresh = binding.refresh();
 		await evictionStarted;
 		fail = false;
 		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("topology")).toBe(1);
+		binding.update(view(secretsKey));
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		await live.queryClient.getQueryCache().find({ queryKey: secretsKey })?.promise;
+		expect(live.fetches("network")).toBe(2);
 		expect(live.fetches("topology")).toBe(1);
 		finishEviction();
 		await refresh;

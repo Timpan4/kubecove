@@ -36,6 +36,12 @@ fn notice_text(status: LiveStatus, stale: bool) -> Option<&'static str> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum NoticeSurface {
+    Table,
+    Map,
+}
+
 fn waiting_for_watch(status: Option<LiveStatus>) -> bool {
     matches!(
         status,
@@ -136,8 +142,8 @@ impl Inspector {
             };
         }
         LiveDetails {
-            refresh_error: if self.page == Page::Resources && self.table_open {
-                self.table_refresh_error().map(str::to_owned)
+            refresh_error: if self.page == Page::Resources {
+                self.visible_refresh_error().map(str::to_owned)
             } else {
                 self.live.refresh_error.clone()
             },
@@ -329,10 +335,7 @@ impl Inspector {
             .table
             .and_then(|status| notice_text(status, table_stale.shown()));
         let (table_error, map_error) = self.notice_read_errors(&freshness);
-        let shared_error = table_error.zip(map_error).is_some_and(|(table, map)| {
-            std::ptr::eq(table, map)
-                || (self.live.refresh_error.as_deref() == Some(table) && table == map)
-        });
+        let shared_error = self.shared_read_error(table_error, map_error);
         let map = freshness.map.and_then(|status| {
             if status == LiveStatus::RefreshFailed {
                 Some(MAP_STALE)
@@ -353,7 +356,13 @@ impl Inspector {
             } else {
                 SharedString::from(label)
             };
-            notices.push(self.live_notice_panel("live-notice", label, table_error, cx));
+            notices.push(self.live_notice_panel(
+                NoticeSurface::Table,
+                "live-notice",
+                label,
+                table_error,
+                cx,
+            ));
         }
         if let Some(label) = map.filter(|_| map != table) {
             let label = if freshness.table.is_some() {
@@ -367,19 +376,44 @@ impl Inspector {
                 "live-notice"
             };
             let error = map_error.filter(|_| freshness.map != Some(LiveStatus::RefreshFailed));
-            notices.push(self.live_notice_panel(id, label, error, cx));
+            notices.push(self.live_notice_panel(NoticeSurface::Map, id, label, error, cx));
         }
         notices
     }
 
+    fn shared_read_error(&self, table: Option<&str>, map: Option<&str>) -> bool {
+        table.zip(map).is_some_and(|(table, map)| {
+            std::ptr::eq(table, map)
+                || (self.live.refresh_error.as_deref() == Some(table) && table == map)
+        })
+    }
+
+    pub(super) fn reset_hidden_diagnostic(&mut self, freshness: &NoticeFreshness) {
+        if let Some(surface) = self.live.error_open {
+            let (table, map) = self.notice_read_errors(freshness);
+            let shown = match surface {
+                NoticeSurface::Table => table.is_some(),
+                NoticeSurface::Map => {
+                    map.is_some()
+                        && freshness.map != Some(LiveStatus::RefreshFailed)
+                        && !self.shared_read_error(table, map)
+                }
+            };
+            if !shown {
+                self.live.error_open = None;
+            }
+        }
+    }
+
     fn live_notice_panel(
         &self,
+        surface: NoticeSurface,
         id: &'static str,
         label: SharedString,
         error: Option<&str>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let expanded = self.live.error_open == Some(id);
+        let expanded = self.live.error_open == Some(surface);
         div()
             .id(id)
             .test_support()
@@ -416,7 +450,8 @@ impl Inspector {
                 notice
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.live.error_open = (this.live.error_open != Some(id)).then_some(id);
+                        this.live.error_open =
+                            (this.live.error_open != Some(surface)).then_some(surface);
                         cx.notify();
                     }))
             })

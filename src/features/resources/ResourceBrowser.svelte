@@ -489,13 +489,7 @@
 		: liveNoticeText(notice.map.status, mapStale.shown)));
 	let mapNoticeElement = $state<HTMLDivElement>();
 	let mapPanelElement = $state<HTMLDivElement>();
-
-	$effect.pre(() => {
-		const hasDetails = mapNotice && mapNotice !== tableNotice && notice.map?.error;
-		if (!hasDetails && mapNoticeElement?.contains(document.activeElement)) {
-			mapPanelElement?.focus({ preventScroll: true });
-		}
-	});
+	let browserElement = $state<HTMLDivElement>();
 
 	function liveNoticeText(status: string, stale: boolean) {
 		if (status === "partial") return "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.";
@@ -516,6 +510,15 @@
 	const errorReplacesBrowser = $derived(Boolean(resourceError && (!resourcesQuery.data || workspaceReadContext.sourceError)));
 	// With every kind unchecked the top bar stays, so the kind picker can bring one back without a scope reset.
 	const topBarShown = $derived(Boolean(clusterContext) && (fetchKeys.length === 0 || (!errorReplacesBrowser && !loading.active)));
+	const panelsShown = $derived(Boolean(clusterContext) && fetchKeys.length > 0 && !errorReplacesBrowser && !loading.active);
+
+	$effect.pre(() => {
+		const mapMounted = panelsShown && mapPanelOpen;
+		const hasDetails = mapMounted && mapNotice && mapNotice !== tableNotice && notice.map?.error;
+		if (!hasDetails && mapNoticeElement?.contains(document.activeElement)) {
+			(mapMounted ? mapPanelElement : browserElement)?.focus({ preventScroll: true });
+		}
+	});
 
 	$effect(() => {
 		onPathStateChange({
@@ -722,7 +725,7 @@
 	{/if}
 {/snippet}
 
-<div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+<div class="flex h-full min-h-0 min-w-0 flex-col gap-3" bind:this={browserElement} tabindex="-1">
 	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
 		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
 	{/if}

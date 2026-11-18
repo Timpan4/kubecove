@@ -316,13 +316,14 @@ impl Inspector {
             let request = self.request.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
                 let result =
-                    prepare_off_thread(cx.background_executor(), contexts, read.await).await;
+                    prepare_off_thread(cx.background_executor(), contexts.clone(), read.await)
+                        .await;
                 let _ = this.update(cx, |this, cx| {
                     if !Rc::ptr_eq(&this.request, &request) {
                         return;
                     }
                     let apply_started = Instant::now();
-                    match this.observation.install_refresh(result) {
+                    match this.observation.install_refresh(&contexts, result) {
                         Ok(applied) => {
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces

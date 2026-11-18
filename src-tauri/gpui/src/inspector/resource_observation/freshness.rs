@@ -35,6 +35,16 @@ impl Inspector {
             .or_else(|| self.observation.shown_refresh_error())
     }
 
+    pub(in crate::inspector) fn visible_refresh_error(&self) -> Option<&str> {
+        if self.table_open {
+            self.table_refresh_error()
+        } else if self.map_is_open() {
+            self.map_read_error()
+        } else {
+            self.live.refresh_error.as_deref()
+        }
+    }
+
     pub(in crate::inspector) fn notice_read_errors(
         &self,
         freshness: &NoticeFreshness,
