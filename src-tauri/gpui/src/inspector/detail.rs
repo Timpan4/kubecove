@@ -21,7 +21,7 @@ use crate::ui;
 use gpui_kit::component::input::{EditorState, InputEvent};
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, KeyDownEvent, MouseButton, MouseMoveEvent,
-    ScrollHandle, Subscription, Task, Window, div, prelude::*, px,
+    ScrollHandle, SharedString, Subscription, Task, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, HealthAssessment, ResourceDetailsFull, ResourceSummary};
 use std::sync::Arc;
@@ -636,9 +636,7 @@ impl Inspector {
                 let watch_warning = if matches!(detail.tab, DetailTab::Details | DetailTab::Events)
                 {
                     detail.events.watch_error.as_ref().map(|error| {
-                        let message = format!(
-                            "Events watch failed: {error}. Showing the last loaded events."
-                        );
+                        let message = SharedString::from(format!("Events watch failed: {error}"));
                         ui::muted(ui::xs(message.clone()))
                             .id("events-watch-warning")
                             .test_support()

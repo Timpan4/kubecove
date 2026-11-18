@@ -547,7 +547,7 @@
 	{/if}
 	{#if showEventsWatchError && realtimeEventsWatchError}
 		<p class="text-muted-foreground text-xs">
-			Events watch failed: {realtimeEventsWatchError}. Showing the last loaded events.
+			Events watch failed: {realtimeEventsWatchError}
 		</p>
 	{/if}
 

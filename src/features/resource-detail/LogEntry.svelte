@@ -212,8 +212,8 @@
 		{@render time()}
 		{@render badge()}
 		<div class="min-w-0 flex-1">
-			<div class="text-[12px] leading-[18px] {open ? '[overflow-wrap:anywhere]' : 'truncate'}">
-				{#if sourceLabel}<span class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span
+			<div data-log-summary class="text-[12px] leading-[18px] {open ? '[overflow-wrap:anywhere]' : 'truncate'}">
+				{#if sourceLabel}<span data-log-source class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span
 					class="font-medium text-foreground">{@render highlighted(structure.headline)}</span
 				>{#if !open && structure.error}<span
 						class="ml-2 font-mono text-[11px] text-red-600 dark:text-red-300"

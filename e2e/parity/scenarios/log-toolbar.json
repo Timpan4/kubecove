@@ -11,13 +11,16 @@
 				{ "action": "openResource", "kind": "Pod", "namespace": "argocd", "name": "argocd-dex-server-6d7f9c5b8-q4w2n" },
 				{ "action": "showTab", "tab": "Events" },
 				{ "action": "replayLiveData", "script": "events-failed" },
-				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure. Showing the last loaded events." },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "showTab", "tab": "Logs" },
 				{ "action": "expectLogToolbarFit", "state": "Live" },
-				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure. Showing the last loaded events." },
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "showTab", "tab": "Details" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "showTab", "tab": "Events" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "replayLiveData", "script": "connected" },
-				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure. Showing the last loaded events." }
+				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" }
 			]
 		},
 		{

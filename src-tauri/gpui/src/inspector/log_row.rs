@@ -12,6 +12,7 @@ use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Tokens, oklch};
 use crate::ui;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
     StyledText, div, prelude::*, px, relative,
@@ -224,42 +225,29 @@ fn field_chips(fields: &[LogField], term: &str) -> Div {
         }))
 }
 
-fn compact_summary(line: &ParsedLogLine, logs: &LogsState, open: bool) -> StyledText {
+fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
     let structure = &line.structure;
-    let term = logs.term.as_str();
+    if open || (structure.error.is_none() && structure.fields.is_empty()) {
+        return highlighted(&structure.headline, term);
+    }
     let mut text = InlineText::default();
-    if logs.is_aggregate() && !line.source_label.is_empty() {
+    text.push(&structure.headline, term, HighlightStyle::default(), false);
+    if let Some(error) = &structure.error {
+        text.text.push_str("  ");
         text.push(
-            &line.source_label,
-            "",
+            error,
+            term,
             HighlightStyle {
-                color: Some(Tokens::muted_foreground()),
+                color: Some(red300()),
                 font_weight: Some(FontWeight::NORMAL),
                 ..Default::default()
             },
             true,
         );
-        text.text.push_str("  ");
     }
-    text.push(&structure.headline, term, HighlightStyle::default(), false);
-    if !open {
-        if let Some(error) = &structure.error {
-            text.text.push_str("  ");
-            text.push(
-                error,
-                term,
-                HighlightStyle {
-                    color: Some(red300()),
-                    font_weight: Some(FontWeight::NORMAL),
-                    ..Default::default()
-                },
-                true,
-            );
-        }
-        if !structure.fields.is_empty() {
-            text.text.push_str("  ");
-            text.fields(&structure.fields, term, Tokens::foreground().opacity(0.75));
-        }
+    if !structure.fields.is_empty() {
+        text.text.push_str("  ");
+        text.fields(&structure.fields, term, Tokens::foreground().opacity(0.75));
     }
     text.render()
 }
@@ -286,15 +274,32 @@ fn one_line_row(
         .or_insert_with(|| cx.focus_handle().tab_stop(true))
         .clone();
     let term = logs.term.as_str();
+    let source = (logs.is_aggregate() && !line.source_label.is_empty()).then(|| {
+        let label = line.source_label.clone();
+        div()
+            .id(("log-source", position))
+            .test_support()
+            .aria_label(label.clone())
+            .flex_none()
+            .max_w(relative(0.3))
+            .truncate()
+            .font_family(MONO)
+            .text_size(px(10.5))
+            .line_height(px(18.))
+            .text_color(Tokens::muted_foreground())
+            .child(label.clone())
+            .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
+    });
     let summary = div()
         .id(("log-summary", position))
         .test_support()
+        .flex_1()
         .min_w_0()
         .text_size(px(12.))
         .line_height(px(18.))
         .font_weight(FontWeight::MEDIUM)
         .when(!open, |summary| summary.truncate())
-        .child(compact_summary(line, logs, open));
+        .child(compact_summary(line, term, open));
     let details = open.then(|| {
         div()
             .id(("log-details", position))
@@ -348,7 +353,20 @@ fn one_line_row(
         .when(logs.buffer.has_levels(), |row| {
             row.child(badge(structure.level))
         })
-        .child(div().min_w_0().flex_1().child(summary).children(details))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .items_start()
+                        .children(source)
+                        .child(summary),
+                )
+                .children(details),
+        )
 }
 
 /// The Copy line button of an open row. Its click copies the raw line and

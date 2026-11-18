@@ -85,7 +85,16 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
 async fn event_watch_resets_version_after_in_stream_internal_error() {
     let (versions, states) = recover_event_watch_after_internal_error(true).await;
     assert_eq!(versions, ["0", "0"]);
-    assert_eq!(states, ["connected", "error", "reconnecting", "connected"]);
+    assert_eq!(
+        states,
+        [
+            "connected",
+            "error",
+            "reconnecting",
+            "connected",
+            "resourceEventsChanged"
+        ]
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -99,12 +108,14 @@ async fn event_watch_resets_version_after_http_internal_error() {
             "reconnecting",
             "error",
             "reconnecting",
-            "connected"
+            "connected",
+            "resourceEventsChanged"
         ]
     );
 }
 
 async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<String>, Vec<String>) {
+    let retry_request = if in_stream { 2 } else { 3 };
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service_requests = requests.clone();
     let service = tower::service_fn(move |request: Request<Body>| {
@@ -127,7 +138,23 @@ async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<Strin
                 ),
             ),
             (false, 2) => (500, error.to_string()),
-            _ => (200, format!("{bookmark}\n")),
+            (false, 1) => (200, format!("{bookmark}\n")),
+            (_, attempt) if attempt == retry_request => (
+                200,
+                format!(
+                    "{}\n",
+                    json!({
+                        "type": "ADDED",
+                        "object": {
+                            "apiVersion": "v1",
+                            "kind": "Event",
+                            "metadata": { "name": "app.started", "namespace": "default", "resourceVersion": "56" },
+                            "involvedObject": { "kind": "Pod", "name": "app", "namespace": "default" }
+                        }
+                    })
+                ),
+            ),
+            (_, attempt) => panic!("unexpected Events watch attempt {attempt}"),
         };
         std::future::ready(Ok::<_, std::convert::Infallible>(
             Response::builder()
@@ -138,16 +165,15 @@ async fn recover_event_watch_after_internal_error(in_stream: bool) -> (Vec<Strin
     });
     let messages = Arc::new(Mutex::new(Vec::<Value>::new()));
     let observed_messages = messages.clone();
-    let channel_requests = requests.clone();
-    let retry_request = if in_stream { 2 } else { 3 };
     let channel = stream_channel(move |message| {
-        observed_messages.lock().unwrap().push(message);
-        // Stop once the successful retry has reported its state.
-        if channel_requests.lock().unwrap().len() == retry_request {
-            Err(())
-        } else {
-            Ok(())
+        let delivered = message["type"] == "resourceEventsChanged";
+        if delivered {
+            assert_eq!(message["target"]["name"], "app");
+            assert_eq!(message["action"], "added");
         }
+        observed_messages.lock().unwrap().push(message);
+        // The mock refuses extra requests if the reopened stream never delivers its Event.
+        if delivered { Err(()) } else { Ok(()) }
     });
     let registry = StreamRegistry::default();
     let (_, broadcaster, _) = registry.subscribe_event(

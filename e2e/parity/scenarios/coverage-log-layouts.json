@@ -18,6 +18,21 @@
 			]
 		},
 		{
+			"id": "coverage-logs.one-line-source",
+			"title": "One-line aggregate logs reserve room for the message beside a long source",
+			"steps": [
+				{ "action": "openSettings" },
+				{ "action": "showSettingsSection", "section": "Appearance" },
+				{ "action": "selectSettingOption", "setting": "Log layout", "value": "One line" },
+				{ "action": "closeSettings" },
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "name": "payments-api", "namespace": "payments" },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "coverageCheck", "check": "log-compact-source" }
+			]
+		},
+		{
 			"id": "coverage-logs.one-line",
 			"title": "One-line logs expand individual or all rows and copy the exact selected raw line",
 			"steps": [
