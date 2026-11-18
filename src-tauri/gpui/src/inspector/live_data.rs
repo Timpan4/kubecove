@@ -479,7 +479,11 @@ impl Inspector {
                         }
                     };
                     let mut forbidden = false;
-                    let mut read_failed = false;
+                    let mut read_failed = this
+                        .update(cx, |this, _| {
+                            this.observation.kind_read_failed(&scope.context, &id)
+                        })
+                        .unwrap_or(false);
                     loop {
                         let input = receive_or_tick(&mut stream, &mut timer).await;
                         let tick = matches!(input, WatchInput::Tick);

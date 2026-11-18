@@ -79,6 +79,14 @@
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);
 	let afterGraphElement = $state<HTMLDivElement>();
+	let mapHeading = $state<HTMLDivElement>();
+	let refreshErrorDetails = $state<HTMLDetailsElement>();
+
+	$effect.pre(() => {
+		if (!error && refreshErrorDetails?.contains(document.activeElement)) {
+			(afterGraphElement ?? mapHeading)?.focus({ preventScroll: true });
+		}
+	});
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
 	const selectedStandaloneExpansionId = $derived(
@@ -193,7 +201,7 @@
 				<GitBranch />
 			{/if}
 			<div class="min-w-0">
-				<div class="truncate text-xs font-semibold">{title}</div>
+				<div class="truncate text-xs font-semibold" bind:this={mapHeading} tabindex="-1">{title}</div>
 				<div class="text-[0.6875rem] text-muted-foreground">
 					{#if focusedGraph}
 						{graph?.nodes.length ?? 0} focused / {topology?.nodes.length ?? 0} nodes
@@ -331,7 +339,7 @@
 </div>
 
 {#snippet mapRefreshError()}
-	<details class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
+	<details bind:this={refreshErrorDetails} class="absolute right-3 bottom-3 z-20 max-h-[calc(100%_-_1.5rem)] max-w-[calc(100%_-_1.5rem)] overflow-auto rounded-md border bg-surface-1 px-3 py-2 text-xs text-muted-foreground shadow-lg">
 		<summary class="cursor-pointer">Map refresh failed</summary>
 		<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: errorTitle }} />
 	</details>

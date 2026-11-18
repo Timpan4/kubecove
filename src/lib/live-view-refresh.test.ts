@@ -100,7 +100,7 @@ const secrets = { resourceKind: { kind: "Secret" }, namespace: "shop" };
 const podsKey = queryKeys.resources("dev", [{ kind: "Pod", namespace: "shop" }]);
 const secretsKey = queryKeys.resources("dev", [{ kind: "Secret", namespace: "shop" }]);
 
-function liveHarness() {
+function liveHarness(evictCache?: () => Promise<void>) {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
 	configureQueryCatalog(queryClient);
 	const channels: ReturnType<typeof createMockChannel<StreamMessage>>[] = [];
@@ -119,8 +119,9 @@ function liveHarness() {
 			stopped.push(streamId);
 			return true;
 		},
-		refresh_resource_cache: ({ keys }: { keys: WatchResourceKey[] }) => {
+		refresh_resource_cache: async ({ keys }: { keys: WatchResourceKey[] }) => {
 			evicted.push(keys);
+			await evictCache?.();
 			return { clearedEntries: 0 };
 		},
 	});
@@ -204,6 +205,36 @@ describe("detail and event live read recovery", () => {
 });
 
 describe("live view refresh binding", () => {
+	test("manual refresh owns the retry while cache eviction is pending", async () => {
+		jest.useFakeTimers();
+		let startEviction!: () => void;
+		let finishEviction!: () => void;
+		const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+		const eviction = new Promise<void>((resolve) => { finishEviction = resolve; });
+		const live = liveHarness(() => {
+			startEviction();
+			return eviction;
+		});
+		let fail = true;
+		live.observe("topology", podsKey, { cached: false, gate: async () => {
+			if (fail) throw new Error("topology unavailable");
+		} });
+		await live.queryClient.getQueryCache().find({ queryKey: podsKey })?.promise?.catch(() => {});
+		const binding = live.bind({
+			keys: [pods], refreshScope: "reads",
+			reads: [{ keys: [pods], match: queryMatchers.exact(podsKey), recoverSeparately: true }],
+		});
+		live.status(0, "connected");
+		const refresh = binding.refresh();
+		await evictionStarted;
+		fail = false;
+		jest.advanceTimersByTime(RESOURCE_RECOVERY_INTERVAL);
+		expect(live.fetches("topology")).toBe(1);
+		finishEviction();
+		await refresh;
+		expect(live.fetches("topology")).toBe(2);
+	});
+
 	test("retrying a failed read does not queue a refresh of a different visible read", async () => {
 		jest.useFakeTimers();
 		const live = liveHarness();

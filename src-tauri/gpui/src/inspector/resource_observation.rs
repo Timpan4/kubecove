@@ -487,6 +487,11 @@ impl ResourceObservation {
         }
     }
 
+    pub(super) fn kind_read_failed(&self, context: &str, watch_id: &str) -> bool {
+        self.position(context)
+            .is_some_and(|index| self.parts[index].kind_errors.contains_key(watch_id))
+    }
+
     pub(super) fn kind_relisted(
         &mut self,
         context: &str,

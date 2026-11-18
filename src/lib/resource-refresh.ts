@@ -6,6 +6,8 @@ import { refreshResourceCache } from "./tauri";
 import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
 
+const deferredInvalidations = new WeakSet<Query>();
+
 export async function refreshCurrentView({
 	client,
 	queryClient,
@@ -58,8 +60,12 @@ export async function refreshCurrentView({
 			{ throwOnError, cancelRefetch },
 		);
 	for (const query of queries) {
-		if (independentReads.some((match) => match(query))) {
-			void Promise.allSettled([query.promise]).then(() => invalidate(query, false));
+		if (independentReads.some((match) => match(query)) && !deferredInvalidations.has(query)) {
+			deferredInvalidations.add(query);
+			void Promise.allSettled([query.promise]).then(() => {
+				deferredInvalidations.delete(query);
+				return invalidate(query, false);
+			});
 		}
 	}
 	const results = await Promise.allSettled(shared.map((query) => invalidate(query, true)));

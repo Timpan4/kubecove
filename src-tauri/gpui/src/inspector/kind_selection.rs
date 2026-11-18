@@ -64,6 +64,17 @@ impl KindSelection {
 }
 
 impl Inspector {
+    pub(super) fn set_sidebar_kinds(&mut self, kinds: HashSet<String>) {
+        self.kind_selection.reads.retain(|kind, read| {
+            if kinds.contains(kind) {
+                return true;
+            }
+            self.observation.clear_kind_errors(&read.ids);
+            false
+        });
+        self.kind_selection.chosen = Some(kinds);
+    }
+
     pub(super) fn custom_matches(&self, kind: &DiscoveredResourceKind, cx: &Context<Self>) -> bool {
         let query = self
             .kind_selection

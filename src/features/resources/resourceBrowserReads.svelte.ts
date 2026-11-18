@@ -198,7 +198,12 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const notice = $derived({
 		table: tableShown ? { status: shown.status, current: tableCurrent, error: shown.reloadError } : null,
-		map: mapShown ? { status: map.status, current: mapCurrent, failed: topology.isError } : null,
+		map: mapShown ? {
+			status: map.status,
+			current: mapCurrent,
+			failed: topology.isError,
+			error: !tableShown && !topology.isError ? mapRows?.error ?? map.reloadError : null,
+		} : null,
 	});
 	const freshness = {
 		get tableCurrent() { return tableCurrent; },

@@ -131,7 +131,7 @@ impl Inspector {
         {
             self.open_cluster_overview(window, cx);
         }
-        self.kind_selection.chosen = Some(kinds.iter().map(|kind| (*kind).to_owned()).collect());
+        self.set_sidebar_kinds(kinds.iter().map(|kind| (*kind).to_owned()).collect());
         if kinds
             .iter()
             .any(|kind| crate::backend::CLUSTER_KINDS.contains(kind))

@@ -473,12 +473,15 @@
 	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
 	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
 		&& notice.table.status !== "partial" && notice.table.status !== "polling");
-	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed
+	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
 		&& notice.map.status !== "partial" && notice.map.status !== "polling");
+	const refreshFailedNotice = "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.";
 	const tableNotice = $derived(notice.table && (notice.table.error
-		? "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover."
+		? refreshFailedNotice
 		: liveNoticeText(notice.table.status, tableStale.shown)));
-	const mapNotice = $derived(notice.map && (notice.map.failed
+	const mapNotice = $derived(notice.map && (notice.map.error
+		? scopeNotice(refreshFailedNotice, "Map")
+		: notice.map.failed
 		? "Showing last observed graph. Map activity indicators are paused until the map refreshes."
 		: liveNoticeText(notice.map.status, mapStale.shown)));
 
@@ -696,6 +699,17 @@
 	{/key}
 {/snippet}
 
+{#snippet observationNotice(label: string, error: unknown)}
+	{#if error}
+		<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
+			<summary class="cursor-pointer px-3 py-2"><span role="status">{label}</span></summary>
+			<div class="px-3 pb-3"><FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
+		</details>
+	{:else}
+		<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{label}</p>
+	{/if}
+{/snippet}
+
 <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
 	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
 		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
@@ -798,19 +812,10 @@
 	{:else}
 		{#if tableNotice}
 			{@const label = notice.map && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
-			{#if notice.table?.error}
-				<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
-					<summary class="cursor-pointer px-3 py-2"><span role="status">{label}</span></summary>
-					<div class="px-3 pb-3"><FriendlyError error={notice.table.error} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
-				</details>
-			{:else}
-				<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{label}</p>
-			{/if}
+			{@render observationNotice(label, notice.table?.error)}
 		{/if}
 		{#if mapNotice && mapNotice !== tableNotice}
-			<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-				{notice.table ? scopeNotice(mapNotice, "Map") : mapNotice}
-			</p>
+			{@render observationNotice(notice.table ? scopeNotice(mapNotice, "Map") : mapNotice, notice.map?.error)}
 		{/if}
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
