@@ -17,11 +17,13 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const short = page.locator("[data-log-row]").nth(1).locator("[data-log-summary]");
 		await short.waitFor();
 		const [collapsed, control] = await Promise.all([summary.boundingBox(), short.boundingBox()]);
-		const summaryOverflows = await summary.evaluate((element) => element.scrollWidth > element.clientWidth);
+		const clipsOverflow = await summary.evaluate((element) =>
+			element.scrollWidth > element.clientWidth &&
+			["clip", "hidden"].includes(getComputedStyle(element).overflowX));
 		const viewport = page.locator("[data-log-viewport]");
 		const viewportOverflows = await viewport.evaluate((element) => element.scrollWidth > element.clientWidth);
 		if (!collapsed || !control || collapsed.height !== control.height) throw new Error("Collapsed log summary spans more than one line");
-		if (!summaryOverflows) throw new Error("Long log fixture fits without clipping");
+		if (!clipsOverflow) throw new Error("Long log text should overflow and clip inside its collapsed summary");
 		if (viewportOverflows) throw new Error("Collapsed log text creates horizontal scrolling");
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
@@ -33,7 +35,8 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 	} else if (check === "log-compact-source") {
 		const row = page.locator("[data-log-row]").first();
 		const source = row.locator("[data-log-source]");
-		const message = row.getByText("boot payments-api", { exact: true });
+		const message = row.locator("[data-log-headline]");
+		if (await message.textContent() !== "boot payments-api") throw new Error("Missing aggregate log headline");
 		if (!await source.evaluate((element) => element.scrollWidth > element.clientWidth))
 			throw new Error("Long source fixture should be wider than its column");
 		const summary = row.locator("[data-log-summary]");
@@ -41,21 +44,23 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 			summary.boundingBox(), source.boundingBox(), message.evaluate((element) => {
 				const range = document.createRange();
 				range.selectNodeContents(element);
-				const text = range.getBoundingClientRect();
 				const box = element.getBoundingClientRect();
-				return { left: text.left, right: text.right, top: text.top, bottom: text.bottom, clips: text.left < box.left || text.right > box.right };
+				const fragments = Array.from(range.getClientRects(), ({ left, right, top, bottom }) => ({ left, right, top, bottom }));
+				return { left: box.left, right: box.right, fragments };
 			}),
 		]);
 		const viewport = await page.locator("[data-log-viewport]").boundingBox();
-		if (!summaryBox || !sourceBox || !viewport || headline.clips ||
-			headline.left < sourceBox.x + sourceBox.width ||
-			headline.right > Math.min(summaryBox.x + summaryBox.width, viewport.x + viewport.width) ||
-			headline.top >= sourceBox.y + sourceBox.height || headline.bottom <= sourceBox.y)
+		if (!summaryBox || !sourceBox || !viewport || headline.fragments.length === 0 ||
+			headline.fragments.some(({ left, right, top, bottom }) =>
+				left < Math.max(headline.left, sourceBox.x + sourceBox.width) ||
+				right > Math.min(headline.right, summaryBox.x + summaryBox.width, viewport.x + viewport.width) ||
+				top >= sourceBox.y + sourceBox.height || bottom <= sourceBox.y))
 			throw new Error("Headline does not fit beside the source on the same line");
 		await row.click();
 		await row.getByRole("button", { name: "Copy line", exact: true }).waitFor();
 		const [expanded, expandedSource] = await Promise.all([summary.boundingBox(), source.boundingBox()]);
-		if (!expanded || !expandedSource || expandedSource.y + expandedSource.height > expanded.y)
+		if (!expanded || !expandedSource || expandedSource.y + expandedSource.height > expanded.y ||
+			expanded.x !== summaryBox.x || expanded.width !== summaryBox.width)
 			throw new Error("Expanded message does not have the full width below the source");
 	} else if (check === "log-scroll-back") {
 		const viewport = page.locator("[data-log-viewport]");

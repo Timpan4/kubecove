@@ -327,7 +327,7 @@ impl Fixture {
         resource: ResourceSummary,
     ) -> Read<Vec<ResourceEventSummary>> {
         if let Some(events) = self.scripted_events(&resource) {
-            return Box::pin(async move { Ok(events) });
+            return Box::pin(async move { events });
         }
         let found = self
             .events

@@ -83,10 +83,11 @@ export function orderedLogLines(
 }
 
 export function logLineSearchText(line: ParsedLogLine): string {
-	return [line.raw, line.source?.podName, line.source?.container]
-		.filter(Boolean)
-		.join(" ")
-		.toLowerCase();
+	let text = line.raw;
+	if (line.source?.podName) text += ` ${line.source.podName}`;
+	if (line.source?.container) text += ` ${line.source.container}`;
+	for (const { key, value } of line.structure.fields) text += ` ${key}=${value}`;
+	return text.toLowerCase();
 }
 
 export function orderParsedLogLines(

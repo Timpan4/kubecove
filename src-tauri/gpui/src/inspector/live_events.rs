@@ -45,51 +45,59 @@ impl Inspector {
                 loop {
                     let input = receive_or_tick(&mut stream, &mut timer).await;
                     let tick = matches!(input, WatchInput::Tick);
-                    let closed = matches!(input, WatchInput::Closed);
+                    let mut ended = matches!(input, WatchInput::Closed);
                     if tick {
                         timer = Box::pin(cx.background_executor().timer(RECOVERY));
                     }
-                    let event = match input {
+                    let first = match input {
                         WatchInput::Message(message) => Some(message),
                         WatchInput::Closed | WatchInput::Tick => None,
                     };
-                    let ended = matches!(event, Some(StreamMessage::Stopped { .. })) || closed;
                     let mut refresh = tick && catch_up;
-                    let mut error = None;
-                    let mut clear_error = false;
-                    match event {
-                        Some(StreamMessage::ResourceEventsChanged { .. }) => refresh = true,
-                        Some(StreamMessage::Error { message, .. }) => {
-                            error = Some(message);
-                            catch_up = true;
+                    let mut consumed = !tick;
+                    let mut watch_error = None;
+                    // A replay can queue many change notices for one resource.
+                    // Fold them into one list and apply statuses in stream order.
+                    let pending = std::iter::from_fn(|| stream.messages.try_recv().ok());
+                    for event in first.into_iter().chain(pending) {
+                        consumed = true;
+                        match event {
+                            StreamMessage::ResourceEventsChanged { .. } => refresh = true,
+                            StreamMessage::Error { message, .. } => {
+                                watch_error = Some(Some(message));
+                                catch_up = true;
+                            }
+                            StreamMessage::Status {
+                                status: StreamStatus::Connected,
+                                ..
+                            } => {
+                                watch_error = Some(None);
+                                refresh |= catch_up;
+                                catch_up = false;
+                            }
+                            StreamMessage::Status { .. } => catch_up = true,
+                            StreamMessage::Stopped { .. } => {
+                                ended = true;
+                                break;
+                            }
+                            _ => {}
                         }
-                        Some(StreamMessage::Status {
-                            status: StreamStatus::Connected,
-                            ..
-                        }) => {
-                            clear_error = true;
-                            refresh = catch_up;
-                            catch_up = false;
-                        }
-                        Some(StreamMessage::Status { .. }) => catch_up = true,
-                        _ => {}
                     }
                     let mut number = 0;
                     let updated = this.update(cx, |this, cx| {
                         if let Detail::Ready(detail) = &mut this.detail {
-                            refresh |= tick && matches!(detail.events.load, EventsLoad::Failed(_));
-                            if clear_error {
-                                detail.events.watch_error = None;
-                            }
-                            if let Some(error) = error {
-                                detail.events.watch_error = Some(error);
+                            refresh |= tick
+                                && (matches!(detail.events.load, EventsLoad::Failed(_))
+                                    || detail.events.refresh_error.is_some());
+                            if let Some(error) = watch_error {
+                                detail.events.watch_error = error;
                             }
                             if refresh {
                                 number = detail.events.begin_read();
                             }
                         }
                         // A recovery tick changes nothing shown unless it refreshes.
-                        if !tick || refresh {
+                        if consumed || refresh {
                             cx.notify();
                         }
                     });
@@ -99,13 +107,8 @@ impl Inspector {
                     if refresh {
                         let started = std::time::Instant::now();
                         let result = backend.events(resource.clone(), uid.clone()).await;
-                        if result.is_err() {
-                            catch_up = true;
-                        }
                         let updated = this.update(cx, |this, cx| {
-                            if let Detail::Ready(detail) = &mut this.detail
-                                && detail.events.current(number)
-                            {
+                            if let Detail::Ready(detail) = &mut this.detail {
                                 match result {
                                     Ok(rows) => detail.events.set_ready(number, rows),
                                     Err(error) => detail.events.set_failed(number, error.message),

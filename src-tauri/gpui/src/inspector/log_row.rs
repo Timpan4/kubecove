@@ -75,6 +75,10 @@ impl InlineText {
     fn push(&mut self, text: &str, term: &str, style: HighlightStyle, monospace: bool) {
         let start = self.text.len();
         self.text.push_str(text);
+        self.style_tail(start, term, style, monospace);
+    }
+
+    fn style_tail(&mut self, start: usize, term: &str, style: HighlightStyle, monospace: bool) {
         let end = self.text.len();
         if start == end {
             return;
@@ -85,7 +89,7 @@ impl InlineText {
         }
         let style_unmatched = style != HighlightStyle::default() || monospace;
         let mut cursor = start;
-        for matched in highlight_ranges(text, term) {
+        for matched in highlight_ranges(&self.text[start..end], term) {
             let from = start + matched.start;
             if style_unmatched && cursor < from {
                 self.highlights.push((cursor..from, style));
@@ -254,12 +258,11 @@ fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
     };
     for field in &structure.fields {
         text.text.push_str("  ");
-        text.push(
-            &format!("{}={}", field.key, field.value),
-            term,
-            field_style,
-            true,
-        );
+        let start = text.text.len();
+        text.text.push_str(&field.key);
+        text.text.push('=');
+        text.text.push_str(&field.value);
+        text.style_tail(start, term, field_style, true);
     }
     text.render()
 }

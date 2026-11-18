@@ -42,6 +42,7 @@
 	import { argoApplicationReads } from "@/lib/argo-application-inspection";
 	import { createLiveReadRefresh } from "@/lib/live-view-refresh";
 	import { queryMatchers, type QueryMatch } from "@/lib/queryKeys";
+	import { RESOURCE_RECOVERY_INTERVAL } from "@/lib/resource-watch";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		getSettingsSnapshot,
@@ -142,7 +143,7 @@
 	});
 	let realtimeWatchError = $state<string | null>(null);
 	let realtimeEventsWatchError = $state<string | null>(null);
-	const showEventsWatchError = $derived(
+	const showEventsWarnings = $derived(
 		activeTab === "details" || activeTab === "events",
 	);
 	let yamlShowFullDiff = $state(initialDetailState?.yamlShowFullDiff ?? false);
@@ -217,9 +218,12 @@
 	const eventsReady = $derived(
 		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
 	);
-	const eventsQuery = createQuery<ResourceEventSummary[]>(() =>
-		resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
-	);
+	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
+		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
+		refetchInterval: realtimeEventsWatchError
+			? (query) => query.state.status === "success" ? RESOURCE_RECOVERY_INTERVAL : false
+			: false,
+	}));
 
 	const detailResource = $derived(detailsQuery.data?.summary ?? resource);
 	const conditionRows = $derived(getConditionRows(detailsQuery.data?.status));
@@ -545,9 +549,14 @@
 			Realtime watch failed: {realtimeWatchError}. Showing the last loaded data.
 		</p>
 	{/if}
-	{#if showEventsWatchError && realtimeEventsWatchError}
+	{#if showEventsWarnings && realtimeEventsWatchError}
 		<p class="text-muted-foreground text-xs">
 			Events watch failed: {realtimeEventsWatchError}
+		</p>
+	{/if}
+	{#if showEventsWarnings && eventsQuery.isRefetchError}
+		<p class="text-muted-foreground text-xs">
+			Events refresh failed: {String(eventsQuery.error?.message ?? eventsQuery.error)}
 		</p>
 	{/if}
 

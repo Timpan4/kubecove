@@ -74,6 +74,7 @@ fn scripted_target(row: &ResourceSummary) -> bool {
 enum EventSet {
     Live,
     Overflow,
+    Unavailable,
 }
 impl Fixture {
     /// Fixture construction precedes timed notification delivery. NativeBackend
@@ -364,6 +365,7 @@ impl Fixture {
             }
             "events" => state.events = Some(EventSet::Live),
             "events-overflow" => state.events = Some(EventSet::Overflow),
+            "events-list-failed" => state.events = Some(EventSet::Unavailable),
             _ => {}
         }
         if let Some(notifications) = self.live.notifications.lock().unwrap().take() {
@@ -611,13 +613,17 @@ impl Fixture {
     pub(super) fn scripted_events(
         &self,
         resource: &ResourceSummary,
-    ) -> Option<Vec<ResourceEventSummary>> {
+    ) -> Option<Result<Vec<ResourceEventSummary>, AppError>> {
         if resource.kind != "Deployment" || resource.name != "payments-api" {
             return None;
         }
         match self.live.state.lock().unwrap().events {
-            Some(EventSet::Live) => Some(self.live_events.clone()),
-            Some(EventSet::Overflow) => Some(self.overflow_events.clone()),
+            Some(EventSet::Live) => Some(Ok(self.live_events.clone())),
+            Some(EventSet::Overflow) => Some(Ok(self.overflow_events.clone())),
+            Some(EventSet::Unavailable) => Some(Err(AppError::new(
+                "Scripted Events list failure",
+                AppErrorKind::Network,
+            ))),
             None => None,
         }
     }

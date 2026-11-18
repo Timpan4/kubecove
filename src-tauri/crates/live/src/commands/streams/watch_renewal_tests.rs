@@ -83,24 +83,26 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
 
 #[tokio::test(start_paused = true)]
 async fn event_watch_resets_version_after_in_stream_internal_error() {
-    let (versions, states) = recover_event_watch_after_error(true, 500).await;
-    assert_eq!(versions, ["0", "0"]);
-    assert_eq!(
-        states,
-        [
-            "connected",
-            "error",
-            "reconnecting",
-            "connected",
-            "resourceEventsChanged"
-        ]
-    );
+    for reply in [EventWatchError::Envelope, EventWatchError::BareStatus] {
+        let (versions, states) = recover_event_watch_after_error(reply, 500).await;
+        assert_eq!(versions, ["0", "0"]);
+        assert_eq!(
+            states,
+            [
+                "connected",
+                "error",
+                "reconnecting",
+                "connected",
+                "resourceEventsChanged"
+            ]
+        );
+    }
 }
 
 #[tokio::test(start_paused = true)]
 async fn event_watch_uses_the_right_version_after_an_http_error() {
     for (code, expected_version) in [(410, "0"), (500, "0"), (503, "55")] {
-        let (versions, states) = recover_event_watch_after_error(false, code).await;
+        let (versions, states) = recover_event_watch_after_error(EventWatchError::Http, code).await;
         assert_eq!(versions, ["0", "55", expected_version], "HTTP {code}");
         assert_eq!(
             states,
@@ -117,8 +119,22 @@ async fn event_watch_uses_the_right_version_after_an_http_error() {
     }
 }
 
-async fn recover_event_watch_after_error(in_stream: bool, code: u16) -> (Vec<String>, Vec<String>) {
-    let retry_request = if in_stream { 2 } else { 3 };
+#[derive(Clone, Copy)]
+enum EventWatchError {
+    Envelope,
+    BareStatus,
+    Http,
+}
+
+async fn recover_event_watch_after_error(
+    reply: EventWatchError,
+    code: u16,
+) -> (Vec<String>, Vec<String>) {
+    let retry_request = if matches!(reply, EventWatchError::Http) {
+        3
+    } else {
+        2
+    };
     let requests = Arc::new(Mutex::new(Vec::new()));
     let service_requests = requests.clone();
     let service = tower::service_fn(move |request: Request<Body>| {
@@ -132,16 +148,17 @@ async fn recover_event_watch_after_error(in_stream: bool, code: u16) -> (Vec<Str
             "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": code,
             "message": if code == 500 { "etcd event received with PrevKv=nil (type=DELETE)" } else { "Events watch rejected" }
         });
-        let (code, body) = match (in_stream, requests.len()) {
-            (true, 1) => (
+        let (code, body) = match (reply, requests.len()) {
+            (EventWatchError::Envelope, 1) => (
                 200,
                 format!(
                     "{bookmark}\n{}\n",
                     json!({ "type": "ERROR", "object": error })
                 ),
             ),
-            (false, 2) => (code, error.to_string()),
-            (false, 1) => (200, format!("{bookmark}\n")),
+            (EventWatchError::BareStatus, 1) => (200, format!("{bookmark}\n{error}\n")),
+            (EventWatchError::Http, 2) => (code, error.to_string()),
+            (EventWatchError::Http, 1) => (200, format!("{bookmark}\n")),
             (_, attempt) if attempt == retry_request => (
                 200,
                 format!(

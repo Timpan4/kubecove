@@ -23,7 +23,7 @@
 
 	type EventsQueryState = {
 		isPending: boolean;
-		isError: boolean;
+		isLoadingError: boolean;
 		error?: unknown;
 	};
 
@@ -77,7 +77,7 @@
 				<span>Loading events</span>
 			</div>
 		{/if}
-	{:else if eventsQuery.isError}
+	{:else if eventsQuery.isLoadingError}
 		<FriendlyError
 			mode="compact"
 			error={eventsQuery.error}

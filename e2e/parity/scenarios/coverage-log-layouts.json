@@ -14,7 +14,11 @@
 				{ "action": "openResources" },
 				{ "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
 				{ "action": "showTab", "tab": "Logs" },
-				{ "action": "coverageCheck", "check": "log-compact-wrap" }
+				{ "action": "coverageCheck", "check": "log-compact-wrap" },
+				{ "action": "filterLogs", "value": "status=READY" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "state=cache warm" },
+				{ "action": "expectLogLines", "lines": ["logfmt row"] }
 			]
 		},
 		{

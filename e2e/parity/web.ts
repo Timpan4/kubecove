@@ -244,7 +244,7 @@ export async function action(page: Page, step: Step, scenarioSteps: readonly Ste
 		case "expectPortForward": await page.getByRole("cell").getByText(step.title, { exact: true }).waitFor(); break;
 		case "expectLogLines":
 			// Headlines of the rendered rows, in display order.
-			await page.waitForFunction((lines) => JSON.stringify([...document.querySelectorAll("[data-log-row]")].map((row) => row.querySelector('span[class*="text-[12.5px]"]')?.textContent?.trim())) === JSON.stringify(lines), step.lines);
+			await page.waitForFunction((lines) => JSON.stringify([...document.querySelectorAll("[data-log-headline]")].map((headline) => headline.textContent?.trim())) === JSON.stringify(lines), step.lines);
 			break;
 		case "expectLogToolbarFit": await expectLogToolbarFit(page, step.state); break;
 		case "filterLogs": await page.getByRole("textbox", { name: "Filter log lines" }).fill(step.value); break;

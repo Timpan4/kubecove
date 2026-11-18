@@ -123,7 +123,7 @@
 {/snippet}
 
 {#snippet headline(extra: string)}
-	<span class="min-w-0 text-[12.5px] font-medium leading-[17px] text-foreground {extra}">
+	<span data-log-headline class="min-w-0 text-[12.5px] font-medium leading-[17px] text-foreground {extra}">
 		{@render highlighted(structure.headline)}
 	</span>
 {/snippet}
@@ -214,7 +214,7 @@
 		<div class="min-w-0 flex-1">
 			{#if open && sourceLabel}<span data-log-source class="block max-w-[30%] truncate font-mono text-[10.5px] leading-[18px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}
 			<div data-log-summary class="text-[12px] leading-[18px] {open ? '[overflow-wrap:anywhere]' : 'truncate'}">
-				{#if !open && sourceLabel}<span data-log-source class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span
+				{#if !open && sourceLabel}<span data-log-source class="mr-2 inline-block max-w-[30%] truncate align-bottom font-mono text-[10.5px] text-muted-foreground" title={sourceLabel}>{sourceLabel}</span>{/if}<span data-log-headline
 					class="font-medium text-foreground">{@render highlighted(structure.headline)}</span
 				>{#if !open && structure.error}<span
 						class="ml-2 font-mono text-[11px] text-red-600 dark:text-red-300"

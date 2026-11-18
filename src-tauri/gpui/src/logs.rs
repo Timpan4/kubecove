@@ -74,7 +74,7 @@ pub struct ParsedLogLine {
     pub timestamp: Option<SharedString>,
     /// `LogEntry`'s `sourceLabel`: `pod/container`, the Pod alone, or empty.
     pub source_label: SharedString,
-    /// `logLineSearchText`: raw text, Pod and container, lowercased.
+    /// `logLineSearchText`: raw text, source and displayed field tokens, lowercased.
     pub search: String,
 }
 
@@ -348,6 +348,12 @@ pub fn parse_line(line: &str, source: Option<&LogLineSource>, index: u64) -> Par
             search.push(' ');
             search.push_str(&part.to_lowercase());
         }
+    }
+    for field in &structure.fields {
+        search.push(' ');
+        search.push_str(&field.key.to_lowercase());
+        search.push('=');
+        search.push_str(&field.value.to_lowercase());
     }
     let source_label = source.map_or(SharedString::default(), |source| {
         match source.container.as_deref() {

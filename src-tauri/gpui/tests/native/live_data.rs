@@ -3,6 +3,9 @@ use kubecove_gpui::backend::WatchTarget;
 use kubecove_lib::models::{StreamMessage, StreamStatus, WatchResourceTarget};
 use tokio::sync::mpsc;
 
+#[path = "live_data_events.rs"]
+mod events;
+
 #[gpui_kit::test]
 fn cancelling_an_opening_watch_releases_its_stream(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
@@ -56,6 +59,8 @@ fn ended_streams_restart_on_the_web_recovery_tick(cx: &mut TestAppContext) {
 #[derive(Default)]
 pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
+    events_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    events_reads: std::sync::atomic::AtomicUsize,
     /// Whether opening a watch fails.
     open_fails: AtomicBool,
     gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -528,54 +533,15 @@ fn deterministic_resource_read_errors_wait_for_manual_refresh(cx: &mut TestAppCo
     .unwrap();
 }
 
-#[gpui_kit::test]
-fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
-    let backend = Arc::new(Controlled::default());
-    backend.live.events_fail.store(true, Ordering::SeqCst);
-    let handle = open(cx, backend.clone());
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        window.click("resource:Deployment:payments:payments-api:mock-dev", cx);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        window.click("show-events", cx);
-        window.render_frame(cx);
-        assert!(window.try_find("event:0").is_none());
-    })
-    .unwrap();
-    cx.background_executor
-        .advance_clock(std::time::Duration::from_millis(15_000));
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        assert!(window.try_find("events-refresh-warning").is_none());
-        assert_eq!(
-            window.find("events-error").label(),
-            Some("Failed to load events: Events unavailable")
-        );
-    })
-    .unwrap();
-    backend.live.events_fail.store(false, Ordering::SeqCst);
-    cx.background_executor
-        .advance_clock(std::time::Duration::from_millis(15_000));
-    cx.run_until_parked();
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        assert_eq!(
-            window.find("event:0").label(),
-            Some("BackOff Back-off restarting failed container app")
-        );
-        assert!(window.try_find("events-error").is_none());
-    })
-    .unwrap();
-}
 impl LiveControls {
     pub fn events(&self) -> Read<Vec<ResourceEventSummary>> {
+        self.events_reads.fetch_add(1, Ordering::SeqCst);
         let fail = self.events_fail.load(Ordering::SeqCst);
+        let gate = self.events_gate.lock().unwrap().take();
         Box::pin(async move {
+            if let Some(gate) = gate {
+                let _ = gate.await;
+            }
             if fail {
                 return Err(AppError::new("Events unavailable", AppErrorKind::Network));
             }

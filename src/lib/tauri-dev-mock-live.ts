@@ -7,7 +7,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
     { eventType: "Normal", reason: "LiveOlder", message: "Older scripted event", count: 1, lastSeen: "2m", lastSeenAt: "2026-06-29T10:01:00Z", source: "parity", namespace: "payments" },
     { eventType: "Normal", reason: "LiveNewest", message: "Newest scripted event", count: 1, lastSeen: "1m", lastSeenAt: "2026-06-29T10:02:00Z", source: "parity", namespace: "payments" },
 ];
-export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "forbidden", "failed", "missed-delete"] as const;
+export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
 type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
@@ -29,6 +29,7 @@ const REOWNED = "checkout-worker";
 const FLUX_OWNER = { provider: "flux", kind: "Kustomization", name: "platform", namespace: "flux-system", confidence: "inventory", provenance: "flux-kustomization-inventory", partial: false };
 const ANNOTATION_APP = "checkout-legacy";
 let events: ResourceEventSummary[] | undefined;
+let eventsListFailed = false;
 let failed = false;
 // Scripted changes so far; the mock list version is one higher, as in tests/common/live_data.rs.
 let revision = 0;
@@ -98,6 +99,7 @@ export function liveResources(rows: ResourceSummary[]): ResourceSummary[] {
 }
 function target(row: ResourceSummary): boolean { return row.kind === "Deployment" && row.namespace === "payments" && row.name === "payments-api"; }
 export function liveEvents(kind?: string, name?: string): ResourceEventSummary[] | undefined {
+    if (eventsListFailed && kind === "Deployment" && name === "payments-api") throw new Error("Scripted Events list failure");
     return kind === "Deployment" && name === "payments-api" ? events : undefined;
 }
 export function replayLiveData(script: LiveScript): void {
@@ -125,6 +127,12 @@ export function replayLiveData(script: LiveScript): void {
         revision += 1;
         changedAt = revision + 1;
     }
+    if (script === "events-list-failed") {
+        eventsListFailed = true;
+        return;
+    }
+    const eventsChanged = script === "events" || script === "events-overflow";
+    if (eventsChanged) eventsListFailed = false;
     if (script === "events") events = LIVE_EVENTS;
     if (script === "events-overflow") events = OVERFLOW_EVENTS;
     for (const watch of reachableWatches()) {
@@ -136,9 +144,9 @@ export function replayLiveData(script: LiveScript): void {
         if (script === "failed") watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Scripted connection loss" });
         if (script === "connected" || script === "reconnecting" || script === "forbidden") {
             watch.channel.onmessage({ type: "status", streamId, status: script, message: script });
-        } else if ((script === "events" || script === "events-overflow") && watch.name === "payments-api" && watch.kind === "Deployment") {
+        } else if (eventsChanged && watch.name === "payments-api" && watch.kind === "Deployment") {
             watch.channel.onmessage({ type: "resourceEventsChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: watch.name, namespace: watch.namespace }, action: "applied" });
-        } else if (script !== "events" && script !== "events-overflow" && (!mockDevOnly || watch.context === "mock-dev") && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
+        } else if (!eventsChanged && (!mockDevOnly || watch.context === "mock-dev") && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
             watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: reowning ? REOWNED : script === "add" ? ADDED : "payments-api", namespace: "payments" }, action: script === "delete" || mockDevOnly ? "deleted" : "applied" });
         }
     }

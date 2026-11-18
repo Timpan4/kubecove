@@ -40,10 +40,11 @@ pub(super) struct EventsState {
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
     pub refresh_error: Option<String>,
-    /// The number of the last read started, and of the newest read that
-    /// settled into `load`. The first read and the watch's reads overlap.
+    /// The first read and the watch's reads overlap. A newer failure can
+    /// accompany the last successful snapshot, even if that snapshot arrives later.
     started_reads: u64,
     settled_read: u64,
+    snapshot_read: u64,
     _search_changed: Subscription,
 }
 
@@ -71,6 +72,7 @@ impl EventsState {
             refresh_error: None,
             started_reads: 0,
             settled_read: 0,
+            snapshot_read: 0,
             _search_changed,
         }
     }
@@ -81,12 +83,6 @@ impl EventsState {
         self.started_reads
     }
 
-    /// Whether the read numbered `read` may still change `load`: a read that
-    /// started later has not already settled it.
-    pub fn current(&self, read: u64) -> bool {
-        read > self.settled_read
-    }
-
     pub fn events(&self) -> &[ResourceEventSummary] {
         match &self.load {
             EventsLoad::Ready(events) => events,
@@ -94,22 +90,31 @@ impl EventsState {
         }
     }
 
-    /// Stores the complete read numbered `read` and the layout source the
-    /// timeline cache compares. Every path that writes `EventsLoad::Ready`
-    /// goes through here, after checking `current(read)`.
+    /// Stores the newest successful read and the timeline's layout source.
     pub fn set_ready(&mut self, read: u64, mut events: Vec<ResourceEventSummary>) {
-        self.settled_read = read;
-        self.refresh_error = None;
+        if read <= self.snapshot_read {
+            return;
+        }
+        self.snapshot_read = read;
         incident::sort_events(&mut events);
         let source: Arc<[u8]> = serde_json::to_vec(&events)
             .expect("event models serialize")
             .into();
         self.layout_key = row_id(&source);
         self.layout_source = source;
-        self.load = EventsLoad::Ready(events);
+        let previous = std::mem::replace(&mut self.load, EventsLoad::Ready(events));
+        if read > self.settled_read {
+            self.settled_read = read;
+            self.refresh_error = None;
+        } else if let EventsLoad::Failed(error) = previous {
+            self.refresh_error = Some(error);
+        }
     }
 
     pub fn set_failed(&mut self, read: u64, error: String) {
+        if read <= self.settled_read {
+            return;
+        }
         self.settled_read = read;
         if matches!(self.load, EventsLoad::Ready(_)) {
             self.refresh_error = Some(error);
@@ -140,15 +145,12 @@ impl Inspector {
         detail.events.refresh_error = None;
         detail.events.layout_key = 0;
         detail.events.layout_source = Arc::default();
+        detail.events.rows = Windowed::default();
         // The detail owns this read, so it only settles into the detail that started it.
         detail.events.task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             let _ = this.update(cx, |this, cx| {
-                // A watch read that started later may already have settled newer rows.
-                if let Detail::Ready(detail) = &mut this.detail
-                    && detail.events.current(number)
-                {
-                    detail.events.rows = Windowed::default();
+                if let Detail::Ready(detail) = &mut this.detail {
                     match result {
                         Ok(events) => detail.events.set_ready(number, events),
                         Err(error) => detail.events.set_failed(number, error.message),

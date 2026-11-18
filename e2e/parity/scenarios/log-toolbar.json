@@ -6,14 +6,19 @@
 			"id": "logs.pod.event-watch-warning",
 			"title": "An Events watch failure stays with Events while Pod logs remain live",
 			"steps": [
+				{ "action": "coverageScript", "script": "logs-stream" },
 				{ "action": "openResources" },
-				{ "action": "search", "value": "argocd-dex-server" },
-				{ "action": "openResource", "kind": "Pod", "namespace": "argocd", "name": "argocd-dex-server-6d7f9c5b8-q4w2n" },
+				{ "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+				{ "action": "showTab", "tab": "Logs" },
+				{ "action": "expectLogToolbarFit", "state": "Live" },
 				{ "action": "showTab", "tab": "Events" },
 				{ "action": "replayLiveData", "script": "events-failed" },
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "showTab", "tab": "Logs" },
 				{ "action": "expectLogToolbarFit", "state": "Live" },
+				{ "action": "coverageCheck", "check": "emit-log" },
+				{ "action": "filterLogs", "value": "Newest controlled line" },
+				{ "action": "coverageText", "visible": true, "text": "Newest controlled line" },
 				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "advanceClock", "ms": 15000 },
 				{ "action": "showTab", "tab": "Details" },
@@ -22,6 +27,30 @@
 				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
 				{ "action": "replayLiveData", "script": "connected" },
 				{ "action": "coverageText", "visible": false, "text": "Events watch failed: Scripted Events watch failure" }
+			]
+		},
+		{
+			"id": "logs.events.failed-refresh",
+			"title": "A failed Events refresh preserves the last list and reports its own warning",
+			"steps": [
+				{ "action": "openResources" },
+				{ "action": "search", "value": "payments-api" },
+				{ "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+				{ "action": "showTab", "tab": "Events" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" },
+				{ "action": "replayLiveData", "script": "events-failed" },
+				{ "action": "replayLiveData", "script": "events-list-failed" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": true, "text": "Events refresh failed: Scripted Events list failure" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" },
+				{ "action": "replayLiveData", "script": "events" },
+				{ "action": "advanceClock", "ms": 15000 },
+				{ "action": "coverageText", "visible": false, "text": "Events refresh failed: Scripted Events list failure" },
+				{ "action": "coverageText", "visible": true, "text": "Events watch failed: Scripted Events watch failure" },
+				{ "action": "expectEvent", "index": 0, "reason": "LiveNewest", "message": "Newest scripted event" }
 			]
 		},
 		{
