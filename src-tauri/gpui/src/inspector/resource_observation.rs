@@ -6,6 +6,7 @@ use crate::model::PreparedRows;
 use std::{
     collections::{BTreeMap, HashMap},
     rc::Rc,
+    time::Instant,
 };
 
 mod freshness;
@@ -84,12 +85,19 @@ impl ContextRows {
         })
     }
 
-    fn clear_listed_errors(&mut self, listed: &[Listed]) {
+    fn clear_listed_errors(&mut self, listed: &[Listed], scope_started: Instant) {
         if self.kind_errors.is_empty() {
             return;
         }
         for list in listed {
-            self.kind_errors.remove(&watch_id(&list.context, &list.key));
+            let id = watch_id(&list.context, &list.key);
+            if self
+                .kind_errors
+                .get(&id)
+                .is_some_and(|error| error.started < scope_started)
+            {
+                self.kind_errors.remove(&id);
+            }
         }
     }
 }
@@ -97,6 +105,7 @@ impl ContextRows {
 struct KindReadError {
     key: WatchResourceKey,
     message: String,
+    started: Instant,
 }
 
 /// What applying every context's read changes outside `ResourceObservation`.
@@ -206,7 +215,12 @@ impl ResourceObservation {
 
     /// Applies one context's built-in read, whose rows the caller took. A
     /// failed context shows no rows, one warning and no custom kinds.
-    fn context_settled(&mut self, context: &str, result: Result<ScopeResult, &AppError>) {
+    fn context_settled(
+        &mut self,
+        context: &str,
+        result: Result<ScopeResult, &AppError>,
+        scope_started: Instant,
+    ) {
         let several = self.contexts.len() > 1;
         let Some(index) = self.position(context) else {
             return;
@@ -214,7 +228,7 @@ impl ResourceObservation {
         let part = &mut self.parts[index];
         match result {
             Ok(result) => {
-                part.clear_listed_errors(&result.listed);
+                part.clear_listed_errors(&result.listed, scope_started);
                 *part = ContextRows {
                     ready: true,
                     shown: true,
@@ -296,6 +310,7 @@ impl ResourceObservation {
         &mut self,
         context: &str,
         result: Result<ScopeResult, AppError>,
+        scope_started: Instant,
     ) -> Vec<ResourceSummary> {
         let several = self.contexts.len() > 1;
         let Some(part) = self
@@ -309,7 +324,7 @@ impl ResourceObservation {
         let rows = match result {
             Ok(result) => {
                 self.custom_ok = true;
-                part.clear_listed_errors(&result.listed);
+                part.clear_listed_errors(&result.listed, scope_started);
                 part.versions
                     .extend(context_versions(context, result.versions));
                 part.warnings.extend(
@@ -337,7 +352,12 @@ impl ResourceObservation {
     /// A failed context shows no rows and one warning. In a `refresh`, a
     /// context whose rows show keeps its part and rows when it fails, kept
     /// rows whose reload the refresh cancelled included.
-    fn apply_parts(&mut self, results: ContextResults<ScopeResult>, refresh: bool) -> Applied {
+    fn apply_parts(
+        &mut self,
+        results: ContextResults<ScopeResult>,
+        refresh: bool,
+        scope_started: Instant,
+    ) -> Applied {
         let several = results.len() > 1;
         let mut applied = Applied::default();
         for (context, result) in results {
@@ -349,7 +369,7 @@ impl ResourceObservation {
             let part = &mut self.parts[index];
             match result {
                 Ok(result) => {
-                    part.clear_listed_errors(&result.listed);
+                    part.clear_listed_errors(&result.listed, scope_started);
                     applied.listed.extend(result.listed);
                     *part = ContextRows {
                         ready: true,
@@ -522,6 +542,7 @@ impl ResourceObservation {
         context: &str,
         key: &WatchResourceKey,
         message: String,
+        started: Instant,
     ) {
         if let Some(index) = self.position(context) {
             self.parts[index].kind_errors.insert(
@@ -529,6 +550,7 @@ impl ResourceObservation {
                 KindReadError {
                     key: key.clone(),
                     message,
+                    started,
                 },
             );
         }

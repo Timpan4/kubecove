@@ -327,7 +327,7 @@ impl Inspector {
                         return;
                     }
                     let apply_started = Instant::now();
-                    match this.observation.install_refresh(result) {
+                    match this.observation.install_refresh(result, scope_started) {
                         Ok(applied) => {
                             this.supersede_kind_errors(&applied.listed, scope_started);
                             this.namespaces = if applied.kept.is_empty() {

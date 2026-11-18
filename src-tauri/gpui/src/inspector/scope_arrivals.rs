@@ -72,7 +72,9 @@ impl Inspector {
         if let Ok(snapshot) = &result {
             self.supersede_kind_errors(&snapshot.listed, scope_started);
         }
-        let applied = self.observation.install_arrival(context, result, rows);
+        let applied = self
+            .observation
+            .install_arrival(context, result, rows, scope_started);
         if let Some(namespaces) = applied.namespaces {
             self.namespaces = namespaces;
         }
@@ -109,7 +111,7 @@ impl Inspector {
         if let Ok(snapshot) = &result {
             self.supersede_kind_errors(&snapshot.listed, scope_started);
         }
-        self.apply_custom_resources(context, result, cx);
+        self.apply_custom_resources(context, result, scope_started, cx);
         self.note_apply(
             LoadKind::Scope,
             apply_started.elapsed(),

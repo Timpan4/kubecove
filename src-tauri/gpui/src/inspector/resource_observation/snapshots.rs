@@ -5,7 +5,7 @@ use crate::inspector::Load;
 use crate::model::{ObservedNames, PreparedRows};
 use crate::workspaces::reads::ContextResults;
 use kubecove_lib::models::{AppError, NamespaceSummary, ResourceSummary};
-use std::rc::Rc;
+use std::{rc::Rc, time::Instant};
 
 /// Whether two context lists hold the same contexts. Workspace contexts are unique.
 pub(in crate::inspector) fn same_contexts(left: &[String], right: &[String]) -> bool {
@@ -142,15 +142,16 @@ impl ResourceObservation {
         context: &str,
         result: Result<ScopeResult, AppError>,
         rows: PreparedRows,
+        scope_started: Instant,
     ) -> Arrival {
         self.preparing = false;
         let was_shown = self.shows(context);
         self.starts
             .retain(|id, _| !crate::backend::watch_id_in(context, id));
         match result {
-            Ok(result) => self.context_settled(context, Ok(result)),
+            Ok(result) => self.context_settled(context, Ok(result), scope_started),
             Err(error) => {
-                self.context_settled(context, Err(&error));
+                self.context_settled(context, Err(&error), scope_started);
                 self.failures.push((context.to_owned(), error));
             }
         }
@@ -180,8 +181,9 @@ impl ResourceObservation {
         &mut self,
         context: &str,
         result: Result<ScopeResult, AppError>,
+        scope_started: Instant,
     ) {
-        let added = self.custom_settled(context, result);
+        let added = self.custom_settled(context, result, scope_started);
         if !added.is_empty() {
             let mut rows = self.data.backend_rows();
             rows.extend(added);
@@ -194,6 +196,7 @@ impl ResourceObservation {
     pub(in crate::inspector) fn install_refresh(
         &mut self,
         ScopeRows { results, rows }: ScopeRows,
+        scope_started: Instant,
     ) -> Result<Applied, String> {
         self.starts.clear();
         if !results.is_empty() && results.iter().all(|(_, result)| result.is_err()) {
@@ -209,7 +212,7 @@ impl ResourceObservation {
             return Err(error);
         }
         let span = crate::frame_profile::scope("scope", "apply_parts");
-        let applied = self.apply_parts(results, true);
+        let applied = self.apply_parts(results, true, scope_started);
         drop(span);
         let span = crate::frame_profile::scope("scope", "swap_rows");
         self.data = Rc::new(self.keep_failed_contexts(rows, &applied.kept));
@@ -264,5 +267,63 @@ impl ResourceObservation {
         if !matches!(self.status, Load::Ready) && !self.data.is_empty() {
             self.status = Load::Ready;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ResourceObservation, ScopeResult, ScopeRows};
+    use crate::backend::{Listed, watch_id};
+    use kubecove_lib::models::{WatchResourceKey, WatchResourceKind};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn scope_refresh_clears_only_kind_failures_it_supersedes() {
+        let context = "development";
+        let other = "production";
+        let key = WatchResourceKey {
+            resource_kind: WatchResourceKind {
+                kind: "Pod".into(),
+                group: None,
+                version: None,
+                api_version: None,
+                plural: None,
+                namespaced: None,
+            },
+            namespace: None,
+        };
+        let id = watch_id(context, &key);
+        let other_id = watch_id(other, &key);
+        let mut observation = ResourceObservation {
+            contexts: vec![context.into(), other.into()],
+            parts: vec![Default::default(), Default::default()],
+            ..Default::default()
+        };
+        let older = Instant::now();
+        let kind_started = older + Duration::from_nanos(1);
+        let newer = kind_started + Duration::from_nanos(1);
+        observation.record_kind_error(context, &key, "Kind list failed".into(), kind_started);
+        observation.record_kind_error(other, &key, "Other list failed".into(), kind_started);
+        let snapshot = || ScopeRows {
+            results: vec![(
+                context.into(),
+                Ok(ScopeResult {
+                    listed: vec![Listed {
+                        context: context.into(),
+                        key: key.clone(),
+                    }],
+                    ..Default::default()
+                }),
+            )],
+            rows: Default::default(),
+        };
+
+        assert!(observation.install_refresh(snapshot(), older).is_ok());
+        assert!(observation.kind_read_failed(context, &id));
+        assert_eq!(observation.shown_refresh_error(), Some("Kind list failed"));
+        assert!(observation.install_refresh(snapshot(), newer).is_ok());
+        assert!(!observation.kind_read_failed(context, &id));
+        assert_eq!(observation.shown_refresh_error(), None);
+        assert!(observation.kind_read_failed(other, &other_id));
     }
 }

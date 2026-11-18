@@ -5,6 +5,7 @@ use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{AnyElement, Context, SharedString, deferred, div, prelude::*, px};
 use kubecove_lib::models::AppError;
+use std::time::Instant;
 
 /// The custom-resource read that follows the built-in resource read.
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -46,9 +47,11 @@ impl Inspector {
         &mut self,
         context: &str,
         result: Result<ScopeResult, AppError>,
+        scope_started: Instant,
         cx: &mut Context<Self>,
     ) {
-        self.observation.install_custom(context, result);
+        self.observation
+            .install_custom(context, result, scope_started);
         self.warnings = self.scope_warnings(self.observation.warnings());
         self.prepare_rows();
         self.filter(cx);

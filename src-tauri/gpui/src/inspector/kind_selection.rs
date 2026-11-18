@@ -302,6 +302,7 @@ impl Inspector {
                                     &context,
                                     &error.message,
                                 ),
+                                started,
                             );
                         }
                         Err(_) => {}
