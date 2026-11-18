@@ -103,7 +103,9 @@ export function filterOrderedParsedLogLines(
 	return filterTerm
 		? lines.filter((line) =>
 				logLineSearchText(line).includes(filterTerm) ||
-				line.structure.fields.some(({ key, value }) => `${key}=${value}`.toLowerCase().includes(filterTerm)),
+				// Only JSON and quoted logfmt can display fields absent from the raw text.
+				(line.message.includes('"') &&
+					line.structure.fields.some(({ key, value }) => `${key}=${value}`.toLowerCase().includes(filterTerm))),
 			)
 		: lines;
 }
