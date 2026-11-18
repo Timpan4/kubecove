@@ -478,11 +478,7 @@ impl Inspector {
                         }
                     };
                     let mut forbidden = false;
-                    let mut read_failed = this
-                        .update(cx, |this, _| {
-                            this.observation.kind_read_failed(&scope.context, &id)
-                        })
-                        .unwrap_or(false);
+                    let mut read_failed = false;
                     loop {
                         let input = receive_or_tick(&mut stream, &mut timer).await;
                         let tick = matches!(input, WatchInput::Tick);
@@ -505,7 +501,13 @@ impl Inspector {
                         if closed {
                             lost = true;
                         }
-                        let mut reload = tick && (lost || forbidden || read_failed);
+                        let missing_kind = tick
+                            && this
+                                .update(cx, |this, _| {
+                                    this.observation.kind_read_failed(&scope.context, &id)
+                                })
+                                .unwrap_or(false);
+                        let mut reload = tick && (lost || forbidden || read_failed || missing_kind);
                         // A recovery tick with nothing to recover leaves the view as it is.
                         if tick && batch.is_empty() && !reload {
                             continue;

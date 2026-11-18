@@ -489,6 +489,8 @@
 		: liveNoticeText(notice.map.status, mapStale.shown)));
 	let mapNoticeElement = $state<HTMLDivElement>();
 	let mapPanelElement = $state<HTMLDivElement>();
+	let tableNoticeElement = $state<HTMLDivElement>();
+	let tableHeadingElement = $state<HTMLHeadingElement>();
 	let browserElement = $state<HTMLDivElement>();
 
 	function liveNoticeText(status: string, stale: boolean) {
@@ -513,10 +515,15 @@
 	const panelsShown = $derived(Boolean(clusterContext) && fetchKeys.length > 0 && !errorReplacesBrowser && !loading.active);
 
 	$effect.pre(() => {
+		const focused = document.activeElement;
 		const mapMounted = panelsShown && mapPanelOpen;
-		const hasDetails = mapMounted && mapNotice && mapNotice !== tableNotice && notice.map?.error;
-		if (!hasDetails && mapNoticeElement?.contains(document.activeElement)) {
+		const tableMounted = panelsShown && tablePanelOpen;
+		const hasMapDetails = mapMounted && mapNotice && mapNotice !== tableNotice && notice.map?.error;
+		if (!hasMapDetails && mapNoticeElement?.contains(focused)) {
 			(mapMounted ? mapPanelElement : browserElement)?.focus({ preventScroll: true });
+		}
+		if (!(tableMounted && tableNotice && notice.table?.error) && tableNoticeElement?.contains(focused)) {
+			(tableMounted ? tableHeadingElement : browserElement)?.focus({ preventScroll: true });
 		}
 	});
 
@@ -827,7 +834,9 @@
 	{:else}
 		{#if tableNotice}
 			{@const label = notice.map && !notice.map.sharesTableError && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
-			{@render observationNotice(label, notice.table?.error)}
+			<div class="contents" bind:this={tableNoticeElement}>
+				{@render observationNotice(label, notice.table?.error)}
+			</div>
 		{/if}
 		{#if mapNotice && mapNotice !== tableNotice}
 			<div class="contents" bind:this={mapNoticeElement}>
@@ -919,7 +928,7 @@
 						<div class="min-w-0">
 							<div class="flex min-w-0 items-center gap-2">
 								<Table2 class="size-4 shrink-0 text-muted-foreground" />
-								<h2 class="truncate text-sm font-semibold">Resource Table</h2>
+								<h2 class="truncate text-sm font-semibold" bind:this={tableHeadingElement} tabindex="-1">Resource Table</h2>
 							</div>
 							<p class="mt-0.5 text-xs text-muted-foreground">
 								{tableModel.totalRows} resources{multiContext ? ` · ${reads.contexts.length} contexts` : ""} · page {tableModel.safePageIndex + 1} of {tableModel.pageCount}

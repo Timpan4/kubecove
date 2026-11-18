@@ -40,6 +40,20 @@ impl KindSelection {
         self.reads
             .retain(|_, read| read.ids.iter().any(|id| wanted.contains(id.as_str())));
     }
+
+    pub(super) fn supersede_lists(&mut self, listed: &[crate::backend::Listed]) {
+        if self.reads.is_empty() || listed.is_empty() {
+            return;
+        }
+        let covered: HashSet<_> = listed
+            .iter()
+            .map(|list| crate::backend::watch_id(&list.context, &list.key))
+            .collect();
+        self.reads.retain(|_, read| {
+            read.ids.retain(|id| !covered.contains(id));
+            !read.ids.is_empty()
+        });
+    }
 }
 
 pub(super) fn identity(kind: &DiscoveredResourceKind) -> String {
@@ -240,6 +254,15 @@ impl Inspector {
                 }
                 let several = results.len() > 1;
                 for (context, result) in results {
+                    let id = crate::backend::watch_id(&context, &key);
+                    if !this
+                        .kind_selection
+                        .reads
+                        .get(&selected)
+                        .is_some_and(|read| read.ids.contains(&id))
+                    {
+                        continue;
+                    }
                     match result {
                         Ok(crate::backend::KindRows {
                             rows,

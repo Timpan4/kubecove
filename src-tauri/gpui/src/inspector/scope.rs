@@ -2,7 +2,7 @@
 
 use super::Inspector;
 use super::load_trace::{LoadKind, LoadTrace};
-use super::resource_observation::{ScopeRows, all_failed, union_namespaces};
+use super::resource_observation::{ScopeRows, union_namespaces};
 use super::scope_arrivals::prepare_arrival;
 use crate::backend::{Read, Scope, ScopeResult};
 use crate::model::PreparedRows;
@@ -39,14 +39,17 @@ async fn arrive(
 
 /// Prepares the rows of every context that answered on the background
 /// executor, in context rank order, so applying the read on the UI thread
-/// only swaps them in. Fails only when every context failed.
+/// only swaps them in. Keeps the result of every context for installation.
 async fn prepare_off_thread(
     executor: &BackgroundExecutor,
     contexts: Vec<String>,
     mut results: ContextResults<ScopeResult>,
-) -> Result<ScopeRows, AppError> {
+) -> ScopeRows {
     if !results.is_empty() && results.iter().all(|(_, result)| result.is_err()) {
-        return Err(all_failed(results));
+        return ScopeRows {
+            results,
+            rows: PreparedRows::default(),
+        };
     }
     // Results come in plan order, so the rows come in context rank order.
     // Joining them copies every row, so it runs with the preparation.
@@ -62,7 +65,7 @@ async fn prepare_off_thread(
             (results, rows)
         })
         .await;
-    Ok(ScopeRows { results, rows })
+    ScopeRows { results, rows }
 }
 
 /// The builtin and custom reads of every workspace context, shareable while in
@@ -316,15 +319,15 @@ impl Inspector {
             let request = self.request.clone();
             let task = cx.spawn_in(window, async move |this, cx| {
                 let result =
-                    prepare_off_thread(cx.background_executor(), contexts.clone(), read.await)
-                        .await;
+                    prepare_off_thread(cx.background_executor(), contexts, read.await).await;
                 let _ = this.update(cx, |this, cx| {
                     if !Rc::ptr_eq(&this.request, &request) {
                         return;
                     }
                     let apply_started = Instant::now();
-                    match this.observation.install_refresh(&contexts, result) {
+                    match this.observation.install_refresh(result) {
                         Ok(applied) => {
+                            this.kind_selection.supersede_lists(&applied.listed);
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces
                             } else {

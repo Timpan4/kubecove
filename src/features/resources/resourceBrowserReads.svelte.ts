@@ -1,9 +1,10 @@
-import { createQueries, createQuery } from "@tanstack/svelte-query";
+import { createQueries, createQuery, useQueryClient } from "@tanstack/svelte-query";
 import type { ArgoApplicationTarget } from "@/lib/argo-application-inspection";
 import { diagnosticLog } from "@/lib/diagnostics";
 import type { KindFetchKey } from "@/lib/kind-identity";
 import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 import { cancelledQueryRetry } from "@/lib/query-retry";
+import { readRefreshPending } from "@/lib/resource-refresh";
 import { type ContextMetricsRead, metricsCard, resourceMetricIndex } from "@/lib/resource-metrics";
 import { isAppError, listNamespaces, listResourceKinds, type TauriClient } from "@/lib/tauri";
 import type {
@@ -36,6 +37,7 @@ export interface ResourceBrowserReadInput {
  * per context. A focused Argo CD Application reads only the primary context.
  */
 export function resourceBrowserReads(client: TauriClient, input: () => ResourceBrowserReadInput) {
+	const queryCache = useQueryClient().getQueryCache();
 	const current = $derived(input());
 	const primary = $derived(current.readContext.clusterContext);
 	const sourceReady = $derived(current.readContext.sourceReady);
@@ -195,13 +197,20 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	const mapShown = $derived(current.mapPanelOpen && Boolean(topology.data));
 	const mapRead = $derived(contexts.indexOf(mapContext));
 	const mapRows = $derived(scopeQueries[mapRead]);
+	const topologyRefreshPending = $derived(readRefreshPending(queryCache.find({
+		queryKey: mapSpecs.topology.queryKey,
+		exact: true,
+	})));
 	// Catch-up can be clearing caches before the topology query starts.
-	const mapCurrent = $derived(mapShown && !topology.isError && !topology.isPlaceholderData && topology.fetchStatus === "idle"
+	const mapCurrent = $derived(mapShown && !topologyRefreshPending && !topology.isError && !topology.isPlaceholderData && topology.fetchStatus === "idle"
 		&& map.status === "connected" && !map.catchingUp && !map.reloadError
 		&& !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
 	const mapError = $derived(mapRows?.error ?? map.reloadError);
-	const tableExplainsMapError = $derived(tableShown && failedTableRead >= 0 && failedTableRead === mapRead);
+	const tableExplainsMapError = $derived(tableShown && (
+		(failedTableRead >= 0 && failedTableRead === mapRead)
+		|| (failedTableRead < 0 && !mapRows?.error && Boolean(shown.reloadError) && shown === map)
+	));
 	const notice = $derived({
 		table: tableShown ? { status: shown.status, current: tableCurrent, error: tableError } : null,
 		map: mapShown ? {

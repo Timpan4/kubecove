@@ -18,7 +18,7 @@ use kubecove_lib::models::{
     AppError, NamespaceSummary, ResourceSummary, ResourceTopology, WatchResourceKey,
 };
 pub(super) use snapshots::{
-    ScopeRows, all_failed, context_message, rank_order, same_contexts, union_namespaces,
+    ScopeRows, context_message, rank_order, same_contexts, union_namespaces,
 };
 pub(super) use watches::Patch;
 
@@ -108,6 +108,8 @@ pub(super) struct Applied {
     pub(super) warnings: Vec<String>,
     /// Contexts whose refresh failed, so the table keeps their last rows.
     pub(super) kept: Vec<String>,
+    /// Successful lists that supersede pending reads of individual kinds.
+    pub(super) listed: Vec<Listed>,
 }
 
 /// The scope read in flight. Dropping it cancels the read.
@@ -348,6 +350,7 @@ impl ResourceObservation {
             match result {
                 Ok(result) => {
                     part.clear_listed_errors(&result.listed);
+                    applied.listed.extend(result.listed);
                     *part = ContextRows {
                         ready: true,
                         shown: true,
@@ -419,16 +422,9 @@ impl ResourceObservation {
 
     /// Applies the refresh. A failure keeps rows the table shows; without
     /// rows, as when Refresh is pressed during a first load, it fails the load.
-    fn refresh_settled(&mut self, requested: &[String], result: Result<(), String>) {
+    fn refresh_settled(&mut self, result: Result<(), String>) {
         self.read = None;
         let interrupted = std::mem::take(&mut self.custom_interrupted);
-        if let Err(error) = &result {
-            for context in requested {
-                if let Some(index) = self.position(context) {
-                    self.parts[index].refresh_error = Some(error.clone());
-                }
-            }
-        }
         match result {
             Ok(()) => {
                 self.status = Load::Ready;

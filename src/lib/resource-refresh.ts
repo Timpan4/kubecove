@@ -1,4 +1,5 @@
 import type { Query, QueryClient } from "@tanstack/svelte-query";
+import { createSubscriber } from "svelte/reactivity";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
 import { queryMatchers, type QueryMatch } from "./queryKeys";
@@ -11,14 +12,33 @@ interface ReadRefresh {
 	manualRevision: number;
 	waiting: boolean;
 	deferred?: { manualRevision: number; refetch: () => Promise<void> };
+	subscribe: () => void;
+	notify?: () => void;
 }
 
 const readsInRefresh = new WeakMap<Query, ReadRefresh>();
 
 function refreshState(query: Query): ReadRefresh {
-	const state = readsInRefresh.get(query) ?? { manual: 0, manualRevision: 0, waiting: false };
+	const existing = readsInRefresh.get(query);
+	if (existing) return existing;
+	const state: ReadRefresh = {
+		manual: 0,
+		manualRevision: 0,
+		waiting: false,
+		subscribe: createSubscriber((notify) => {
+			state.notify = notify;
+			return () => { state.notify = undefined; };
+		}),
+	};
 	readsInRefresh.set(query, state);
 	return state;
+}
+
+export function readRefreshPending(query: Query | undefined): boolean {
+	if (!query) return false;
+	const state = refreshState(query);
+	state.subscribe();
+	return state.manual > 0 || state.deferred !== undefined;
 }
 
 export function manualRefreshOwns(query: Query): boolean {
@@ -31,6 +51,7 @@ function flushDeferredRead(query: Query, state: ReadRefresh) {
 	// A manual read that started after this eviction already covers it.
 	if (state.manualRevision !== deferred.manualRevision) {
 		state.deferred = undefined;
+		state.notify?.();
 		return;
 	}
 	if (query.state.fetchStatus !== "idle" && query.promise) {
@@ -43,6 +64,7 @@ function flushDeferredRead(query: Query, state: ReadRefresh) {
 	}
 	state.deferred = undefined;
 	void deferred.refetch();
+	state.notify?.();
 }
 
 export async function refreshCurrentView({
@@ -81,7 +103,11 @@ export async function refreshCurrentView({
 	const shared: Query[] = [];
 	const independent: Query[] = [];
 	for (const query of queries) {
-		if (cancelRefetch) refreshState(query).manual++;
+		if (cancelRefetch) {
+			const state = refreshState(query);
+			state.manual++;
+			state.notify?.();
+		}
 		if (!cancelRefetch && independentReads.some((match) => match(query))) independent.push(query);
 		else shared.push(query);
 	}
@@ -95,6 +121,8 @@ export async function refreshCurrentView({
 			namespaces,
 			kubeconfigEnvVar,
 		);
+		// Watch changes may have started a new read while cache eviction was pending.
+		if (cancelRefetch) await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
 		// Keep the last displayed data while making every selected cache entry stale.
 		const invalidate = (query: Query, throwOnError: boolean) =>
 			queryClient.invalidateQueries(
@@ -104,6 +132,7 @@ export async function refreshCurrentView({
 		for (const query of independent) {
 			const state = refreshState(query);
 			state.deferred = { manualRevision: state.manualRevision, refetch: () => invalidate(query, false) };
+			state.notify?.();
 			flushDeferredRead(query, state);
 		}
 		const results = await Promise.allSettled(shared.map((query) => {
@@ -123,6 +152,7 @@ export async function refreshCurrentView({
 				const state = refreshState(query);
 				state.manual--;
 				flushDeferredRead(query, state);
+				state.notify?.();
 			}
 		}
 	}

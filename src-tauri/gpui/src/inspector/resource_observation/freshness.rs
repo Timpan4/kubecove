@@ -36,13 +36,19 @@ impl Inspector {
     }
 
     pub(in crate::inspector) fn visible_refresh_error(&self) -> Option<&str> {
-        if self.table_open {
-            self.table_refresh_error()
-        } else if self.map_is_open() {
-            self.map_read_error()
-        } else {
-            self.live.refresh_error.as_deref()
+        if self.table_open
+            && let Some(error) = self.table_refresh_error()
+        {
+            return Some(error);
         }
+        if self.map_is_open()
+            && let TopologyLoad::Ready(topology) = &self.map.topology
+        {
+            return self
+                .observation
+                .map_rows_error(self.map_context(), topology);
+        }
+        self.live.refresh_error.as_deref()
     }
 
     pub(in crate::inspector) fn notice_read_errors(

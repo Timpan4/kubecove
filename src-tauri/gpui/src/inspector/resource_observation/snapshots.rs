@@ -48,12 +48,13 @@ pub(in crate::inspector) fn union_namespaces(
 /// The error of a read in which every context failed: one context's error as
 /// it is, or one error naming each context, as the web's
 /// `WorkspaceResourceLoadError` does.
-pub(in crate::inspector) fn all_failed(results: ContextResults<ScopeResult>) -> AppError {
+fn all_failed(results: &ContextResults<ScopeResult>) -> AppError {
     let several = results.len() > 1;
     let mut failures = results
-        .into_iter()
-        .filter_map(|(context, result)| result.err().map(|error| (context, error)));
-    let (first_context, mut error) = failures.next().expect("every context failed");
+        .iter()
+        .filter_map(|(context, result)| result.as_ref().err().map(|error| (context, error)));
+    let (first_context, first) = failures.next().expect("every context failed");
+    let mut error = first.clone();
     if !several {
         return error;
     }
@@ -63,8 +64,8 @@ pub(in crate::inspector) fn all_failed(results: ContextResults<ScopeResult>) -> 
             error.message
         )
     };
-    let mut lines = vec![line(&first_context, &error)];
-    lines.extend(failures.map(|(context, other)| line(&context, &other)));
+    let mut lines = vec![line(first_context, &error)];
+    lines.extend(failures.map(|(context, other)| line(context, other)));
     error.message = lines.join("\n");
     error
 }
@@ -159,7 +160,8 @@ impl ResourceObservation {
                 self.contexts.iter().position(|other| other == context)
             });
             let error = all_failed(
-                self.failures
+                &self
+                    .failures
                     .drain(..)
                     .map(|(context, error)| (context, Err(error)))
                     .collect(),
@@ -191,26 +193,29 @@ impl ResourceObservation {
     /// Retires initial watch starts even when refresh replaced their first list.
     pub(in crate::inspector) fn install_refresh(
         &mut self,
-        contexts: &[String],
-        result: Result<ScopeRows, AppError>,
+        ScopeRows { results, rows }: ScopeRows,
     ) -> Result<Applied, String> {
         self.starts.clear();
-        match result {
-            Ok(ScopeRows { results, rows }) => {
-                let span = crate::frame_profile::scope("scope", "apply_parts");
-                let applied = self.apply_parts(results, true);
-                drop(span);
-                let span = crate::frame_profile::scope("scope", "swap_rows");
-                self.data = Rc::new(self.keep_failed_contexts(rows, &applied.kept));
-                drop(span);
-                self.refresh_settled(contexts, Ok(()));
-                Ok(applied)
+        if !results.is_empty() && results.iter().all(|(_, result)| result.is_err()) {
+            let error = all_failed(&results).message;
+            let several = results.len() > 1;
+            for (context, result) in results {
+                if let (Some(index), Err(error)) = (self.position(&context), result) {
+                    self.parts[index].refresh_error =
+                        Some(context_message(several, &context, &error.message));
+                }
             }
-            Err(error) => {
-                self.refresh_settled(contexts, Err(error.message.clone()));
-                Err(error.message)
-            }
+            self.refresh_settled(Err(error.clone()));
+            return Err(error);
         }
+        let span = crate::frame_profile::scope("scope", "apply_parts");
+        let applied = self.apply_parts(results, true);
+        drop(span);
+        let span = crate::frame_profile::scope("scope", "swap_rows");
+        self.data = Rc::new(self.keep_failed_contexts(rows, &applied.kept));
+        drop(span);
+        self.refresh_settled(Ok(()));
+        Ok(applied)
     }
 
     fn keep_failed_contexts(&self, rows: PreparedRows, kept: &[String]) -> PreparedRows {

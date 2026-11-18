@@ -13,11 +13,15 @@ describe("ownership map selection rendering", () => {
 		await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).mountOwnershipMap(), FIXTURE);
 		const disclosure = $("summary=Map refresh failed");
 		const empty = $("div=No ownership graph");
-		const focusSummary = (label: string) => browser.execute((text) => {
-			const summary = [...document.querySelectorAll("summary")].find((element) => element.textContent?.trim() === text);
-			if (!summary) throw new Error(`Missing disclosure: ${text}`);
-			summary.focus();
+		const focusControl = (label: string) => browser.execute((text) => {
+			const control = [...document.querySelectorAll<HTMLElement>("button, summary")]
+				.find((element) => element.textContent?.trim() === text);
+			if (!control) throw new Error(`Missing map control: ${text}`);
+			control.focus();
 		}, label);
+		const focusText = () => browser.execute(() => document.activeElement?.textContent?.trim());
+		const graph = () => browser.execute(async (fixture) =>
+			(await import(/* @vite-ignore */ fixture)).settleOwnershipMap(), FIXTURE);
 		const refresh = (empty: boolean) => browser.execute(async (fixture, empty) =>
 			(await import(/* @vite-ignore */ fixture)).refreshOwnershipMapTopology(empty), FIXTURE, empty);
 		try {
@@ -33,11 +37,19 @@ describe("ownership map selection rendering", () => {
 				["empty", true, true],
 			] as const) {
 				if (retainedEmpty) await refresh(true);
+				else expect((await graph()).edges).toBe(45);
 				await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).failOwnershipMapTopology(), FIXTURE);
 				await expect(disclosure).toBeDisplayed();
-				await focusSummary("Map refresh failed");
+				if (retainedEmpty) await focusControl("Map refresh failed");
+				else {
+					await focusControl("skip graph");
+					await browser.keys("Enter");
+					await browser.keys("Tab");
+				}
+				expect(await focusText()).toBe("Map refresh failed");
 				await browser.keys("Enter");
-				await focusSummary("Technical detail");
+				await browser.keys("Tab");
+				expect(await focusText()).toBe("Technical detail");
 				await browser.keys("Enter");
 				await expect($("pre=Topology request unavailable")).toBeDisplayed();
 				await browser.keys("Tab");
@@ -50,13 +62,13 @@ describe("ownership map selection rendering", () => {
 					));
 				})).toBe(true);
 				if (retainedEmpty) await expect(empty).toBeDisplayed();
-				else expect(await browser.execute(() => document.querySelectorAll(".svelte-flow__edge").length)).toBe(45);
+				else expect((await graph()).edges).toBe(45);
 				await browser.saveScreenshot(join(artifacts, `ownership-map-error-${label}.png`));
 				await refresh(recoveredEmpty);
 				await expect(disclosure).not.toExist();
 				if (recoveredEmpty) await expect(empty).toBeDisplayed();
-				else expect(await browser.execute(() => document.querySelectorAll(".svelte-flow__edge").length)).toBe(45);
-				expect(await browser.execute(() => document.activeElement?.textContent?.trim())).toBe("Ownership Map");
+				else expect((await graph()).edges).toBe(45);
+				expect(await focusText()).toBe("Ownership Map");
 			}
 		} finally {
 			await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).stopOwnershipMap(), FIXTURE);
