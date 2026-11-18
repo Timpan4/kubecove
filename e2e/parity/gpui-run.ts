@@ -3,8 +3,16 @@ import { join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
 import { COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
+import { driverSelectionFile } from "./rerun";
 
 type Spawned = { code: number; output: string };
+
+export function parityRebuildReason(output: string): string | undefined {
+	const dirty = output.match(/target="parity"[^\n]*cargo::compiler::fingerprint:\s+dirty: (.+)/)?.[1];
+	if (dirty) return dirty.trim();
+	const cause = output.match(/target="parity"[^\n]*cargo::compiler::fingerprint:\s+err: failed to read [^\n]+\n\s*Caused by:[ \t]*\r?\n[ \t]*([^\r\n]+)/)?.[1];
+	return cause ? `Cargo could not read the parity fingerprint: ${cause.trim()}` : undefined;
+}
 
 /** Runs a child in its own process group and stops the group when `signal` aborts. */
 async function spawnGroup(command: string[], env: Record<string, string | undefined>, signal: AbortSignal): Promise<Spawned> {
@@ -39,9 +47,7 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 		if (message.reason !== "compiler-artifact" || message.target?.name !== "parity" || !message.executable) continue;
 		if (message.fresh) console.log("Reusing the GPUI parity executable. Cargo found its inputs unchanged.");
 		else {
-			const dirty = build.output.match(/target="parity"[^\n]*cargo::compiler::fingerprint:\s+dirty: (.+)/)?.[1];
-			const missing = /target="parity"[^\n]*cargo::compiler::fingerprint:\s+err: failed to read [^\n]+\n\s*Caused by:\s*No such file or directory/.test(build.output);
-			const reason = dirty ?? (missing ? "Cargo has no cached fingerprint for the parity test in this build directory." : undefined);
+			const reason = parityRebuildReason(build.output);
 			console.log(reason ? `GPUI parity executable rebuilt: ${reason}` : "GPUI parity executable rebuilt. See gpui-build.log for Cargo diagnostics.");
 		}
 		return message.executable;
@@ -58,7 +64,7 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void, coverage = false): Promise<string | undefined> {
 	const workspace = resolve("src-tauri/gpui");
 	// The runner records this driver's selection separately from the web driver's.
-	const ids = join(artifacts, "gpui-scenarios.txt");
+	const ids = join(artifacts, driverSelectionFile.gpui);
 	// Keep path-crate artifacts specific to this worktree, including environment overrides.
 	const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !["ARGV0", "KUBECONFIG", "KUBECOVE_PARITY_SCENARIO_PREFIX"].includes(name)));
 	Object.assign(env, { CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR ?? join(workspace, "target"), CARGO_BUILD_BUILD_DIR: process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build"), KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture.path, KUBECOVE_PARITY_SCENARIO_IDS: ids });

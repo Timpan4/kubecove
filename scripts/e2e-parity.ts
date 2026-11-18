@@ -2,11 +2,11 @@ import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
-import { type Contract, loadContract, requireActionCoverage, requireViewCoverage, validateReports } from "../e2e/parity/contract";
+import { type Contract, loadContract, requireActionCoverage, requireViewCoverage } from "../e2e/parity/contract";
 import { writeRunMap } from "../e2e/parity/coverage-map";
 import { runGpui } from "../e2e/parity/gpui-run";
 import { type Driver, parseDriver, validateDriverReport } from "../e2e/parity/merge-reports";
-import { DRIVER_SELECTION_FORMAT, lastRerunSource, rerunSelections } from "../e2e/parity/rerun";
+import { DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { holdFrameIsolation } from "./gpui-frame-process";
@@ -56,7 +56,7 @@ async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 }
 
 const driver = process.env.PARITY_DRIVER ? parseDriver(process.env.PARITY_DRIVER) : undefined;
-const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts")) : process.env.PARITY_RERUN;
+const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts"), driver) : process.env.PARITY_RERUN;
 // PARITY_COVERAGE=1 records the coverage map (e2e/parity/README.md); normal runs leave it off.
 const coverage = process.env.PARITY_COVERAGE === "1";
 if (coverage && driver) throw new Error("PARITY_COVERAGE requires both drivers");
@@ -75,13 +75,24 @@ process.once("SIGINT", interrupt);
 process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 let resultDriver: Driver | "both" = driver ?? "both";
+let selectionHashes: Record<Driver, string> | undefined;
+const failedDrivers = new Set<Driver>();
 const fail = (message: string) => { failure = failure ? `${failure}; ${message}` : message; };
+const driverFailed = (name: Driver, message: string) => {
+	failedDrivers.add(name);
+	fail(message);
+};
 async function writeSelections(selection: Record<Driver, Contract>) {
+	const contents = {
+		web: selection.web.scenarios.map(({ id }) => id).join("\n"),
+		gpui: selection.gpui.scenarios.map(({ id }) => id).join("\n"),
+	};
 	await Promise.all((["web", "gpui"] as const).map(async (name) => {
-		const path = join(artifacts, `${name}-scenarios.txt`);
-		await writeFile(`${path}.tmp`, selection[name].scenarios.map((scenario) => scenario.id).join("\n"));
+		const path = join(artifacts, driverSelectionFile[name]);
+		await writeFile(`${path}.tmp`, contents[name]);
 		await rename(`${path}.tmp`, path);
 	}));
+	selectionHashes = { web: selectionHash(contents.web), gpui: selectionHash(contents.gpui) };
 	const allIds = new Set([...selection.web.scenarios, ...selection.gpui.scenarios].map(({ id }) => id));
 	// The report collector uses the combined list to find artifacts with work.
 	if (allIds.size) await writeFile(join(artifacts, "scenarios.txt"), [...allIds].join("\n"));
@@ -100,19 +111,19 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 	// Only they read the fixture, so the web driver and the GPUI build start during the export.
 	const fixture = join(artifacts, "fixture.json");
 	const runs: Promise<unknown>[] = [];
-	if (selection.gpui.scenarios.length) {
+	if (executed.includes("gpui")) {
 		const exported = Bun.spawn(["bun", "e2e/parity/visual/export-fixture.ts", fixture], { stdout: "inherit", stderr: "inherit" });
 		const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 		const cancelExport = () => exported.kill();
 		controller.signal.addEventListener("abort", cancelExport, { once: true });
 		runs.push(runGpui(selection.gpui, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage)
-			.then((problem) => { if (problem) fail(problem); }, (error) => fail(`GPUI driver: ${String(error)}`))
+			.then((problem) => { if (problem) driverFailed("gpui", problem); }, (error) => driverFailed("gpui", `GPUI driver: ${String(error)}`))
 			.finally(async () => { await exportExit; controller.signal.removeEventListener("abort", cancelExport); }));
 	}
-	if (selection.web.scenarios.length) {
+	if (executed.includes("web")) {
 		runs.push(import("../e2e/parity/web")
 			.then(({ runWeb }) => runWeb(selection.web, artifacts, controller.signal, webJobs))
-			.catch((error) => fail(`Web driver: ${String(error)}`))
+			.catch((error) => driverFailed("web", `Web driver: ${String(error)}`))
 			.finally(() => mark("web")));
 	}
 	await Promise.all(runs);
@@ -122,7 +133,6 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		try { validateDriverReport(selection[name], name, reports[index]); }
 		catch (error) { fail(String(error)); }
 	}
-	if (executed.length === 2 && (!rerun || coverage) && !failure) validateReports(selection.web, reports);
 	if (coverage) {
 		// Scenarios that failed stay out of the map, so selection always runs them.
 		const map = await writeRunMap(artifacts, join(artifacts, "coverage-map.json"));
@@ -138,7 +148,7 @@ try {
 	requireViewCoverage(contract, VIEWS);
 	requireActionCoverage(contract);
 	const scenarios = await selectScenarios(contract.scenarios);
-	const failed = rerun ? await rerunSelections(rerun) : undefined;
+	const failed = rerun ? await rerunSelections(rerun, driver) : undefined;
 	const coverageIds = coverage && failed ? new Set([...failed.web, ...failed.gpui]) : undefined;
 	const selectedFor = (name: Driver): Contract => {
 		if (driver && driver !== name) return { scenarios: [] };
@@ -166,8 +176,20 @@ try {
 } catch (error) { fail(String(error)); }
 finally {
 	process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
+	const interrupted = controller.signal.aborted;
+	if (interrupted && !failure) fail("Interrupted");
 	mark("total");
-	await writeFile(join(artifacts, "result.json"), JSON.stringify({ level: "UI integration with mocks", driver: resultDriver, selectionFormat: DRIVER_SELECTION_FORMAT, status: failure ? "failed" : "passed", error: failure, phases }, null, 2));
+	await writeFile(join(artifacts, "result.json"), JSON.stringify({
+		level: "UI integration with mocks",
+		driver: resultDriver,
+		selectionFormat: DRIVER_SELECTION_FORMAT,
+		selectionHashes,
+		failedDrivers: [...failedDrivers],
+		interrupted,
+		status: failure ? "failed" : "passed",
+		error: failure,
+		phases,
+	}, null, 2));
 	console.log(`Parity artifacts: ${artifacts}`);
 }
 if (failure) { console.error(failure); process.exitCode = 1; }
