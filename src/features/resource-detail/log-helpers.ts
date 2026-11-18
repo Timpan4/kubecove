@@ -1,5 +1,5 @@
 import type { LogLineSource, StreamStatus } from "@/lib/types";
-import { type LogStructure, parseLogStructure } from "./log-structure";
+import { formatLogField, type LogStructure, parseLogStructure } from "./log-structure";
 
 /** Client-side log stream phases plus the statuses the backend stream reports. */
 export type LogStreamStatus = "idle" | "connecting" | "error" | "stopped" | StreamStatus;
@@ -104,8 +104,9 @@ export function filterOrderedParsedLogLines(
 		? lines.filter((line) =>
 				logLineSearchText(line).includes(filterTerm) ||
 				// Only JSON and quoted logfmt can display fields absent from the raw text.
-				(line.message.includes('"') &&
-					line.structure.fields.some(({ key, value }) => `${key}=${value}`.toLowerCase().includes(filterTerm))),
+				(line.structure.fields.length > 0 &&
+					line.message.includes('"') &&
+					line.structure.fields.some((field) => formatLogField(field).toLowerCase().includes(filterTerm))),
 			)
 		: lines;
 }

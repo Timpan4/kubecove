@@ -91,12 +91,11 @@ impl LogBuffer {
                 .is_none_or(|level| !hidden[level.index()])
                 && (term.is_empty()
                     || line.search.contains(term)
-                    || (line.raw.contains('"')
+                    || (!line.structure.fields.is_empty()
+                        && line.raw.contains('"')
                         && line.structure.fields.iter().any(|field| {
                             token.clear();
-                            token.push_str(&field.key);
-                            token.push('=');
-                            token.push_str(&field.value);
+                            field.write_token(&mut token);
                             if token.is_ascii() {
                                 token.make_ascii_lowercase();
                                 token.contains(term)

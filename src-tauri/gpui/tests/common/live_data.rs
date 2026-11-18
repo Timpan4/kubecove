@@ -50,7 +50,13 @@ pub(super) struct ScriptState {
     changed_at: Option<u64>,
     /// The kind and start version of each resource watch, in opening order.
     starts: Vec<(String, Option<String>)>,
-    pub(super) watches: Vec<(WatchTarget, mpsc::UnboundedSender<StreamMessage>)>,
+    pub(super) watches: Vec<FixtureWatch>,
+}
+
+pub(super) struct FixtureWatch {
+    pub(super) target: WatchTarget,
+    pub(super) sender: mpsc::UnboundedSender<StreamMessage>,
+    opening: bool,
 }
 /// The Deployment the "ownership" scripts move to another GitOps owner.
 const REOWNED: &str = "checkout-worker";
@@ -97,11 +103,11 @@ impl Fixture {
         let keys = {
             let mut state = self.live.state.lock().unwrap();
             state.burst = index.is_multiple_of(2);
-            state.watches.retain(|(_, sender)| !sender.is_closed());
+            state.watches.retain(|watch| !watch.sender.is_closed());
             state
                 .watches
                 .iter()
-                .filter_map(|(watch, sender)| match watch {
+                .filter_map(|FixtureWatch { target, sender, .. }| match target {
                     WatchTarget::Resource { scope, key, .. }
                         if self
                             .resources
@@ -402,11 +408,21 @@ impl Fixture {
             }
             return;
         }
-        state.watches.retain(|(_, sender)| !sender.is_closed());
-        for (watch, sender) in &state.watches {
+        state.watches.retain(|watch| !watch.sender.is_closed());
+        let state = &mut *state;
+        let burst_context = state.burst_context.as_ref();
+        for FixtureWatch {
+            target: watch,
+            sender,
+            opening,
+        } in &mut state.watches
+        {
+            if script == "connected" {
+                *opening = false;
+            }
             if matches!(script, "burst" | "burst-reset") {
                 if let WatchTarget::Resource { scope, key, .. } = watch
-                    && (state.burst_context.as_ref()).is_none_or(|only| *only == scope.context)
+                    && burst_context.is_none_or(|only| *only == scope.context)
                 {
                     for row in self
                         .resources
@@ -458,7 +474,10 @@ impl Fixture {
                     },
                     message: script.into(),
                 },
-                "events" | "events-overflow" if matches!(watch, WatchTarget::Events(r) if r.kind == "Deployment" && r.name == "payments-api") => {
+                "events" | "events-overflow"
+                    if !*opening
+                        && matches!(watch, WatchTarget::Events(r) if r.kind == "Deployment" && r.name == "payments-api") =>
+                {
                     StreamMessage::ResourceEventsChanged {
                         stream_id: "fixture".into(),
                         target,
@@ -595,7 +614,11 @@ impl Fixture {
                 }
             }
             state.starts.extend(start);
-            state.watches.push((target, sender.clone()));
+            state.watches.push(FixtureWatch {
+                target,
+                sender: sender.clone(),
+                opening: matches!(start_status, EventWatchStart::Opening),
+            });
             Ok(LogStream::new(receiver, sender))
         })
     }

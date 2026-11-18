@@ -18,14 +18,18 @@
 				{ "action": "filterLogs", "value": "status=READY" },
 				{ "action": "expectLogLines", "lines": ["JSON row"] },
 				{ "action": "coverageCheck", "check": "log-expanded-field" },
-				{ "action": "filterLogs", "value": "elapsed=100" },
-				{ "action": "expectLogLines", "lines": ["JSON row"] },
 				{ "action": "filterLogs", "value": "elapsed=100.0" },
 				{ "action": "expectLogLines", "lines": [] },
+				{ "action": "filterLogs", "value": "elapsed=100" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
 				{ "action": "filterLogs", "value": "note=a  b" },
 				{ "action": "expectLogLines", "lines": ["JSON row"] },
+				{ "action": "filterLogs", "value": "tabbed=cache warm" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] },
 				{ "action": "filterLogs", "value": "state=cache warm" },
-				{ "action": "expectLogLines", "lines": ["logfmt row"] }
+				{ "action": "expectLogLines", "lines": ["logfmt row"] },
+				{ "action": "filterLogs", "value": "counts={\"2\":1.0000000000000002,\"10\":1,\"z\":0,\"a\":1}" },
+				{ "action": "expectLogLines", "lines": ["JSON row"] }
 			]
 		},
 		{

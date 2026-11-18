@@ -41,7 +41,7 @@ impl Inspector {
                         Either::Right(((), _)) => {
                             timer = Box::pin(cx.background_executor().timer(RECOVERY));
                             catch_up = true;
-                            if !refresh_events(cx).await {
+                            if this.update(cx, Self::start_events_fallback).is_err() {
                                 return;
                             }
                         }
@@ -61,7 +61,7 @@ impl Inspector {
                         });
                         timer.as_mut().await;
                         timer = Box::pin(cx.background_executor().timer(RECOVERY));
-                        if !refresh_events(cx).await {
+                        if this.update(cx, Self::start_events_fallback).is_err() {
                             return;
                         }
                         continue;
@@ -96,7 +96,7 @@ impl Inspector {
                                 match event {
                                     StreamMessage::ResourceEventsChanged { .. } => refresh = true,
                                     StreamMessage::Error { message, .. } => {
-                                        error = Some(Some(redact_detail(&message)));
+                                        error = Some(Some(message));
                                         needs_catch_up = true;
                                     }
                                     StreamMessage::Status {
@@ -116,6 +116,8 @@ impl Inspector {
                                     _ => {}
                                 }
                             }
+                            let error =
+                                error.map(|item| item.map(|message| redact_detail(&message)));
                             (stream, needs_catch_up, connecting, refresh, error, ended)
                         })
                         .await;
@@ -156,6 +158,9 @@ impl Inspector {
                 drop(stream);
                 timer.as_mut().await;
                 timer = Box::pin(cx.background_executor().timer(RECOVERY));
+                if this.update(cx, Self::start_events_fallback).is_err() {
+                    return;
+                }
             }
         }));
     }

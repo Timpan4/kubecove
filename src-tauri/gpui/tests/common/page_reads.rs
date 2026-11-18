@@ -126,8 +126,10 @@ impl super::live_data::LiveData {
     #[allow(dead_code)]
     pub(super) fn page_change(&self) {
         let mut state = self.state.lock().unwrap();
-        state.watches.retain(|(_, sender)| !sender.is_closed());
-        for (target, sender) in &state.watches {
+        state.watches.retain(|watch| !watch.sender.is_closed());
+        for watch in &state.watches {
+            let target = &watch.target;
+            let sender = &watch.sender;
             if let kubecove_gpui::backend::WatchTarget::Resource { key, .. } = target
                 && matches!(
                     key.resource_kind.kind.as_str(),

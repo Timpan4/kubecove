@@ -192,6 +192,14 @@ export function parseLogStructure(message: string): LogStructure {
 	return finish(level, headline, msg, error, fields);
 }
 
+export function inlineLogText(text: string): string {
+	return text.replace(/\r\n|[\r\n\t\u2028\u2029]/g, " ");
+}
+
+export function formatLogField({ key, value }: LogField): string {
+	return inlineLogText(`${key}=${value}`);
+}
+
 export function highlightSegments(text: string, term: string): HighlightSegment[] {
 	const needle = term.toLowerCase();
 	if (!needle) return [{ text, match: false }];
@@ -230,7 +238,7 @@ export function highlightSegments(text: string, term: string): HighlightSegment[
 		cursor = end;
 		found = haystack.indexOf(needle, normalizedEnd);
 	}
-	if (cursor < text.length || segments.length === 0) {
+	if (cursor < text.length) {
 		segments.push({ text: text.slice(cursor), match: false });
 	}
 	return segments;

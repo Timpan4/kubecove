@@ -9,7 +9,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
 ];
 export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "events-list-recovered", "events-watch-opening", "events-watch-refused", "events-watch-ready", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
-type Watch = { id: string; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
+type Watch = { id: string; opening: boolean; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
 const watchStarts: ResourceWatchStart[] = [];
 let serial = 0;
@@ -45,14 +45,15 @@ export function lastWatchStart(kind: string): { resourceVersion?: string } | nul
     return watchStarts.findLast((start) => start.resourceKind.kind === kind) ?? null;
 }
 
-export function registerMockWatch(args: Omit<Watch, "id" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
+export function registerMockWatch(args: Omit<Watch, "id" | "opening" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
     if (!args.channel) throw new Error("Mock watch requires a channel");
     if (args.name && eventWatchStart === "refused") throw new Error("Scripted Events watch start refused");
     const channel = args.channel;
     const id = `mock-live-${++serial}`;
-    watches.set(id, { ...args, channel, id });
+    const opening = Boolean(args.name) && eventWatchStart === "opening";
+    watches.set(id, { ...args, channel, id, opening });
     watchStarts.push(...args.keys ?? []);
-    if (args.name && eventWatchStart === "opening") return id;
+    if (opening) return id;
     // streams/watch.rs starts at the given list version, or at "0", which replays
     // every object. Either way it delivers a change made after that version.
     const replays = (start: ResourceWatchStart) => changedAt !== undefined
@@ -107,9 +108,10 @@ export function liveEvents(kind?: string, name?: string): ResourceEventSummary[]
     return events;
 }
 export function replayLiveData(script: LiveScript): void {
-    if (script === "events-watch-opening" || script === "events-watch-refused" || script === "events-watch-ready") {
-        eventWatchStart = script === "events-watch-opening" ? "opening" : script === "events-watch-refused" ? "refused" : "ready";
-        return;
+    switch (script) {
+        case "events-watch-opening": eventWatchStart = "opening"; return;
+        case "events-watch-refused": eventWatchStart = "refused"; return;
+        case "events-watch-ready": eventWatchStart = "ready"; return;
     }
     // "missed-delete" deletes payments-api without a notification, as an event a lost watch never delivered.
     const missed = script === "missed-delete";
@@ -155,8 +157,9 @@ export function replayLiveData(script: LiveScript): void {
 		}
         if (script === "failed") watch.channel.onmessage({ type: "status", streamId, status: "reconnecting", message: "Scripted connection loss" });
         if (script === "connected" || script === "reconnecting" || script === "forbidden") {
+            if (script === "connected") watch.opening = false;
             watch.channel.onmessage({ type: "status", streamId, status: script, message: script });
-        } else if (eventsChanged && watch.name === "payments-api" && watch.kind === "Deployment") {
+        } else if (eventsChanged && !watch.opening && watch.name === "payments-api" && watch.kind === "Deployment") {
             watch.channel.onmessage({ type: "resourceEventsChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: watch.name, namespace: watch.namespace }, action: "applied" });
         } else if (!eventsChanged && (!mockDevOnly || watch.context === "mock-dev") && watch.keys?.some((key) => key.resourceKind.kind === "Deployment" && (!key.namespace || key.namespace === "payments"))) {
             watch.channel.onmessage({ type: "resourceChanged", streamId, target: { cluster: watch.context, kind: "Deployment", name: reowning ? REOWNED : script === "add" ? ADDED : "payments-api", namespace: "payments" }, action: script === "delete" || mockDevOnly ? "deleted" : "applied" });

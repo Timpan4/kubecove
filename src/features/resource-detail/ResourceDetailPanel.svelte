@@ -222,7 +222,7 @@
 		!detailsEnabled || detailsQuery.isSuccess || detailsQuery.isError,
 	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
-		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady),
+		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady, queryClient),
 		refetchInterval: eventsWatchPhase !== "connected"
 			? (query) => query.state.status === "success" ? RESOURCE_RECOVERY_INTERVAL : false
 			: false,
@@ -390,8 +390,10 @@
 			if (event.type === "status") {
 				if (event.status === "connected") {
 					realtimeEventsWatchError = null;
-					if (eventsWatchPhase === "recovering") refresh.notify();
+					const needsCatchUp = eventsWatchPhase === "recovering" ||
+						(eventsWatchPhase === "opening" && (eventsQuery.isFetched || eventsQuery.isFetching));
 					eventsWatchPhase = "connected";
+					if (needsCatchUp) refresh.notify();
 				} else eventsWatchPhase = "recovering";
 				return;
 			}

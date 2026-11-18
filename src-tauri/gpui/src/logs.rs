@@ -7,7 +7,7 @@ use kubecove_lib::models::LogLineSource;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
-use std::fmt;
+use std::borrow::Cow;
 use std::io;
 use std::sync::LazyLock;
 
@@ -54,6 +54,23 @@ impl LogLevel {
 pub struct LogField {
     pub key: SharedString,
     pub value: SharedString,
+}
+
+impl LogField {
+    pub fn write_token(&self, text: &mut String) {
+        text.push_str(&inline_log_text(&self.key));
+        text.push('=');
+        text.push_str(&inline_log_text(&self.value));
+    }
+}
+
+pub fn inline_log_text(text: &str) -> Cow<'_, str> {
+    let breaks = ['\r', '\n', '\t', '\u{2028}', '\u{2029}'];
+    if text.contains(breaks) {
+        Cow::Owned(text.replace("\r\n", " ").replace(breaks, " "))
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,10 +146,11 @@ fn unquote(value: &str) -> String {
 }
 
 /// `stringValue`: strings stay raw, anything else is its JSON text.
-fn string_value(value: &Value) -> String {
+fn string_value(mut value: Value) -> String {
     if let Value::String(text) = value {
-        return text.clone();
+        return text;
     }
+    order_object_values(&mut value);
     let mut serializer = serde_json::Serializer::with_formatter(Vec::new(), JavaScriptNumbers);
     value
         .serialize(&mut serializer)
@@ -183,33 +201,31 @@ fn finish(
     }
 }
 
-/// Object entries in document order, as `Object.entries` yields them.
-struct Entries(Vec<(String, Value)>);
-
-impl<'de> serde::Deserialize<'de> for Entries {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct Visitor;
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = Entries;
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a JSON object")
-            }
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut map: A,
-            ) -> Result<Entries, A::Error> {
-                let mut entries: Vec<(String, Value)> = Vec::new();
-                while let Some((key, value)) = map.next_entry::<String, Value>()? {
-                    // A repeated key keeps its first position and its last value.
-                    match entries.iter_mut().find(|(existing, _)| *existing == key) {
-                        Some(entry) => entry.1 = value,
-                        None => entries.push((key, value)),
-                    }
-                }
-                Ok(Entries(entries))
-            }
+fn order_object_values(value: &mut Value) {
+    match value {
+        Value::Array(items) => items.iter_mut().for_each(order_object_values),
+        Value::Object(entries) => {
+            order_object_keys(entries);
+            entries.values_mut().for_each(order_object_values);
         }
-        deserializer.deserialize_map(Visitor)
+        _ => {}
+    }
+}
+
+// Object.entries and JSON.stringify put array-index keys first, in numeric order.
+// The stable sort keeps every other key in insertion order.
+fn order_object_keys(entries: &mut serde_json::Map<String, Value>) {
+    fn index_key(key: &str) -> u32 {
+        match key.as_bytes() {
+            [b'0'] => 0,
+            [b'1'..=b'9', ..] => key.parse().unwrap_or(u32::MAX),
+            _ => u32::MAX,
+        }
+    }
+    if entries.keys().any(|key| index_key(key) != u32::MAX) {
+        let mut ordered: Vec<_> = std::mem::take(entries).into_iter().collect();
+        ordered.sort_by_key(|(key, _)| index_key(key));
+        entries.extend(ordered);
     }
 }
 
@@ -221,7 +237,10 @@ fn field(key: impl Into<SharedString>, value: impl Into<SharedString>) -> LogFie
 }
 
 fn parse_json(text: &str) -> Option<LogStructure> {
-    let Entries(entries) = serde_json::from_str(text).ok()?;
+    let Value::Object(mut entries) = serde_json::from_str(text).ok()? else {
+        return None;
+    };
+    order_object_keys(&mut entries);
     let (mut level, mut message, mut error) = (None, None, None);
     let mut fields = Vec::new();
     for (key, raw) in entries {
@@ -229,7 +248,7 @@ fn parse_json(text: &str) -> Option<LogStructure> {
         if TIME_KEYS.contains(&lower.as_str()) {
             continue;
         }
-        let value = string_value(&raw);
+        let value = string_value(raw);
         let mapped = LEVEL_KEYS
             .contains(&lower.as_str())
             .then(|| LogLevel::from_alias(&value))

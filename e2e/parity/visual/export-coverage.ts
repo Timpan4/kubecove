@@ -6,7 +6,7 @@ import { streamMessages } from "./export-detail-tabs";
 export async function exportCoverageLogs(client: TauriClient) {
 	const cases = [];
 	try {
-		for (const script of ["logs-empty", "logs-failed", "logs-options", "logs-long", "logs-stream"]) {
+		for (const script of ["logs-empty", "logs-failed", "logs-options", "logs-long", "logs-words", "logs-stream"]) {
 			configureCoverage(script);
 			for (const container of ["app", "sidecar"]) for (const tailLines of [200, 2]) for (const sinceSeconds of [undefined, 300]) {
 				const request = { clusterContext: "mock-dev", namespace: "payments", podName: "payments-api-7d9c9b7f8d-k2r9p", container, tailLines, sinceSeconds, batchLines: true };

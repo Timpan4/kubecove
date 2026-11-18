@@ -77,7 +77,7 @@ fn initial_event_read_errors_recover_on_the_web_tick(cx: &mut TestAppContext) {
         assert!(window.try_find("events-refresh-warning").is_none());
         assert_eq!(
             window.find("events-error").label(),
-            Some("Failed to load events: Events unavailable")
+            Some("Failed to load events: Events unavailable (bearer [REDACTED])")
         );
     })
     .unwrap();
@@ -126,7 +126,7 @@ fn successful_event_snapshot_survives_refresh_failure(cx: &mut TestAppContext) {
             assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
             assert_eq!(
                 window.find("events-refresh-warning").label(),
-                Some("Events refresh failed: Events unavailable")
+                Some("Events refresh failed: Events unavailable (bearer [REDACTED])")
             );
             assert!(window.try_find("events-watch-warning").is_none());
             assert!(window.try_find("events-error").is_none());
@@ -219,12 +219,43 @@ fn a_refused_watch_start_still_refreshes_events(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn reconnect_can_complete_while_a_fallback_list_waits(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend.live.events_open_fails.store(true, Ordering::SeqCst);
+    let handle = open_events(cx, backend.clone());
+
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *backend.live.events_gate.lock().unwrap() = Some(gate);
+    backend.live.events_empty.store(true, Ordering::SeqCst);
+    backend
+        .live
+        .events_open_fails
+        .store(false, Ordering::SeqCst);
+    advance(cx, 15_000);
+
+    assert!(!event_sender(&backend).is_closed());
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("events-watch-warning").is_none());
+    })
+    .unwrap();
+    release.send(()).unwrap();
+    cx.run_until_parked();
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("empty:No events").visible());
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
 fn a_pending_watch_start_still_refreshes_events(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     let handle = open(cx, backend.clone());
     let (release, opening) = tokio::sync::oneshot::channel();
-    *backend.live.gate.lock().unwrap() = Some(opening);
+    *backend.live.events_open_gate.lock().unwrap() = Some(opening);
     show_deployment_events(cx, handle);
+    assert!(backend.live.events_open_gate.lock().unwrap().is_none());
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert_eq!(window.find("event:0").label(), Some(FIRST_EVENT));
@@ -233,6 +264,33 @@ fn a_pending_watch_start_still_refreshes_events(cx: &mut TestAppContext) {
 
     backend.live.events_empty.store(true, Ordering::SeqCst);
     advance(cx, 15_000);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.find("empty:No events").visible());
+    })
+    .unwrap();
+    release.send(()).unwrap();
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
+fn stopped_watch_refreshes_events_before_replacement_connects(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open_events(cx, backend.clone());
+    let sender = event_sender(&backend);
+    sender
+        .send(StreamMessage::Stopped {
+            stream_id: "native".into(),
+        })
+        .unwrap();
+    cx.run_until_parked();
+    assert!(sender.is_closed());
+    let (release, opening) = tokio::sync::oneshot::channel();
+    *backend.live.events_open_gate.lock().unwrap() = Some(opening);
+    backend.live.events_empty.store(true, Ordering::SeqCst);
+
+    advance(cx, 15_000);
+    assert!(backend.live.events_open_gate.lock().unwrap().is_none());
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find("empty:No events").visible());

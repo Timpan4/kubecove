@@ -23,10 +23,12 @@ export async function checkLogCoverage(page: Page, check: string): Promise<void>
 		const short = page.locator("[data-log-row]").nth(1).locator("[data-log-summary]");
 		await short.waitFor();
 		const [collapsed, control] = await Promise.all([summary.boundingBox(), short.boundingBox()]);
+		const structured = await page.locator("[data-log-row]").nth(2).locator("[data-log-summary]").boundingBox();
 		const clipsOverflow = await summary.evaluate(clipsHorizontalOverflow);
 		const viewport = page.locator("[data-log-viewport]");
 		const viewportOverflows = await viewport.evaluate((element) => element.scrollWidth > element.clientWidth);
 		if (!collapsed || !control || collapsed.height !== control.height) throw new Error("Collapsed log summary spans more than one line");
+		if (!structured || structured.height !== control.height) throw new Error("Decoded line break expanded a compact row");
 		if (!clipsOverflow) throw new Error("Long log text should overflow and clip inside its collapsed summary");
 		if (viewportOverflows) throw new Error("Collapsed log text creates horizontal scrolling");
 		await row.click();

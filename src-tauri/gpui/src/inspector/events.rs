@@ -38,6 +38,7 @@ pub(super) struct EventsState {
     /// The Events tab's rows.
     pub rows: Windowed,
     task: Option<Task<()>>,
+    fallback: Option<Task<()>>,
     pub watch: Option<Task<()>>,
     pub watch_error: Option<String>,
     pub refresh_error: Option<String>,
@@ -68,6 +69,7 @@ impl EventsState {
             overrides: HashMap::new(),
             rows: Windowed::default(),
             task: None,
+            fallback: None,
             watch: None,
             watch_error: None,
             refresh_error: None,
@@ -101,6 +103,9 @@ impl EventsState {
         let source: Arc<[u8]> = serde_json::to_vec(&events)
             .expect("event models serialize")
             .into();
+        if self.layout_source != source {
+            self.rows = Windowed::default();
+        }
         self.layout_key = row_id(&source);
         self.layout_source = source;
         let previous = std::mem::replace(&mut self.load, EventsLoad::Ready(events));
@@ -161,6 +166,27 @@ impl Inspector {
             Detail::Ready(detail) => Some(&mut detail.events),
             _ => None,
         }
+    }
+
+    pub(super) fn start_events_fallback(&mut self, cx: &mut Context<Self>) {
+        let Detail::Ready(detail) = &mut self.detail else {
+            return;
+        };
+        if detail.events.fallback.is_some() {
+            return;
+        }
+        let uid = detail.data.metadata["uid"].as_str().map(str::to_owned);
+        let read = self.backend.events(detail.data.summary.clone(), uid);
+        let number = detail.events.begin_read();
+        detail.events.fallback = Some(cx.spawn(async move |this, cx| {
+            let result = read.await;
+            let _ = this.update(cx, |this, cx| {
+                if let Some(events) = this.events_state() {
+                    events.fallback = None;
+                }
+                this.apply_events_read(number, result, cx);
+            });
+        }));
     }
 
     pub(super) fn apply_events_read(

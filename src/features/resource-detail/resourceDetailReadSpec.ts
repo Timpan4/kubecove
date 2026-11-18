@@ -2,6 +2,7 @@ import { requiredPermissionForResource } from "@/features/rbac/handoff";
 import { diagnosticLog, diagnosticResultSummary } from "@/lib/diagnostics";
 import { finiteRead } from "@/lib/finite-read-lifecycle";
 import { withForegroundLoad } from "@/lib/foreground-loading";
+import type { QueryClient } from "@tanstack/svelte-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { dynamicKindKey, resourceKey } from "@/lib/resource-identity";
 import {
@@ -136,10 +137,10 @@ export async function readResourceYaml(
 	return getResourceYaml(client, resource.cluster, resource.kind, resource.name, resource.namespace ?? undefined, kubeconfigSourceKey, yamlViewMode, yamlEncoding, cancellable);
 }
 
-async function timedRead<T>(kind: "details" | "events", key: string, task: () => Promise<T>): Promise<T> {
+async function timedRead<T>(kind: "details" | "events", key: string, task: () => Promise<T>, foreground = true): Promise<T> {
 	const started = performance.now();
 	diagnosticLog(`detail.${kind}.fetch.start`, { key });
-	const result = await withForegroundLoad(`resource-${kind}`, task);
+	const result = await (foreground ? withForegroundLoad(`resource-${kind}`, task) : task());
 	diagnosticLog(`detail.${kind}.fetch.done`, {
 		key,
 		ms: Math.round(performance.now() - started),
@@ -171,25 +172,29 @@ export function resourceEventsQuery(
 	spec: ResourceDetailReadSpec,
 	uid: string | undefined,
 	enabled: boolean,
+	queryClient: QueryClient,
 ) {
 	const { resource, read } = spec;
+	const queryKey = queryKeys.resourceEvents(resource, read.kubeconfigSourceKey, uid);
 	return {
 		...finiteRead({
-			queryKey: queryKeys.resourceEvents(resource, read.kubeconfigSourceKey, uid),
+			queryKey,
 			label: "detail.events",
-			read: (cancellable) =>
-				timedRead("events", spec.identity.key, () =>
-					listResourceEvents(
-						client,
-						resource.cluster,
-						resource.kind,
-						resource.name,
-						resource.namespace ?? undefined,
-						read.kubeconfigSourceKey,
-						cancellable,
-						uid,
-					),
-				),
+			read: (cancellable) => {
+				const state = queryClient.getQueryState(queryKey);
+				const foreground = !state || (state.dataUpdateCount === 0 && state.errorUpdateCount === 0);
+				const fetch = () => listResourceEvents(
+					client,
+					resource.cluster,
+					resource.kind,
+					resource.name,
+					resource.namespace ?? undefined,
+					read.kubeconfigSourceKey,
+					cancellable,
+					uid,
+				);
+				return timedRead("events", spec.identity.key, fetch, foreground);
+			},
 		}),
 		enabled,
 		retry: false,

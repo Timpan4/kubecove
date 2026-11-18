@@ -6,7 +6,9 @@ use super::events::tw;
 use super::logs_state::LogsState;
 use super::overlay_motion::Tooltip;
 use super::timestamp_text;
-use crate::logs::{LogField, LogLevel, ParsedLogLine, highlight_ranges, time_label};
+use crate::logs::{
+    LogField, LogLevel, ParsedLogLine, highlight_ranges, inline_log_text, time_label,
+};
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
 use crate::targets::ObservedElement;
@@ -17,7 +19,7 @@ use gpui_kit::{
     ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
     StyledText, div, prelude::*, px, relative,
 };
-use std::ops::Range;
+use std::{borrow::Cow, ops::Range};
 
 fn red400(alpha: f32) -> Hsla {
     oklch(0.704, 0.191, 22.216, alpha)
@@ -124,9 +126,7 @@ impl InlineText {
 
     fn field(&mut self, field: &LogField, term: &str, style: HighlightStyle, monospace: bool) {
         let start = self.text.len();
-        self.text.push_str(&field.key);
-        self.text.push('=');
-        self.text.push_str(&field.value);
+        field.write_token(&mut self.text);
         self.style_tail(start, term, style, monospace);
     }
 
@@ -226,15 +226,23 @@ fn field_chips(fields: &[LogField], term: &str) -> Div {
 
 fn compact_summary(line: &ParsedLogLine, term: &str, open: bool) -> StyledText {
     let structure = &line.structure;
-    if open || (structure.error.is_none() && structure.fields.is_empty()) {
+    if open {
         return highlighted(&structure.headline, term);
     }
+    let headline = inline_log_text(&structure.headline);
+    if structure.error.is_none() && structure.fields.is_empty() {
+        let headline = match headline {
+            Cow::Borrowed(_) => structure.headline.clone(),
+            Cow::Owned(text) => text.into(),
+        };
+        return highlighted(&headline, term);
+    }
     let mut text = InlineText::default();
-    text.push(&structure.headline, term, HighlightStyle::default(), false);
+    text.push(&headline, term, HighlightStyle::default(), false);
     if let Some(error) = &structure.error {
         text.text.push_str("  ");
         text.push(
-            error,
+            &inline_log_text(error),
             term,
             HighlightStyle {
                 color: Some(red300()),

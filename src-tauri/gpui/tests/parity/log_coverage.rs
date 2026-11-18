@@ -29,6 +29,11 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
             let collapsed = summary_bounds.size.height;
             let short = window.find(("log-summary", 1usize)).bounds().size.height;
             assert_eq!(collapsed, short);
+            let structured = window.find(("log-summary", 2usize)).bounds().size.height;
+            assert_eq!(
+                structured, short,
+                "a decoded line break must leave the row compact"
+            );
             window.click(summary, cx);
             window.render_frame(cx);
             window.find(("log-copy", 0usize));

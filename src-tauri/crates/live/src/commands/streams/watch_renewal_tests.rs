@@ -82,29 +82,26 @@ async fn normal_watch_expiry_renews_without_recovery_and_preserves_version() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn event_watch_resets_version_after_in_stream_internal_error() {
+async fn event_watch_uses_the_right_version_after_an_in_stream_error() {
     for reply in [EventWatchError::Envelope, EventWatchError::BareStatus] {
-        let (versions, states) = recover_event_watch_after_error(reply, 500).await;
-        assert_eq!(versions, ["0", "55", "0"]);
-        assert_eq!(
-            states,
-            [
-                "connected",
-                "reconnecting",
-                "connected",
-                "error",
-                "reconnecting",
-                "connected",
-                "resourceEventsChanged"
-            ]
-        );
+        for (code, expected_version) in [(410, "0"), (500, "0"), (503, "56")] {
+            let (versions, states) = recover_event_watch_after_error(reply, code).await;
+            assert_eq!(versions, ["0", "55", expected_version], "{reply:?} {code}");
+            assert_eq!(
+                states,
+                [
+                    "connected",
+                    "reconnecting",
+                    "connected",
+                    "error",
+                    "reconnecting",
+                    "connected",
+                    "resourceEventsChanged"
+                ],
+                "{reply:?} {code}"
+            );
+        }
     }
-}
-
-#[tokio::test(start_paused = true)]
-async fn event_watch_resumes_from_a_bookmark_received_before_an_in_stream_503() {
-    let (versions, _) = recover_event_watch_after_error(EventWatchError::Envelope, 503).await;
-    assert_eq!(versions, ["0", "55", "56"]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -127,7 +124,7 @@ async fn event_watch_uses_the_right_version_after_an_http_error() {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum EventWatchError {
     Envelope,
     BareStatus,
@@ -155,20 +152,14 @@ async fn recover_event_watch_after_error(
         });
         let (code, body) = match (reply, requests.len()) {
             (_, 1) => (200, format!("{}\n", bookmark("55"))),
-            (EventWatchError::Envelope, 2) if code == 503 => (
-                200,
-                format!(
-                    "{}\n{}\n",
-                    bookmark("56"),
-                    json!({ "type": "ERROR", "object": error })
-                ),
-            ),
-            (EventWatchError::Envelope, 2) => (
-                200,
-                format!("{}\n", json!({ "type": "ERROR", "object": error })),
-            ),
-            (EventWatchError::BareStatus, 2) => (200, format!("{error}\n")),
             (EventWatchError::Http, 2) => (code, error.to_string()),
+            (reply, 2) => {
+                let error = match reply {
+                    EventWatchError::Envelope => json!({ "type": "ERROR", "object": error }),
+                    EventWatchError::BareStatus | EventWatchError::Http => error,
+                };
+                (200, format!("{}\n{error}\n", bookmark("56")))
+            }
             (_, 3) => (
                 200,
                 format!(

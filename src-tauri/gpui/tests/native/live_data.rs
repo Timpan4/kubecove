@@ -61,6 +61,7 @@ pub(super) struct LiveControls {
     pub events_fail: AtomicBool,
     events_empty: AtomicBool,
     events_open_fails: AtomicBool,
+    events_open_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     events_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     events_reads: std::sync::atomic::AtomicUsize,
     /// Whether opening a watch fails.
@@ -547,7 +548,10 @@ impl LiveControls {
                     .expect("Events read gate dropped before explicit release");
             }
             if fail {
-                return Err(AppError::new("Events unavailable", AppErrorKind::Network));
+                return Err(AppError::new(
+                    "Events unavailable (bearer example-credential)",
+                    AppErrorKind::Network,
+                ));
             }
             if empty {
                 return Ok(Vec::new());
@@ -574,9 +578,16 @@ impl LiveControls {
                 message: "Live".into(),
             })
             .unwrap();
+        let gate = if matches!(target, WatchTarget::Events(_)) {
+            &self.events_open_gate
+        } else {
+            &self.gate
+        }
+        .lock()
+        .unwrap()
+        .take();
         self.streams.lock().unwrap().push((target, sender.clone()));
         let stream = LogStream::new(messages, ());
-        let gate = self.gate.lock().unwrap().take();
         Box::pin(async move {
             if let Some(gate) = gate {
                 let _ = gate.await;

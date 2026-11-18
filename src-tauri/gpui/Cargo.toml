@@ -67,7 +67,7 @@ similar = "=3.2.1"
 # GPUI Kit has no VT terminal; parse remote output without starting a local PTY.
 vt100 = "=0.18.1"
 chrono = "=0.4.45"
-serde_json = "=1.0.154"
+serde_json = { version = "=1.0.154", features = ["float_roundtrip", "preserve_order"] }
 ryu-js = "=1.0.3"
 base64 = { version = "=0.23.1", default-features = false, features = ["std"] }
 # Both are already in the lockfile through the backend. `regex` ports the web

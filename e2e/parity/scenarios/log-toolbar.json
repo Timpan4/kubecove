@@ -55,7 +55,7 @@
 		},
 		{
 			"id": "logs.events.awaiting-first-connection",
-			"title": "The Events list refreshes while the first watch waits for Connected",
+			"title": "Events refresh while the first watch opens and catch up when it connects",
 			"steps": [
 				{ "action": "openResources" },
 				{ "action": "replayLiveData", "script": "events-watch-opening" },
@@ -65,7 +65,11 @@
 				{ "action": "expectEventCount", "count": 2 },
 				{ "action": "replayLiveData", "script": "events-list-recovered" },
 				{ "action": "advanceClock", "ms": 15000 },
-				{ "action": "coverageText", "visible": true, "text": "No events" }
+				{ "action": "coverageText", "visible": true, "text": "No events" },
+				{ "action": "replayLiveData", "script": "events-list-failed" },
+				{ "action": "replayLiveData", "script": "connected" },
+				{ "action": "advanceClock", "ms": 250 },
+				{ "action": "coverageText", "visible": true, "text": "Events refresh failed: Scripted Events list failure (bearer [REDACTED])" }
 			]
 		},
 		{
