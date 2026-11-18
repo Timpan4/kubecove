@@ -209,6 +209,7 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 			current: mapCurrent,
 			failed: topology.isError,
 			error: !topology.isError && !tableExplainsMapError ? mapError : null,
+			sharesTableError: tableExplainsMapError,
 		} : null,
 	});
 	const freshness = {

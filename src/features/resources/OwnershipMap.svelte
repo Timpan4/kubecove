@@ -264,7 +264,7 @@
 			/>
 		</div>
 	{:else if !topology || topology.nodes.length === 0 || !graph}
-		<div class="relative flex min-h-80 flex-1">
+		<div class="relative flex min-h-0 flex-1">
 			<Empty class="flex-1 border-0">
 				<EmptyHeader>
 					<EmptyTitle>{emptyTitle}</EmptyTitle>
@@ -284,7 +284,7 @@
 			>skip graph</Button>.
 		</p>
 		<div
-			class="relative min-h-80 flex-1"
+			class="relative min-h-0 flex-1"
 			bind:clientWidth={viewportWidth}
 			bind:clientHeight={viewportHeight}
 		>

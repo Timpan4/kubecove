@@ -328,34 +328,32 @@ impl Inspector {
         let table = freshness
             .table
             .and_then(|status| notice_text(status, table_stale.shown()));
-        let map_error = self.map_only_read_error();
+        let (table_error, map_error) = self.notice_read_errors(&freshness);
+        let shared_error = table_error.zip(map_error).is_some_and(|(table, map)| {
+            std::ptr::eq(table, map)
+                || (self.live.refresh_error.as_deref() == Some(table) && table == map)
+        });
         let map = freshness.map.and_then(|status| {
-            if map_error.is_some() {
-                Some("Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.")
-            } else if status == LiveStatus::RefreshFailed {
+            if status == LiveStatus::RefreshFailed {
                 Some(MAP_STALE)
+            } else if shared_error {
+                None
+            } else if map_error.is_some() {
+                Some("Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.")
             } else {
                 notice_text(status, map_stale.shown())
             }
         });
         let mut notices = Vec::new();
         if let Some(label) = table {
-            let error = (freshness.table == Some(LiveStatus::RefreshFailed))
-                .then(|| {
-                    self.table_refresh_error().or_else(|| {
-                        self.live
-                            .reload_error_where(|context| self.observation.shows(context))
-                    })
-                })
-                .flatten();
-            let label = if freshness.map.is_some() && map != table {
+            let label = if freshness.map.is_some() && !shared_error && map != table {
                 SharedString::from(
                     label.replace("Activity indicators", "Table activity indicators"),
                 )
             } else {
                 SharedString::from(label)
             };
-            notices.push(self.live_notice_panel("live-notice", label, error, cx));
+            notices.push(self.live_notice_panel("live-notice", label, table_error, cx));
         }
         if let Some(label) = map.filter(|_| map != table) {
             let label = if freshness.table.is_some() {
@@ -368,7 +366,8 @@ impl Inspector {
             } else {
                 "live-notice"
             };
-            notices.push(self.live_notice_panel(id, label, map_error, cx));
+            let error = map_error.filter(|_| freshness.map != Some(LiveStatus::RefreshFailed));
+            notices.push(self.live_notice_panel(id, label, error, cx));
         }
         notices
     }
@@ -380,6 +379,7 @@ impl Inspector {
         error: Option<&str>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let expanded = self.live.error_open == Some(id);
         div()
             .id(id)
             .test_support()
@@ -401,7 +401,7 @@ impl Inspector {
                     .py(px(8.))
                     .when(error.is_some(), |row| {
                         row.child(ui::icon(
-                            if self.live.error_open {
+                            if expanded {
                                 "chevron-down"
                             } else {
                                 "chevron-right"
@@ -415,12 +415,12 @@ impl Inspector {
             .when(error.is_some(), |notice| {
                 notice
                     .cursor_pointer()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.live.error_open = !this.live.error_open;
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.live.error_open = (this.live.error_open != Some(id)).then_some(id);
                         cx.notify();
                     }))
             })
-            .when(error.is_some() && self.live.error_open, |notice| {
+            .when(error.is_some() && expanded, |notice| {
                 notice.child(
                     div()
                         .px(px(12.))

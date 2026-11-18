@@ -7,6 +7,7 @@ import type { TauriClient } from "./tauri";
 import type { WatchResourceKey } from "./types";
 
 const deferredInvalidations = new WeakMap<Query, Promise<unknown>>();
+const manualReads = new WeakMap<Query, { revision: number; pending: number }>();
 
 export async function refreshCurrentView({
 	client,
@@ -41,29 +42,43 @@ export async function refreshCurrentView({
 				predicate: (query) => inCurrentView(query) && (!reads || reads.some((read) => read(query))),
 			}),
 	);
-	const predicate = (query: Query) => queries.has(query);
-	const shared = [...queries].filter((query) => !independentReads.some((match) => match(query)));
-	if (!cancelRefetch) {
-		await Promise.allSettled(shared.map((query) => query.promise));
-	} else {
-		for (const query of queries) deferredInvalidations.delete(query);
-		await queryClient.cancelQueries({ predicate });
-	}
-	await refreshResourceCache(
-		client,
-		clusterContext,
-		keys,
-		namespaces,
-		kubeconfigEnvVar,
-	);
-	// Keep the last displayed data while making every selected cache entry stale.
-	const invalidate = (query: Query, throwOnError: boolean) =>
-		queryClient.invalidateQueries(
-			{ predicate: (current) => current === query, refetchType: "active" },
-			{ throwOnError, cancelRefetch },
-		);
+	const shared: Query[] = [];
+	const independent = new Map<Query, number>();
+	const manual: { pending: number }[] = [];
 	for (const query of queries) {
-		if (independentReads.some((match) => match(query)) && !deferredInvalidations.has(query)) {
+		let state = manualReads.get(query);
+		if (cancelRefetch) {
+			state ??= { revision: 0, pending: 0 };
+			manualReads.set(query, state);
+			state.revision++;
+			state.pending++;
+			manual.push(state);
+			deferredInvalidations.delete(query);
+		}
+		if (!cancelRefetch && independentReads.some((match) => match(query))) {
+			if (!state?.pending) independent.set(query, state?.revision ?? 0);
+		} else {
+			shared.push(query);
+		}
+	}
+	try {
+		if (cancelRefetch) await queryClient.cancelQueries({ predicate: (query) => queries.has(query) });
+		else await Promise.allSettled(shared.map((query) => query.promise));
+		await refreshResourceCache(
+			client,
+			clusterContext,
+			keys,
+			namespaces,
+			kubeconfigEnvVar,
+		);
+		// Keep the last displayed data while making every selected cache entry stale.
+		const invalidate = (query: Query, throwOnError: boolean) =>
+			queryClient.invalidateQueries(
+				{ predicate: (current) => current === query, refetchType: "active" },
+				{ throwOnError, cancelRefetch },
+			);
+		for (const [query, revision] of independent) {
+			if ((manualReads.get(query)?.revision ?? 0) !== revision || deferredInvalidations.has(query)) continue;
 			const settled = Promise.allSettled([query.promise]);
 			deferredInvalidations.set(query, settled);
 			void settled.then(() => {
@@ -72,13 +87,15 @@ export async function refreshCurrentView({
 				return invalidate(query, false);
 			});
 		}
+		const results = await Promise.allSettled(shared.map((query) => invalidate(query, true)));
+		const warnings: string[] = [];
+		for (const result of results) {
+			if (result.status !== "rejected") continue;
+			if (friendlyErrorBucket(result.reason) !== "forbiddenRbac") throw result.reason;
+			warnings.push(messageFromError(result.reason));
+		}
+		return [...new Set(warnings)];
+	} finally {
+		for (const state of manual) state.pending--;
 	}
-	const results = await Promise.allSettled(shared.map((query) => invalidate(query, true)));
-	const warnings: string[] = [];
-	for (const result of results) {
-		if (result.status !== "rejected") continue;
-		if (friendlyErrorBucket(result.reason) !== "forbiddenRbac") throw result.reason;
-		warnings.push(messageFromError(result.reason));
-	}
-	return [...new Set(warnings)];
 }

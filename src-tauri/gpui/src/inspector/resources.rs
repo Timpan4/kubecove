@@ -474,10 +474,8 @@ impl Inspector {
     ) -> impl IntoElement {
         let width = self.section_width(window);
         let freshness = self.notice_freshness();
-        if freshness.table != Some(LiveStatus::RefreshFailed)
-            && self.map_only_read_error().is_none()
-        {
-            self.live.error_open = false;
+        if self.live.error_open.is_some() && self.notice_read_errors(&freshness) == (None, None) {
+            self.live.error_open = None;
         }
         let stacked = !matches!(self.detail, Detail::Closed);
         self.rebuild_map();

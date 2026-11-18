@@ -35,16 +35,30 @@ impl Inspector {
             .or_else(|| self.observation.shown_refresh_error())
     }
 
-    pub(in crate::inspector) fn map_only_read_error(&self) -> Option<&str> {
+    pub(in crate::inspector) fn notice_read_errors(
+        &self,
+        freshness: &NoticeFreshness,
+    ) -> (Option<&str>, Option<&str>) {
+        let table = if freshness.table == Some(LiveStatus::RefreshFailed) {
+            self.table_refresh_error().or_else(|| {
+                self.live
+                    .reload_error_where(|context| self.observation.shows(context))
+            })
+        } else {
+            None
+        };
+        let map = if freshness.map.is_some() {
+            self.map_read_error()
+        } else {
+            None
+        };
+        (table, map)
+    }
+
+    fn map_read_error(&self) -> Option<&str> {
         let TopologyLoad::Ready(topology) = &self.map.topology else {
             return None;
         };
-        if !self.map_is_open()
-            || self.map.read.error.is_some()
-            || (self.table_open && self.observation.any_shown())
-        {
-            return None;
-        }
         let context = self.map_context();
         self.observation
             .map_rows_error(context, topology)

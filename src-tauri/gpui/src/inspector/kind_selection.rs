@@ -258,9 +258,7 @@ impl Inspector {
                             },
                             cx,
                         ),
-                        // A context whose rows don't show has nothing to call stale;
-                        // its own read failure is already its warning.
-                        Err(error) if this.observation.shows(&context) => {
+                        Err(error) => {
                             this.observation.record_kind_error(
                                 &context,
                                 &key,
@@ -271,7 +269,6 @@ impl Inspector {
                                 ),
                             );
                         }
-                        Err(_) => {}
                     }
                 }
                 cx.notify();

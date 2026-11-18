@@ -42,7 +42,7 @@ pub(super) struct LiveData {
     pub selected: Option<DiscoveredResourceKind>,
     pub kind_locked: bool,
     pub refresh_error: Option<String>,
-    pub error_open: bool,
+    pub error_open: Option<&'static str>,
     discovery: Option<Task<()>>,
     catalog_task: Option<Task<()>>,
     /// Kind discovery's warnings, which join the scope read's on each apply.

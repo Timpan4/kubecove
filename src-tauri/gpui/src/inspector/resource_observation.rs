@@ -60,7 +60,7 @@ struct ContextRows {
     shown: bool,
     /// The context's built-in read in the current load runs.
     pending: bool,
-    /// The scope refresh failure that left this context's previous rows on screen.
+    /// A failed scope read left this context without a current snapshot.
     refresh_error: Option<String>,
     /// Reads of newly selected kinds that have yet to obtain a list.
     kind_errors: BTreeMap<String, KindReadError>,
@@ -75,11 +75,11 @@ struct ContextRows {
 }
 
 impl ContextRows {
-    fn read_error(&self, uses_kind: impl Fn(&str) -> bool) -> Option<&str> {
+    fn read_error(&self, uses_kind: impl Fn(&WatchResourceKey) -> bool) -> Option<&str> {
         self.refresh_error.as_deref().or_else(|| {
             self.kind_errors
                 .values()
-                .find(|error| uses_kind(&error.kind))
+                .find(|error| uses_kind(&error.key))
                 .map(|error| error.message.as_str())
         })
     }
@@ -95,7 +95,7 @@ impl ContextRows {
 }
 
 struct KindReadError {
-    kind: String,
+    key: WatchResourceKey,
     message: String,
 }
 
@@ -234,6 +234,8 @@ impl ResourceObservation {
                 // A failed context reads no custom kinds.
                 let custom = part.custom_pending;
                 *part = ContextRows {
+                    refresh_error: Some(context_message(several, context, &error.message)),
+                    kind_errors: std::mem::take(&mut part.kind_errors),
                     warnings: vec![format!("Context \"{context}\": {}", error.message)],
                     ..ContextRows::default()
                 };
@@ -381,6 +383,8 @@ impl ResourceObservation {
                 }
                 Err(error) => {
                     *part = ContextRows {
+                        refresh_error: Some(context_message(several, &context, &error.message)),
+                        kind_errors: std::mem::take(&mut part.kind_errors),
                         warnings: vec![format!("Context \"{context}\": {}", error.message)],
                         ..ContextRows::default()
                     };
@@ -496,7 +500,12 @@ impl ResourceObservation {
         topology: &ResourceTopology,
     ) -> Option<&str> {
         let part = &self.parts[self.position(context)?];
-        part.read_error(|kind| topology.nodes.iter().any(|node| node.kind == kind))
+        part.read_error(|key| {
+            topology
+                .nodes
+                .iter()
+                .any(|node| crate::model::watch_lists(context, key, &node.summary))
+        })
     }
 
     pub(super) fn shown_refresh_error(&self) -> Option<&str> {
@@ -516,7 +525,7 @@ impl ResourceObservation {
             self.parts[index].kind_errors.insert(
                 watch_id(context, key),
                 KindReadError {
-                    kind: key.resource_kind.kind.clone(),
+                    key: key.clone(),
                     message,
                 },
             );

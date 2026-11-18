@@ -20,7 +20,7 @@
         { "action": "openResources" },
         { "action": "expectLiveState", "label": "Live" },
         { "action": "replayLiveData", "script": "failed" },
-        { "action": "expectLiveState", "label": "Refresh failed", "notice": "Refresh failed. Showing last observed state. Table activity indicators are paused until live updates recover." },
+        { "action": "expectLiveState", "label": "Refresh failed", "notice": "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover." },
         { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "replayLiveData", "script": "connected" },
         { "action": "expectLiveState", "label": "Live" }

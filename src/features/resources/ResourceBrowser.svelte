@@ -474,16 +474,28 @@
 	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
 		&& notice.table.status !== "partial" && notice.table.status !== "polling");
 	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
+		&& !notice.map.sharesTableError
 		&& notice.map.status !== "partial" && notice.map.status !== "polling");
 	const refreshFailedNotice = "Refresh failed. Showing last observed state. Activity indicators are paused until live updates recover.";
 	const tableNotice = $derived(notice.table && (notice.table.error
 		? refreshFailedNotice
 		: liveNoticeText(notice.table.status, tableStale.shown)));
-	const mapNotice = $derived(notice.map && (notice.map.error
-		? scopeNotice(refreshFailedNotice, "Map")
-		: notice.map.failed
+	const mapNotice = $derived(notice.map && (notice.map.failed
 		? "Showing last observed graph. Map activity indicators are paused until the map refreshes."
+		: notice.map.sharesTableError
+		? tableNotice
+		: notice.map.error
+		? scopeNotice(refreshFailedNotice, "Map")
 		: liveNoticeText(notice.map.status, mapStale.shown)));
+	let mapNoticeElement = $state<HTMLDivElement>();
+	let mapPanelElement = $state<HTMLDivElement>();
+
+	$effect.pre(() => {
+		const hasDetails = mapNotice && mapNotice !== tableNotice && notice.map?.error;
+		if (!hasDetails && mapNoticeElement?.contains(document.activeElement)) {
+			mapPanelElement?.focus({ preventScroll: true });
+		}
+	});
 
 	function liveNoticeText(status: string, stale: boolean) {
 		if (status === "partial") return "Live updates are limited. Readable resources without watch access refresh periodically. Activity indicators are paused.";
@@ -811,11 +823,13 @@
 		</div>
 	{:else}
 		{#if tableNotice}
-			{@const label = notice.map && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
+			{@const label = notice.map && !notice.map.sharesTableError && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
 			{@render observationNotice(label, notice.table?.error)}
 		{/if}
 		{#if mapNotice && mapNotice !== tableNotice}
-			{@render observationNotice(notice.table && !notice.map?.error ? scopeNotice(mapNotice, "Map") : mapNotice, notice.map?.error)}
+			<div class="contents" bind:this={mapNoticeElement}>
+				{@render observationNotice(notice.table && !notice.map?.error ? scopeNotice(mapNotice, "Map") : mapNotice, notice.map?.error)}
+			</div>
 		{/if}
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen
@@ -829,7 +843,7 @@
 						: "grid min-h-0 min-w-0 flex-1 grid-cols-[3rem_3rem] gap-3"}
 		>
 			{#if mapPanelOpen}
-				<div class="h-full min-h-[400px] min-w-0">
+				<div class="h-full min-h-[400px] min-w-0" bind:this={mapPanelElement} tabindex="-1">
 					{#if OwnershipMapComponent && !ownershipMapLoading.active}
 						<OwnershipMapComponent
 							topology={topologyWithMetrics}
