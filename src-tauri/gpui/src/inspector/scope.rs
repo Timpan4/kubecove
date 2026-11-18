@@ -327,7 +327,7 @@ impl Inspector {
                     let apply_started = Instant::now();
                     match this.observation.install_refresh(result) {
                         Ok(applied) => {
-                            this.kind_selection.supersede_lists(&applied.listed);
+                            this.supersede_kind_reads(&applied.listed);
                             this.namespaces = if applied.kept.is_empty() {
                                 applied.namespaces
                             } else {

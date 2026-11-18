@@ -189,6 +189,57 @@ test("manual refresh replaces an uncached watch read started during eviction", a
 	}
 });
 
+test("automatic catch-up ignores a read cancellation superseded by manual eviction", async () => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	configureQueryCatalog(queryClient);
+	const key = queryKeys.resources("dev", []);
+	let startEviction!: () => void;
+	let releaseEviction!: () => void;
+	let startAutomaticRead!: () => void;
+	const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+	const eviction = new Promise<void>((resolve) => { releaseEviction = resolve; });
+	const automaticReadStarted = new Promise<void>((resolve) => { startAutomaticRead = resolve; });
+	let requests = 0;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			const started = ++requests;
+			if (started === 1) throw new Error("No data yet");
+			if (started === 2) {
+				startAutomaticRead();
+				await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+			}
+			return started;
+		},
+	}).subscribe(() => {});
+	const refresh = { queryClient, clusterContext: "dev", keys: [], namespaces: [] };
+	try {
+		await queryClient.getQueryCache().find({ queryKey: key })?.promise?.catch(() => {});
+		const manual = refreshCurrentView({
+			...refresh,
+			client: createMockTauriClient({ refresh_resource_cache: async () => {
+				startEviction();
+				await eviction;
+				return { clearedEntries: 1 };
+			} }),
+		});
+		await evictionStarted;
+		const recovery = refreshCurrentView({
+			...refresh, cancelRefetch: false,
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		await automaticReadStarted;
+		releaseEviction();
+		const [warnings] = await Promise.all([recovery, manual]);
+		expect(warnings).toEqual([]);
+		expect(queryClient.getQueryData(key)).toBe(3);
+	} finally {
+		releaseEviction();
+		stop();
+		queryClient.clear();
+	}
+});
+
 test("refresh evicts backend data before reloading only active reads in the selected source/context", async () => {
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: Infinity } },

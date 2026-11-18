@@ -41,14 +41,7 @@ impl KindSelection {
             .retain(|_, read| read.ids.iter().any(|id| wanted.contains(id.as_str())));
     }
 
-    pub(super) fn supersede_lists(&mut self, listed: &[crate::backend::Listed]) {
-        if self.reads.is_empty() || listed.is_empty() {
-            return;
-        }
-        let covered: HashSet<_> = listed
-            .iter()
-            .map(|list| crate::backend::watch_id(&list.context, &list.key))
-            .collect();
+    fn supersede_lists(&mut self, covered: &HashSet<String>) {
         self.reads.retain(|_, read| {
             read.ids.retain(|id| !covered.contains(id));
             !read.ids.is_empty()
@@ -83,6 +76,20 @@ impl KindSelection {
 }
 
 impl Inspector {
+    pub(super) fn supersede_kind_reads(&mut self, listed: &[crate::backend::Listed]) {
+        if listed.is_empty()
+            || (self.kind_selection.reads.is_empty() && !self.observation.has_kind_patches())
+        {
+            return;
+        }
+        let covered = listed
+            .iter()
+            .map(|list| crate::backend::watch_id(&list.context, &list.key))
+            .collect();
+        self.kind_selection.supersede_lists(&covered);
+        self.observation.discard_kind_patches(&covered);
+    }
+
     pub(super) fn custom_matches(&self, kind: &DiscoveredResourceKind, cx: &Context<Self>) -> bool {
         let query = self
             .kind_selection

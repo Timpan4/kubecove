@@ -506,6 +506,10 @@ impl ResourceObservation {
         })
     }
 
+    pub(super) fn context_scope_error(&self, context: &str) -> Option<&str> {
+        self.parts[self.position(context)?].refresh_error.as_deref()
+    }
+
     pub(super) fn shown_refresh_error(&self) -> Option<&str> {
         self.parts
             .iter()

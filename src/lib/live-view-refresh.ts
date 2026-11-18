@@ -72,6 +72,7 @@ export interface LiveViewState {
 	message: string;
 	error: string | null;
 	reloadError: string | null;
+	reloadContext?: string;
 	warnings: string[];
 }
 
@@ -98,13 +99,15 @@ export function combineLiveViewStates(states: readonly { clusterContext: string;
 	if (active.length === 0) return IDLE_LIVE_VIEW;
 	const [worst] = [...active].sort((left, right) =>
 		STATUS_SEVERITY.indexOf(left.state.status) - STATUS_SEVERITY.indexOf(right.state.status));
+	const failedReload = active.find(({ state }) => state.reloadError !== null);
 	const mixedPolling = worst.state.status === "polling" && active.some(({ state }) => state.status !== "polling");
 	return {
 		status: mixedPolling ? "partial" : worst.state.status,
 		catchingUp: active.some(({ state }) => state.catchingUp),
 		message: named(worst.clusterContext, worst.state.message) ?? "",
 		error: active.map(({ clusterContext, state }) => named(clusterContext, state.error)).find(Boolean) ?? null,
-		reloadError: active.map(({ clusterContext, state }) => named(clusterContext, state.reloadError)).find(Boolean) ?? null,
+		reloadError: failedReload ? named(failedReload.clusterContext, failedReload.state.reloadError) : null,
+		reloadContext: failedReload?.clusterContext,
 		warnings: active.flatMap(({ clusterContext, state }) => state.warnings.map((warning) => `${clusterContext}: ${warning}`)),
 	};
 }
@@ -338,7 +341,12 @@ export function bindLiveView({
 			})[0];
 			return failed ? messageFromError(failed.state.error) : null;
 		},
-		onState: (state) => onState({ ...state, reloadError: state.reloadError ?? null, warnings: state.warnings ?? [] }),
+		onState: (state) => onState({
+			...state,
+			reloadError: state.reloadError ?? null,
+			reloadContext: state.reloadError ? current.clusterContext : undefined,
+			warnings: state.warnings ?? [],
+		}),
 		startVersion: (key) => startVersion(current, key),
 		onChange: (_event, key) => {
 			for (const slot of slots) if (keptFreshBy(slot.read, key)) slot.notify();

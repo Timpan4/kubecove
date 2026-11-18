@@ -1,4 +1,4 @@
-import type { Query, QueryClient } from "@tanstack/svelte-query";
+import { isCancelledError, type Query, type QueryClient } from "@tanstack/svelte-query";
 import { createSubscriber } from "svelte/reactivity";
 import { friendlyErrorBucket } from "./friendly-errors";
 import { messageFromError } from "./error-redaction";
@@ -102,10 +102,19 @@ export async function refreshCurrentView({
 	);
 	const shared: Query[] = [];
 	const independent: Query[] = [];
+	const manual = new Set<Query>();
+	const finishManual = (query: Query) => {
+		if (!manual.delete(query)) return;
+		const state = refreshState(query);
+		state.manual--;
+		flushDeferredRead(query, state);
+		state.notify?.();
+	};
 	for (const query of queries) {
 		if (cancelRefetch) {
 			const state = refreshState(query);
 			state.manual++;
+			manual.add(query);
 			state.notify?.();
 		}
 		if (!cancelRefetch && independentReads.some((match) => match(query))) independent.push(query);
@@ -135,9 +144,18 @@ export async function refreshCurrentView({
 			state.notify?.();
 			flushDeferredRead(query, state);
 		}
-		const results = await Promise.allSettled(shared.map((query) => {
+		const results = await Promise.allSettled(shared.map(async (query) => {
+			const state = readsInRefresh.get(query);
+			const revision = state?.manualRevision ?? 0;
 			if (cancelRefetch && query.isActive()) refreshState(query).manualRevision++;
-			return invalidate(query, true);
+			try {
+				await invalidate(query, true);
+			} catch (error) {
+				const replaced = manualRefreshOwns(query) || (readsInRefresh.get(query)?.manualRevision ?? 0) !== revision;
+				if (cancelRefetch || !isCancelledError(error) || !replaced) throw error;
+			} finally {
+				finishManual(query);
+			}
 		}));
 		const warnings: string[] = [];
 		for (const result of results) {
@@ -147,13 +165,6 @@ export async function refreshCurrentView({
 		}
 		return [...new Set(warnings)];
 	} finally {
-		if (cancelRefetch) {
-			for (const query of queries) {
-				const state = refreshState(query);
-				state.manual--;
-				flushDeferredRead(query, state);
-				state.notify?.();
-			}
-		}
+		for (const query of manual) finishManual(query);
 	}
 }

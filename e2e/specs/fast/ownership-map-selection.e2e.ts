@@ -10,7 +10,7 @@ describe("ownership map selection rendering", () => {
 		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
 		if (!artifacts) throw new Error("Artifact directory is required");
 		await browser.url("/");
-		await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).mountOwnershipMap(), FIXTURE);
+		await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).mountOwnershipMap(true), FIXTURE);
 		const disclosure = $("summary=Map refresh failed");
 		const empty = $("div=No ownership graph");
 		const focusControl = (label: string) => browser.execute((text) => {
@@ -37,7 +37,10 @@ describe("ownership map selection rendering", () => {
 				["empty", true, true],
 			] as const) {
 				if (retainedEmpty) await refresh(true);
-				else expect((await graph()).edges).toBe(45);
+				else {
+					expect((await graph()).edges).toBe(45);
+					await expect($("div=Last observed topology warning")).toBeDisplayed();
+				}
 				await browser.execute(async (fixture) => (await import(/* @vite-ignore */ fixture)).failOwnershipMapTopology(), FIXTURE);
 				await expect(disclosure).toBeDisplayed();
 				if (retainedEmpty) await focusControl("Map refresh failed");
@@ -62,7 +65,11 @@ describe("ownership map selection rendering", () => {
 					));
 				})).toBe(true);
 				if (retainedEmpty) await expect(empty).toBeDisplayed();
-				else expect((await graph()).edges).toBe(45);
+				else {
+					const retained = await graph();
+					expect(retained.edges).toBe(45);
+					expect(retained.edgeRemovals).toBe(0);
+				}
 				await browser.saveScreenshot(join(artifacts, `ownership-map-error-${label}.png`));
 				await refresh(recoveredEmpty);
 				await expect(disclosure).not.toExist();

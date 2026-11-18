@@ -43,11 +43,15 @@ function topology(): ResourceTopology {
 	return { nodes, edges, warnings: [] };
 }
 
-export async function mountOwnershipMap(): Promise<void> {
+export async function mountOwnershipMap(withWarnings = false): Promise<void> {
 	await control?.stop();
 	const target = document.createElement("div");
 	document.body.append(target);
-	const component = mount(OwnershipMapHarness, { target, props: { initialTopology: topology() } });
+	const readyTopology = () => ({ ...topology(), warnings: withWarnings ? ["Last observed topology warning"] : [] });
+	const component = mount(OwnershipMapHarness, { target, props: {
+		initialTopology: readyTopology(),
+		contexts: withWarnings ? ["ownership-map", "another-context"] : [],
+	} });
 	const counts = { edgeRemovals: 0, handleMeasurements: 0, updateMs: 0 };
 	// Time the synchronous Svelte update that applies one change to the map.
 	const timed = (change: () => void) => {
@@ -71,7 +75,7 @@ export async function mountOwnershipMap(): Promise<void> {
 	observer.observe(target, { childList: true, subtree: true });
 	control = {
 		select: (nodeId) => timed(() => component.select(nodeId)),
-		refresh: (empty) => timed(() => component.refresh(empty ? { nodes: [], edges: [], warnings: [] } : topology())),
+		refresh: (empty) => timed(() => component.refresh(empty ? { nodes: [], edges: [], warnings: [] } : readyTopology())),
 		failRefresh: () => component.failRefresh(),
 		take() {
 			const taken = { edges: target.querySelectorAll(".svelte-flow__edge").length, ...counts };

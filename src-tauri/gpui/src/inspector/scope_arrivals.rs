@@ -68,6 +68,9 @@ impl Inspector {
             return false;
         }
         let apply_started = Instant::now();
+        if let Ok(snapshot) = &result {
+            self.supersede_kind_reads(&snapshot.listed);
+        }
         let applied = self.observation.install_arrival(context, result, rows);
         if let Some(namespaces) = applied.namespaces {
             self.namespaces = namespaces;
@@ -101,6 +104,9 @@ impl Inspector {
             return;
         }
         let apply_started = Instant::now();
+        if let Ok(snapshot) = &result {
+            self.supersede_kind_reads(&snapshot.listed);
+        }
         self.apply_custom_resources(context, result, cx);
         self.note_apply(
             LoadKind::Scope,

@@ -209,10 +209,15 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 	const mapError = $derived(mapRows?.error ?? map.reloadError);
 	const tableExplainsMapError = $derived(tableShown && (
 		(failedTableRead >= 0 && failedTableRead === mapRead)
-		|| (failedTableRead < 0 && !mapRows?.error && Boolean(shown.reloadError) && shown === map)
+		|| (failedTableRead < 0 && !mapRows?.error && Boolean(shown.reloadError) && shown.reloadContext === mapContext)
 	));
 	const notice = $derived({
-		table: tableShown ? { status: shown.status, current: tableCurrent, error: tableError } : null,
+		table: tableShown ? {
+			status: shown.status,
+			current: tableCurrent,
+			error: tableError,
+			context: contexts.length > 1 ? contexts[failedTableRead] : undefined,
+		} : null,
 		map: mapShown ? {
 			status: map.status,
 			current: mapCurrent,

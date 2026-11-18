@@ -721,11 +721,14 @@
 	{/key}
 {/snippet}
 
-{#snippet observationNotice(label: string, error: unknown)}
+{#snippet observationNotice(label: string, error: unknown, context?: string)}
 	{#if error}
 		<details class="rounded-md border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300" data-refresh-error>
 			<summary class="cursor-pointer px-3 py-2"><span role="status">{label}</span></summary>
-			<div class="px-3 pb-3"><FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} /></div>
+			<div class="px-3 pb-3">
+				{#if context}<p class="pb-2">Context {context}</p>{/if}
+				<FriendlyError {error} context={{ operation: "resourcesLoad", fallbackTitle: "Resource refresh failed. Retrying." }} />
+			</div>
 		</details>
 	{:else}
 		<p role="status" class="rounded-md border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{label}</p>
@@ -733,7 +736,7 @@
 {/snippet}
 
 <div class="flex h-full min-h-0 min-w-0 flex-col gap-3" bind:this={browserElement} tabindex="-1">
-	{#if resourcesQuery.isSuccess && !resourcesQuery.isPlaceholderData}
+	{#if resourcesQuery.data && !resourcesQuery.isPlaceholderData}
 		<ResourceScopeWarnings failures={resourcesQuery.data?.failures ?? []} contextFailures={resourcesQuery.contextFailures} />
 	{/if}
 	{#if contextsLoading.shown && resourcesQuery.loadingContexts.length > 0}
@@ -835,7 +838,7 @@
 		{#if tableNotice}
 			{@const label = notice.map && !notice.map.sharesTableError && tableNotice !== mapNotice ? scopeNotice(tableNotice, "Table") : tableNotice}
 			<div class="contents" bind:this={tableNoticeElement}>
-				{@render observationNotice(label, notice.table?.error)}
+				{@render observationNotice(label, notice.table?.error, notice.table?.context)}
 			</div>
 		{/if}
 		{#if mapNotice && mapNotice !== tableNotice}

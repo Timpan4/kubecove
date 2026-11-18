@@ -553,6 +553,12 @@ impl Inspector {
                                 if this.live.owner != owner {
                                     return false;
                                 }
+                                if reload
+                                    && names.is_some()
+                                    && this.observation.kind_read_failed(&scope.context, &id)
+                                {
+                                    names = None;
+                                }
                                 let Some(w) = this.live.watches.get_mut(&id) else {
                                     return false;
                                 };

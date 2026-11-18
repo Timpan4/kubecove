@@ -384,7 +384,15 @@ impl Inspector {
     fn shared_read_error(&self, table: Option<&str>, map: Option<&str>) -> bool {
         table.zip(map).is_some_and(|(table, map)| {
             std::ptr::eq(table, map)
-                || (self.live.refresh_error.as_deref() == Some(table) && table == map)
+                || (self
+                    .live
+                    .refresh_error
+                    .as_deref()
+                    .is_some_and(|error| std::ptr::eq(error, table))
+                    && self
+                        .observation
+                        .context_scope_error(self.map_context())
+                        .is_some_and(|error| std::ptr::eq(error, map)))
         })
     }
 
