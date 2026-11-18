@@ -164,7 +164,7 @@ try {
 			!failed || (coverage ? failed.web.has(id) || failed.gpui.has(id) : failed[name].has(id))),
 	});
 	const selection = { web: selectedFor("web"), gpui: selectedFor("gpui") };
-	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios not passed in ${rerun}`);
+	if (rerun) console.log(`Rerunning ${selection.web.scenarios.length} web and ${selection.gpui.scenarios.length} GPUI scenarios from ${rerun}`);
 	if (selection.web.scenarios.length || selection.gpui.scenarios.length) {
 		// Frame measurements wait for this run, and this run waits for one in progress.
 		const isolation = await holdFrameIsolation("shared", controller.signal);

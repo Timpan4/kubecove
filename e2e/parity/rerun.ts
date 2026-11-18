@@ -23,6 +23,7 @@ async function failedScenarios(run: string, driver: Driver, selected: string): P
 		for (const value of report.scenarios) {
 			const result = object(value);
 			const id = string(result.id);
+			if (!ids.has(id)) return ids;
 			results.set(id, !results.has(id) && result.status === "passed");
 		}
 	} catch {
@@ -54,7 +55,12 @@ export async function rerunSelections(run: string): Promise<Record<Driver, Set<s
 		webSelection = previous === "gpui" ? "" : legacySelection;
 		gpuiSelection = previous === "web" ? "" : legacySelection;
 	} else if (webSelection === undefined || gpuiSelection === undefined) {
-		console.warn(`No ${webSelection === undefined ? "web" : "GPUI"} selection was recorded in ${run}.`);
+		const missing = webSelection === undefined ? "web" : "GPUI";
+		// The runner writes the shared list only after publishing both driver lists.
+		if (await readRunFile(run, "scenarios.txt") !== undefined) {
+			throw new Error(`Missing ${missing} selection in ${run}. Restore its driver selection before rerunning.`);
+		}
+		console.warn(`No ${missing} selection was recorded in ${run}.`);
 	}
 	const [web, gpui] = await Promise.all([
 		failedScenarios(run, "web", webSelection ?? ""),

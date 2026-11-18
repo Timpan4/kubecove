@@ -71,7 +71,21 @@ test("a partial per-driver selection never borrows IDs from the compatibility li
 		await writeFile(join(run, "web-scenarios.txt"), "web-only");
 		expect(await rerunSelections(run)).toEqual({ web: new Set(["web-only"]), gpui: new Set() });
 		await writeFile(join(run, "scenarios.txt"), "web-only\nnot-recorded");
-		expect(await rerunSelections(run)).toEqual({ web: new Set(["web-only"]), gpui: new Set() });
+		await expect(rerunSelections(run)).rejects.toThrow("Missing GPUI selection");
+	} finally {
+		await rm(run, { recursive: true });
+	}
+});
+
+test("an unexpected result invalidates the report even if all selected scenarios passed", async () => {
+	const run = await mkdtemp(join(import.meta.dir, ".rerun-test-"));
+	try {
+		await Promise.all([
+			writeFile(join(run, "web-scenarios.txt"), "selected"),
+			writeFile(join(run, "gpui-scenarios.txt"), ""),
+			writeFile(join(run, "web.json"), '{"driver":"web","scenarios":[{"id":"selected","status":"passed"},{"id":"unexpected","status":"passed"}]}'),
+		]);
+		expect(await rerunSelections(run)).toEqual({ web: new Set(["selected"]), gpui: new Set() });
 	} finally {
 		await rm(run, { recursive: true });
 	}
