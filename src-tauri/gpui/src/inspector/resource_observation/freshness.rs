@@ -35,10 +35,26 @@ impl Inspector {
             .or_else(|| self.observation.shown_refresh_error())
     }
 
+    pub(in crate::inspector) fn map_only_read_error(&self) -> Option<&str> {
+        let TopologyLoad::Ready(topology) = &self.map.topology else {
+            return None;
+        };
+        if !self.map_is_open()
+            || self.map.read.error.is_some()
+            || (self.table_open && self.observation.any_shown())
+        {
+            return None;
+        }
+        let context = self.map_context();
+        self.observation
+            .map_rows_error(context, topology)
+            .or_else(|| self.live.reload_error_where(|watched| watched == context))
+    }
+
     pub(in crate::inspector) fn notice_freshness(&self) -> NoticeFreshness {
         let table = (self.table_open && self.observation.any_shown()).then(|| self.table_status());
-        let map = (self.map_is_open() && matches!(self.map.topology, TopologyLoad::Ready(_))).then(
-            || {
+        let map = match &self.map.topology {
+            TopologyLoad::Ready(topology) if self.map_is_open() => Some({
                 if self.map.read.error.is_some() {
                     LiveStatus::RefreshFailed
                 } else {
@@ -48,15 +64,17 @@ impl Inspector {
                     if status == LiveStatus::RefreshFailed
                         || (status == LiveStatus::Live
                             && (self.map.read.refreshing()
-                                || self.observation.context_rows_stale(context)))
+                                || self.observation.context_rows_loading(context)
+                                || self.observation.map_rows_error(context, topology).is_some()))
                     {
                         LiveStatus::CatchingUp
                     } else {
                         status
                     }
                 }
-            },
-        );
+            }),
+            _ => None,
+        };
         NoticeFreshness { table, map }
     }
 }

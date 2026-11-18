@@ -81,11 +81,16 @@
 	let afterGraphElement = $state<HTMLDivElement>();
 	let mapHeading = $state<HTMLDivElement>();
 	let refreshErrorDetails = $state<HTMLDetailsElement>();
+	let errorBranch: "graph" | "empty" | null = null;
 
 	$effect.pre(() => {
-		if (!error && refreshErrorDetails?.contains(document.activeElement)) {
-			(afterGraphElement ?? mapHeading)?.focus({ preventScroll: true });
+		const next = error && topology && !loading.active && !isError
+			? (topology.nodes.length && graph ? "graph" : "empty")
+			: null;
+		if (next !== errorBranch && refreshErrorDetails?.contains(document.activeElement)) {
+			mapHeading?.focus({ preventScroll: true });
 		}
+		errorBranch = next;
 	});
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);

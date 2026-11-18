@@ -136,13 +136,11 @@ impl LiveData {
         )
     }
 
-    pub fn reload_error_where(&self, keep: impl Fn(&str) -> bool) -> Option<&String> {
-        self.refresh_error.as_ref().or_else(|| {
-            self.watches
-                .values()
-                .filter(|watch| keep(&watch.context))
-                .find_map(|watch| watch.reload_error.as_ref())
-        })
+    pub fn reload_error_where(&self, keep: impl Fn(&str) -> bool) -> Option<&str> {
+        self.watches
+            .values()
+            .filter(|watch| keep(&watch.context))
+            .find_map(|watch| watch.reload_error.as_deref())
     }
 
     /// Each watch for the status menu, in id order, so the first error it
@@ -358,6 +356,7 @@ impl Inspector {
             self.live
                 .watches
                 .retain(|id, _| wanted.contains(id.as_str()));
+            self.kind_selection.retain_watches(&wanted);
             self.observation.retain_watches(&wanted);
         }
         for (context, key, watch) in pairs {

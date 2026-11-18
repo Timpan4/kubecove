@@ -1,6 +1,7 @@
 import { createQueries, createQuery } from "@tanstack/svelte-query";
 import type { ArgoApplicationTarget } from "@/lib/argo-application-inspection";
 import { diagnosticLog } from "@/lib/diagnostics";
+import { messageFromError } from "@/lib/error-redaction";
 import type { KindFetchKey } from "@/lib/kind-identity";
 import { liveViewRefresh } from "@/lib/live-view-refresh.svelte";
 import { cancelledQueryRetry } from "@/lib/query-retry";
@@ -196,13 +197,18 @@ export function resourceBrowserReads(client: TauriClient, input: () => ResourceB
 		&& map.status === "connected" && !map.catchingUp && !map.reloadError
 		&& !mapRows?.isError && !mapRows?.isPlaceholderData && mapRows?.fetchStatus === "idle");
 	const tableShown = $derived(current.tablePanelOpen && Boolean(scope.data));
+	const mapError = $derived(mapRows?.error ?? map.reloadError);
+	const mapErrorMessage = $derived(mapError ? messageFromError(mapError) : null);
+	const tableExplainsMapError = $derived(tableShown && mapErrorMessage !== null
+		&& scope.shownContexts.includes(mapContext)
+		&& (shown.reloadError === mapErrorMessage || shown.reloadError === `${mapContext}: ${mapErrorMessage}`));
 	const notice = $derived({
 		table: tableShown ? { status: shown.status, current: tableCurrent, error: shown.reloadError } : null,
 		map: mapShown ? {
 			status: map.status,
 			current: mapCurrent,
 			failed: topology.isError,
-			error: !tableShown && !topology.isError ? mapRows?.error ?? map.reloadError : null,
+			error: !topology.isError && !tableExplainsMapError ? mapError : null,
 		} : null,
 	});
 	const freshness = {

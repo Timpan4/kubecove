@@ -34,6 +34,10 @@ impl ResourceObservation {
         self.pending
             .retain(|patch| patch.watch.as_deref().is_none_or(|id| wanted.contains(id)));
         self.starts.retain(|id, _| wanted.contains(id.as_str()));
+        for part in &mut self.parts {
+            part.kind_errors
+                .retain(|id, _| wanted.contains(id.as_str()));
+        }
     }
 
     /// Each patch waits for its own lists and for shared row preparation.

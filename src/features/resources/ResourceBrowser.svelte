@@ -815,7 +815,7 @@
 			{@render observationNotice(label, notice.table?.error)}
 		{/if}
 		{#if mapNotice && mapNotice !== tableNotice}
-			{@render observationNotice(notice.table ? scopeNotice(mapNotice, "Map") : mapNotice, notice.map?.error)}
+			{@render observationNotice(notice.table && !notice.map?.error ? scopeNotice(mapNotice, "Map") : mapNotice, notice.map?.error)}
 		{/if}
 		<div
 			class={inspectorOpen && mapPanelOpen && tablePanelOpen

@@ -35,6 +35,11 @@ impl KindSelection {
             .values()
             .any(|read| read.loading && read.ids.iter().any(|other| other == id))
     }
+
+    pub(super) fn retain_watches(&mut self, wanted: &HashSet<&str>) {
+        self.reads
+            .retain(|_, read| read.ids.iter().any(|id| wanted.contains(id.as_str())));
+    }
 }
 
 pub(super) fn identity(kind: &DiscoveredResourceKind) -> String {
@@ -64,17 +69,6 @@ impl KindSelection {
 }
 
 impl Inspector {
-    pub(super) fn set_sidebar_kinds(&mut self, kinds: HashSet<String>) {
-        self.kind_selection.reads.retain(|kind, read| {
-            if kinds.contains(kind) {
-                return true;
-            }
-            self.observation.clear_kind_errors(&read.ids);
-            false
-        });
-        self.kind_selection.chosen = Some(kinds);
-    }
-
     pub(super) fn custom_matches(&self, kind: &DiscoveredResourceKind, cx: &Context<Self>) -> bool {
         let query = self
             .kind_selection
@@ -188,8 +182,8 @@ impl Inspector {
         if !chosen.remove(&key) {
             chosen.insert(key.clone());
             self.read_selected_kind(key.clone(), cx);
-        } else if let Some(read) = self.kind_selection.reads.remove(&key) {
-            self.observation.clear_kind_errors(&read.ids);
+        } else {
+            self.kind_selection.reads.remove(&key);
         }
         self.close_detail(cx);
         self.table_page = 0;
@@ -269,7 +263,7 @@ impl Inspector {
                         Err(error) if this.observation.shows(&context) => {
                             this.observation.record_kind_error(
                                 &context,
-                                crate::backend::watch_id(&context, &key),
+                                &key,
                                 super::resource_observation::context_message(
                                     several,
                                     &context,

@@ -77,6 +77,54 @@ test("cache clearing never rejoins a discovery read started before refresh", asy
 	expect(calls).toBe(2);
 });
 
+test("manual cache eviction supersedes a deferred retry of an uncached topology", async () => {
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	configureQueryCatalog(queryClient);
+	const key = queryKeys.resources("dev", []);
+	const calls: string[] = [];
+	let releaseEviction!: () => void;
+	let startEviction!: () => void;
+	const eviction = new Promise<void>((resolve) => { releaseEviction = resolve; });
+	const evictionStarted = new Promise<void>((resolve) => { startEviction = resolve; });
+	let held = true;
+	const stop = new QueryObserver(queryClient, {
+		queryKey: key,
+		queryFn: async ({ signal }) => {
+			calls.push("read");
+			if (held) await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+			return "fresh";
+		},
+	}).subscribe(() => {});
+	const refresh = { queryClient, clusterContext: "dev", keys: [], namespaces: [] };
+	try {
+		await refreshCurrentView({
+			...refresh,
+			cancelRefetch: false,
+			independentReads: [queryMatchers.exact(key)],
+			client: createMockTauriClient({ refresh_resource_cache: { clearedEntries: 1 } }),
+		});
+		held = false;
+		const manual = refreshCurrentView({
+			...refresh,
+			client: createMockTauriClient({ refresh_resource_cache: async () => {
+				startEviction();
+				await eviction;
+				return { clearedEntries: 1 };
+			} }),
+		});
+		await evictionStarted;
+		expect(calls).toEqual(["read"]);
+		releaseEviction();
+		await manual;
+		expect(calls).toEqual(["read", "read"]);
+		expect(queryClient.getQueryData(key)).toBe("fresh");
+	} finally {
+		releaseEviction();
+		stop();
+		queryClient.clear();
+	}
+});
+
 test("refresh evicts backend data before reloading only active reads in the selected source/context", async () => {
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: Infinity } },

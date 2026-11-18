@@ -83,6 +83,30 @@
       ]
     },
     {
+      "id": "map.row-reload-failure-with-table-collapsed",
+      "title": "The retained map explains a row reload failure while the table is collapsed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "setWindowActive", "active": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "search", "value": "payments-api" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "panelControl", "control": "Collapse resource table" },
+        { "action": "mockTiming", "control": { "operation": "fail", "command": "list_resource_scope", "context": "mock-dev", "kind": "forbidden" } },
+        { "action": "refresh" },
+        { "action": "expectLiveState", "label": "Refresh failed", "notice": "Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover." },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "panelControl", "control": "Show resource table" },
+        { "action": "refresh" },
+        { "action": "replayLiveData", "script": "rollout" },
+        { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "expectLiveState", "label": "Live" },
+        { "action": "coverageText", "text": "Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.", "visible": false }
+      ]
+    },
+    {
       "id": "map.rollout-pulse",
       "title": "A pulse travels toward a resource in progress while live, and stops while reconnecting",
       "steps": [

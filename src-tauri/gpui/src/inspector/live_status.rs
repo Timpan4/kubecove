@@ -328,8 +328,11 @@ impl Inspector {
         let table = freshness
             .table
             .and_then(|status| notice_text(status, table_stale.shown()));
+        let map_error = self.map_only_read_error();
         let map = freshness.map.and_then(|status| {
-            if status == LiveStatus::RefreshFailed {
+            if map_error.is_some() {
+                Some("Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.")
+            } else if status == LiveStatus::RefreshFailed {
                 Some(MAP_STALE)
             } else {
                 notice_text(status, map_stale.shown())
@@ -337,6 +340,14 @@ impl Inspector {
         });
         let mut notices = Vec::new();
         if let Some(label) = table {
+            let error = (freshness.table == Some(LiveStatus::RefreshFailed))
+                .then(|| {
+                    self.table_refresh_error().or_else(|| {
+                        self.live
+                            .reload_error_where(|context| self.observation.shows(context))
+                    })
+                })
+                .flatten();
             let label = if freshness.map.is_some() && map != table {
                 SharedString::from(
                     label.replace("Activity indicators", "Table activity indicators"),
@@ -344,12 +355,7 @@ impl Inspector {
             } else {
                 SharedString::from(label)
             };
-            notices.push(self.live_notice_panel(
-                "live-notice",
-                label,
-                freshness.table == Some(LiveStatus::RefreshFailed),
-                cx,
-            ));
+            notices.push(self.live_notice_panel("live-notice", label, error, cx));
         }
         if let Some(label) = map.filter(|_| map != table) {
             let label = if freshness.table.is_some() {
@@ -362,7 +368,7 @@ impl Inspector {
             } else {
                 "live-notice"
             };
-            notices.push(self.live_notice_panel(id, label, false, cx));
+            notices.push(self.live_notice_panel(id, label, map_error, cx));
         }
         notices
     }
@@ -371,7 +377,7 @@ impl Inspector {
         &self,
         id: &'static str,
         label: SharedString,
-        failed: bool,
+        error: Option<&str>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         div()
@@ -393,7 +399,7 @@ impl Inspector {
                     .gap(px(4.))
                     .px(px(12.))
                     .py(px(8.))
-                    .when(failed, |row| {
+                    .when(error.is_some(), |row| {
                         row.child(ui::icon(
                             if self.live.error_open {
                                 "chevron-down"
@@ -406,7 +412,7 @@ impl Inspector {
                     })
                     .child(ui::xs(label)),
             )
-            .when(failed, |notice| {
+            .when(error.is_some(), |notice| {
                 notice
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -414,17 +420,12 @@ impl Inspector {
                         cx.notify();
                     }))
             })
-            .when(failed && self.live.error_open, |notice| {
+            .when(error.is_some() && self.live.error_open, |notice| {
                 notice.child(
-                    div().px(px(12.)).pb(px(12.)).children(
-                        self.table_refresh_error()
-                            .or_else(|| {
-                                self.live
-                                    .reload_error_where(|context| self.observation.shows(context))
-                                    .map(String::as_str)
-                            })
-                            .map(|message| ui::xs(message.to_owned())),
-                    ),
+                    div()
+                        .px(px(12.))
+                        .pb(px(12.))
+                        .children(error.map(|message| ui::xs(message.to_owned()))),
                 )
             })
             .into_any_element()
