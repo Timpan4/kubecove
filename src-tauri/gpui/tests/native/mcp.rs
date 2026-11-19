@@ -1,32 +1,16 @@
 //! Failure modes beyond the in-memory parity seam. All files belong to this worktree.
+use super::scratch::Scratch;
 use kubecove_gpui::backend::{Backend, NativeBackend};
 use std::{
     net::TcpListener,
-    path::PathBuf,
+    path::Path,
     time::{Duration, Instant},
 };
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.t/mcp-tmp")
-            .join(format!("host-{}", std::process::id()));
-        std::fs::create_dir_all(&path).unwrap();
-        let path = path.join(format!("{:?}", std::thread::current().id()));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-    fn backend(&self) -> NativeBackend {
-        NativeBackend::new()
-            .unwrap()
-            .with_mcp_directory(self.0.clone())
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
+fn test_backend(directory: &Path) -> NativeBackend {
+    NativeBackend::new()
+        .unwrap()
+        .with_mcp_directory(directory.to_path_buf())
 }
 
 /// A dropped host shuts its runtime down in the background, so its listening socket closes
@@ -46,11 +30,11 @@ fn wait_until_free(port: u16) {
 
 #[test]
 fn port_in_use_is_visible_and_disabling_recovers() {
-    let directory = Directory::new();
+    let directory = Scratch::new("mcp-tmp", "host");
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let occupied = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = occupied.local_addr().unwrap().port();
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     let status = runtime
         .block_on(backend.set_mcp_settings(true, port))
         .unwrap();
@@ -64,10 +48,10 @@ fn port_in_use_is_visible_and_disabling_recovers() {
 
 #[test]
 fn token_file_failure_stops_startup_without_hiding_the_error() {
-    let directory = Directory::new();
-    std::fs::create_dir(directory.0.join("mcp-token")).unwrap();
+    let directory = Scratch::new("mcp-tmp", "host");
+    std::fs::create_dir(directory.join("mcp-token")).unwrap();
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     // Token loading fails before any bind.
     let status = runtime
         .block_on(backend.set_mcp_settings(true, 47615))
@@ -80,9 +64,9 @@ fn token_file_failure_stops_startup_without_hiding_the_error() {
 
 #[test]
 fn token_rotation_and_settings_survive_backend_recreation() {
-    let directory = Directory::new();
+    let directory = Scratch::new("mcp-tmp", "host");
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     let original = runtime.block_on(backend.reveal_mcp_token()).unwrap();
     assert!(runtime.block_on(backend.reveal_mcp_token()).unwrap() == original);
     runtime.block_on(backend.rotate_mcp_token()).unwrap();
@@ -91,11 +75,11 @@ fn token_rotation_and_settings_survive_backend_recreation() {
     runtime
         .block_on(backend.set_mcp_settings(false, 47616))
         .unwrap();
-    assert!(!directory.0.join("live-sessions.json").exists());
-    let settings = std::fs::read_to_string(directory.0.join("mcp-settings.json")).unwrap();
+    assert!(!directory.join("live-sessions.json").exists());
+    let settings = std::fs::read_to_string(directory.join("mcp-settings.json")).unwrap();
     assert!(!settings.contains(&original) && !settings.contains(&rotated));
     drop(backend);
-    let reopened = directory.backend();
+    let reopened = test_backend(&directory);
     let status = runtime.block_on(reopened.mcp_status()).unwrap();
     assert!(!status.enabled && status.port == 47616);
     assert!(runtime.block_on(reopened.reveal_mcp_token()).unwrap() == rotated);
@@ -103,7 +87,7 @@ fn token_rotation_and_settings_survive_backend_recreation() {
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(
-            std::fs::metadata(directory.0.join("mcp-token"))
+            std::fs::metadata(directory.join("mcp-token"))
                 .unwrap()
                 .permissions()
                 .mode()
@@ -115,12 +99,12 @@ fn token_rotation_and_settings_survive_backend_recreation() {
 
 #[test]
 fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
-    let directory = Directory::new();
+    let directory = Scratch::new("mcp-tmp", "host");
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let reserved = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = reserved.local_addr().unwrap().port();
     drop(reserved);
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     let status = runtime
         .block_on(backend.set_mcp_settings(true, port))
         .unwrap();
@@ -173,7 +157,7 @@ fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
     // Dropping the native host closes its listener. The next host restores the same port.
     drop(backend);
     wait_until_free(port);
-    let reopened = directory.backend();
+    let reopened = test_backend(&directory);
     let status = runtime.block_on(reopened.mcp_status()).unwrap();
     assert!(status.running && status.port == port);
     assert!(runtime.block_on(reopened.reveal_mcp_token()).unwrap() == rotated);
@@ -186,12 +170,12 @@ fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
 
 #[test]
 fn unreadable_or_malformed_settings_preserve_the_original() {
-    let directory = Directory::new();
-    let path = directory.0.join("mcp-settings.json");
+    let directory = Scratch::new("mcp-tmp", "host");
+    let path = directory.join("mcp-settings.json");
     let runtime = tokio::runtime::Runtime::new().unwrap();
     for content in ["{", r#"{"enabled":true,"port":0}"#] {
         std::fs::write(&path, content).unwrap();
-        let backend = directory.backend();
+        let backend = test_backend(&directory);
         assert!(runtime.block_on(backend.mcp_status()).is_err());
         assert!(
             runtime
@@ -202,7 +186,7 @@ fn unreadable_or_malformed_settings_preserve_the_original() {
     }
     std::fs::remove_file(&path).unwrap();
     std::fs::create_dir(&path).unwrap();
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     assert!(runtime.block_on(backend.mcp_status()).is_err());
     assert!(
         runtime
@@ -216,17 +200,15 @@ fn unreadable_or_malformed_settings_preserve_the_original() {
 /// file; a reload after the fix leaves MCP refused until restart, or ignores `enabled`.
 #[test]
 fn reload_reports_the_current_error_and_recovers_once_the_file_is_fixed() {
-    let directory = Directory::new();
-    let path = directory.0.join("mcp-settings.json");
+    let directory = Scratch::new("mcp-tmp", "host");
+    let path = directory.join("mcp-settings.json");
     let runtime = tokio::runtime::Runtime::new().unwrap();
     std::fs::write(&path, "{").unwrap();
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     assert!(runtime.block_on(backend.mcp_status()).is_err());
     let broken = r#"{"enabled":true,"port":0}"#;
     std::fs::write(&path, broken).unwrap();
-    let error = runtime
-        .block_on(backend.reload_mcp_settings())
-        .unwrap_err();
+    let error = runtime.block_on(backend.reload_mcp_settings()).unwrap_err();
     assert!(error.message.contains("Invalid MCP port"));
     let error = runtime.block_on(backend.mcp_status()).unwrap_err();
     assert!(error.message.contains("Invalid MCP port"));
@@ -247,15 +229,15 @@ fn reload_reports_the_current_error_and_recovers_once_the_file_is_fixed() {
 
 #[test]
 fn failed_save_keeps_the_previous_settings_and_runtime_state() {
-    let directory = Directory::new();
+    let directory = Scratch::new("mcp-tmp", "host");
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let backend = directory.backend();
+    let backend = test_backend(&directory);
     runtime
         .block_on(backend.set_mcp_settings(false, 47616))
         .unwrap();
-    let path = directory.0.join("mcp-settings.json");
+    let path = directory.join("mcp-settings.json");
     let original = std::fs::read(&path).unwrap();
-    std::fs::create_dir(directory.0.join("mcp-settings.json.tmp")).unwrap();
+    std::fs::create_dir(directory.join("mcp-settings.json.tmp")).unwrap();
     assert!(
         runtime
             .block_on(backend.set_mcp_settings(true, 47615))
