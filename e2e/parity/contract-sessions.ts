@@ -75,6 +75,7 @@ export const sessionsSteps = {
 			operation: oneOf(["start", "save", "restore", "stop", "reconnect"], item.operation, "a forward control"),
 		}, {
 			target: item.target !== undefined ? string(item.target) : undefined,
+			local: item.local !== undefined ? string(item.local) : undefined,
 		});
 	},
 	expectForwardState: (item) => {

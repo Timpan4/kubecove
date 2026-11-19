@@ -249,8 +249,6 @@ impl Inspector {
                     )
                 })
                 .into_any_element(),
-            // Two forwards to one target share the title-based control IDs the
-            // tests select by; the session ID keeps their element state apart.
             div()
                 .id(SharedString::from(format!(
                     "forward-actions:{}",
@@ -263,7 +261,7 @@ impl Inspector {
                     xs_button("rotate-ccw", "Reconnect", false)
                         .id(SharedString::from(format!(
                             "reconnect-forward:{}",
-                            forward_title(session)
+                            session.id
                         )))
                         .test_support()
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -281,10 +279,7 @@ impl Inspector {
                 )
                 .child(
                     xs_button("square", "Stop", true)
-                        .id(SharedString::from(format!(
-                            "stop-forward:{}",
-                            forward_title(session)
-                        )))
+                        .id(SharedString::from(format!("stop-forward:{}", session.id)))
                         .test_support()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.stop_forward_id(stop_id.clone(), cx)

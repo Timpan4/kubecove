@@ -1,5 +1,6 @@
 //! Main navigation and selection interactions in the controlled fixture.
 use super::*;
+use gpui_kit::test::TestQueryExt;
 const SETTINGS: &[&str] = &[
     "Appearance",
     "Live sessions",
@@ -12,6 +13,27 @@ const SETTINGS: &[&str] = &[
     "Kubeconfig",
     "General",
 ];
+
+fn forward_stop(window: &Window) -> Option<String> {
+    window
+        .find_all_by_label("Pod/payments-api-7d9c9b7f8d-k2r9p:9090")
+        .iter()
+        .filter(|row| {
+            row.description()
+                .and_then(|description| description.split_whitespace().next())
+                == Some("19090")
+        })
+        .find_map(|row| {
+            let ElementId::Name(id) = row.path().last()? else {
+                return None;
+            };
+            Some(format!(
+                "stop-forward:{}",
+                id.strip_prefix("forward-card:")?
+            ))
+        })
+}
+
 fn close_detail(d: &mut Driver, _: usize) {
     d.act(|w, cx| {
         if w.try_find("close-detail").is_some() {
@@ -61,9 +83,8 @@ pub(super) static CASES: &[Case] = &[
         setup: |d| views::setup(d, "forward-start"),
         prepare: Some(|d, _| {
             d.act(|w, cx| {
-                let target = "stop-forward:Pod/payments-api-7d9c9b7f8d-k2r9p:9090";
-                if w.try_find(target).is_some() {
-                    views::reveal_detail(w, target, cx);
+                if let Some(target) = forward_stop(w) {
+                    views::reveal_detail(w, &target, cx);
                     w.click(target, cx);
                     w.render_frame(cx);
                 }
@@ -85,8 +106,7 @@ pub(super) static CASES: &[Case] = &[
         description: "Stop the controlled active forward",
         setup: |d| views::setup(d, "forward-start"),
         prepare: Some(|d, _| {
-            let stop = "stop-forward:Pod/payments-api-7d9c9b7f8d-k2r9p:9090";
-            if d.read(|w| w.try_find(stop).is_none()) {
+            if d.read(|w| forward_stop(w).is_none()) {
                 d.act(|w, cx| {
                     views::reveal_detail(w, "forward-local", cx);
                     w.click("forward-local", cx);
@@ -96,17 +116,13 @@ pub(super) static CASES: &[Case] = &[
                     w.click("forward-start", cx);
                 });
             }
-            d.act(|w, cx| views::reveal_detail(w, stop, cx));
+            d.act(|w, cx| views::reveal_detail(w, &forward_stop(w).expect("active forward"), cx));
         }),
-        aim: |w, _| center(w, "stop-forward:Pod/payments-api-7d9c9b7f8d-k2r9p:9090"),
+        aim: |w, _| center(w, &forward_stop(w).expect("active forward")),
         step: Some(click),
         fixture: None,
         replay: None,
-        probe: Some(|w| {
-            w.try_find("stop-forward:Pod/payments-api-7d9c9b7f8d-k2r9p:9090")
-                .is_some()
-                .to_string()
-        }),
+        probe: Some(|w| forward_stop(w).is_some().to_string()),
     },
     Case {
         id: "helm-release-open",

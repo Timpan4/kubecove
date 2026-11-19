@@ -285,10 +285,7 @@ impl Inspector {
                     })
                     .child(
                         button(Variant::Outline, 24., self.sessions.action.running())
-                            .id(SharedString::from(format!(
-                                "stop-forward:{}",
-                                forward_title(session)
-                            )))
+                            .id(SharedString::from(format!("stop-forward:{id}")))
                             .test_support()
                             .child(ui::icon("square", 14., Tokens::foreground()))
                             .child(ui::xs("Stop"))

@@ -17,6 +17,38 @@
       ]
     },
     {
+      "id": "forward-active.same-target-two-ports",
+      "title": "Reconnect and Stop affect the selected local port when two forwards share one target",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19090" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "listening", "count": 1 },
+        { "action": "configureForward", "remote": "9090", "local": "19091" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091", "status": "listening", "count": 2 },
+        { "action": "closeDetail" },
+        { "action": "openPage", "page": "Port Forwards" },
+        { "action": "replaySessions", "script": "failed" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091", "status": "error", "count": 2 },
+        { "action": "forwardControl", "operation": "reconnect", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091", "status": "listening", "count": 2 },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "error", "count": 2 },
+        { "action": "forwardControl", "operation": "stop", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "error", "count": 1 },
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Forward" },
+        { "action": "configureForward", "remote": "9090", "local": "19091" },
+        { "action": "forwardControl", "operation": "start" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091", "status": "listening", "count": 2 },
+        { "action": "forwardControl", "operation": "stop", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19091" },
+        { "action": "expectForwardState", "target": "Pod/payments-api-7d9c9b7f8d-k2r9p:9090", "local": "19090", "status": "error", "count": 1 }
+      ]
+    },
+    {
       "id": "forward-save.preset-notice",
       "title": "Saving a Service preset reports success as a neutral notice, and saving it again says it is already saved",
       "steps": [
