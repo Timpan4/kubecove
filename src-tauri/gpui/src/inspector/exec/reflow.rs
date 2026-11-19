@@ -62,46 +62,32 @@ impl Parser {
             return;
         }
         let (rows, cols) = screen.size();
-        let margins = margins(screen);
-        let mut bytes = String::from("\x1b[0m");
+        let margins = scroll_region(screen);
+        let mut bytes = String::new();
         if margins.is_some() {
-            // xterm's clear ignores DECSTBM and DECOM; SU and CUU would not.
-            write!(bytes, "\x1b[?6l\x1b[r\x1b[{};{}H", row + 1, col + 1).unwrap();
-        }
-        if row + 1 < rows.get() {
-            // xterm pushes default blank rows: CUD, ED 0, EL 1, CUU keep the column.
-            bytes.push_str("\x1b[B\x1b[J\x1b[1K\x1b[A");
+            // Scroll and line edits need the full region. DECSTBM leaves DECOM set.
+            bytes.push_str("\x1b[r");
         }
         if row > 0 {
-            write!(bytes, "\x1b[{row}S\x1b[{row}A").unwrap();
+            write!(bytes, "\x1b[{row}S").unwrap();
         }
-        let wrapped = screen.row_wrapped(row);
-        if wrapped {
-            // The row below is gone, so the kept row must not wrap into it.
-            // Erasing the last cell clears vt100's flag; then rewrite that cell.
-            redraw_last_cell(&mut bytes, screen, row, true);
-        }
-        let above_region = margins.is_some_and(|(top, _, origin)| origin && top > 0);
-        if let Some((top, bottom, origin)) = margins {
-            write!(bytes, "\x1b[{};{}r", top + 1, bottom + 1).unwrap();
-            if origin {
-                bytes.push_str("\x1b[?6h");
-            }
-        }
-        if wrapped || margins.is_some() {
-            // Put the cursor back on row 0 at its column. CUP clamps the
-            // column, so redrawing the last cell restores a pending autowrap.
-            // Under DECOM, CUP cannot reach rows above the region and the
-            // cursor lands on the region's top row, where a redraw would leave
-            // a stray cell. Only DECRC could place it on row 0, and that
-            // overwrites the app's saved cursor.
-            if col >= cols.get() && !above_region {
-                redraw_last_cell(&mut bytes, screen, row, false);
+        let below = rows.get() - 1;
+        if below > 0 {
+            if screen.row_wrapped(row) {
+                // vt100 clears the bottom row's wrap flag on insert. Move the
+                // retained row there, then delete the inserted rows to bring it back.
+                write!(bytes, "\x1b[1d\x1b[{below}L").unwrap();
             } else {
-                write!(bytes, "\x1b[1;{}H", col.min(cols.get() - 1) + 1).unwrap();
+                bytes.push_str("\x1b[2d");
+            }
+            write!(bytes, "\x1b[{below}M").unwrap();
+        }
+        if let Some((top, bottom)) = margins {
+            write!(bytes, "\x1b[{top};{bottom}r").unwrap();
+            if col < cols.get() {
+                write!(bytes, "\x1b[{}G", col + 1).unwrap();
             }
         }
-        bytes.push_str(&screen.attributes_formatted());
         let alternate = screen.alternate_screen();
         let target = self.inner.callbacks().discarded + history + usize::from(row);
         // Run the surgery on a scratch parser so a pending escape or UTF-8
@@ -109,6 +95,12 @@ impl Parser {
         let mut scratch = vt100::Parser::new(rows, cols, 0);
         std::mem::swap(self.inner.screen_mut(), scratch.screen_mut());
         scratch.process(bytes.as_bytes());
+        if margins.is_some() && col == cols.get() {
+            restore_pending_wrap(&mut scratch, cols.get());
+        }
+        // vt100's VPA uses a physical row and keeps the column, including a
+        // pending wrap. CUP would honor DECOM and clamp the column.
+        scratch.process(b"\x1b[1d");
         scratch.screen_mut().clear_scrollback();
         std::mem::swap(self.inner.screen_mut(), scratch.screen_mut());
         if !alternate {
@@ -180,49 +172,31 @@ impl Parser {
     }
 }
 
-/// Move to row 0 and write `row`'s last cell from `screen` again, which leaves
-/// the cursor in the pending-wrap state. With `erase`, EL first clears the
-/// cell, which also clears vt100's wrap flag for the row.
-fn redraw_last_cell(bytes: &mut String, screen: &vt100::Screen, row: u16, erase: bool) {
-    let last = screen.size().1.get() - 1;
-    let at = if last > 0
-        && screen
-            .cell(row, last)
-            .is_some_and(vt100::Cell::is_wide_continuation)
-    {
-        last - 1
-    } else {
-        last
-    };
-    write!(bytes, "\x1b[1;{}H", at + 1).unwrap();
-    if erase {
-        bytes.push_str("\x1b[K");
+/// DECSTBM homes the cursor. Repeat the last printed character on a blank
+/// row to recover the pending column without changing the retained cells or REP.
+fn restore_pending_wrap(scratch: &mut vt100::Parser, cols: u16) {
+    let attributes = scratch.screen().attributes_formatted();
+    scratch.process(b"\x1b[0m\x1b[2d\x1b[b");
+    let (_, width) = scratch.screen().cursor_position();
+    if (1..cols).contains(&width) {
+        scratch.process(format!("\x1b[{}G\x1b[b", cols - width + 1).as_bytes());
     }
-    if let Some(value) = screen.cell(row, at).filter(|c| c.has_contents()) {
-        let mut encoded = String::new();
-        cell(&mut encoded, value);
-        bytes.push_str(&encoded);
-    }
+    // vt100's EL 2 erases the scratch row without moving the cursor.
+    scratch.process(b"\x1b[2K");
+    scratch.process(attributes.as_bytes());
 }
 
-/// The DECSTBM region rows and the DECOM flag, or `None` when both are the
-/// defaults. vt100 keeps them private, so read them from where CUP lands on a copy.
-fn margins(screen: &vt100::Screen) -> Option<(u16, u16, bool)> {
+/// One-based DECSTBM bounds, or `None` for the full screen.
+fn scroll_region(screen: &vt100::Screen) -> Option<(u16, u16)> {
     let (rows, cols) = screen.size();
     let mut probe = vt100::Parser::new(rows, cols, 0);
     *probe.screen_mut() = screen.clone();
-    let mut land = |bytes: &[u8]| {
-        probe.process(bytes);
-        probe.screen().cursor_position().0
-    };
-    let (home, end) = (land(b"\x1b[H"), land(b"\x1b[999H"));
-    let origin = home != 0 || end != rows.get() - 1;
-    let (top, bottom) = if origin {
-        (home, end)
-    } else {
-        (land(b"\x1b[?6h\x1b[H"), land(b"\x1b[999H"))
-    };
-    (origin || top != 0 || bottom != rows.get() - 1).then_some((top, bottom, origin))
+    // Origin mode makes home land at the top margin and clamps CUP at the bottom.
+    probe.process(b"\x1b[?6h");
+    let top = probe.screen().cursor_position().0 + 1;
+    probe.process(format!("\x1b[{}H", rows.get()).as_bytes());
+    let bottom = probe.screen().cursor_position().0 + 1;
+    (top != 1 || bottom != rows.get()).then_some((top, bottom))
 }
 
 fn color(output: &mut String, color: vt100::Color, foreground: bool) {
