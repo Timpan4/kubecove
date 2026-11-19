@@ -44,6 +44,8 @@ async function measureLatency(latencyMs: number, signal: AbortSignal) {
 	const report = join(out, `speed-${latencyMs}.json`);
 	// Both servers keep the runner alive, so they stop on every path out of this run.
 	let control: ReturnType<typeof Bun.serve> | undefined;
+	const failures: Error[] = [];
+	const runFailure = `Speed run at ${latencyMs} ms failed. Diagnostics in ${stderr} and ${requests}`;
 	try {
 		signal.throwIfAborted();
 		control = Bun.serve({
@@ -87,13 +89,24 @@ async function measureLatency(latencyMs: number, signal: AbortSignal) {
 		const code = await child.exited;
 		signal.throwIfAborted();
 		if (code !== 0) throw new Error(`speed binary exited ${code}`);
-	} catch (error) {
-		throw new Error(`Speed run at ${latencyMs} ms failed. Diagnostics in ${stderr} and ${requests}`, { cause: error });
-	} finally {
-		await Promise.all([control?.stop(true), fixture.stop()]);
-		await writeFile(requests, JSON.stringify(fixture.requests));
+	} catch (cause) {
+		failures.push(new Error(runFailure, { cause }));
 	}
-	signal.throwIfAborted();
+	const [controlStop, fixtureStop] = await Promise.allSettled([
+		Promise.resolve().then(() => control?.stop(true)),
+		Promise.resolve().then(() => fixture.stop()),
+	]);
+	if (controlStop.status === "rejected") failures.push(new Error("Could not stop the speed control server", { cause: controlStop.reason }));
+	if (fixtureStop.status === "rejected") failures.push(new Error("Could not stop the speed fixture server", { cause: fixtureStop.reason }));
+	try {
+		await writeFile(requests, JSON.stringify(fixture.requests));
+	} catch (cause) {
+		failures.push(new Error(`Could not write ${requests}`, { cause }));
+	}
+	if (signal.aborted && !failures.some((failure) => failure.cause === signal.reason)) {
+		failures.unshift(new Error(runFailure, { cause: signal.reason }));
+	}
+	if (failures.length > 0) throw new AggregateError(failures);
 	const actions: Action[] = (await Bun.file(report).json()).actions;
 	// Server-side reads per action, watches included, keyed by method and path without query.
 	const perAction = actions.map((action) => {

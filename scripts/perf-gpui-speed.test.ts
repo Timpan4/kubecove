@@ -101,6 +101,20 @@ test.skipIf(!supported)("child failure includes its exit code and keeps request 
 	expect(await Bun.file(join(out, "requests-0.json")).json()).toMatchObject([{ method: "GET", path: "/api" }]);
 });
 
+test.skipIf(!supported)("request-log failure preserves the child exit reason", async () => {
+	const { runner, out } = await startRunner(`
+const { mkdir } = await import("node:fs/promises");
+await mkdir(join(dirname(dirname(config)), "requests-0.json"));
+process.exit(7);
+`);
+	const [exitCode, stderr] = await Promise.all([runner.exited, new Response(runner.stderr).text()]);
+	expect(exitCode).not.toBe(0);
+	expect(stderr).toContain("EISDIR");
+	expect(stderr).toContain("requests-0.json");
+	expect(stderr).toContain("exited 7");
+	expect(await Bun.file(join(out, "stderr-0.log")).text()).toContain("mock speed diagnostic");
+});
+
 test.skipIf(!supported)("successful latencies still write reports and per-action reads", async () => {
 	const { runner, out } = await startRunner(`
 await Bun.write(process.env.KUBECOVE_SPEED_REPORT, JSON.stringify({
