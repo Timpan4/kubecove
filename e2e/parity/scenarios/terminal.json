@@ -3,6 +3,46 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "exec-session.clear-origin-mode",
+      "title": "Clear keeps output on the retained prompt row while origin-relative addressing stays enabled",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[2J\u001b[Hout\u001b[2;4r\u001b[?6h\u001b[2 q$ " },
+        { "action": "coverageClick", "label": "Clear terminal" },
+        { "action": "terminalOutput", "container": "app", "data": "X" },
+        { "action": "terminalFocus", "focused": true },
+        { "action": "expectTerminalCursor", "cursor": "block", "row": 0, "col": 3 },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "$ X", "absent": "out" },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[H" },
+        { "action": "expectTerminalCursor", "cursor": "block", "row": 1, "col": 0 }
+      ]
+    },
+    {
+      "id": "exec-session.clear-blank-wrap",
+      "title": "Clear preserves pending autowrap after the last cell is erased and preserves the preceding character for REP",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "Exec" },
+        { "action": "execControl", "operation": "start", "container": "app", "command": "/bin/sh" },
+        { "action": "expectExecState", "container": "app", "status": "running", "contains": "Controlled exec app" },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[2J\u001b[2;4r\u001b[3;1H\u001b[2 q\u001b[65535G.\u001b[2K" },
+        { "action": "coverageClick", "label": "Clear terminal" },
+        { "action": "terminalOutput", "container": "app", "data": "X" },
+        { "action": "terminalFocus", "focused": true },
+        { "action": "expectTerminalCursor", "cursor": "block", "row": 1, "col": 1 },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[2J\u001b[3;1H\u001b[65535Gq" },
+        { "action": "coverageClick", "label": "Clear terminal" },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[b" },
+        { "action": "terminalSelect", "row": 1, "col": 0, "endRow": 1, "endCol": 1 },
+        { "action": "terminalCopy", "text": "q" }
+      ]
+    },
+    {
       "id": "exec-session.drag-hard-lines",
       "title": "Drag copy preserves hard newlines and excludes terminal padding",
       "steps": [

@@ -346,8 +346,36 @@ fn clear_places_a_pending_wrap_without_stray_cells() {
     terminal.process(b"a\r\n\x1b[2;4r\x1b[?6h\x1b[2;1Habcdefgh");
     terminal.clear();
     terminal.process(b"X");
-    // The documented DECOM exception: the cursor ends on the region's top row.
-    assert_eq!(terminal.screen().contents(), "abcdefgh\n       X");
+    assert_eq!(terminal.screen().contents(), "abcdefghX");
+}
+
+// A blank pending wrap can come from erasing a just-printed wide glyph.
+// Clear must retain the erased cells' attributes and let the live decoder
+// finish a split character without consuming the application's saved cursor.
+#[test]
+fn clear_preserves_decoder_attributes_and_saved_cursor() {
+    let mut tab = tab();
+    tab.parser = parser(5, 8);
+    tab.parser
+        .process(b"\x1b[2;4r\x1b[?6h\x1b[31m\x1b[3;4H\x1b7\x1b[0m\x1b[H");
+    tab.parser
+        .process("123456界\x1b[44m\x1b[2K\x1b[0;32m".as_bytes());
+    tab.parser.process(b"\xc3");
+    tab.clear();
+
+    let screen = tab.parser.screen();
+    let last = screen.cell(0, 7).unwrap();
+    assert!(!last.has_contents());
+    assert_eq!(last.bgcolor(), vt100::Color::Idx(4));
+    assert_eq!(screen.cell(1, 7).unwrap().bgcolor(), vt100::Color::Default);
+    tab.parser.process(b"\xa9");
+    let cell = tab.parser.screen().cell(1, 0).unwrap();
+    assert_eq!(cell.contents(), "é");
+    assert_eq!(cell.fgcolor(), vt100::Color::Idx(2));
+    tab.parser.process(b"\x1b8X");
+    let cell = tab.parser.screen().cell(3, 3).unwrap();
+    assert_eq!(cell.contents(), "X");
+    assert_eq!(cell.fgcolor(), vt100::Color::Idx(1));
 }
 
 fn newline() -> &'static str {
