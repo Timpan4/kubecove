@@ -38,6 +38,18 @@ struct Capture {
     work: Duration,
     wait: Duration,
     frames: Vec<CpuFrame>,
+    content_frames: usize,
+    map_pulse_draws: Option<usize>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DrawFilter {
+    All,
+    #[allow(
+        dead_code,
+        reason = "Only speed samples opt in to map pulse attribution"
+    )]
+    IgnoreMapPulseOnly,
 }
 
 pub struct FrameContext {
@@ -80,11 +92,15 @@ impl FrameContext {
         .0
     }
 
-    pub fn begin_sample(&mut self) {
+    pub fn begin_sample(&mut self, filter: DrawFilter) {
         assert!(self.capture.is_none());
         self.journal.collect_unseen();
         let scheduler = scheduler();
         let started = Instant::now();
+        let track_map_pulses = filter == DrawFilter::IgnoreMapPulseOnly;
+        if track_map_pulses {
+            kubecove_gpui::frame_profile::track_map_pulse_invalidation(true);
+        }
         self.capture = Some(Capture {
             scheduler,
             started,
@@ -92,7 +108,25 @@ impl FrameContext {
             work: Duration::ZERO,
             wait: Duration::ZERO,
             frames: Vec::new(),
+            content_frames: 0,
+            map_pulse_draws: track_map_pulses.then_some(0),
         });
+    }
+
+    #[allow(dead_code, reason = "Only speed samples use content-draw quiescence")]
+    pub fn sample_content_end(&self) -> Instant {
+        self.capture
+            .as_ref()
+            .expect("active measurement")
+            .content_settled
+    }
+
+    #[allow(dead_code, reason = "Only speed samples report map pulse draws")]
+    pub fn map_pulse_draws(&self) -> Option<usize> {
+        self.capture
+            .as_ref()
+            .expect("active measurement")
+            .map_pulse_draws
     }
 
     pub fn finish_sample(&mut self) -> (u64, Vec<CpuFrame>, Option<[u64; 2]>) {
@@ -106,7 +140,10 @@ impl FrameContext {
                     after[1].checked_sub(before[1])?,
                 ])
             });
-        if let Some(last) = capture.frames.last_mut() {
+        if capture.map_pulse_draws.is_some() {
+            kubecove_gpui::frame_profile::track_map_pulse_invalidation(false);
+            capture.frames.truncate(capture.content_frames);
+        } else if let Some(last) = capture.frames.last_mut() {
             last.cpu += super::nanos(capture.work);
             last.wait += super::nanos(capture.wait);
         }
@@ -127,6 +164,12 @@ impl FrameContext {
         let start = Instant::now();
         let result = operation(&self.app);
         let end = Instant::now();
+        let pulse_invalidation = self
+            .capture
+            .as_ref()
+            .is_some_and(|capture| capture.map_pulse_draws.is_some())
+            .then(kubecove_gpui::frame_profile::take_map_pulse_invalidation)
+            .flatten();
         let entries = self.journal.collect_unseen();
         assert_eq!(entries.lost, 0, "frame journal lost measurement events");
         let mut draws = Vec::new();
@@ -180,7 +223,20 @@ impl FrameContext {
                 });
                 capture.work = Duration::ZERO;
                 capture.wait = Duration::ZERO;
-                capture.content_settled = cursor;
+                // The SDK counts all invalidations, including those coalesced
+                // with the pulse. Keep a draw if another source invalidated it.
+                let pulse_only = draw.invalidations == 1
+                    && draw.dirty_at.is_some_and(|at| {
+                        pulse_invalidation
+                            .as_ref()
+                            .is_some_and(|pulse| pulse.contains(&at))
+                    });
+                if pulse_only {
+                    *capture.map_pulse_draws.as_mut().expect("tracking pulses") += 1;
+                } else {
+                    capture.content_settled = cursor;
+                    capture.content_frames = capture.frames.len();
+                }
             }
             capture.work += end.duration_since(cursor);
             if callback && drew {
@@ -190,7 +246,11 @@ impl FrameContext {
                 last.wait += super::nanos(capture.wait);
                 capture.work = Duration::ZERO;
                 capture.wait = Duration::ZERO;
-                capture.content_settled = end;
+                if capture.map_pulse_draws.is_none()
+                    || capture.content_frames == capture.frames.len()
+                {
+                    capture.content_settled = end;
+                }
             } else if callback && newly_presented {
                 // Native key dispatch may draw synchronously. Its later submit
                 // completes that content frame rather than a VRR keepalive.
@@ -205,7 +265,11 @@ impl FrameContext {
                 last.submit += super::nanos(submit);
                 capture.work = Duration::ZERO;
                 capture.wait = Duration::ZERO;
-                capture.content_settled = end;
+                if capture.map_pulse_draws.is_none()
+                    || capture.content_frames == capture.frames.len()
+                {
+                    capture.content_settled = end;
+                }
             } else if callback && presented {
                 capture.frames.push(CpuFrame {
                     cpu: super::nanos(capture.work),

@@ -6,6 +6,11 @@
 //! Inspector on the headless SDK benchmark platform with production scheduling, as `frames`
 //! does, and records per action: wall time to the last draw, network time, requests, UI-thread
 //! work, its draw share, and the `frame-profile` spans when that feature is on.
+//! The exact Pod search and five detail actions settle on content draws. They still render
+//! the live ownership-map pulse. A frame invalidated only by the pulse does not reset their
+//! quiet window. `mapPulseDraws` counts those frames through the end of the quiet window.
+//! For these actions, draw timestamps report content draws and UI work ends at the last
+//! content draw. Network accounting and profiling spans still cover the whole sample.
 
 // `frames` uses all of the shared context; this target does not call `settle`.
 #[allow(dead_code)]
@@ -14,7 +19,7 @@ mod context;
 #[path = "frames/platform.rs"]
 mod platform;
 
-use context::FrameContext;
+use context::{DrawFilter, FrameContext};
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{AnyWindowHandle, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use kubecove_gpui::{
@@ -37,6 +42,12 @@ use std::{
 const NETWORK_QUIET: Duration = Duration::from_millis(1500);
 const LOCAL_QUIET: Duration = Duration::from_millis(400);
 const LIMIT: Duration = Duration::from_secs(20);
+
+#[derive(Clone, Copy)]
+struct Settle {
+    quiet: Duration,
+    draws: DrawFilter,
+}
 
 fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
@@ -384,7 +395,7 @@ impl Driver {
     fn measure(
         &mut self,
         label: &str,
-        quiet: Duration,
+        settle: Settle,
         action: impl FnOnce(&mut Self) -> Result<(), String>,
     ) {
         // Clicks need targets from a current frame; draw it before the sample starts.
@@ -398,7 +409,7 @@ impl Driver {
         eprintln!("[speed] begin {label}");
         let start_epoch = epoch_ms();
         let http = HTTP_ACTIVITY.snapshot();
-        self.cx.begin_sample();
+        self.cx.begin_sample(settle.draws);
         let started = Instant::now();
         self.sample_start = started;
         self.draws.clear();
@@ -411,7 +422,8 @@ impl Driver {
                     .or_else(|| panic.downcast_ref::<&str>().map(|s| (*s).to_owned()))
                     .unwrap_or_else(|| "panic".into()))
             });
-        let timed_out = self.settle(started, quiet, http);
+        let timed_out = self.settle(started, settle, http);
+        let map_pulse_draws = self.cx.map_pulse_draws();
         let (settled_ns, frames, _) = self.cx.finish_sample();
         // Setup ran inside the sample but is not the interaction, so each
         // reported time leaves out the setup that ended before it. Setup after
@@ -427,7 +439,7 @@ impl Driver {
         let cpu: u64 = frames.iter().map(|frame| frame.cpu).sum();
         let draw: u64 = frames.iter().map(|frame| frame.draw).sum();
         let spans = aggregate(kubecove_gpui::frame_profile::take());
-        let value = json!({
+        let mut value = json!({
             "label": label,
             "error": outcome.err(),
             "timedOut": timed_out,
@@ -445,6 +457,9 @@ impl Driver {
             "drawEndsMs": &draws,
             "spans": spans,
         });
+        if let Some(draws) = map_pulse_draws {
+            value["mapPulseDraws"] = json!(draws);
+        }
         println!(
             "speed {label}: wall={:.1}ms network={:.1}ms requests={} ui_cpu={:.1}ms draw={:.1}ms draws={}{}",
             value["wallMs"].as_f64().unwrap(),
@@ -459,12 +474,15 @@ impl Driver {
     }
 
     /// One frame turn inside a sample. A drawn frame joins the sample's draws.
-    fn tick(&mut self) -> bool {
+    fn tick(&mut self, filter: DrawFilter) -> (bool, bool) {
+        let before =
+            (filter == DrawFilter::IgnoreMapPulseOnly).then(|| self.cx.sample_content_end());
         let (_, drew) = self.cx.tick();
-        if drew {
+        let content_drew = before.map_or(drew, |before| self.cx.sample_content_end() > before);
+        if content_drew {
             self.draws.push(ms(self.sample_start.elapsed()));
         }
-        drew
+        (drew, content_drew)
     }
 
     /// Runs driver work inside a sample and counts its time as setup.
@@ -476,17 +494,12 @@ impl Driver {
     }
 
     /// Turns frames until the sample settles. Returns whether it hit LIMIT.
-    fn settle(
-        &mut self,
-        started: Instant,
-        quiet: Duration,
-        mut http: HttpActivitySnapshot,
-    ) -> bool {
+    fn settle(&mut self, started: Instant, settle: Settle, mut http: HttpActivitySnapshot) -> bool {
         let mut quiet_since = Instant::now();
         loop {
-            let drew = self.tick();
+            let (drew, content_drew) = self.tick(settle.draws);
             let now = Instant::now();
-            if drew {
+            if content_drew {
                 quiet_since = now;
             }
             let snapshot = HTTP_ACTIVITY.snapshot();
@@ -494,7 +507,7 @@ impl Driver {
                 http = snapshot;
                 quiet_since = now;
             }
-            if now.duration_since(quiet_since) >= quiet {
+            if now.duration_since(quiet_since) >= settle.quiet {
                 return false;
             }
             if now.duration_since(started) >= LIMIT {
@@ -542,9 +555,9 @@ impl Driver {
             .map_err(|error| error.to_string())
     }
 
-    fn step(&mut self, label: &str, quiet: Duration, id: &str) {
+    fn step(&mut self, label: &str, settle: Settle, id: &str) {
         let id = id.to_owned();
-        self.measure(label, quiet, move |driver| driver.click(&id));
+        self.measure(label, settle, move |driver| driver.click(&id));
     }
 }
 
@@ -623,7 +636,14 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
         draws: Vec::new(),
         setup: Vec::new(),
     };
-    let (net, local) = (NETWORK_QUIET, LOCAL_QUIET);
+    let net = Settle {
+        quiet: NETWORK_QUIET,
+        draws: DrawFilter::All,
+    };
+    let local = Settle {
+        quiet: LOCAL_QUIET,
+        draws: DrawFilter::All,
+    };
     let first = contexts[0].clone();
     driver.measure("workspace.open (Workspace Overview)", net, |d| {
         d.handle = Some(d.open_window(&first));
@@ -669,7 +689,7 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
             d.setup(|| burst(&sustained, 10 + round, 1))?;
             let until = Instant::now() + Duration::from_millis(50);
             while Instant::now() < until {
-                if !d.tick() {
+                if !d.tick(DrawFilter::All).0 {
                     std::thread::sleep(Duration::from_millis(1));
                 }
             }
@@ -682,18 +702,26 @@ fn ui_actions(contexts: &[String], control: &str) -> Vec<Value> {
         "namespace:profile",
     );
     driver.measure("search focus (profile)", local, |d| d.click("search"));
-    driver.measure("search type 'profile-pod-0'", local, |d| {
+    let content_local = Settle {
+        draws: DrawFilter::IgnoreMapPulseOnly,
+        ..local
+    };
+    let content_net = Settle {
+        draws: DrawFilter::IgnoreMapPulseOnly,
+        ..net
+    };
+    driver.measure("search type 'profile-pod-0'", content_local, |d| {
         d.input("profile-pod-0")
     });
     driver.step(
         "detail open Pod",
-        net,
+        content_net,
         &format!("resource:Pod:profile:profile-pod-0:{first}"),
     );
-    driver.step("detail YAML tab", net, "show-yaml");
-    driver.step("detail Events tab", net, "show-events");
-    driver.step("detail Logs tab", net, "show-logs");
-    driver.step("detail Details tab", net, "show-details");
+    driver.step("detail YAML tab", content_net, "show-yaml");
+    driver.step("detail Events tab", content_net, "show-events");
+    driver.step("detail Logs tab", content_net, "show-logs");
+    driver.step("detail Details tab", content_net, "show-details");
     driver.step("GitOps page", net, "nav:GitOps");
     driver.step("Helm page", net, "nav:Helm");
     driver.step("RBAC page", net, "nav:RBAC");

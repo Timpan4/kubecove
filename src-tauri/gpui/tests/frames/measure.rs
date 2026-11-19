@@ -34,7 +34,7 @@ fn frame(
     index: usize,
     at: Point<Pixels>,
 ) -> (u64, Vec<CpuFrame>, Option<[u64; 2]>) {
-    driver.cx.begin_sample();
+    driver.cx.begin_sample(super::context::DrawFilter::All);
     driver
         .cx
         .update_window(driver.handle, |_, window, cx| {
