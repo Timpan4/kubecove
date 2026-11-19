@@ -59,11 +59,12 @@ export const liveSessionActions = {
 		const rows = forwardRows(page, step.target);
 		if (step.count === 0) await rows.waitFor({ state: "hidden" });
 		else {
-			await rows.nth(step.count - 1).waitFor({ state: "attached" });
-			await rows.nth(step.count).waitFor({ state: "detached" });
 			const row = rows.filter({ has: forwardAtPort(page, step.local) });
 			await row.getByText(step.status, { exact: true }).waitFor();
 			if (step.resolved) await row.getByText(step.resolved, { exact: false }).first().waitFor();
+			await page.locator("body")
+				.filter({ has: rows.nth(step.count - 1), hasNot: rows.nth(step.count) })
+				.waitFor({ state: "attached" });
 		}
 	},
 	async execControl(page, step) {
