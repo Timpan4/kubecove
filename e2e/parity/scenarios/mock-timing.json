@@ -102,6 +102,23 @@
       ]
     },
     {
+      "id": "mock-timing.list-watch-gap-add",
+      "title": "A Deployment added after the list snapshot appears when the watch starts",
+      "steps": [
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "hold", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "openResources" },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "replayLiveData", "script": "add" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_scope", "context": "mock-dev" } },
+        { "action": "mockTiming", "control": { "operation": "expectPending", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectNoResource", "kind": "Deployment", "namespace": "payments", "name": "orders-api" },
+        { "action": "mockTiming", "control": { "operation": "release", "command": "start_resource_watch", "context": "mock-dev" } },
+        { "action": "expectResource", "kind": "Deployment", "namespace": "payments", "name": "orders-api" }
+      ]
+    },
+    {
       "id": "mock-timing.watch-start-version",
       "title": "A newly checked kind's watch starts at the list version of its rows and delivers a change made before it opened",
       "steps": [
