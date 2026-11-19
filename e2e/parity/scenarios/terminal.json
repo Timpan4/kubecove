@@ -426,6 +426,84 @@
       ]
     },
     {
+      "id": "exec-session.csi-saved-cursor",
+      "title": "Split CSI save and restore output returns to the prompt before and after a width change",
+      "steps": [
+        {
+          "action": "openResources"
+        },
+        {
+          "action": "openResource",
+          "kind": "Pod",
+          "namespace": "payments",
+          "name": "payments-api-7d9c9b7f8d-k2r9p"
+        },
+        {
+          "action": "showTab",
+          "tab": "Exec"
+        },
+        {
+          "action": "execControl",
+          "operation": "start",
+          "container": "app",
+          "command": "/bin/sh"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "Controlled exec app"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[H$ before\u001b"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "[s\r\nnext\u001b["
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "uX"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "$ beforeX"
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "\u001b[2J\u001b[Habcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\r\n$ after\u001b[s\r\nnext\u001b["
+        },
+        {
+          "action": "terminalFit",
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "action": "terminalFit",
+          "width": 1700,
+          "height": 900
+        },
+        {
+          "action": "terminalOutput",
+          "container": "app",
+          "data": "uY"
+        },
+        {
+          "action": "expectExecState",
+          "container": "app",
+          "status": "running",
+          "contains": "$ afterY"
+        }
+      ]
+    },
+    {
       "id": "exec-session.drag-autoscroll",
       "title": "A drag held below the rows scrolls and selects through the newest output",
       "steps": [
