@@ -1,7 +1,6 @@
-import { existsSync } from "node:fs";
 import { readFile, readlink, writeFile } from "node:fs/promises";
 import { getPriority } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 
 export type FrameIsolation =
 	| { state: "held"; path: string; release: () => Promise<void> }
@@ -10,11 +9,11 @@ export type FrameIsolation =
 
 /**
  * A lock between parity runs and frame measurements on one machine, in every checkout. Parity
- * holds it shared for its whole run, and each frame command holds it exclusively while its child
- * runs, so a parity run cannot start and finish unseen inside a frame case that prints nothing.
- * Linux only, like the process check below: it needs util-linux `flock` and XDG_RUNTIME_DIR,
- * which is per user and machine-wide, unlike a checkout's TMPDIR. Without them it returns
- * "unavailable" and the process check still applies.
+ * holds it shared through driver cleanup. Each guarded frame command holds it exclusively through
+ * its final process scan and log write, so a parity run cannot go unseen inside a silent case.
+ * Linux requires util-linux `flock` and a per-user XDG_RUNTIME_DIR shared across checkouts.
+ * A process scan alone can miss a short parity run, so a Linux lock failure refuses the run.
+ * Other platforms return "unavailable".
  *
  * A shared request waits for a running measurement; `signal` stops that wait. An exclusive
  * request never waits and returns "busy" instead.
@@ -23,25 +22,36 @@ export async function holdFrameIsolation(
 	mode: "shared" | "exclusive",
 	signal?: AbortSignal,
 ): Promise<FrameIsolation> {
-	const flock = Bun.which("flock");
-	const runtime = process.env.XDG_RUNTIME_DIR;
-	if (process.platform !== "linux" || !flock || !runtime || !existsSync(runtime)) return { state: "unavailable" };
-	const path = join(runtime, "kubecove-frame-isolation.lock");
-	// One child makes every attempt, so while it waits it is the only process naming the lock
-	// path, and a frame command can tell this waiting runner from one that runs drivers.
-	// --close: only flock keeps the lock open, so nothing the holder starts can keep it.
-	// The holder reads stdin until release, or until this process exits and closes it.
-	const hold = (options: string) => `exec "$1" ${options} --close "$0" sh -c "echo held; exec cat >/dev/null"`;
-	const script = mode === "shared"
-		? `"$1" --nonblock --shared "$0" true || echo waiting; ${hold("--shared")}`
-		: hold("--exclusive --nonblock");
-	// An abort before this call sends no event, so check it before starting to wait.
+	if (process.platform !== "linux") return { state: "unavailable" };
 	signal?.throwIfAborted();
+	const runtime = process.env.XDG_RUNTIME_DIR;
+	if (!runtime || !isAbsolute(runtime)) throw new Error("Cannot establish frame isolation: XDG_RUNTIME_DIR must be an absolute path");
+	const flock = Bun.which("flock");
+	if (!flock) throw new Error("Cannot establish frame isolation: util-linux flock is required on PATH");
+	const shell = Bun.which("sh");
+	if (!shell) throw new Error("Cannot establish frame isolation: sh is required on PATH");
+	const path = join(runtime, "kubecove-frame-isolation.lock");
+	// The direct child names the lock path during both attempts, so the frame scan can recognize
+	// a parity runner that is waiting to start its drivers.
+	// --close: only flock keeps the lock open, so nothing the holder starts can keep it.
+	// Only EOF arrives on stdin, either from release or when this process exits.
+	const hold = `"$2" -c 'printf "held\\n"; IFS= read -r line || :'`;
+	// util-linux reserves the configured status for contention. 75 is EX_TEMPFAIL.
+	const conflict = 75;
+	const nonblocking = `"$1" --nonblock --conflict-exit-code ${conflict} --${mode} --close "$0" ${hold}`;
+	const script = mode === "shared"
+		? `${nonblocking}
+status=$?
+if [ "$status" -ne ${conflict} ]; then exit "$status"; fi
+printf 'waiting\\n'
+exec "$1" --shared --close "$0" ${hold}`
+		: `exec ${nonblocking}`;
 	// Its own process group keeps a terminal Ctrl-C away from flock, so the lock lasts until
 	// this process releases it after its own cleanup.
-	const holder = Bun.spawn(["sh", "-c", script, path, flock], {
-		stdin: "pipe", stdout: "pipe", stderr: "inherit", detached: true,
+	const holder = Bun.spawn([shell, "-c", script, path, flock, shell], {
+		stdin: "pipe", stdout: "pipe", stderr: "pipe", detached: true,
 	});
+	const exited = Promise.all([holder.exited, new Response(holder.stderr).text()]);
 	// The whole group, so a holder that took the lock as the abort arrived cannot keep it.
 	const stop = () => {
 		holder.stdin.end();
@@ -65,14 +75,14 @@ export async function holdFrameIsolation(
 			}
 			if (output.includes("held\n")) {
 				reader.releaseLock();
-				return { state: "held", path, release: async () => { holder.stdin.end(); await holder.exited; } };
+				return { state: "held", path, release: async () => { holder.stdin.end(); await exited; } };
 			}
 		}
-		const code = await holder.exited;
+		const [code, stderr] = await exited;
 		signal?.throwIfAborted();
-		// flock --nonblock exits 1 without starting the holder when the lock is taken.
-		if (mode === "exclusive" && code === 1) return { state: "busy" };
-		throw new Error(`flock ${path} exited ${code} before taking the lock`);
+		if (mode === "exclusive" && code === conflict) return { state: "busy" };
+		const diagnostic = stderr.trim();
+		throw new Error(`Cannot establish frame isolation at ${path}: flock exited ${code} before taking the lock${diagnostic ? `: ${diagnostic}` : ""}`);
 	} finally {
 		signal?.removeEventListener("abort", stop);
 	}
