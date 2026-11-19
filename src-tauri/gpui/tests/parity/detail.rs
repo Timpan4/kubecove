@@ -1,4 +1,5 @@
 use super::*;
+use gpui_kit::{Bounds, ElementId, Pixels, Point, point};
 
 fn tab_id(label: &str) -> String {
     if label == "Argo CD" {
@@ -106,8 +107,12 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "expectResource" => assert!(reveal_resource(window, &row(step), cx)),
         "openResource" => {
             let row = resolve_resource(window, &row(step), cx).expect("resource row is rendered");
-            window.click(row, cx);
+            window.within("resource-table").click(row, cx);
         }
+        "expectAmbiguousResource" => assert!(
+            lookup_resource(window, &row(step), cx).is_err(),
+            "expected an ambiguous resource row: {step}"
+        ),
         "expectDetail" => assert_eq!(
             window.find("detail-identity").label(),
             Some(
@@ -321,33 +326,50 @@ pub(super) fn resolve_resource(
     target: &str,
     cx: &mut gpui_kit::App,
 ) -> Option<String> {
+    lookup_resource(window, target, cx)
+        .unwrap_or_else(|rows| panic!("Resource row is ambiguous: {rows:?}"))
+}
+
+fn lookup_resource(
+    window: &mut gpui_kit::Window,
+    target: &str,
+    cx: &mut gpui_kit::App,
+) -> Result<Option<String>, Vec<String>> {
     // A target that names its context, `resource:{kind}:{namespace}:{name}:{context}`,
     // is one row's whole ID, since kinds, namespaces and names hold no `:`.
     let names_context = target.splitn(5, ':').count() == 5;
-    // The Context filter shows only for a workspace with several contexts.
-    // With one, or with a target that names its context, an identity names at
-    // most one row, so the first match is that row, and the page keeps its
-    // scroll position when the row is in view.
+    // Only context-free targets in a multi-context workspace can match
+    // several clusters. Check the whole page before using any of those rows.
     if names_context || window.try_find("context-picker").is_none() {
-        let mut found = None;
-        scan_table(window, cx, |window| {
-            found = rendered_rows(window, target)
-                .into_iter()
-                .find(|id| !names_context || id == target);
-            found.is_some()
-        });
-        return found;
+        return Ok(find_resource(window, target, names_context, cx));
     }
     let rows = table_rows(window, target, cx);
-    assert!(rows.len() <= 1, "Resource row is ambiguous: {rows:?}");
-    let id = rows.into_iter().next()?;
-    // The scan ended at the bottom of the page; scroll back to the row.
-    assert!(
-        scan_table(window, cx, |window| rendered_rows(window, &id)
-            .contains(&id)),
-        "row {id} is no longer rendered"
-    );
-    Some(id)
+    match rows.as_slice() {
+        [] => Ok(None),
+        [id] => Ok(Some(
+            find_resource(window, id, true, cx)
+                .unwrap_or_else(|| panic!("row {id} is no longer rendered")),
+        )),
+        _ => Err(rows),
+    }
+}
+
+fn find_resource(
+    window: &mut gpui_kit::Window,
+    target: &str,
+    exact: bool,
+    cx: &mut gpui_kit::App,
+) -> Option<String> {
+    let mut found = None;
+    scan_table(window, cx, |window| {
+        let viewport = table_viewport(window);
+        found = rendered_rows(window, target).into_iter().find(|id| {
+            (!exact || id == target)
+                && viewport.contains(&window.find(id.clone()).bounds().center())
+        });
+        found.is_some()
+    });
+    found
 }
 
 /// The element IDs of every row on the current table page that `target`
@@ -359,34 +381,26 @@ pub(super) fn table_rows(
     cx: &mut gpui_kit::App,
 ) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
-    // `None` until the first visit, which is at the current scroll position
-    // before the scan resets to the top, so only the top-down visits count.
-    let mut previous: Option<Option<Vec<String>>> = None;
-    scan_table(window, cx, |window| {
-        let rendered = rendered_rows(window, "resource");
-        let Some(last) = previous.replace(Some(rendered.clone())) else {
-            previous = Some(None);
-            return false;
-        };
+    prepare_table(window, cx);
+    scan_table_from_top(window, cx, |window| {
         for id in rendered_rows(window, target) {
             if !ids.contains(&id) {
                 ids.push(id);
             }
         }
-        // Scrolling no longer moves the rows: the bottom of the page.
-        last.is_some_and(|last| last == rendered)
+        false
     });
     ids
 }
 
 /// The element IDs of the visible rows that `target` names, top to bottom.
-pub(super) fn rendered_rows(window: &gpui_kit::Window, target: &str) -> Vec<String> {
-    use gpui_kit::test::TestQueryExt;
+fn rendered_rows(window: &gpui_kit::Window, target: &str) -> Vec<String> {
     let prefix = format!("{target}:");
+    let table = ElementId::Name("resource-table".into());
     window
         .elements()
         .iter()
-        .filter(|element| element.visible())
+        .filter(|element| element.visible() && element.path().contains(&table))
         .filter_map(|element| {
             let id = locate::id(element).to_string();
             (id == target || id.starts_with(&prefix)).then_some(id)
@@ -394,64 +408,88 @@ pub(super) fn rendered_rows(window: &gpui_kit::Window, target: &str) -> Vec<Stri
         .collect()
 }
 
-/// Calls `visit` at each scroll position of the current table page, from the
-/// top down, until it returns true. Returns whether it did. The table mounts
-/// only the rows near its viewport.
+/// Checks the current viewport first, then scans the table from the top.
 pub(super) fn scan_table(
     window: &mut gpui_kit::Window,
     cx: &mut gpui_kit::App,
     mut visit: impl FnMut(&gpui_kit::Window) -> bool,
 ) -> bool {
-    use gpui_kit::test::TestEventExt;
-    use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent, point};
-    // Beside an open detail the table is below the map in the page scroller.
-    // Reveal that viewport before scrolling its virtualized rows.
-    reveal(window, "resources", "resource-table", cx);
+    prepare_table(window, cx);
+    visit(window) || scan_table_from_top(window, cx, visit)
+}
+
+fn prepare_table(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App) {
+    window.render_frame(cx);
+    if !window.find("resource-table").visible() {
+        reveal(window, "page", "resource-table", cx);
+    }
+    // A cell lookup can leave the Name buttons clipped horizontally.
     let table = window.find("resource-table").bounds();
-    let viewport = window.viewport_size();
-    let top = table.top().max(px(0.));
-    let bottom = table.bottom().min(viewport.height);
-    let position = point(table.left() + px(8.), (top + bottom) / 2.);
-    let height = table.size.height;
-    let scroll = |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, delta| {
-        window.pointer_move(position, None, cx);
-        window.dispatch_event(
-            ScrollEvent {
-                position,
-                delta: ScrollDelta::Pixels(delta),
-                ..Default::default()
-            }
-            .to_platform_input(),
-            cx,
-        );
-        window.render_frame(cx);
+    let name = window.find("sort:Name").bounds();
+    if name.left() < table.left() {
+        scroll_table(window, cx, point(table.left() - name.left(), px(0.)));
+    }
+}
+
+/// Walks the current pagination page from top to bottom. Compare the Name
+/// header's position within the table to detect when the inner scroller stops.
+fn scan_table_from_top(
+    window: &mut gpui_kit::Window,
+    cx: &mut gpui_kit::App,
+    mut visit: impl FnMut(&gpui_kit::Window) -> bool,
+) -> bool {
+    let offset = |window: &gpui_kit::Window| {
+        window.find("sort:Name").bounds().top() - window.find("resource-table").bounds().top()
     };
-    // A cell expectation can leave the table scrolled sideways, which clips the
-    // Name column. A row counts as rendered at any horizontal scroll, as in
-    // Playwright, so bring the Name column back before looking.
-    if let Some(name) = window.try_find("sort:Name")
-        && name.bounds().left() < table.left()
-    {
-        scroll(
+    reveal(window, "page", "resource-table", cx);
+    if offset(window) < px(0.) {
+        // The Name header starts inside the table's top padding.
+        let table = window.find("resource-table").bounds();
+        scroll_table(
             window,
             cx,
-            point(table.left() - name.bounds().left(), px(0.)),
+            point(px(0.), -offset(window) + table.size.height),
         );
     }
-    if visit(window) {
-        return true;
-    }
-    // PAGE_SIZE bounds the current page. Reset its scroll before scanning it.
-    scroll(
-        window,
-        cx,
-        point(px(0.), height * kubecove_gpui::model::PAGE_SIZE as f32),
-    );
-    for _ in 0..kubecove_gpui::model::PAGE_SIZE {
+    loop {
         if visit(window) {
             return true;
         }
-        scroll(window, cx, point(px(0.), -height / 2.));
+        let before = offset(window);
+        scroll_table(
+            window,
+            cx,
+            point(px(0.), -table_viewport(window).size.height / 2.),
+        );
+        if offset(window) >= before {
+            return false;
+        }
     }
-    false
+}
+
+fn table_viewport(window: &gpui_kit::Window) -> Bounds<Pixels> {
+    window
+        .find("resource-table")
+        .bounds()
+        .intersect(&window.find("page").bounds())
+}
+
+fn scroll_table(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, delta: Point<Pixels>) {
+    use gpui_kit::test::TestEventExt;
+    use gpui_kit::{InputEvent, ScrollDelta, ScrollEvent};
+
+    let position = table_viewport(window).center();
+    window.pointer_move(position, None, cx);
+    window.dispatch_event(
+        ScrollEvent {
+            position,
+            delta: ScrollDelta::Pixels(delta),
+            ..Default::default()
+        }
+        .to_platform_input(),
+        cx,
+    );
+    // The same wheel event can move the page when the detail stacks the
+    // table below the map. Bring the table's viewport back before reading rows.
+    reveal(window, "page", "resource-table", cx);
 }

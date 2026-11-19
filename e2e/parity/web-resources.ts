@@ -32,8 +32,13 @@ export const resourceActions = {
 	async expectSearch(page, step) {
 		if (await resourceSearch(page).inputValue() !== step.value) throw new Error("Search changed after refresh");
 	},
-	...sharedActions(["expectResource", "openResource"], async (page, step) => {
+	...sharedActions(["expectResource", "openResource", "expectAmbiguousResource"], async (page, step) => {
 		const row = resourceRow(page, step);
+		if (step.action === "expectAmbiguousResource") {
+			// A workspace can render one context's rows before another context answers.
+			await row.nth(1).waitFor({ state: "visible" });
+			return;
+		}
 		await row.waitFor({ state: "visible" });
 		if (await row.count() !== 1) throw new Error("Resource row is ambiguous");
 		if (step.action === "openResource") await row.getByRole("button", { name: `Open resource ${step.name}`, exact: true }).click();

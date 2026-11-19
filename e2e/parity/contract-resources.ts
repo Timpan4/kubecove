@@ -89,6 +89,7 @@ export const resourcesSteps = {
 	search: (item) => ({ value: item.value === "" ? "" : string(item.value) }),
 	expectSearch: (item) => ({ value: item.value === "" ? "" : string(item.value) }),
 	expectResource: resourceIdentity,
+	expectAmbiguousResource: resourceIdentity,
 	expectDetail: resourceIdentity,
 	expectClusterResource: clusterResourceIdentity,
 	expectNoClusterResource: clusterResourceIdentity,
