@@ -23,7 +23,7 @@
     },
     {
       "id": "exec-session.clear-blank-wrap",
-      "title": "Clear preserves pending autowrap after the last cell is erased",
+      "title": "Clear preserves pending autowrap after the last cell is erased and preserves the preceding character for REP",
       "steps": [
         { "action": "openResources" },
         { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
@@ -34,7 +34,12 @@
         { "action": "coverageClick", "label": "Clear terminal" },
         { "action": "terminalOutput", "container": "app", "data": "X" },
         { "action": "terminalFocus", "focused": true },
-        { "action": "expectTerminalCursor", "cursor": "block", "row": 1, "col": 1 }
+        { "action": "expectTerminalCursor", "cursor": "block", "row": 1, "col": 1 },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[2J\u001b[3;1H\u001b[65535Gq" },
+        { "action": "coverageClick", "label": "Clear terminal" },
+        { "action": "terminalOutput", "container": "app", "data": "\u001b[b" },
+        { "action": "terminalSelect", "row": 1, "col": 0, "endRow": 1, "endCol": 1 },
+        { "action": "terminalCopy", "text": "q" }
       ]
     },
     {
