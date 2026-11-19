@@ -238,8 +238,8 @@ impl Recorder {
         if !self.recording {
             return;
         }
-        self.commands.set_current(None);
-        self.flush(timings.is_some());
+        let ended = self.commands.set_current(None);
+        self.flush(ended, timings.is_some());
         self.recording = false;
         self.pointer_down = false;
         self.last_frame = None;
@@ -253,11 +253,11 @@ impl Recorder {
         self.session_frames = Histogram::default();
     }
 
-    fn flush(&mut self, include_commands: bool) {
+    fn flush(&mut self, ended: Instant, include_commands: bool) {
         let Some(mut interaction) = self.current.take() else {
             return;
         };
-        interaction.duration_ms = interaction.started.elapsed().as_secs_f64() * 1000.;
+        interaction.duration_ms = ended.duration_since(interaction.started).as_secs_f64() * 1000.;
         interaction.refresh_ms = self.session_frames.percentile(0.5);
         if !include_commands {
             interaction.commands = None;
@@ -283,8 +283,8 @@ impl Recorder {
             return;
         }
         let pending = Arc::new(PendingCommands::new(started));
-        self.commands.set_current(Some(&pending));
-        self.flush(timings.is_some());
+        let ended = self.commands.set_current(Some(&pending));
+        self.flush(ended, timings.is_some());
         // Earlier inputs keep their waiting input-to-paint times: each one
         // requested a frame, and `painted` charges that frame to its entry.
         let id = self.next_id;

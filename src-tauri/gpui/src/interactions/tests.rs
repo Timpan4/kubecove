@@ -213,12 +213,9 @@ fn a_backdated_navigation_keeps_commands_with_the_interaction_that_started_them(
     assert_eq!(entries[1]["commands"], json!([]));
 }
 
-// Failure mode (#662): a command still running when recording stops shows up
-// in one copy, then Clear diagnostics removes it from the next, because no
-// flush follows the stop. Browser mocks cannot reach this: the only way to
-// stop recording is to open Settings, which cancels every held page read.
+// Browser mocks cannot hold a page read while stopping recording in Settings.
 #[test]
-fn a_command_finishing_after_stop_stays_after_the_trace_is_cleared() {
+fn copies_keep_an_earlier_completion_and_add_a_late_one_once() {
     let timings = Timings::default();
     timings.set_enabled(true);
     let mut recorder = Recorder::default();
@@ -230,13 +227,29 @@ fn a_command_finishing_after_stop_stays_after_the_trace_is_cleared() {
         Instant::now(),
         Some(&timings),
     );
-    let read: Read<()> = Box::pin(async { Ok::<(), AppError>(()) });
-    let mut read = timings.measure("list_resource_topology", read);
+    let mut context = Context::from_waker(Waker::noop());
+    let mut earlier = timings.measure("get_resource_details", Box::pin(async { Ok(()) }));
+    assert!(matches!(
+        earlier.as_mut().poll(&mut context),
+        Poll::Ready(Ok(()))
+    ));
+    let (finish, pending) = tokio::sync::oneshot::channel();
+    let read: Read<()> = Box::pin(async move {
+        pending.await.expect("test sends the completion");
+        Ok(())
+    });
+    let mut later = timings.measure("list_resource_topology", read);
+    assert!(later.as_mut().poll(&mut context).is_pending());
     recorder.stop(Some(&timings));
-    let finished = read.as_mut().poll(&mut Context::from_waker(Waker::noop()));
-    assert!(matches!(finished, Poll::Ready(Ok(()))));
 
-    assert_eq!(commands(&mut recorder), ["list_resource_topology"]);
+    assert_eq!(commands(&mut recorder), ["get_resource_details"]);
+    finish.send(()).unwrap();
+    assert!(matches!(
+        later.as_mut().poll(&mut context),
+        Poll::Ready(Ok(()))
+    ));
     timings.clear();
-    assert_eq!(commands(&mut recorder), ["list_resource_topology"]);
+    let expected = ["get_resource_details", "list_resource_topology"];
+    assert_eq!(commands(&mut recorder), expected);
+    assert_eq!(commands(&mut recorder), expected);
 }

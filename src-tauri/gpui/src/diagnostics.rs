@@ -93,32 +93,32 @@ impl Timings {
         }
         let latency_epoch = state.latency_epoch;
         let recording_epoch = state.recording_epoch;
-        let capture = state.interaction_commands.upgrade();
-        drop(state);
-        let (started, owner) = match capture {
+        let (started, owner) = match state.interaction_commands.upgrade() {
             Some(capture) => capture.start_command(),
             None => (Instant::now(), Weak::new()),
         };
+        drop(state);
         let collector = self.clone();
         Box::pin(async move {
             let result = read.await;
             let success = result.is_ok();
             let duration_ms = started.elapsed().as_secs_f64() * 1000.;
-            let record = {
-                let mut state = collector.0.lock().expect("timing state");
-                if state.enabled && state.latency_epoch == latency_epoch {
-                    push(
-                        &mut state,
-                        Timing {
-                            name,
-                            duration_ms,
-                            success,
-                        },
-                    );
-                }
-                state.enabled && state.recording_epoch == recording_epoch
-            };
-            if record && let Some(owner) = owner.upgrade() {
+            let mut state = collector.0.lock().expect("timing state");
+            if state.enabled && state.latency_epoch == latency_epoch {
+                push(
+                    &mut state,
+                    Timing {
+                        name,
+                        duration_ms,
+                        success,
+                    },
+                );
+            }
+            if state.enabled
+                && state.recording_epoch == recording_epoch
+                && let Some(owner) = owner.upgrade()
+            {
+                // Export moves the pending vector out of the entry lock before formatting.
                 owner.complete(name, started, duration_ms, success);
             }
             result

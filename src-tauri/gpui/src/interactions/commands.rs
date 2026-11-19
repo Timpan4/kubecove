@@ -53,8 +53,12 @@ impl PendingCommands {
 pub(crate) struct CommandCapture(Mutex<Weak<PendingCommands>>);
 
 impl CommandCapture {
-    pub(super) fn set_current(&self, next: Option<&Arc<PendingCommands>>) {
-        *self.0.lock().expect("current interaction") = next.map_or_else(Weak::new, Arc::downgrade);
+    pub(super) fn set_current(&self, next: Option<&Arc<PendingCommands>>) -> Instant {
+        let next = next.map_or_else(Weak::new, Arc::downgrade);
+        let mut current = self.0.lock().expect("current interaction");
+        let switched_at = Instant::now();
+        *current = next;
+        switched_at
     }
 
     pub(crate) fn start_command(&self) -> (Instant, Weak<PendingCommands>) {
