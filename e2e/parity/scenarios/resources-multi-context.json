@@ -278,6 +278,33 @@
       ]
     },
     {
+      "id": "map.multi-context-outside-dismissal",
+      "title": "An outside click closes the Map context picker without selecting the highlighted context",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "platform" },
+        { "action": "expectMapContext", "shown": true, "context": "mock-dev" },
+        { "action": "clickMapContextTrigger" },
+        { "action": "expectMapContextOptions", "open": true, "focused": true },
+        { "action": "mapContextKey", "key": "ArrowDown" },
+        { "action": "setTopologyMode", "mode": "Ownership" },
+        { "action": "expectMapContextOptions", "open": false },
+        { "action": "expectMapContext", "shown": true, "context": "mock-dev" },
+        { "action": "clickMapContextTrigger" },
+        { "action": "expectMapContextOptions", "open": true },
+        { "action": "clickMapContextTrigger" },
+        { "action": "expectMapContextOptions", "open": false, "focused": true },
+        { "action": "selectMapContext", "context": "admin@solid-k8s" },
+        { "action": "expectMapContextOptions", "open": false },
+        { "action": "expectMapContext", "shown": true, "context": "admin@solid-k8s" }
+      ]
+    },
+    {
       "id": "map.multi-context-keyboard",
       "title": "Tab reaches the Map context select; Enter, Space and the arrows open it on the current context, the arrows, Home and End move, Enter or Space chooses, Escape closes it unchanged, and Tab or Shift+Tab closes it unchanged and moves focus off it",
       "steps": [
@@ -294,7 +321,7 @@
         { "action": "expectMapContextOptions", "open": true },
         { "action": "mapContextKey", "key": "ArrowDown" },
         { "action": "mapContextKey", "key": "Escape" },
-        { "action": "expectMapContextOptions", "open": false },
+        { "action": "expectMapContextOptions", "open": false, "focused": true },
         { "action": "expectMapContext", "shown": true, "context": "mock-dev" },
         { "action": "mapContextKey", "key": "ArrowDown" },
         { "action": "expectMapContextOptions", "open": true },

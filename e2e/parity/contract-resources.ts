@@ -148,6 +148,7 @@ export const resourcesSteps = {
 	expectRowContexts: (item) => ({ ...resourceIdentity(item), contexts: strings(item.contexts, false) }),
 	filterContexts: (item) => ({ contexts: strings(item.contexts, true) }),
 	expectResourceSummary: (item) => ({ text: string(item.text) }),
+	clickMapContextTrigger: () => ({}),
 	selectMapContext: (item) => ({ context: string(item.context) }),
 	expectMapContext: (item) => {
 		if (!boolean(item.shown)) {

@@ -49,6 +49,9 @@ export const multiContextActions = {
 	async expectResourceSummary(page, step) {
 		await page.getByText(step.text, { exact: true }).waitFor();
 	},
+	async clickMapContextTrigger(page) {
+		await mapContextSelect(page).click();
+	},
 	async selectMapContext(page, step) {
 		await mapContextSelect(page).click();
 		await page.getByRole("option", { name: step.context, exact: true }).click();
