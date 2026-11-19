@@ -3,7 +3,7 @@ use crate::backend::Read;
 use kubecove_lib::models::AppError;
 use std::task::{Context, Poll, Waker};
 
-fn commands(recorder: &Recorder) -> Vec<String> {
+fn commands(recorder: &mut Recorder) -> Vec<String> {
     recorder
         .json_lines()
         .lines()
@@ -86,15 +86,19 @@ fn clear_diagnostics_during_a_command_clears_latency_but_keeps_its_recording() {
         Instant::now(),
         Some(&timings),
     );
+    let (finish, pending) = tokio::sync::oneshot::channel();
     let mut read = timings.measure(
         "list_resource_topology",
-        Box::pin(async {
+        Box::pin(async move {
+            pending.await.expect("test sends the completion");
             Err::<(), _>(AppError::new(
                 "private error",
                 kubecove_lib::models::AppErrorKind::Internal,
             ))
         }),
     );
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(read.as_mut().poll(&mut context).is_pending());
     recorder.begin(
         Kind::Key,
         "clear".into(),
@@ -103,8 +107,9 @@ fn clear_diagnostics_during_a_command_clears_latency_but_keeps_its_recording() {
         Some(&timings),
     );
     timings.clear();
+    finish.send(()).unwrap();
     assert!(matches!(
-        read.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+        read.as_mut().poll(&mut context),
         Poll::Ready(Err(_))
     ));
     assert!(timings.snapshot().is_empty());
@@ -120,6 +125,92 @@ fn clear_diagnostics_during_a_command_clears_latency_but_keeps_its_recording() {
     assert_eq!(entries[0]["commands"][0]["ok"], false);
     assert_eq!(entries[1]["commands"], json!([]));
     assert!(!report.contains("private error"));
+}
+
+#[test]
+fn reapplying_enabled_diagnostics_keeps_the_pending_recording() {
+    let timings = Timings::default();
+    timings.set_enabled(true);
+    let mut recorder = Recorder::default();
+    recorder.start(&timings);
+    recorder.begin(
+        Kind::Click,
+        "origin".into(),
+        None,
+        Instant::now(),
+        Some(&timings),
+    );
+    let (finish, pending) = tokio::sync::oneshot::channel();
+    let mut read = timings.measure(
+        "list_resource_topology",
+        Box::pin(async move {
+            pending.await.expect("test sends the completion");
+            Ok(())
+        }),
+    );
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(read.as_mut().poll(&mut context).is_pending());
+    timings.set_enabled(true);
+    finish.send(()).unwrap();
+    assert!(matches!(
+        read.as_mut().poll(&mut context),
+        Poll::Ready(Ok(()))
+    ));
+    assert!(timings.snapshot().is_empty());
+    recorder.stop(Some(&timings));
+    assert_eq!(commands(&mut recorder), ["list_resource_topology"]);
+}
+
+#[test]
+fn a_backdated_navigation_keeps_commands_with_the_interaction_that_started_them() {
+    let timings = Timings::default();
+    timings.set_enabled(true);
+    let mut recorder = Recorder::default();
+    recorder.start(&timings);
+    recorder.begin(
+        Kind::Click,
+        "origin".into(),
+        None,
+        Instant::now(),
+        Some(&timings),
+    );
+    let requested_at = Instant::now();
+    let mut earlier = timings.measure("completed_before_navigation", Box::pin(async { Ok(()) }));
+    let mut later = timings.measure("completed_after_navigation", Box::pin(async { Ok(()) }));
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(matches!(
+        earlier.as_mut().poll(&mut context),
+        Poll::Ready(Ok(()))
+    ));
+    recorder.begin(
+        Kind::Navigate,
+        "navigation".into(),
+        None,
+        requested_at,
+        Some(&timings),
+    );
+    assert!(matches!(
+        later.as_mut().poll(&mut context),
+        Poll::Ready(Ok(()))
+    ));
+    recorder.stop(Some(&timings));
+
+    let report = recorder.json_lines();
+    let entries: Vec<Value> = report
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let origin: Vec<_> = entries[0]["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|command| command["cmd"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        origin,
+        ["completed_before_navigation", "completed_after_navigation"]
+    );
+    assert_eq!(entries[1]["commands"], json!([]));
 }
 
 // Failure mode (#662): a command still running when recording stops shows up
@@ -145,7 +236,7 @@ fn a_command_finishing_after_stop_stays_after_the_trace_is_cleared() {
     let finished = read.as_mut().poll(&mut Context::from_waker(Waker::noop()));
     assert!(matches!(finished, Poll::Ready(Ok(()))));
 
-    assert_eq!(commands(&recorder), ["list_resource_topology"]);
+    assert_eq!(commands(&mut recorder), ["list_resource_topology"]);
     timings.clear();
-    assert_eq!(commands(&recorder), ["list_resource_topology"]);
+    assert_eq!(commands(&mut recorder), ["list_resource_topology"]);
 }

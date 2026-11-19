@@ -21,7 +21,7 @@ mod commands;
 
 use crate::diagnostics::Timings;
 pub(crate) use commands::CommandCapture;
-use commands::RecordedCommand;
+use commands::{PendingCommands, RecordedCommand};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -93,6 +93,12 @@ pub(crate) struct Interaction {
     frames: Histogram,
     refresh_ms: f64,
     renders: BTreeMap<&'static str, u32>,
+    commands: Option<InteractionCommands>,
+}
+
+struct InteractionCommands {
+    pending: Arc<PendingCommands>,
+    recorded: Vec<RecordedCommand>,
 }
 
 fn round(value: f64) -> f64 {
@@ -146,7 +152,7 @@ impl Interaction {
         sources
     }
 
-    fn json(&self, commands: Option<Vec<RecordedCommand>>) -> Value {
+    fn json(&mut self) -> Value {
         let mut value = json!({
             "id": self.id,
             "kind": self.kind.label(),
@@ -174,8 +180,9 @@ impl Interaction {
                     .collect::<Vec<_>>(),
             },
         });
-        if let Some(commands) = commands {
-            value["commands"] = json!(commands);
+        if let Some(commands) = &mut self.commands {
+            commands.recorded.extend(commands.pending.take_completed());
+            value["commands"] = json!(commands.recorded);
         }
         value
     }
@@ -231,31 +238,31 @@ impl Recorder {
         if !self.recording {
             return;
         }
-        self.advance(None, timings.is_some());
+        self.commands.set_current(None);
+        self.flush(timings.is_some());
         self.recording = false;
         self.pointer_down = false;
         self.last_frame = None;
     }
 
     pub(crate) fn clear(&mut self) {
-        self.commands.clear();
+        self.commands.set_current(None);
         self.recorded.clear();
         self.current = None;
         self.pending_paints.clear();
         self.session_frames = Histogram::default();
     }
 
-    fn advance(&mut self, next: Option<Instant>, include_commands: bool) {
-        let evict_oldest = self.current.is_some() && self.recorded.len() == MAX_RECORDED;
-        let ended = self
-            .commands
-            .transition(next, include_commands, evict_oldest);
+    fn flush(&mut self, include_commands: bool) {
         let Some(mut interaction) = self.current.take() else {
             return;
         };
-        interaction.duration_ms = (ended - interaction.started).as_secs_f64() * 1000.;
+        interaction.duration_ms = interaction.started.elapsed().as_secs_f64() * 1000.;
         interaction.refresh_ms = self.session_frames.percentile(0.5);
-        if evict_oldest {
+        if !include_commands {
+            interaction.commands = None;
+        }
+        if self.recorded.len() == MAX_RECORDED {
             self.recorded.pop_front();
         }
         self.recorded.push_back(interaction);
@@ -275,7 +282,9 @@ impl Recorder {
         if !self.recording {
             return;
         }
-        self.advance(Some(started), timings.is_some());
+        let pending = Arc::new(PendingCommands::new(started));
+        self.commands.set_current(Some(&pending));
+        self.flush(timings.is_some());
         // Earlier inputs keep their waiting input-to-paint times: each one
         // requested a frame, and `painted` charges that frame to its entry.
         let id = self.next_id;
@@ -291,6 +300,10 @@ impl Recorder {
             frames: Histogram::default(),
             refresh_ms: 0.,
             renders: BTreeMap::new(),
+            commands: Some(InteractionCommands {
+                pending,
+                recorded: Vec::new(),
+            }),
         });
         if let Some(input) = measure {
             self.pending_paints.push((id, input, started));
@@ -369,13 +382,10 @@ impl Recorder {
     }
 
     /// JSON lines for `bun run perf:interactions`.
-    pub(crate) fn json_lines(&self) -> String {
-        let commands = self.commands.snapshot();
-        debug_assert_eq!(self.recorded.len(), commands.len());
+    pub(crate) fn json_lines(&mut self) -> String {
         self.recorded
-            .iter()
-            .zip(commands)
-            .map(|(interaction, commands)| interaction.json(commands).to_string())
+            .iter_mut()
+            .map(|interaction| interaction.json().to_string())
             .collect::<Vec<_>>()
             .join("\n")
     }

@@ -20,9 +20,10 @@ pub struct Timing {
 #[derive(Default)]
 struct State {
     enabled: bool,
-    enabled_epoch: u64,
-    // Clearing latency invalidates in-flight timings there. Their recordings can still finish.
-    clear_epoch: u64,
+    // Latency invalidates in-flight timings when cleared or preferences are reapplied.
+    latency_epoch: u64,
+    // A pending recording stays eligible until diagnostics is toggled.
+    recording_epoch: u64,
     events: VecDeque<Timing>,
     interaction_commands: Weak<CommandCapture>,
     /// Renders per name, as the web's `*.render` diagnostic counters.
@@ -33,14 +34,17 @@ pub struct Timings(Arc<Mutex<State>>);
 impl Timings {
     pub fn set_enabled(&self, enabled: bool) {
         let mut state = self.0.lock().expect("timing state");
+        if state.enabled != enabled {
+            state.recording_epoch = state.recording_epoch.wrapping_add(1);
+        }
         state.enabled = enabled;
-        state.enabled_epoch = state.enabled_epoch.wrapping_add(1);
+        state.latency_epoch = state.latency_epoch.wrapping_add(1);
     }
     pub fn clear(&self) {
         let mut state = self.0.lock().expect("timing state");
         state.events.clear();
         state.counters.clear();
-        state.clear_epoch = state.clear_epoch.wrapping_add(1);
+        state.latency_epoch = state.latency_epoch.wrapping_add(1);
     }
     pub(crate) fn capture_interaction_commands(&self, capture: &Arc<CommandCapture>) {
         self.0.lock().expect("timing state").interaction_commands = Arc::downgrade(capture);
@@ -87,26 +91,35 @@ impl Timings {
         if !state.enabled {
             return read;
         }
-        let enabled_epoch = state.enabled_epoch;
-        let clear_epoch = state.clear_epoch;
+        let latency_epoch = state.latency_epoch;
+        let recording_epoch = state.recording_epoch;
+        let capture = state.interaction_commands.upgrade();
         drop(state);
-        let started = Instant::now();
+        let (started, owner) = match capture {
+            Some(capture) => capture.start_command(),
+            None => (Instant::now(), Weak::new()),
+        };
         let collector = self.clone();
         Box::pin(async move {
             let result = read.await;
-            let mut state = collector.0.lock().expect("timing state");
-            if state.enabled && state.enabled_epoch == enabled_epoch {
-                let timing = Timing {
-                    name,
-                    duration_ms: started.elapsed().as_secs_f64() * 1000.,
-                    success: result.is_ok(),
-                };
-                if let Some(capture) = state.interaction_commands.upgrade() {
-                    capture.complete(name, started, timing.duration_ms, timing.success);
+            let success = result.is_ok();
+            let duration_ms = started.elapsed().as_secs_f64() * 1000.;
+            let record = {
+                let mut state = collector.0.lock().expect("timing state");
+                if state.enabled && state.latency_epoch == latency_epoch {
+                    push(
+                        &mut state,
+                        Timing {
+                            name,
+                            duration_ms,
+                            success,
+                        },
+                    );
                 }
-                if state.clear_epoch == clear_epoch {
-                    push(&mut state, timing);
-                }
+                state.enabled && state.recording_epoch == recording_epoch
+            };
+            if record && let Some(owner) = owner.upgrade() {
+                owner.complete(name, started, duration_ms, success);
             }
             result
         })
