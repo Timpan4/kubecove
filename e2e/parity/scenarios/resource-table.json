@@ -121,6 +121,7 @@
         { "action": "expectResource", "kind": "Deployment", "name": "traefik", "namespace": "traefik" },
         { "action": "openResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
         { "action": "expectDetail", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectResourceGroup", "label": "Deployments", "expanded": true },
         { "action": "toggleResourceGroup", "label": "Deployments" },
         { "action": "expectDetail", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
         { "action": "expectResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
