@@ -1,7 +1,53 @@
 use super::{number, replace_text, string};
 use gpui_kit::test::{TestQueryExt, TestWindowExt};
-use gpui_kit::{App, Window};
+use gpui_kit::{App, ElementId, Window, point};
 use serde_json::Value;
+
+fn forward_port_and_status(description: &str) -> Option<(&str, &str)> {
+    let mut parts = description.split_whitespace();
+    let address = parts.next()?;
+    let port = address.rsplit_once(':').map_or(address, |(_, port)| port);
+    Some((port, parts.next()?))
+}
+
+fn click_forward_control(window: &mut Window, cx: &mut App, step: &Value, op: &str) {
+    let target = string(step, "target");
+    let local = step["local"].as_str();
+    let rows = window.find_all_by_label(target);
+    let mut sessions = rows.iter().filter_map(|row| {
+        let ElementId::Name(id) = row.path().last()? else {
+            return None;
+        };
+        if let Some(local) = local {
+            let (port, _) = forward_port_and_status(row.description()?)?;
+            if port != local {
+                return None;
+            }
+        }
+        if let Some(session) = id.strip_prefix("forward-card:") {
+            return Some((session, "detail-body"));
+        }
+        id.strip_prefix("forward:").map(|session| (session, "page"))
+    });
+    let (session, area) = sessions
+        .next()
+        .unwrap_or_else(|| panic!("no forward matches {target} with local port {local:?}"));
+    assert!(
+        sessions.next().is_none(),
+        "multiple forwards match {target} with local port {local:?}"
+    );
+    let control = format!("{op}-forward:{session}");
+    let target = window.find(control.clone()).bounds();
+    let body = window.find(area).bounds();
+    let top = target.top().max(body.top());
+    let bottom = target.bottom().min(body.bottom());
+    assert!(top < bottom, "{control} is outside {area}");
+    window.click_at(
+        control,
+        point(target.size.width / 2., (top + bottom) / 2. - target.top()),
+        cx,
+    );
+}
 
 pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
     match string(step, "action") {
@@ -57,10 +103,7 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                 "start" => window.click("forward-start", cx),
                 "save" => window.click("forward-save", cx),
                 "restore" => window.click("restore-forwards", cx),
-                "stop" | "reconnect" => {
-                    let target = string(step, "target");
-                    window.click(format!("{op}-forward:{target}"), cx);
-                }
+                "stop" | "reconnect" => click_forward_control(window, cx, step, op),
                 _ => panic!("unknown forward operation"),
             }
         }
@@ -97,9 +140,16 @@ pub fn apply(window: &mut Window, cx: &mut App, step: &Value) -> bool {
                     .and_then(|node| node.label().map(str::to_owned))
             );
             if number(step, "count") > 0 {
-                let description = matches[0].description().unwrap();
-                assert!(description.contains(string(step, "local")));
-                assert!(description.contains(string(step, "status")));
+                let local = string(step, "local");
+                let (status, description) = matches
+                    .iter()
+                    .filter_map(|row| row.description())
+                    .find_map(|description| {
+                        let (port, status) = forward_port_and_status(description)?;
+                        (port == local).then_some((status, description))
+                    })
+                    .unwrap_or_else(|| panic!("no forward for {target} on local port {local}"));
+                assert_eq!(status, string(step, "status"), "{target} on port {local}");
                 if let Some(resolved) = step["resolved"].as_str() {
                     assert!(description.contains(resolved));
                 }

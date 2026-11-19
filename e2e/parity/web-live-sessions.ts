@@ -6,6 +6,11 @@ function forwardRows(page: Page, target: string) {
     const table = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "Target", exact: true }) });
     return table.locator("tbody tr").or(page.locator("div.rounded-md.border.bg-background.p-3")).or(page.locator('[data-slot="popover-content"][data-state="open"] div.rounded-md.border.bg-background.p-2')).filter({ hasText: target });
 }
+
+function forwardAtPort(page: Page, local: string) {
+	return page.getByText(`http://127.0.0.1:${local}`, { exact: true });
+}
+
 export const liveSessionActions = {
 	async configurePreset(page, step) {
 		for (const [label, value] of [["label", step.label], ["cluster context", step.context], ["namespace", step.namespace], ["Service name", step.service], ["Service port", step.remote], ["local port", step.local]]) await page.getByRole("textbox", { name: `Saved forward ${label}`, exact: true }).fill(value ?? "");
@@ -38,7 +43,11 @@ export const liveSessionActions = {
 		if (step.operation === "start") await page.getByRole("button", { name: "Start", exact: true }).click();
 		else if (step.operation === "save") await page.getByRole("button", { name: "Save preset", exact: true }).click();
 		else if (step.operation === "restore") await page.getByRole("button", { name: "Start saved", exact: true }).first().click();
-		else await forwardRows(page, step.target ?? "").getByRole("button", { name: step.operation === "stop" ? "Stop" : "Reconnect", exact: true }).click();
+		else {
+			const rows = forwardRows(page, step.target ?? "");
+			const row = step.local ? rows.filter({ has: forwardAtPort(page, step.local) }) : rows;
+			await row.getByRole("button", { name: step.operation === "stop" ? "Stop" : "Reconnect", exact: true }).click();
+		}
 	},
 	async expectForwardNotice(page, step) {
 		const alerts = page.getByRole("tabpanel").locator('[data-slot="alert"]');
@@ -50,10 +59,10 @@ export const liveSessionActions = {
 		const rows = forwardRows(page, step.target);
 		if (step.count === 0) await rows.waitFor({ state: "hidden" });
 		else {
-			await rows.getByText(step.status, { exact: true }).waitFor();
+			const row = rows.filter({ has: forwardAtPort(page, step.local) });
+			await row.getByText(step.status, { exact: true }).waitFor();
 			if (await rows.count() !== step.count) throw new Error("Forward duplicated or missing");
-			await rows.getByText(`127.0.0.1:${step.local}`, { exact: false }).first().waitFor();
-			if (step.resolved) await rows.getByText(step.resolved, { exact: false }).first().waitFor();
+			if (step.resolved) await row.getByText(step.resolved, { exact: false }).first().waitFor();
 		}
 	},
 	async execControl(page, step) {
