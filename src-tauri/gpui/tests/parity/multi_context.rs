@@ -69,6 +69,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             window.find("resource-table-summary").label(),
             Some(string(step, "text"))
         ),
+        "clickMapContextTrigger" => window.click("map-context", cx),
         "selectMapContext" => {
             window.click("map-context", cx);
             window.render_frame(cx);

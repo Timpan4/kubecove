@@ -14,9 +14,10 @@ use super::{Inspector, overlay_motion::Overlay};
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Global, KeyBinding, KeyDownEvent, SharedString, Window,
-    actions, deferred, div, prelude::*, px,
+    AnyElement, App, Bounds, ClickEvent, Context, Global, KeyBinding, KeyDownEvent, MouseDownEvent,
+    Pixels, SharedString, Window, actions, deferred, div, prelude::*, px,
 };
+use std::{cell::Cell, rc::Rc};
 
 /// The trigger's key context. Its bindings outrank the window root's.
 const CONTEXT: &str = "MapContextSelect";
@@ -43,11 +44,15 @@ pub(super) fn bind(cx: &mut App) {
 impl Inspector {
     /// Closes the options and lets the key reach the root's focus traversal.
     fn leave_map_context(&mut self, _: &LeaveMapContext, _: &mut Window, cx: &mut Context<Self>) {
+        self.close_map_context(cx);
+        cx.propagate();
+    }
+
+    fn close_map_context(&mut self, cx: &mut Context<Self>) {
         if self.map.context_open {
             self.map.context_open = false;
             cx.notify();
         }
-        cx.propagate();
     }
 
     /// The context the map reads: the chosen one while it is still a workspace
@@ -109,16 +114,12 @@ impl Inspector {
             "enter" | "space" => {
                 match highlight.and_then(|index| contexts.get(index)) {
                     Some(context) => self.choose_map_context(context.clone(), cx),
-                    None => {
-                        self.map.context_open = false;
-                        cx.notify();
-                    }
+                    None => self.close_map_context(cx),
                 }
                 return true;
             }
             "escape" => {
-                self.map.context_open = false;
-                cx.notify();
+                self.close_map_context(cx);
                 return true;
             }
             _ => return false,
@@ -135,6 +136,7 @@ impl Inspector {
         let current = self.map_context().to_owned();
         let open = self.map.context_open;
         let highlight = self.map.context_highlight;
+        let trigger_bounds = open.then(|| Rc::new(Cell::new(None::<Bounds<Pixels>>)));
         let shown = self.overlay_motion.sample(Overlay::MapContext, open);
         let popup = shown.map(|shown| {
             deferred(
@@ -157,6 +159,19 @@ impl Inspector {
                         .border_color(Tokens::border())
                         .bg(Tokens::surface2())
                         .shadow_lg()
+                        .when_some(trigger_bounds.clone(), |panel, trigger_bounds| {
+                            panel.on_mouse_down_out(cx.listener(
+                                move |this, event: &MouseDownEvent, _, cx| {
+                                    // The trigger handles its own click after this press.
+                                    if !trigger_bounds
+                                        .get()
+                                        .is_some_and(|bounds| bounds.contains(&event.position))
+                                    {
+                                        this.close_map_context(cx);
+                                    }
+                                },
+                            ))
+                        })
                         .children(contexts.into_iter().enumerate().map(|(index, context)| {
                             let checked = context == current;
                             div()
@@ -220,8 +235,7 @@ impl Inspector {
                                 return;
                             }
                             if this.map.context_open {
-                                this.map.context_open = false;
-                                cx.notify();
+                                this.close_map_context(cx);
                             } else {
                                 this.open_map_context(cx);
                             }
@@ -235,6 +249,11 @@ impl Inspector {
                             }
                         })),
                 )
+                .when_some(trigger_bounds, |picker, trigger_bounds| {
+                    picker.on_children_prepainted(move |bounds, _, _| {
+                        trigger_bounds.set(bounds.first().copied());
+                    })
+                })
                 .children(popup)
                 .into_any_element(),
         )
