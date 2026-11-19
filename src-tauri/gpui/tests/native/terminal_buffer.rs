@@ -198,6 +198,58 @@ fn saved_cursor_and_attributes_survive_a_width_change() {
     );
 }
 
+#[test]
+fn csi_and_dec_share_the_saved_cursor_and_attributes() {
+    for (save, restore) in [
+        (b"\x1b[s".as_slice(), b"\x1b8".as_slice()),
+        (b"\x1b7".as_slice(), b"\x1b[u".as_slice()),
+    ] {
+        let mut terminal = parser(4, 8);
+        terminal.process(b"\x1b[31mA");
+        terminal.process(save);
+        terminal.process(b"\x1b[32mB");
+        terminal.process(restore);
+        terminal.process(b"X");
+        let screen = terminal.screen();
+        assert_eq!(screen.contents(), "AX", "{save:?}, {restore:?}");
+        assert_eq!(screen.cell(0, 1).unwrap().fgcolor(), vt100::Color::Idx(1));
+    }
+}
+
+#[test]
+fn split_csi_cursor_restore_keeps_the_logical_position_through_reflow() {
+    let mut terminal = parser(6, 8);
+    // The extra wrapped row is below the saved prompt. Its growth must not move the prompt.
+    for bytes in [
+        b"$ ls\x1b".as_slice(),
+        b"[\x07",
+        b"s\r\nabcdefghijklmn\r\nnext\x1b[",
+    ] {
+        terminal.process(bytes);
+    }
+    resize(&mut terminal, n(6), n(6));
+    terminal.process(b"uX");
+    assert_eq!(contents(&terminal), "$ lsX\nabcdefghijklmn\nnext");
+}
+
+#[test]
+fn csi_cursor_dispatch_ignores_private_intermediate_and_cancelled_sequences() {
+    let mut terminal = parser(4, 8);
+    terminal.process(b"A\x1b7B\x1b[?s\x1b[ s\x1b[\x18s\x1b[?u\x1b[ u\x1b[\x1auC\x1b8X");
+    assert_eq!(terminal.screen().contents(), "AXsuC");
+}
+
+#[test]
+fn csi_restore_preserves_pending_wrap_and_screen_relative_position() {
+    let mut terminal = parser(4, 8);
+    terminal.process(b"12345678\x1b[s\r\nnext\x1b[uX");
+    assert_eq!(terminal.screen().contents(), "12345678Xext");
+
+    let mut terminal = parser(4, 8);
+    terminal.process(b"zero\r\nA\x1b[s\r\n2\r\n3\r\n4\x1b[uX");
+    assert_eq!(terminal.screen().contents(), "A\n2X\n3\n4");
+}
+
 // Failure mode: the saved cell starts a continuation row, and the replay is
 // still at the end of the previous row with autowrap pending.
 #[test]

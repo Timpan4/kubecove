@@ -6,7 +6,9 @@
 // (see AGENTS.md "GPUI work" for the build environment and lock). Each latency writes
 // speed-<ms>.json (the binary's report), requests-<ms>.json (every request the fixture served)
 // and stderr-<ms>.log (the client's `[kubecove:http]` and `[kubecove:load]` lines).
+// SIGINT and SIGTERM stop the current binary, preserve diagnostics and skip remaining latencies.
 import { mkdir, writeFile } from "node:fs/promises";
+import { constants } from "node:os";
 import { join, resolve } from "node:path";
 import { stringify } from "yaml";
 import { MEMORY_FIXTURE_ROWS, type MemoryFixture, startMemoryFixture } from "../e2e/harness/memory-fixture";
@@ -27,21 +29,24 @@ const fixtureSize = fixtureOption;
 const latencies = option("--latency-ms", "0,25").split(",").map(Number);
 const out = resolve(option("--out", join("e2e", "artifacts", `gpui-speed-${new Date().toISOString().replace(/[:.]/g, "-")}`)));
 if (!binary || !(await Bun.file(binary).exists())) throw new Error("--bin must name the built speed test binary");
-await mkdir(out, { recursive: true });
 
 type Action = { label: string; startEpochMs: number; endEpochMs: number };
 
-for (const latencyMs of latencies) {
+async function measureLatency(latencyMs: number, signal: AbortSignal) {
 	const directory = join(out, `fixture-${latencyMs}`);
+	const requests = join(out, `requests-${latencyMs}.json`);
+	const stderr = join(out, `stderr-${latencyMs}.log`);
 	// An isolated HOME keeps the client away from the user's kubeconfig and settings.
 	const home = join(directory, "home");
 	await mkdir(home, { recursive: true });
+	signal.throwIfAborted();
 	const fixture = await startMemoryFixture(fixtureSize, directory, { latencyMs });
 	const report = join(out, `speed-${latencyMs}.json`);
 	// Both servers keep the runner alive, so they stop on every path out of this run.
 	let control: ReturnType<typeof Bun.serve> | undefined;
-	let code: number;
+	const failures: unknown[] = [];
 	try {
+		signal.throwIfAborted();
 		control = Bun.serve({
 			hostname: "127.0.0.1", port: 0,
 			fetch(request) {
@@ -60,6 +65,7 @@ for (const latencyMs of latencies) {
 			"current-context": `${cluster}-admin`,
 			"users": ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-speed-value" } })),
 		}));
+		signal.throwIfAborted();
 		const child = Bun.spawn([binary], {
 			env: {
 				PATH: process.env.PATH ?? "",
@@ -74,15 +80,32 @@ for (const latencyMs of latencies) {
 				KUBECOVE_SPEED_ROWS: String(fixture.rows),
 			},
 			stdout: "inherit",
-			stderr: Bun.file(join(out, `stderr-${latencyMs}.log`)),
+			stderr: Bun.file(stderr),
+			signal,
+			// A stalled binary may never handle a polite signal. Bun signals only this child.
+			killSignal: "SIGKILL",
 		});
-		code = await child.exited;
-	} finally {
-		control?.stop(true);
-		fixture.stop();
+		const code = await child.exited;
+		signal.throwIfAborted();
+		if (code !== 0) throw new Error(`speed binary exited ${code}`);
+	} catch (cause) {
+		failures.push(cause);
 	}
-	await writeFile(join(out, `requests-${latencyMs}.json`), JSON.stringify(fixture.requests));
-	if (code !== 0) throw new Error(`speed binary exited ${code}; see stderr-${latencyMs}.log`);
+	const [controlStop, fixtureStop] = await Promise.allSettled([
+		Promise.resolve().then(() => control?.stop(true)),
+		Promise.resolve().then(() => fixture.stop()),
+	]);
+	if (controlStop.status === "rejected") failures.push(new Error("Could not stop the speed control server", { cause: controlStop.reason }));
+	if (fixtureStop.status === "rejected") failures.push(new Error("Could not stop the speed fixture server", { cause: fixtureStop.reason }));
+	try {
+		await writeFile(requests, JSON.stringify(fixture.requests));
+	} catch (cause) {
+		failures.push(new Error(`Could not write ${requests}`, { cause }));
+	}
+	if (signal.aborted && !failures.includes(signal.reason)) failures.unshift(signal.reason);
+	if (failures.length > 0) {
+		throw new AggregateError(failures, `Speed run at ${latencyMs} ms failed. Diagnostics in ${stderr} and ${requests}`);
+	}
 	const actions: Action[] = (await Bun.file(report).json()).actions;
 	// Server-side reads per action, watches included, keyed by method and path without query.
 	const perAction = actions.map((action) => {
@@ -96,4 +119,30 @@ for (const latencyMs of latencies) {
 	});
 	await writeFile(join(out, `reads-${latencyMs}.json`), JSON.stringify(perAction, null, 1));
 	console.log(`speed latency=${latencyMs}ms -> ${report}`);
+}
+
+const cancellation = new AbortController();
+function cancel(signal: "SIGINT" | "SIGTERM") {
+	if (cancellation.signal.aborted) return;
+	process.exitCode = 128 + constants.signals[signal];
+	cancellation.abort(new Error(`Speed run cancelled by ${signal}`));
+}
+const interrupt = () => cancel("SIGINT");
+const terminate = () => cancel("SIGTERM");
+process.on("SIGINT", interrupt);
+process.on("SIGTERM", terminate);
+try {
+	for (const latencyMs of latencies) {
+		cancellation.signal.throwIfAborted();
+		await measureLatency(latencyMs, cancellation.signal);
+	}
+	cancellation.signal.throwIfAborted();
+} catch (error) {
+	process.exitCode ??= 1;
+	// Bun prints the nested failures but omits the aggregate message.
+	if (error instanceof AggregateError) console.error(error.message);
+	console.error(error);
+} finally {
+	process.off("SIGINT", interrupt);
+	process.off("SIGTERM", terminate);
 }
