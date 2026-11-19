@@ -50,6 +50,22 @@
         { "action": "expectSidebarReveal", "path": ["Workloads", "Pod"], "visible": true, "highlighted": false },
         { "action": "expectSidebarReveal", "path": ["Workloads"], "visible": true, "highlighted": false }
       ]
+    },
+    {
+      "id": "sidebar-reveal.custom-kind-selected",
+      "title": "Custom Resources exposes the selected kind and identifies it when the section is collapsed",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "openCustomKind", "kind": "Kustomization", "surface": "sidebar" },
+        { "action": "expectSidebarRow", "path": ["Custom Resources", "kustomize.toolkit.fluxcd.io", "Kustomization"], "visible": true, "selected": true },
+        { "action": "sidebarToggle", "path": ["Custom Resources"] },
+        { "action": "expectSidebarRow", "path": ["Custom Resources", "kustomize.toolkit.fluxcd.io", "Kustomization"], "visible": false, "selected": false },
+        { "action": "expectSidebarRow", "path": ["Custom Resources"], "visible": true, "selected": false },
+        { "action": "expectSidebarReveal", "path": ["Custom Resources"], "visible": true, "highlighted": true },
+        { "action": "sidebarToggle", "path": ["Custom Resources"] },
+        { "action": "expectSidebarRow", "path": ["Custom Resources", "kustomize.toolkit.fluxcd.io", "Kustomization"], "visible": true, "selected": true },
+        { "action": "expectSidebarReveal", "path": ["Custom Resources"], "visible": true, "highlighted": false }
+      ]
     }
   ]
 }
