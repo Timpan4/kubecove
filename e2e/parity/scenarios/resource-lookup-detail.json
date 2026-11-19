@@ -1,0 +1,62 @@
+{
+  "fixture": "browser-mocks",
+  "context": "mock-dev",
+  "scenarios": [
+    {
+      "id": "resources.lookup-with-detail.out-of-view",
+      "title": "An exact resource target can open a row out of view below an open detail",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "mock-dev" },
+        { "action": "expectDetailContext", "context": "mock-dev" },
+        { "action": "openResource", "kind": "Secret", "namespace": "payments", "name": "payments-api-secrets", "context": "admin@solid-k8s" },
+        { "action": "expectDetail", "kind": "Secret", "namespace": "payments", "name": "payments-api-secrets" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" }
+      ]
+    },
+    {
+      "id": "resources.lookup-with-detail.implicit-unique",
+      "title": "A resource unique to the secondary context can open with another detail already open",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "platform" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "platform", "name": "metrics-gateway", "context": "mock-dev" },
+        { "action": "expectDetailContext", "context": "mock-dev" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "platform", "name": "edge-relay" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "platform", "name": "edge-relay" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" }
+      ]
+    },
+    {
+      "id": "resources.lookup-with-detail.implicit-ambiguous",
+      "title": "A context-less lookup rejects a resource in both clusters with a detail open",
+      "steps": [
+        { "action": "openLauncher" },
+        { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
+        { "action": "saveWorkspace" },
+        { "action": "openSavedWorkspace", "name": "Parity mock workspace" },
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "payments" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "mock-dev" },
+        { "action": "expectDetailContext", "context": "mock-dev" },
+        { "action": "expectAmbiguousResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
+        { "action": "expectDetailContext", "context": "mock-dev" },
+        { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "admin@solid-k8s" },
+        { "action": "expectDetailContext", "context": "admin@solid-k8s" }
+      ]
+    }
+  ]
+}

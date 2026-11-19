@@ -32,10 +32,15 @@ export const resourceActions = {
 	async expectSearch(page, step) {
 		if (await resourceSearch(page).inputValue() !== step.value) throw new Error("Search changed after refresh");
 	},
-	...sharedActions(["expectResource", "openResource"], async (page, step) => {
+	...sharedActions(["expectResource", "openResource", "expectAmbiguousResource"], async (page, step) => {
 		const row = resourceRow(page, step);
-		await row.waitFor({ state: "visible" });
-		if (await row.count() !== 1) throw new Error("Resource row is ambiguous");
+		await row.first().waitFor({ state: "visible" });
+		const count = await row.count();
+		if (step.action === "expectAmbiguousResource") {
+			if (count < 2) throw new Error(`Expected an ambiguous resource row, found ${count} matches`);
+			return;
+		}
+		if (count !== 1) throw new Error(`Expected one resource row, found ${count} matches`);
 		if (step.action === "openResource") await row.getByRole("button", { name: `Open resource ${step.name}`, exact: true }).click();
 	}),
 	async expectDetail(page, step) {
