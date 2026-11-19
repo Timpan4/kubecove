@@ -5,17 +5,17 @@
 // roles in release builds; never text content or cluster data. Entries stay in
 // memory; the dev server additionally mirrors them to e2e/artifacts.
 import { isDiagnosticsEnabled, MAX_FRONTEND_EVENTS } from "./diagnostics";
-import {
-	type CommandWindow,
-	type EventMark,
-	foldCommands,
-	type InteractionCommand,
-	withUnfoldedCommands,
-} from "./interaction-commands";
 import { addFrame, emptyHistogram, type FrameHistogram, frameDeltas, percentileMs } from "./interaction-frames";
 import { describeTarget, resetSourceCache, sourceOf, subtreeSource } from "./interaction-sources";
 
 type InteractionKind = "click" | "drag" | "key" | "scroll";
+
+interface InteractionCommand {
+	cmd: string;
+	ms: number;
+	ok: boolean;
+	startOffsetMs: number;
+}
 
 export interface RecordedInteraction {
 	id: number;
@@ -51,6 +51,7 @@ interface Segment {
 	attributes: number;
 	text: number;
 	bySource: Map<string, number>;
+	commands: InteractionCommand[];
 }
 
 interface Session {
@@ -61,13 +62,12 @@ interface Session {
 
 interface Recorded {
 	interaction: RecordedInteraction;
-	commands: CommandWindow;
+	startedAt: number;
+	endedAt: number;
 }
 
 const DEV_SINK = process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS ?? "";
 const recorded: Recorded[] = [];
-// The newest diagnostic event whose command, if any, is in its interaction's commands.
-let foldedThrough: EventMark | undefined;
 // The session histogram's median is the refresh interval.
 let sessionFrames = emptyHistogram();
 let session: Session | null = null;
@@ -137,15 +137,12 @@ function flush(): void {
 	if (!current) return;
 	const segment = current;
 	const endedAt = performance.now();
-	// The interaction shares this array with its window, so folds fill both.
-	const commands = isDiagnosticsEnabled() ? [] : undefined;
-	const interaction = serialize(segment, endedAt, commands);
+	const interaction = serialize(segment, endedAt, isDiagnosticsEnabled() ? segment.commands : undefined);
 	current = null;
 	segment.flushed = interaction;
-	recorded.push({ interaction, commands: { start: segment.startedAt, end: endedAt, commands } });
+	recorded.push({ interaction, startedAt: segment.startedAt, endedAt });
 	// Same retention as frontend diagnostic events.
 	if (recorded.length > MAX_FRONTEND_EVENTS) recorded.splice(0, recorded.length - MAX_FRONTEND_EVENTS);
-	if (commands) foldedThrough = foldCommands(recorded.map((entry) => entry.commands), foldedThrough);
 	// The dev sink receives the commands that had finished by the time it posts.
 	if (segment.pendingPaints === 0) postToDevSink(interaction);
 	else awaitingPaint.add(segment);
@@ -177,6 +174,7 @@ function begin(kind: InteractionKind, event: Event): void {
 		attributes: 0,
 		text: 0,
 		bySource: new Map(),
+		commands: [],
 	};
 }
 
@@ -295,16 +293,30 @@ export function stopInteractionRecording(): void {
 	resetSourceCache();
 }
 
-/**
- * Recorded interactions, with commands that finished after the last flush. With no
- * interaction running, those move into their interactions first; while one runs
- * they are only added, because moving the mark would skip its commands.
- */
+/** A completion belongs to the retained interaction that contains its start. */
+export function recordInteractionCommand(cmd: string, startedAt: number, ms: number, ok: boolean): void {
+	if (current && startedAt >= current.startedAt) {
+		current.commands.push({ cmd, ms: Math.round(ms), ok, startOffsetMs: Math.round(startedAt - current.startedAt) });
+		return;
+	}
+
+	let low = 0;
+	let high = recorded.length;
+	while (low < high) {
+		const middle = (low + high) >>> 1;
+		if (recorded[middle].startedAt <= startedAt) low = middle + 1;
+		else high = middle;
+	}
+	const entry = recorded[low - 1];
+	if (!entry || startedAt >= entry.endedAt) return;
+	entry.interaction.commands?.push({ cmd, ms: Math.round(ms), ok, startOffsetMs: Math.round(startedAt - entry.startedAt) });
+}
+
 export function getRecordedInteractions(): RecordedInteraction[] {
-	const windows = recorded.map((entry) => entry.commands);
-	if (!current) foldedThrough = foldCommands(windows, foldedThrough);
-	const commands = withUnfoldedCommands(windows, foldedThrough);
-	return recorded.map(({ interaction }, index) => ({ ...interaction, commands: commands[index] }));
+	return recorded.map(({ interaction }) => ({
+		...interaction,
+		commands: interaction.commands && [...interaction.commands],
+	}));
 }
 
 export function clearRecordedInteractions(): void {

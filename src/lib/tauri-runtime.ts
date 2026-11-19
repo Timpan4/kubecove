@@ -1,5 +1,6 @@
 import { Channel, invoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import { diagnosticLog, diagnosticResultSummary, isDiagnosticsEnabled } from "./diagnostics";
+import { recordInteractionCommand } from "./interaction-recorder";
 import { markProfileIpc, markStartup } from "./startup-marks";
 import { IS_DEV_BUILD, IS_WEB_RUNTIME } from "./build-env";
 
@@ -44,18 +45,22 @@ export async function traceInvoke<T, Args extends object>(
 	});
 	try {
 		const result = await call();
+		const ms = performance.now() - started;
 		diagnosticLog("tauri.invoke.done", {
 			cmd,
-			ms: performance.now() - started,
+			ms: Math.round(ms),
 			result: diagnosticResultSummary(result),
-		}, started);
+		});
+		if (isDiagnosticsEnabled()) recordInteractionCommand(cmd, started, ms, true);
 		return result;
 	} catch (error) {
+		const ms = performance.now() - started;
 		diagnosticLog("tauri.invoke.error", {
 			cmd,
-			ms: performance.now() - started,
+			ms: Math.round(ms),
 			error: errorMessage(error),
-		}, started);
+		});
+		if (isDiagnosticsEnabled()) recordInteractionCommand(cmd, started, ms, false);
 		throw error;
 	}
 }
