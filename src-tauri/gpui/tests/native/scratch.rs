@@ -1,6 +1,7 @@
 //! A test's own directory under `.t/` in the checkout, removed when the test ends on any path,
 //! including a failed assertion.
 use std::{
+    io::ErrorKind,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -15,14 +16,23 @@ impl Scratch {
             .join(area);
         std::fs::create_dir_all(&parent)
             .unwrap_or_else(|error| panic!("creating {}: {error}", parent.display()));
-        let path = parent.join(format!(
+        let stem = format!(
             "{name}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
-        ));
-        std::fs::create_dir(&path)
-            .unwrap_or_else(|error| panic!("creating {}: {error}", path.display()));
-        Self(path)
+        );
+        let mut path = parent.join(&stem);
+        let mut suffix = 0_u64;
+        loop {
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                    suffix += 1;
+                    path = parent.join(format!("{stem}-{suffix}"));
+                }
+                Err(error) => panic!("creating {}: {error}", path.display()),
+            }
+        }
     }
 }
 
@@ -90,14 +100,19 @@ mod tests {
     }
 
     #[test]
-    fn scratch_rejects_an_existing_directory_without_touching_its_contents() {
-        let scratch = Scratch::new("scratch-tests", "collision");
-        let sentinel = scratch.join("fixture");
-        fs::write(&sentinel, "existing data").unwrap();
+    fn scratch_uses_a_fresh_directory_when_a_previous_run_left_one_behind() {
+        // Keep a guard for the simulated stale directory so this test can clean it up.
+        let stale = Scratch::new("scratch-tests", "collision");
+        let sentinel = stale.join("fixture");
+        fs::write(&sentinel, "previous run").unwrap();
 
-        let collision = catch_unwind(|| Scratch::new("scratch-tests", "collision"));
+        let fresh = Scratch::new("scratch-tests", "collision");
+        assert_ne!(&*fresh, &*stale);
+        let fresh_path = fresh.to_path_buf();
+        fs::write(fresh.join("fixture"), "new run").unwrap();
+        drop(fresh);
 
-        assert!(collision.is_err());
-        assert_eq!(fs::read_to_string(sentinel).unwrap(), "existing data");
+        assert!(!fresh_path.try_exists().unwrap());
+        assert_eq!(fs::read_to_string(sentinel).unwrap(), "previous run");
     }
 }
