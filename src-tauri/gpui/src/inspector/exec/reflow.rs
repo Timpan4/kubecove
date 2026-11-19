@@ -15,10 +15,10 @@ impl vt100::Callbacks for History {
 pub(super) struct Parser {
     inner: vt100::Parser<History>,
     pub wraps: std::collections::BTreeMap<usize, u16>,
-    erase_scan: EraseScan,
+    sequence_scan: SequenceScan,
 }
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-enum EraseScan {
+enum SequenceScan {
     #[default]
     Ground,
     Escape,
@@ -47,7 +47,7 @@ impl Parser {
         Self {
             inner: vt100::Parser::new_with_callbacks(rows, cols, capacity, callbacks),
             wraps: Default::default(),
-            erase_scan: EraseScan::Ground,
+            sequence_scan: SequenceScan::Ground,
         }
     }
     /// xterm `Terminal.clear()`: drop the history and every row except the
@@ -119,7 +119,8 @@ impl Parser {
         }
     }
     pub fn process(&mut self, bytes: &[u8]) {
-        if bytes.is_ascii() && !bytes.contains(&0x1b) && self.erase_scan == EraseScan::Ground {
+        if bytes.is_ascii() && !bytes.contains(&0x1b) && self.sequence_scan == SequenceScan::Ground
+        {
             self.inner.process(bytes);
             let discarded = self.inner.callbacks().discarded;
             while self
@@ -132,22 +133,35 @@ impl Parser {
             return;
         }
         for byte in bytes {
-            match (self.erase_scan, *byte) {
-                (EraseScan::Escape, b'c') | (EraseScan::History, b'J') => self.wraps.clear(),
-                (EraseScan::Display, b'J') => {
+            let scan = self.sequence_scan;
+            self.sequence_scan = match (scan, *byte) {
+                (_, 0x1b) => SequenceScan::Escape,
+                (SequenceScan::Escape, b'[') => SequenceScan::Csi,
+                (SequenceScan::Csi, b'2') => SequenceScan::Display,
+                (SequenceScan::Csi, b'3') => SequenceScan::History,
+                // The decoder executes these C0 controls inside a sequence and ignores DEL.
+                (
+                    SequenceScan::Escape | SequenceScan::Csi,
+                    0x00..=0x17 | 0x19 | 0x1c..=0x1f | 0x7f,
+                ) => scan,
+                _ => SequenceScan::Ground,
+            };
+            match (scan, *byte) {
+                (SequenceScan::Escape, b'c') | (SequenceScan::History, b'J') => self.wraps.clear(),
+                (SequenceScan::Display, b'J') => {
                     let base =
                         self.inner.callbacks().discarded + self.inner.screen().scrollback_len();
                     self.wraps.retain(|row, _| *row < base);
                 }
+                (SequenceScan::Csi, b's' | b'u') => {
+                    // ESC cancels the CSI in the decoder. Both spellings use the
+                    // same vt100 cursor slot, including its mapping during reflow.
+                    let dec = if *byte == b's' { b"\x1b7" } else { b"\x1b8" };
+                    self.inner.process(dec);
+                    continue;
+                }
                 _ => {}
             }
-            self.erase_scan = match (self.erase_scan, *byte) {
-                (_, 0x1b) => EraseScan::Escape,
-                (EraseScan::Escape, b'[') => EraseScan::Csi,
-                (EraseScan::Csi, b'2') => EraseScan::Display,
-                (EraseScan::Csi, b'3') => EraseScan::History,
-                _ => EraseScan::Ground,
-            };
             let screen = self.inner.screen();
             let (row, col) = screen.cursor_position();
             let cols = screen.size().1.get();
