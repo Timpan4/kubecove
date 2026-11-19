@@ -1,5 +1,6 @@
 #![cfg(any(target_os = "linux", target_os = "macos"))]
 
+use super::scratch::Scratch;
 use kubecove_gpui::backend::{Backend, NativeBackend};
 use kubecove_lib::commands::REQUEST_READ_TIMEOUT;
 use std::{
@@ -20,12 +21,8 @@ fn kubeconfig_plugin_authenticates_with_a_desktop_path() {
         run_backend(PathBuf::from(directory));
         return;
     }
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(format!("credential-plugin-{}", std::process::id()));
-    fs::create_dir_all(&directory).unwrap();
-    let fixture = Fixture(directory);
-    let bin = fixture.0.join("bin");
+    let fixture = Scratch::new("credential-plugin-tests", "plugin");
+    let bin = fixture.join("bin");
     fs::create_dir(&bin).unwrap();
     script(
         &bin.join("kubecove-fixture-kubectl"),
@@ -36,7 +33,7 @@ fn kubeconfig_plugin_authenticates_with_a_desktop_path() {
         r#"test "$1" = get-token || exit 1
 printf '%s' '{"apiVersion":"client.authentication.k8s.io/v1","kind":"ExecCredential","status":{"token":"synthetic-oidc-fixture","expirationTimestamp":"2099-01-01T00:00:00Z"}}'"#,
     );
-    let shell = fixture.0.join("shell");
+    let shell = fixture.join("shell");
     script(
         &shell,
         "printf '\\036KUBECOVE_PATH\\037%s\\n' \"$KUBECOVE_PLUGIN_FIXTURE/bin\"",
@@ -49,11 +46,11 @@ printf '%s' '{"apiVersion":"client.authentication.k8s.io/v1","kind":"ExecCredent
             "credential_plugin::kubeconfig_plugin_authenticates_with_a_desktop_path",
             "--nocapture",
         ])
-        .env("KUBECOVE_PLUGIN_FIXTURE", &fixture.0)
+        .env("KUBECOVE_PLUGIN_FIXTURE", &*fixture)
         .env("SHELL", shell)
         .env("PATH", "/usr/bin:/bin")
-        .env("KUBECONFIG", fixture.0.join("config.json"));
-    let captured = fixture.0.join("child.log");
+        .env("KUBECONFIG", fixture.join("config.json"));
+    let captured = fixture.join("child.log");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -76,13 +73,9 @@ printf '%s' '{"apiVersion":"client.authentication.k8s.io/v1","kind":"ExecCredent
 
 #[test]
 fn watchdog_kills_and_reaps_a_stalled_child_with_its_output() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(format!("credential-watchdog-{}", std::process::id()));
-    fs::create_dir_all(&directory).unwrap();
-    let fixture = Fixture(directory);
-    let ready = fixture.0.join("ready");
-    let fifo = fixture.0.join("wait");
+    let fixture = Scratch::new("credential-plugin-tests", "watchdog");
+    let ready = fixture.join("ready");
+    let fifo = fixture.join("wait");
     assert!(
         Command::new("mkfifo")
             .arg(&fifo)
@@ -90,7 +83,7 @@ fn watchdog_kills_and_reaps_a_stalled_child_with_its_output() {
             .unwrap()
             .success()
     );
-    let captured = fixture.0.join("child.log");
+    let captured = fixture.join("child.log");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -213,12 +206,4 @@ fn run_backend(directory: PathBuf) {
 fn script(path: &std::path::Path, body: &str) {
     fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
-}
-
-struct Fixture(PathBuf);
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.0).unwrap();
-    }
 }

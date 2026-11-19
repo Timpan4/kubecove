@@ -1,15 +1,13 @@
 //! Storage is process-global in the shared backend. Isolate each failure mode
 //! in a subprocess with a worktree-local directory and no user kubeconfig.
+use super::scratch::Scratch;
 use kubecove_gpui::backend::{Backend, NativeBackend};
 use std::{path::PathBuf, process::Command};
 
 #[test]
 fn storage_survives_restart_and_reports_failures() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.t");
-    std::fs::create_dir_all(&root).unwrap();
+    let directory = Scratch::new("settings-tests", "storage");
     for case in ["persist", "reopen", "corrupt", "write-error"] {
-        let directory = root.join(format!("native-settings-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
         if case == "corrupt" {
             std::fs::write(directory.join("kubeconfig-sources.json"), "{").unwrap();
         }
@@ -24,16 +22,13 @@ fn storage_survives_restart_and_reports_failures() {
                 "--nocapture",
             ])
             .env("KUBECOVE_SETTINGS_CASE", case)
-            .env("KUBECOVE_SETTINGS_DIRECTORY", &directory)
-            .env("HOME", &directory)
-            .env("USERPROFILE", &directory)
+            .env("KUBECOVE_SETTINGS_DIRECTORY", &*directory)
+            .env("HOME", &*directory)
+            .env("USERPROFILE", &*directory)
             .env("KUBECONFIG", directory.join("missing-kubeconfig"))
             .status()
             .unwrap();
         assert!(result.success(), "storage case {case} failed");
-        if case == "write-error" {
-            std::fs::remove_dir_all(directory).unwrap();
-        }
     }
 }
 
