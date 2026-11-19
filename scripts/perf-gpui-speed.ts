@@ -44,8 +44,7 @@ async function measureLatency(latencyMs: number, signal: AbortSignal) {
 	const report = join(out, `speed-${latencyMs}.json`);
 	// Both servers keep the runner alive, so they stop on every path out of this run.
 	let control: ReturnType<typeof Bun.serve> | undefined;
-	const failures: Error[] = [];
-	const runFailure = `Speed run at ${latencyMs} ms failed. Diagnostics in ${stderr} and ${requests}`;
+	const failures: unknown[] = [];
 	try {
 		signal.throwIfAborted();
 		control = Bun.serve({
@@ -90,7 +89,7 @@ async function measureLatency(latencyMs: number, signal: AbortSignal) {
 		signal.throwIfAborted();
 		if (code !== 0) throw new Error(`speed binary exited ${code}`);
 	} catch (cause) {
-		failures.push(new Error(runFailure, { cause }));
+		failures.push(cause);
 	}
 	const [controlStop, fixtureStop] = await Promise.allSettled([
 		Promise.resolve().then(() => control?.stop(true)),
@@ -103,10 +102,10 @@ async function measureLatency(latencyMs: number, signal: AbortSignal) {
 	} catch (cause) {
 		failures.push(new Error(`Could not write ${requests}`, { cause }));
 	}
-	if (signal.aborted && !failures.some((failure) => failure.cause === signal.reason)) {
-		failures.unshift(new Error(runFailure, { cause: signal.reason }));
+	if (signal.aborted && !failures.includes(signal.reason)) failures.unshift(signal.reason);
+	if (failures.length > 0) {
+		throw new AggregateError(failures, `Speed run at ${latencyMs} ms failed. Diagnostics in ${stderr} and ${requests}`);
 	}
-	if (failures.length > 0) throw new AggregateError(failures);
 	const actions: Action[] = (await Bun.file(report).json()).actions;
 	// Server-side reads per action, watches included, keyed by method and path without query.
 	const perAction = actions.map((action) => {
@@ -140,6 +139,8 @@ try {
 	cancellation.signal.throwIfAborted();
 } catch (error) {
 	process.exitCode ??= 1;
+	// Bun prints the nested failures but omits the aggregate message.
+	if (error instanceof AggregateError) console.error(error.message);
 	console.error(error);
 } finally {
 	process.off("SIGINT", interrupt);
