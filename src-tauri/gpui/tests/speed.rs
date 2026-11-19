@@ -10,7 +10,8 @@
 //! the live ownership-map pulse. A frame invalidated only by the pulse does not reset their
 //! quiet window. `mapPulseDraws` counts those frames through the end of the quiet window.
 //! For these actions, draw timestamps report content draws and UI work ends at the last
-//! content draw. Network accounting and profiling spans still cover the whole sample.
+//! content draw's completion, including its submit. Network accounting and profiling spans
+//! still cover the whole sample.
 
 // `frames` uses all of the shared context; this target does not call `settle`.
 #[allow(dead_code)]
@@ -476,9 +477,9 @@ impl Driver {
     /// One frame turn inside a sample. A drawn frame joins the sample's draws.
     fn tick(&mut self, filter: DrawFilter) -> (bool, bool) {
         let before =
-            (filter == DrawFilter::IgnoreMapPulseOnly).then(|| self.cx.sample_content_end());
+            (filter == DrawFilter::IgnoreMapPulseOnly).then(|| self.cx.sample_content_frames());
         let (_, drew) = self.cx.tick();
-        let content_drew = before.map_or(drew, |before| self.cx.sample_content_end() > before);
+        let content_drew = before.map_or(drew, |before| self.cx.sample_content_frames() > before);
         if content_drew {
             self.draws.push(ms(self.sample_start.elapsed()));
         }

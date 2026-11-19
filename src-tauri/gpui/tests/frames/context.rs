@@ -113,12 +113,14 @@ impl FrameContext {
         });
     }
 
+    /// The index after the last content draw. Submitting that draw later can
+    /// advance the settlement time without advancing this index.
     #[allow(dead_code, reason = "Only speed samples use content-draw quiescence")]
-    pub fn sample_content_end(&self) -> Instant {
+    pub fn sample_content_frames(&self) -> usize {
         self.capture
             .as_ref()
             .expect("active measurement")
-            .content_settled
+            .content_frames
     }
 
     #[allow(dead_code, reason = "Only speed samples report map pulse draws")]
