@@ -1,40 +1,31 @@
 //! Native command round trips, view presentation spans and render counters.
 //! Payloads never enter the trace.
 use crate::backend::Read;
+use crate::interactions::CommandCapture;
 use std::{
     collections::{BTreeMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::Instant,
 };
 
 // Match MAX_FRONTEND_EVENTS in src/lib/diagnostics.ts.
-const MAX_EVENTS: usize = 500;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TimingKind {
-    /// A backend command's round trip, from the UI's request to its result.
-    Command,
-    /// A view's request to the end of painting the first frame that draws it.
-    Presentation,
-}
+pub(crate) const MAX_EVENTS: usize = 500;
 
 #[derive(Clone, Debug)]
 pub struct Timing {
-    /// Order of recording, as the web's diagnostic event `id`. Never reused,
-    /// so a reader can tell which timings arrived after an earlier snapshot.
-    pub seq: u64,
     pub name: &'static str,
-    pub kind: TimingKind,
-    pub started: Instant,
     pub duration_ms: f64,
     pub success: bool,
 }
 #[derive(Default)]
 struct State {
     enabled: bool,
-    epoch: u64,
-    next_seq: u64,
+    // Latency invalidates in-flight timings when cleared or preferences are reapplied.
+    latency_epoch: u64,
+    // A pending recording stays eligible until diagnostics is toggled.
+    recording_epoch: u64,
     events: VecDeque<Timing>,
+    interaction_commands: Weak<CommandCapture>,
     /// Renders per name, as the web's `*.render` diagnostic counters.
     counters: BTreeMap<&'static str, u64>,
 }
@@ -43,14 +34,20 @@ pub struct Timings(Arc<Mutex<State>>);
 impl Timings {
     pub fn set_enabled(&self, enabled: bool) {
         let mut state = self.0.lock().expect("timing state");
+        if state.enabled != enabled {
+            state.recording_epoch = state.recording_epoch.wrapping_add(1);
+        }
         state.enabled = enabled;
-        state.epoch = state.epoch.wrapping_add(1);
+        state.latency_epoch = state.latency_epoch.wrapping_add(1);
     }
     pub fn clear(&self) {
         let mut state = self.0.lock().expect("timing state");
         state.events.clear();
         state.counters.clear();
-        state.epoch = state.epoch.wrapping_add(1);
+        state.latency_epoch = state.latency_epoch.wrapping_add(1);
+    }
+    pub(crate) fn capture_interaction_commands(&self, capture: &Arc<CommandCapture>) {
+        self.0.lock().expect("timing state").interaction_commands = Arc::downgrade(capture);
     }
     pub fn snapshot(&self) -> Vec<Timing> {
         self.0
@@ -81,11 +78,11 @@ impl Timings {
         if state.enabled {
             push(
                 &mut state,
-                name,
-                TimingKind::Presentation,
-                started,
-                duration_ms,
-                true,
+                Timing {
+                    name,
+                    duration_ms,
+                    success: true,
+                },
             );
         }
     }
@@ -94,46 +91,43 @@ impl Timings {
         if !state.enabled {
             return read;
         }
-        let epoch = state.epoch;
+        let latency_epoch = state.latency_epoch;
+        let recording_epoch = state.recording_epoch;
+        let (started, owner) = match state.interaction_commands.upgrade() {
+            Some(capture) => capture.start_command(),
+            None => (Instant::now(), Weak::new()),
+        };
         drop(state);
-        let started = Instant::now();
         let collector = self.clone();
         Box::pin(async move {
             let result = read.await;
+            let success = result.is_ok();
+            let duration_ms = started.elapsed().as_secs_f64() * 1000.;
             let mut state = collector.0.lock().expect("timing state");
-            if state.enabled && state.epoch == epoch {
+            if state.enabled && state.latency_epoch == latency_epoch {
                 push(
                     &mut state,
-                    name,
-                    TimingKind::Command,
-                    started,
-                    started.elapsed().as_secs_f64() * 1000.,
-                    result.is_ok(),
+                    Timing {
+                        name,
+                        duration_ms,
+                        success,
+                    },
                 );
+            }
+            if state.enabled
+                && state.recording_epoch == recording_epoch
+                && let Some(owner) = owner.upgrade()
+            {
+                // Export moves the pending vector out of the entry lock before formatting.
+                owner.complete(name, started, duration_ms, success);
             }
             result
         })
     }
 }
 
-fn push(
-    state: &mut State,
-    name: &'static str,
-    kind: TimingKind,
-    started: Instant,
-    duration_ms: f64,
-    success: bool,
-) {
-    let seq = state.next_seq;
-    state.next_seq += 1;
-    state.events.push_back(Timing {
-        seq,
-        name,
-        kind,
-        started,
-        duration_ms,
-        success,
-    });
+fn push(state: &mut State, timing: Timing) {
+    state.events.push_back(timing);
     while state.events.len() > MAX_EVENTS {
         state.events.pop_front();
     }

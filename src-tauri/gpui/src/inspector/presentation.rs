@@ -171,7 +171,7 @@ impl Inspector {
         let timings = self.diagnostics_timings();
         let mut recorder = self.presentation.recorder.borrow_mut();
         if recording {
-            recorder.start();
+            recorder.start(&self.timings);
             // Elements painted before the start, and cached ones, register on a full redraw.
             targets::set_recording(true);
             window.refresh();
@@ -207,7 +207,7 @@ impl Inspector {
     /// their entry ended.
     pub(super) fn interaction_lines(&self) -> (String, usize) {
         let mut recorder = self.presentation.recorder.borrow_mut();
-        (recorder.json_lines(&self.timings), recorder.len())
+        (recorder.json_lines(), recorder.len())
     }
 
     /// Counts this render, starts spans for a changed view and returns the
