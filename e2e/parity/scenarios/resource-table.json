@@ -108,6 +108,34 @@
       ]
     },
     {
+      "id": "resources.table-kind-group-detail-several-releases",
+      "title": "An open resource detail keeps its ungrouped kind expanded across Helm releases until the detail closes",
+      "steps": [
+        { "action": "openResources" },
+        { "action": "selectNamespace", "namespace": "monitoring" },
+        { "action": "openNamespacePicker" },
+        { "action": "toggleNamespace", "namespace": "traefik", "checked": true },
+        { "action": "expectNamespaceTrigger", "label": "monitoring, traefik" },
+        { "action": "closeNamespacePicker" },
+        { "action": "expectResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectResource", "kind": "Deployment", "name": "traefik", "namespace": "traefik" },
+        { "action": "openResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectResourceGroup", "label": "Deployments", "expanded": true },
+        { "action": "toggleResourceGroup", "label": "Deployments" },
+        { "action": "expectDetail", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectResource", "kind": "Deployment", "name": "traefik", "namespace": "traefik" },
+        { "action": "expectResourceGroup", "label": "Deployments", "expanded": true },
+        { "action": "closeDetail" },
+        { "action": "expectDetailClosed" },
+        { "action": "expectResourceGroup", "label": "Deployments", "expanded": false },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "grafana", "namespace": "monitoring" },
+        { "action": "expectNoResource", "kind": "Deployment", "name": "traefik", "namespace": "traefik" },
+        { "action": "expectResource", "kind": "Service", "name": "traefik", "namespace": "traefik" }
+      ]
+    },
+    {
       "id": "resources.ownerref-inherited-owner",
       "title": "A row owned only through its ownerRef groups and filters under its parent's GitOps owner, and follows a live owner change",
       "steps": [
