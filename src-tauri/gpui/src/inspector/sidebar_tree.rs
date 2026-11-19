@@ -81,6 +81,13 @@ pub(super) struct TreeState {
 }
 
 impl TreeState {
+    pub(super) fn contains_selection(&self, path: &str) -> bool {
+        self.selected
+            .as_deref()
+            .and_then(|selected| selected.strip_prefix(path))
+            .is_some_and(|suffix| suffix.starts_with('/'))
+    }
+
     pub(super) fn focused(&self, window: &Window, cx: &App) -> Option<FocusHandle> {
         let focused = window.focused(cx)?;
         self.focus
@@ -335,12 +342,7 @@ impl Inspector {
         );
         let expanded = self.sidebar_tree.open.contains(&path);
         // A collapsed branch that holds the selection shows it in its label.
-        let hides_selection = !expanded
-            && self
-                .sidebar_tree
-                .selected
-                .as_deref()
-                .is_some_and(|selected| selected.starts_with(&format!("{path}/")));
+        let hides_selection = !expanded && self.sidebar_tree.contains_selection(&path);
         let visual = if is_namespace {
             ("folder-tree", Tokens::muted_foreground())
         } else if expandable {

@@ -26,6 +26,23 @@ pub(super) fn sidebar_row_id(path: &[&str]) -> String {
     }
 }
 
+fn custom_kind_row(
+    window: &gpui_kit::Window,
+    group: &str,
+    kind: &str,
+) -> Option<gpui_kit::test::ElementSnapshot> {
+    let prefix = format!("custom-kind:{group}/");
+    let mut rows = window.find_all_by_label(kind).into_iter().filter(
+        |row| matches!(locate::id(row), gpui_kit::ElementId::Name(id) if id.starts_with(&prefix)),
+    );
+    let row = rows.next();
+    assert!(
+        rows.next().is_none(),
+        "ambiguous custom kind row: {group}/{kind}"
+    );
+    row
+}
+
 pub(super) fn click_sidebar(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, id: String) {
     let position = window.find(id).bounds().center();
     window.pointer_move(position, None, cx);
@@ -133,12 +150,16 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
             let id = sidebar_row_id(&path);
             match string(step, "action") {
                 "expectSidebarRow" => {
-                    // The namespace list builds only the rows in view, and
-                    // Playwright finds a row the sidebar has scrolled away.
-                    if step["visible"] == true && window.try_find(id.clone()).is_none() {
-                        seek(window, cx, "sidebar-tree", &id);
-                    }
-                    let found = window.try_find(id);
+                    let found = if let ["Custom Resources", group, kind] = path.as_slice() {
+                        custom_kind_row(window, group, kind)
+                    } else {
+                        // The namespace list builds only the rows in view, and
+                        // Playwright finds a row the sidebar has scrolled away.
+                        if step["visible"] == true && window.try_find(id.clone()).is_none() {
+                            seek(window, cx, "sidebar-tree", &id);
+                        }
+                        window.try_find(id)
+                    };
                     assert_eq!(found.is_some(), step["visible"] == true, "{step}");
                     if let Some(row) = found {
                         assert_eq!(row.selected(), Some(step["selected"] == true), "{step}");
@@ -146,7 +167,12 @@ pub(super) fn apply(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step:
                 }
                 action => {
                     let id = if action == "sidebarToggle" {
-                        format!("tree-toggle:{joined}")
+                        let toggle = if path == ["Custom Resources"] {
+                            "nav-toggle"
+                        } else {
+                            "tree-toggle"
+                        };
+                        format!("{toggle}:{joined}")
                     } else {
                         id
                     };

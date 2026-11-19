@@ -204,6 +204,10 @@ impl Inspector {
                 } else {
                     node.target == self.page && node.target != Page::Resources
                 };
+                let hides_selection = custom
+                    && self.page == Page::Resources
+                    && !self.live.custom_open
+                    && self.sidebar_tree.contains_selection(node.label);
                 let target = node.target;
                 let focus = self.sidebar_tree.focus_handle(node.label, cx);
                 vec![
@@ -239,6 +243,9 @@ impl Inspector {
                     .role(gpui_kit::Role::TreeItem)
                     .aria_selected(selected)
                     .when(custom, |row| row.aria_expanded(self.live.custom_open))
+                    .when(hides_selection, |row| {
+                        row.aria_description(super::sidebar_tree::CONTAINS_SELECTION)
+                    })
                     .into_any_element(),
                 ]
             })

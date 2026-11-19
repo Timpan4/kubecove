@@ -266,13 +266,21 @@ impl Inspector {
             .map(|kind| {
                 let kind = kind.clone();
                 let label = kind.kind.clone();
+                let path = format!(
+                    "{CUSTOM_RESOURCES}/{}",
+                    super::kind_selection::identity(&kind)
+                );
+                let selected = self.page == Page::Resources
+                    && self.sidebar_tree.selected.as_deref() == Some(path.as_str());
                 let row = div()
                     .id(SharedString::from(format!(
                         "custom-kind:{}:{}",
                         kind.api_version, kind.kind
                     )))
                     .test_support()
+                    .role(gpui_kit::Role::TreeItem)
                     .aria_label(label.clone())
+                    .aria_selected(selected)
                     .aria_description(format!("{} / {}", kind.api_version, kind.plural))
                     .flex()
                     .flex_none()
@@ -292,6 +300,7 @@ impl Inspector {
                             this.select_namespace(None, window, cx);
                         }
                         this.set_page(Page::Resources);
+                        this.sidebar_tree.selected = Some(path.clone());
                         this.palette.kind = None;
                         this.live.selected = Some(kind.clone());
                         this.kind_selection.chosen = None;
