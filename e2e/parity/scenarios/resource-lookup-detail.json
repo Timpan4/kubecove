@@ -40,9 +40,10 @@
     },
     {
       "id": "resources.lookup-with-detail.implicit-ambiguous",
-      "title": "A context-less lookup rejects a resource in both clusters with a detail open",
+      "title": "A context-less lookup rejects a resource when a second cluster reports it with a detail open",
       "steps": [
         { "action": "openLauncher" },
+        { "action": "holdWorkspaceContext", "context": "admin@solid-k8s" },
         { "action": "editSavedWorkspace", "name": "Parity mock workspace" },
         { "action": "toggleWorkspaceContext", "context": "admin@solid-k8s" },
         { "action": "saveWorkspace" },
@@ -51,6 +52,8 @@
         { "action": "selectNamespace", "namespace": "payments" },
         { "action": "openResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "context": "mock-dev" },
         { "action": "expectDetailContext", "context": "mock-dev" },
+        { "action": "expectContextsLoading", "contexts": ["admin@solid-k8s"] },
+        { "action": "releaseWorkspaceContext", "context": "admin@solid-k8s" },
         { "action": "expectAmbiguousResource", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "expectDetail", "kind": "Deployment", "namespace": "payments", "name": "payments-api" },
         { "action": "expectDetailContext", "context": "mock-dev" },
