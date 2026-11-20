@@ -216,7 +216,9 @@ impl Inspector {
         });
         if pulsing {
             clock.wake = None;
-            cx.on_next_frame(window, |_, _, cx| cx.notify());
+            cx.on_next_frame(window, |_, _, cx| {
+                crate::frame_profile::map_pulse_invalidation(|| cx.notify());
+            });
             return;
         }
         if clock.wake.as_ref().is_some_and(|(at, _)| *at > now) {

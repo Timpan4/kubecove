@@ -1,10 +1,33 @@
 //! Opt-in element timings for diagnosing frame work without kernel counters.
 use gpui_kit::AnyElement;
 #[cfg(feature = "frame-profile")]
-use std::{
-    cell::{Cell, RefCell},
-    time::Instant,
-};
+use std::cell::RefCell;
+use std::{cell::Cell, ops::RangeInclusive, time::Instant};
+
+thread_local! {
+    static TRACK_MAP_PULSE: Cell<bool> = const { Cell::new(false) };
+    static MAP_PULSE_INVALIDATION: Cell<Option<RangeInclusive<Instant>>> = const { Cell::new(None) };
+}
+
+/// Enables map pulse attribution for an action sample on this UI thread.
+pub fn track_map_pulse_invalidation(enabled: bool) {
+    TRACK_MAP_PULSE.set(enabled);
+    MAP_PULSE_INVALIDATION.set(None);
+}
+
+pub fn take_map_pulse_invalidation() -> Option<RangeInclusive<Instant>> {
+    MAP_PULSE_INVALIDATION.take()
+}
+
+pub(crate) fn map_pulse_invalidation(notify: impl FnOnce()) {
+    if TRACK_MAP_PULSE.get() {
+        let start = Instant::now();
+        notify();
+        MAP_PULSE_INVALIDATION.set(Some(start..=Instant::now()));
+    } else {
+        notify();
+    }
+}
 
 #[derive(serde::Serialize)]
 pub struct Span {
