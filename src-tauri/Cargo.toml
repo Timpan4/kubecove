@@ -22,7 +22,7 @@ tokio = { version = "=1.54.1", features = ["io-util", "macros", "net", "process"
 tokio-util = "=0.7.20"
 tower = { version = "=0.5.3", features = ["util"] }
 http = "=1.5.0"
-sysinfo = { version = "=0.40.3", default-features = false, features = ["system"] }
+sysinfo = { version = "=0.40.4", default-features = false, features = ["system"] }
 tauri = { version = "=2.12.5", features = [] }
 tauri-plugin-dialog = "=2.8.4"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider", "http2", "stream"] }
@@ -35,7 +35,7 @@ open = "=5.4.5"
 chacha20poly1305 = "=0.11.0"
 getrandom = "=0.4.3"
 libc = "=0.2.191"
-uuid = { version = "=1.29.2", features = ["v4"] }
+uuid = { version = "=1.29.3", features = ["v4"] }
 proptest = "=1.12.0"
 tower-test = "=0.4.0"
 rmcp = { version = "=3.10.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
