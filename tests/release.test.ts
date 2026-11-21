@@ -78,70 +78,17 @@ describe("release version helpers", () => {
 		expect(checkJob).toContain('verify_result "$' + '{NIX_REQUIRED}" "$' + '{NIX_RESULT}"');
 	});
 
-	test("skips expensive PR checks only for trusted release branches", () => {
+	test("runs ordinary diff-based PR checks on release branches regardless of labels", () => {
 		const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
-		const codspeedWorkflow = readFileSync(
-			".github/workflows/codspeed.yml",
-			"utf8",
-		).replaceAll("\r\n", "\n");
-		const ciJobs = [
-			ciWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}checks:\n)/)?.[0],
-			ciWorkflow.match(/\n {2}checks:\n[\s\S]*?(?=\n {2}nix:\n)/)?.[0],
-		];
-		const ciCheckJob = ciWorkflow.match(/\n {2}check:\n[\s\S]*$/)?.[0];
-		const benchmarkJobs = [
-			codspeedWorkflow.match(/\n {2}frontend:\n[\s\S]*?(?=\n {2}rust:\n)/)?.[0],
-			codspeedWorkflow.match(/\n {2}rust:\n[\s\S]*?(?=\n {2}check:\n)/)?.[0],
-		];
-		const codspeedCheckJob = codspeedWorkflow.match(
-			/\n {2}check:\n[\s\S]*$/,
-		)?.[0];
-		const releaseTrigger =
-			"types: [opened, synchronize, reopened, labeled, unlabeled]";
-
-		expect(ciJobs).not.toContain(undefined);
-		expect(benchmarkJobs).not.toContain(undefined);
-		for (const job of [...ciJobs, ...benchmarkJobs]) {
-			expect(job).toContain(
-				"github.event.pull_request.head.repo.full_name != github.repository",
-			);
-			expect(job).toContain("!startsWith(github.head_ref, 'release/app-v')");
-			expect(job).toContain(
-				"!contains(github.event.pull_request.labels.*.name, 'release')",
-			);
-		}
-		for (const job of benchmarkJobs) {
-			expect(job).not.toContain("timeout-minutes:");
-		}
+		const codspeedWorkflow = readFileSync(".github/workflows/codspeed.yml", "utf8").replaceAll("\r\n", "\n");
 
 		for (const workflow of [ciWorkflow, codspeedWorkflow]) {
-			expect(workflow).toContain(releaseTrigger);
+			expect(workflow).toContain("pull_request:\n    types: [opened, synchronize, reopened]");
+			expect(workflow).toContain("needs.changes.outputs.frontend");
+			expect(workflow).toContain("needs.changes.outputs.rust");
+			expect(workflow).not.toContain("github.event.pull_request.labels");
+			expect(workflow).not.toContain("release/app-v");
 		}
-		for (const checkJob of [ciCheckJob, codspeedCheckJob]) {
-			expect(checkJob).toContain(
-				"github.event.pull_request.head.repo.full_name == github.repository",
-			);
-			expect(checkJob).toContain("startsWith(github.head_ref, 'release/app-v')");
-			expect(checkJob).toContain(
-				"contains(github.event.pull_request.labels.*.name, 'release')",
-			);
-		}
-		expect(ciCheckJob).toContain(
-			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
-		);
-		expect(ciCheckJob).toContain(
-			'test "$' + '{NIX_RESULT}" = "skipped"',
-		);
-		expect(ciCheckJob).toContain(
-			'test "$' + '{CHECKS_RESULT}" = "skipped"',
-		);
-		expect(codspeedCheckJob).toContain("name: CodSpeed Performance Analysis");
-		expect(codspeedCheckJob).toContain(
-			'test "$' + '{FRONTEND_RESULT}" = "skipped"',
-		);
-		expect(codspeedCheckJob).toContain(
-			'test "$' + '{RUST_RESULT}" = "skipped"',
-		);
 	});
 
 	test("uses an unlocked session collection for Linux desktop E2E", () => {
