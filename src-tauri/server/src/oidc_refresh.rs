@@ -25,6 +25,73 @@ enum RefreshFailure {
     Refused,
 }
 
+#[derive(Default)]
+pub(super) struct Credentials {
+    entries: HashMap<String, Credential>,
+    // Removals can leave an earlier expiry here until the next scan.
+    next_expiry: Option<u64>,
+    // Consumed native codes can outlive a credential removed between scans.
+    removed_since_prune: bool,
+}
+
+impl Credentials {
+    pub(super) fn get(&self, key: &str) -> Option<&Credential> {
+        self.entries.get(key)
+    }
+
+    pub(super) fn insert(&mut self, key: String, entry: Credential) {
+        self.record_expiry(entry.expires_unix);
+        self.entries.insert(key, entry);
+    }
+
+    pub(super) fn remove(&mut self, key: &str) -> Option<Credential> {
+        let entry = self.entries.remove(key)?;
+        self.removed_since_prune = true;
+        Some(entry)
+    }
+
+    fn record_expiry(&mut self, expiry: u64) {
+        self.next_expiry = Some(self.next_expiry.map_or(expiry, |next| next.min(expiry)));
+    }
+
+    #[cfg(test)]
+    pub(super) fn expire_for_test(&mut self, key: &str) {
+        let now = unix_now();
+        self.entries.get_mut(key).unwrap().expires_unix = now;
+        self.record_expiry(now);
+    }
+
+    #[cfg(test)]
+    pub(super) fn tokens_mut_for_test(&mut self, key: &str) -> &mut Option<Tokens> {
+        &mut self.entries.get_mut(key).unwrap().tokens
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty_for_test(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    fn take_expired(&mut self, now: u64) -> Vec<(String, Credential)> {
+        if self.next_expiry.is_none_or(|expiry| expiry > now) {
+            return Vec::new();
+        }
+        let mut next_expiry: Option<u64> = None;
+        let expired = self
+            .entries
+            .extract_if(|_, entry| {
+                let expiry = entry.expires_unix;
+                if expiry <= now {
+                    return true;
+                }
+                next_expiry = Some(next_expiry.map_or(expiry, |next| next.min(expiry)));
+                false
+            })
+            .collect();
+        self.next_expiry = next_expiry;
+        expired
+    }
+}
+
 #[cfg(test)]
 #[path = "oidc_refresh_tests.rs"]
 mod tests;
@@ -40,7 +107,10 @@ impl Oidc {
     ) -> Result<(), ApiError> {
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
         self.prune_expired(&mut credentials);
-        let entry = credentials.get(&credential.0).ok_or_else(invalid_auth)?;
+        let entry = credentials
+            .entries
+            .get(&credential.0)
+            .ok_or_else(invalid_auth)?;
         let token = entry
             .tokens
             .as_ref()
@@ -98,7 +168,7 @@ impl Oidc {
             return;
         };
         self.prune_expired(&mut credentials);
-        let token = credentials.get(credential).and_then(|entry| {
+        let token = credentials.entries.get(credential).and_then(|entry| {
             entry
                 .tokens
                 .as_ref()
@@ -167,6 +237,7 @@ impl Oidc {
             self.prune_expired(&mut credentials);
             Arc::clone(
                 &credentials
+                    .entries
                     .get(credential)
                     .ok_or_else(invalid_auth)?
                     .refreshing,
@@ -177,22 +248,27 @@ impl Oidc {
         let tokens = {
             let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
             self.prune_expired(&mut credentials);
-            credentials
+            let tokens = credentials
+                .entries
                 .get(credential)
                 .ok_or_else(invalid_auth)?
                 .tokens
-                .clone()
-                .ok_or_else(invalid_auth)?
+                .as_ref()
+                .ok_or_else(invalid_auth)?;
+            if tokens.id_expires_unix > unix_now() + REFRESH_MARGIN_SECONDS {
+                return Ok(());
+            }
+            tokens.clone()
         };
-        if tokens.id_expires_unix > unix_now() + REFRESH_MARGIN_SECONDS {
-            return Ok(());
-        }
         let result = self.refresh(&tokens).await;
         {
             let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
             // Expiry or logout during the provider request is final.
             self.prune_expired(&mut credentials);
-            let entry = credentials.get_mut(credential).ok_or_else(invalid_auth)?;
+            let entry = credentials
+                .entries
+                .get_mut(credential)
+                .ok_or_else(invalid_auth)?;
             match result {
                 Ok(renewed) => {
                     entry.tokens = Some(renewed);
@@ -292,19 +368,17 @@ impl Oidc {
         })
     }
 
-    pub(super) fn prune_expired(&self, credentials: &mut HashMap<String, Credential>) {
+    pub(super) fn prune_expired(&self, credentials: &mut Credentials) {
         let now = unix_now();
-        let mut expired = credentials
-            .iter()
-            .filter(|(_, credential)| credential.expires_unix <= now)
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
-        expired.extend(self.prune_codes(now, credentials));
-        for key in expired {
-            if let Some(credential) = credentials.remove(&key) {
-                credential.revoked.cancel();
-            }
+        let expired = credentials.take_expired(now);
+        let removed = std::mem::take(&mut credentials.removed_since_prune);
+        let expired_codes = self.prune_codes(now, credentials, removed || !expired.is_empty());
+        for (key, credential) in expired {
+            credential.revoked.cancel();
             self.deactivate(&key);
+        }
+        for key in expired_codes {
+            self.revoke_entry(credentials, &key);
         }
     }
 
@@ -312,7 +386,7 @@ impl Oidc {
         let token = presented_credential(headers).ok_or_else(invalid_auth)?;
         let mut credentials = self.credentials.lock().map_err(|_| oidc_unavailable())?;
         self.prune_expired(&mut credentials);
-        let credential = credentials.get(token).ok_or_else(invalid_auth)?;
+        let credential = credentials.entries.get(token).ok_or_else(invalid_auth)?;
         Ok(AuthSession {
             identity: credential.identity.clone(),
             revoked: credential.revoked.clone(),

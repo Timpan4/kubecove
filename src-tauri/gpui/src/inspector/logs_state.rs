@@ -45,7 +45,7 @@ pub(super) struct LogsState {
     pub buffer: LogBuffer,
     /// Arrival indices in display order after the text and level filters.
     pub visible: Vec<u64>,
-    /// The previous `visible`, which `refilter` diffs against and reuses.
+    /// The previous index for a refilter, or new matches for a newest-first append.
     previous: Vec<u64>,
     pub list: ListState,
     pub status: LogStatus,
@@ -152,6 +152,17 @@ impl LogsState {
             picker
         });
         Self {
+            container: containers.first().cloned(),
+            containers,
+            container_picker,
+            aggregate: matches!(summary.kind.as_str(), "Deployment" | "Service"),
+            _subscriptions: subscriptions,
+            ..Self::empty(filter, tail_input)
+        }
+    }
+
+    fn empty(filter: Entity<InputState>, tail_input: Entity<InputState>) -> Self {
+        Self {
             buffer: LogBuffer::default(),
             visible: Vec::new(),
             previous: Vec::new(),
@@ -176,12 +187,12 @@ impl LogsState {
             since: None,
             tail_menu_open: false,
             tail_input,
-            container: containers.first().cloned(),
-            containers,
-            container_picker,
-            aggregate: matches!(summary.kind.as_str(), "Deployment" | "Service"),
+            container: None,
+            containers: Vec::new(),
+            container_picker: None,
+            aggregate: false,
             task: None,
-            _subscriptions: subscriptions,
+            _subscriptions: Vec::new(),
         }
     }
 
@@ -227,13 +238,10 @@ impl LogsState {
         !self.term.is_empty() || self.hidden.iter().any(|hidden| *hidden)
     }
 
-    /// Recomputes the visible rows and tells the list what changed. Appends
-    /// and evictions splice; other changes remeasure.
+    /// Recomputes the visible rows after a filter or sort change.
     pub fn refilter(&mut self) {
         let pinned = self.pinned();
-        let levels = self.buffer.has_levels();
-        let levels_changed = levels != self.levels;
-        self.levels = levels;
+        let levels_changed = self.update_levels();
         // The two index lists swap roles, so a refilter allocates only when
         // the visible rows outgrow both.
         std::mem::swap(&mut self.visible, &mut self.previous);
@@ -248,8 +256,8 @@ impl LogsState {
         // Evicted lines leave the oldest end; new lines arrive at the newest end.
         let first = self.buffer.first_index();
         self.row_focus.get_mut().retain(|index, _| *index >= first);
-        let evicted = previous.iter().filter(|index| **index < first).count();
         if !self.latest_first {
+            let evicted = previous.partition_point(|&index| index < first);
             let kept = &previous[evicted..];
             if next.starts_with(kept) {
                 self.list.splice(0..evicted, 0);
@@ -261,7 +269,7 @@ impl LogsState {
                 return;
             }
         } else {
-            let kept = &previous[..previous.len() - evicted];
+            let kept = &previous[..previous.partition_point(|&index| index >= first)];
             if next.ends_with(kept) {
                 let kept_len = kept.len();
                 self.list.splice(kept_len..previous.len(), 0);
@@ -278,6 +286,40 @@ impl LogsState {
         self.list.reset(next.len());
         if pinned {
             self.jump_to_latest();
+        }
+    }
+
+    fn update_levels(&mut self) -> bool {
+        let levels = self.buffer.has_levels();
+        std::mem::replace(&mut self.levels, levels) != levels
+    }
+
+    fn append_visible(&mut self, from: u64, pinned: bool) {
+        let first = self.buffer.first_index();
+        let levels_changed = self.update_levels();
+        if self.latest_first {
+            let kept = self.visible.partition_point(|&index| index >= first);
+            self.list.splice(kept..self.visible.len(), 0);
+            self.visible.truncate(kept);
+            self.previous.clear();
+            self.buffer
+                .extend_visible(from, &self.term, self.hidden, true, &mut self.previous);
+            self.list.splice(0..0, self.previous.len());
+            drop(self.visible.splice(0..0, self.previous.drain(..)));
+        } else {
+            let evicted = self.visible.partition_point(|&index| index < first);
+            self.list.splice(0..evicted, 0);
+            drop(self.visible.drain(..evicted));
+            let kept = self.visible.len();
+            self.buffer
+                .extend_visible(from, &self.term, self.hidden, false, &mut self.visible);
+            self.list.splice(kept..kept, self.visible.len() - kept);
+        }
+        if levels_changed {
+            self.list.remeasure();
+        }
+        if self.latest_first && pinned {
+            self.list.scroll_to(ListOffset::default());
         }
     }
 
@@ -325,11 +367,17 @@ impl LogsState {
             return;
         }
         let following = self.pinned();
+        let first = self.buffer.first_index();
+        let from = self.buffer.next_index();
         let added = self.buffer.append(batch);
-        self.toggled
-            .retain(|index| self.buffer.line(*index).is_some());
-        // Evictions shift buffer positions, so `refilter` remeasures then.
-        self.refilter();
+        let retained = self.buffer.first_index();
+        if first != retained {
+            self.toggled.retain(|index| *index >= retained);
+            self.row_focus
+                .get_mut()
+                .retain(|index, _| *index >= retained);
+        }
+        self.append_visible(from, following);
         if !following {
             self.unseen += added;
         }
@@ -548,5 +596,87 @@ impl Inspector {
             }
         }));
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs::LogLevel;
+    use gpui_kit::{Empty, TestAppContext};
+
+    #[gpui_kit::test]
+    fn filtered_appends_keep_the_visible_list_and_scroll_anchor_after_eviction(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(gpui_kit::init);
+        cx.add_window(|window, cx| {
+            for latest_first in [false, true] {
+                let filter = cx.new(|cx| InputState::new(window, cx));
+                let tail_input = cx.new(|cx| InputState::new(window, cx));
+                let mut state = LogsState::empty(filter, tail_input);
+                state.term = "match".into();
+                state.hidden[LogLevel::Debug.index()] = true;
+                state.set_latest_first(latest_first);
+
+                let initial = (0..MAX_RETAINED_LOG_LINES).map(|index| {
+                    let line = match index % 3 {
+                        0 => "match",
+                        1 => "unrelated",
+                        _ => "level=debug msg=match",
+                    };
+                    (line.to_owned(), None)
+                });
+                state.append(initial.collect());
+                let mut rebuilt = Vec::new();
+                assert_matches_rebuild(&state, &mut rebuilt);
+                assert!(state.visible.contains(&0));
+                assert!(!state.visible.contains(&1));
+                assert!(!state.visible.contains(&2));
+
+                let anchor = 9;
+                let item_ix = state
+                    .visible
+                    .iter()
+                    .position(|&index| index == anchor)
+                    .unwrap();
+                let offset_in_item = px(2.);
+                state.list.scroll_to(ListOffset {
+                    item_ix,
+                    offset_in_item,
+                });
+                assert!(!state.pinned());
+
+                let batches = [
+                    ["level=info msg=match", "unrelated", "level=debug msg=match"],
+                    ["unrelated", "level=debug msg=match", "unrelated"],
+                ];
+                for batch in batches {
+                    let evicted = state.buffer.first_index();
+                    assert!(state.visible.contains(&evicted));
+                    state.append(
+                        batch
+                            .into_iter()
+                            .map(|line| (line.to_owned(), None))
+                            .collect(),
+                    );
+
+                    assert!(state.buffer.line(evicted).is_none());
+                    assert_matches_rebuild(&state, &mut rebuilt);
+                    let top = state.list.logical_scroll_top();
+                    assert_eq!(state.visible[top.item_ix], anchor);
+                    assert_eq!(top.offset_in_item, offset_in_item);
+                }
+            }
+            Empty
+        });
+    }
+
+    fn assert_matches_rebuild(state: &LogsState, rebuilt: &mut Vec<u64>) {
+        state
+            .buffer
+            .visible(&state.term, state.hidden, state.latest_first, rebuilt);
+        assert_eq!(&state.visible, rebuilt);
+        assert_eq!(state.list.item_count(), rebuilt.len());
     }
 }

@@ -9,9 +9,12 @@ mod search;
 mod sort;
 use crate::collate::Key;
 use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary};
-pub(crate) use patch::{Added, ObservedNames, reconcile, watch_lists};
+#[cfg(test)]
+pub(crate) use patch::reconcile;
+pub(crate) use patch::{Added, ObservedNames, RowsChange, watch_lists};
 pub(crate) use search::SearchMatches;
 use std::{
+    cell::RefCell,
     collections::HashMap,
     rc::Rc,
     sync::atomic::{AtomicU64, Ordering},
@@ -80,10 +83,12 @@ pub(crate) struct PreparedRows {
     /// rebuild is the only change.
     identities: Vec<u64>,
     identity: RowsId,
+    revision: u64,
     keys: Vec<RowKey>,
     search: search::SearchText,
     groups: Vec<u8>,
     kinds: Vec<(String, usize)>,
+    custom_kinds: Vec<usize>,
     by_kind: Vec<Vec<usize>>,
     variants: Vec<usize>,
     lanes: Vec<Lane>,
@@ -181,6 +186,16 @@ impl PreparedRows {
         self.identity
     }
 
+    pub(crate) fn custom_kinds(&self) -> impl Iterator<Item = &str> {
+        self.custom_kinds
+            .iter()
+            .map(|&kind| self.kinds[kind].0.as_str())
+    }
+
+    pub(crate) fn revision(&self) -> (RowsId, u64) {
+        (self.identity, self.revision)
+    }
+
     /// Whether the view lists several contexts, which adds the context to
     /// owner and Helm group labels, owner filter keys and search.
     pub(crate) fn multi_context(&self) -> bool {
@@ -209,6 +224,29 @@ impl PreparedRows {
             rows[*index].git_ops_owner = owner.clone();
         }
         rows
+    }
+
+    fn backend_owner(&self, index: usize) -> &Option<GitOpsOwnerSummary> {
+        match self.inherited.binary_search_by_key(&index, |(row, _)| *row) {
+            Ok(position) => &self.inherited[position].1,
+            Err(_) => &self.rows[index].git_ops_owner,
+        }
+    }
+
+    pub(crate) fn backend_row(&self, index: usize) -> ResourceSummary {
+        let mut row = self.rows[index].clone();
+        row.git_ops_owner.clone_from(self.backend_owner(index));
+        row
+    }
+
+    /// Copies the changed payloads into a combined view with the same static keys.
+    pub(crate) fn update_from(&mut self, source: &Self, offset: usize, indices: &[usize]) {
+        for &index in indices {
+            self.rows[offset + index].clone_from(&source.rows[index]);
+        }
+        if !indices.is_empty() {
+            self.revision += 1;
+        }
     }
 
     fn swap_owners(&mut self) {
@@ -252,6 +290,8 @@ impl PreparedRows {
         let mut owners: Vec<Owner> = Vec::new();
         let mut helm_groups: HashMap<(u32, &str), usize> = HashMap::new();
         let mut kinds: Vec<(String, usize)> = Vec::new();
+        let mut custom_kinds = Vec::new();
+        let mut custom_seen = Vec::new();
         let mut by_kind: Vec<Vec<usize>> = Vec::new();
         let mut lane_ids = HashMap::new();
         let mut lanes = Vec::new();
@@ -295,6 +335,7 @@ impl PreparedRows {
                     .position(|(kind, _)| *kind == row.kind)
                     .unwrap_or_else(|| {
                         by_kind.push(Vec::new());
+                        custom_seen.push(false);
                         kinds.push((
                             row.kind.clone(),
                             crate::preferences::KindLanes::default().order(&row.kind),
@@ -302,6 +343,10 @@ impl PreparedRows {
                         kinds.len() - 1
                     });
                 by_kind[kind].push(index);
+                if row.dynamic == Some(true) && !custom_seen[kind] {
+                    custom_seen[kind] = true;
+                    custom_kinds.push(kind);
+                }
                 let variant = *variant_ids
                     .entry((row.kind.as_str(), row.api_version.as_deref()))
                     .or_insert_with(|| {
@@ -339,10 +384,12 @@ impl PreparedRows {
             context,
             identities,
             identity: RowsId::default(),
+            revision: 0,
             keys,
             search,
             groups,
             kinds,
+            custom_kinds,
             by_kind,
             variants,
             lanes,
@@ -440,12 +487,12 @@ pub struct Visible {
     previous: Vec<usize>,
     /// Display order under the default sort.
     order: Vec<usize>,
+    alternate_order: RefCell<Option<sort::AlternateOrder>>,
     /// Visible rows in name order, the default sort's sequence.
     by_name: Vec<usize>,
     grouping: order::Grouping,
     preferred: Vec<bool>,
     lane_order: Vec<usize>,
-    allowed: Vec<bool>,
     selected: Vec<bool>,
     matches: SearchMatches,
     pub(super) grouped_by_gitops: bool,
@@ -491,6 +538,11 @@ impl Visible {
     pub(crate) fn search_matches(&self) -> &SearchMatches {
         &self.matches
     }
+    pub(crate) fn order(&self) -> &[usize] {
+        &self.order
+    }
+
+    #[cfg(test)]
     pub(super) fn ordered(&self) -> impl Iterator<Item = &ResourceSummary> {
         self.order.iter().map(|&index| &self.source.rows[index])
     }
@@ -520,22 +572,37 @@ impl Visible {
         preferred: impl Fn(&ResourceSummary) -> bool,
         lanes: &crate::preferences::KindLanes,
     ) {
+        let mut allowed = Vec::new();
+        source.fill_kind_mask(&kinds, &mut allowed);
+        let keys = &source;
+        self.refilter_prepared(
+            source.clone(),
+            query,
+            |index, row| {
+                let key = &keys.keys[index];
+                allowed[key.variant] && included(index, row, keys.owner(key).map(|(key, _)| key))
+            },
+            |_, row| preferred(row),
+            lanes,
+        );
+    }
+
+    pub(crate) fn refilter_prepared(
+        &mut self,
+        source: Rc<PreparedRows>,
+        query: &str,
+        included: impl Fn(usize, &ResourceSummary) -> bool,
+        preferred: impl Fn(usize, &ResourceSummary) -> bool,
+        lanes: &crate::preferences::KindLanes,
+    ) {
         let _span = crate::frame_profile::scope("rows", "refilter");
-        source.fill_kind_mask(&kinds, &mut self.allowed);
         source.search.matches(query, &mut self.matches);
         std::mem::swap(&mut self.previous, &mut self.indices);
         self.indices.clear();
         self.selected.resize(source.rows.len(), false);
         self.selected.fill(false);
-        for (index, key) in source.keys.iter().enumerate() {
-            if self.allowed[key.variant]
-                && included(
-                    index,
-                    &source.rows[index],
-                    source.owner(key).map(|(key, _)| key),
-                )
-                && self.matches.contains(index)
-            {
+        for (index, row) in source.rows.iter().enumerate() {
+            if self.matches.contains(index) && included(index, row) {
                 self.indices.push(index);
                 self.selected[index] = true;
             }
@@ -556,7 +623,7 @@ impl Visible {
         }
         self.preferred.resize(self.source.rows.len(), false);
         for &index in &self.indices {
-            let value = preferred(&self.source.rows[index]);
+            let value = preferred(index, &self.source.rows[index]);
             same_order &= self.preferred[index] == value;
             self.preferred[index] = value;
         }
@@ -564,6 +631,7 @@ impl Visible {
             self.health = HealthSummary::of(self.iter());
             return;
         }
+        self.alternate_order.get_mut().take();
         self.grouped_by_gitops = self
             .indices
             .iter()

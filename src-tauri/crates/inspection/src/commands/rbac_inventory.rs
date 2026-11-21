@@ -27,16 +27,9 @@ impl<T> InventoryLoad<T> {
             error: Some(error),
         }
     }
-
-    fn map<U>(self, map: impl FnMut(T) -> U) -> InventoryLoad<U> {
-        InventoryLoad {
-            items: self.items.into_iter().map(map).collect(),
-            error: self.error,
-        }
-    }
 }
 
-async fn list_paged<K>(api: &Api<K>) -> InventoryLoad<K>
+async fn list_paged<K, T>(api: &Api<K>, mut project: impl FnMut(K) -> T) -> InventoryLoad<T>
 where
     K: Clone + Debug + DeserializeOwned + Resource,
 {
@@ -52,7 +45,7 @@ where
         match api.list(&params).await {
             Ok(page) => {
                 let next = page.metadata.continue_;
-                items.extend(page.items);
+                items.extend(page.items.into_iter().map(&mut project));
                 if next
                     .as_deref()
                     .is_some_and(|value| !value.is_empty() && !seen_tokens.insert(value.to_owned()))
@@ -80,16 +73,15 @@ pub(super) async fn list_service_accounts(
     cluster: &str,
 ) -> InventoryLoad<ServiceAccountSummary> {
     let api: Api<ServiceAccount> = Api::all(client);
-    list_paged(&api)
-        .await
-        .map(|item| service_account_summary(cluster, item))
+    list_paged(&api, |item| service_account_summary(cluster, item)).await
 }
 
 pub(super) async fn list_roles(client: Client, cluster: &str) -> InventoryLoad<RbacRoleSummary> {
     let api: Api<Role> = Api::all(client);
-    list_paged(&api)
-        .await
-        .map(|item| role_summary(cluster, "Role", item.metadata, item.rules))
+    list_paged(&api, |item| {
+        role_summary(cluster, "Role", item.metadata, item.rules)
+    })
+    .await
 }
 
 pub(super) async fn list_cluster_roles(
@@ -97,9 +89,10 @@ pub(super) async fn list_cluster_roles(
     cluster: &str,
 ) -> InventoryLoad<RbacRoleSummary> {
     let api: Api<ClusterRole> = Api::all(client);
-    list_paged(&api)
-        .await
-        .map(|item| role_summary(cluster, "ClusterRole", item.metadata, item.rules))
+    list_paged(&api, |item| {
+        role_summary(cluster, "ClusterRole", item.metadata, item.rules)
+    })
+    .await
 }
 
 pub(super) async fn list_role_bindings(
@@ -107,7 +100,7 @@ pub(super) async fn list_role_bindings(
     cluster: &str,
 ) -> InventoryLoad<RbacBindingSummary> {
     let api: Api<RoleBinding> = Api::all(client);
-    list_paged(&api).await.map(|item| {
+    list_paged(&api, |item| {
         binding_summary(
             cluster,
             "RoleBinding",
@@ -117,6 +110,7 @@ pub(super) async fn list_role_bindings(
             item.subjects,
         )
     })
+    .await
 }
 
 pub(super) async fn list_cluster_role_bindings(
@@ -124,7 +118,7 @@ pub(super) async fn list_cluster_role_bindings(
     cluster: &str,
 ) -> InventoryLoad<RbacBindingSummary> {
     let api: Api<ClusterRoleBinding> = Api::all(client);
-    list_paged(&api).await.map(|item| {
+    list_paged(&api, |item| {
         binding_summary(
             cluster,
             "ClusterRoleBinding",
@@ -134,4 +128,5 @@ pub(super) async fn list_cluster_role_bindings(
             item.subjects,
         )
     })
+    .await
 }

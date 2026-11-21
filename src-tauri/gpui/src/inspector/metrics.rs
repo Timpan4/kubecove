@@ -11,6 +11,7 @@ use std::{
 
 #[derive(Default)]
 pub(super) struct MetricsState {
+    pub(super) revision: u64,
     /// Every answering context's metrics. `None` while loading or when no
     /// context answered.
     summary: Option<ResourceMetricsSummary>,
@@ -134,6 +135,7 @@ impl Inspector {
     /// Reads every context's metrics at once. Rows find theirs by cluster.
     pub(super) fn load_metrics(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.metrics.task.take();
+        self.metrics.revision += 1;
         self.metrics.summary = None;
         self.metrics.contexts.clear();
         self.metrics.slots.clear();
@@ -159,6 +161,7 @@ impl Inspector {
                 }
                 this.metrics.slots = summary.as_ref().map(slots).unwrap_or_default();
                 this.metrics.summary = summary;
+                this.metrics.revision += 1;
                 this.metrics.contexts = contexts;
                 cx.notify();
             });

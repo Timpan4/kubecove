@@ -19,7 +19,7 @@ use std::{
     collections::{HashMap, HashSet},
     ops::Range,
 };
-use tree_sitter::{Node, Parser};
+use tree_sitter::{Node, Parser, Tree};
 
 const MULTIPLE_DOCS: &str =
     "Source contains multiple documents; please use YAML.parseAllDocuments()";
@@ -39,17 +39,23 @@ pub(super) struct Finding {
 
 /// Every parser finding for `text`: errors, then warnings, each in document
 /// order, as `[...document.errors, ...document.warnings]` lists them.
-pub(super) fn diagnostics(text: &str) -> Vec<Finding> {
+pub(super) fn diagnostics(text: &str, tree: Option<&Tree>) -> Vec<Finding> {
     if text.trim().is_empty() {
         return Vec::new();
     }
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_yaml::LANGUAGE.into())
-        .expect("tree-sitter-yaml uses the tree-sitter ABI this crate links");
-    let tree = parser
-        .parse(text, None)
-        .expect("a parse without a timeout or cancellation flag completes");
+    let parsed;
+    let tree = if let Some(tree) = tree {
+        tree
+    } else {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_yaml::LANGUAGE.into())
+            .expect("tree-sitter-yaml uses the tree-sitter ABI this crate links");
+        parsed = parser
+            .parse(text, None)
+            .expect("a parse without a timeout or cancellation flag completes");
+        &parsed
+    };
     let mut scan = Scan {
         text,
         findings: Vec::new(),
@@ -271,7 +277,7 @@ mod tests {
 
     /// The 1-based lines of the duplicate-key errors in `text`.
     fn duplicate_lines(text: &str) -> Vec<usize> {
-        diagnostics(text)
+        diagnostics(text, None)
             .into_iter()
             .filter(|finding| finding.message == "Map keys must be unique")
             .map(|finding| text[..finding.range.start].matches('\n').count() + 1)

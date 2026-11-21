@@ -46,6 +46,20 @@ enum Patch {
     Dirty,
 }
 
+enum Projection {
+    Deferred,
+    Row(Option<ResourceSummary>),
+    Failed,
+}
+
+struct WatchChange<'a> {
+    namespace: Option<&'a str>,
+    name: &'a str,
+    version: Option<&'a str>,
+    event_number: Option<u64>,
+    position: Option<u64>,
+}
+
 fn version_number(version: &str) -> Option<u64> {
     version.parse().ok()
 }
@@ -74,21 +88,41 @@ fn decide(
     }
 }
 
-impl<T: Clone> SharedCache<T> {
+impl SharedCache<ListSnapshot> {
     /// Changes a clean cached value in place when `decide` allows it. A dirty
     /// value stays dirty, and a load in flight is marked dirty, because the
     /// change may predate its list.
-    fn patch_ready(&self, key: &str, decide: impl FnOnce(&T) -> Patch, patch: impl FnOnce(&mut T)) {
+    /// Returns true when a clean value can accept the event and still needs its projection.
+    fn patch_ready(
+        &self,
+        key: &str,
+        covers: bool,
+        change: &WatchChange<'_>,
+        projection: &Projection,
+    ) -> bool {
         let mut entries = self.entries.lock().expect("live store cache lock");
         match entries.get_mut(key) {
-            Some(CacheEntry::Ready(ready)) if !ready.dirty => match decide(&ready.value) {
-                Patch::Skip => {}
-                Patch::Apply => patch(Arc::make_mut(&mut ready.value)),
-                Patch::Dirty => ready.dirty = true,
-            },
+            Some(CacheEntry::Ready(ready)) if !ready.dirty => {
+                match decide(&ready.value, change.event_number, change.position, covers) {
+                    Patch::Skip => {}
+                    Patch::Apply => match projection {
+                        Projection::Deferred => return true,
+                        Projection::Row(row) => apply_row(
+                            Arc::make_mut(&mut ready.value),
+                            change.namespace,
+                            change.name,
+                            row.clone(),
+                            change.version,
+                        ),
+                        Projection::Failed => ready.dirty = true,
+                    },
+                    Patch::Dirty => ready.dirty = true,
+                }
+            }
             Some(CacheEntry::Loading { dirty, .. }) => *dirty = true,
             Some(CacheEntry::Ready(_)) | None => {}
         }
+        false
     }
 }
 
@@ -157,26 +191,19 @@ impl ClusterLiveStore {
         let namespace_key = namespace_key_for_namespaced(namespaced, namespace);
         let watch_scope = namespace_key_for_namespaced(namespaced, origin.namespace);
         let version = object.metadata.resource_version.as_deref();
-        let event_number = version.and_then(version_number);
-        let position = origin.position.and_then(version_number);
+        let change = WatchChange {
+            namespace,
+            name,
+            version,
+            event_number: version.and_then(version_number),
+            position: origin.position.and_then(version_number),
+        };
+        let typed_key = typed_kind_key(&resource_kind.kind);
         for kind_key in watch_kind_keys(resource_kind) {
-            let row = if deleted {
-                Ok(None)
-            } else if kind_key == typed_kind_key(&resource_kind.kind) {
-                typed(&resource_kind.kind, cluster_context, object)
-                    .map(Some)
-                    .ok_or(())
+            let mut projection = if deleted {
+                Projection::Row(None)
             } else {
-                discovered(resource_kind)
-                    .map(|kind| {
-                        crate::commands::dynamic_projection::dynamic_resource_summary(
-                            cluster_context,
-                            &kind,
-                            object,
-                        )
-                    })
-                    .map(Some)
-                    .ok_or(())
+                Projection::Deferred
             };
             for scope in [&namespace_key, &ScopeNamespace::All] {
                 // A namespace watch says nothing about other namespaces, so it
@@ -186,18 +213,27 @@ impl ClusterLiveStore {
                     ScopeNamespace::All | ScopeNamespace::Cluster => true,
                 };
                 let key = resource_cache_key(source_key, cluster_context, &kind_key, scope);
-                self.resources.patch_ready(
-                    &key,
-                    |snapshot| match (decide(snapshot, event_number, position, covers), &row) {
-                        (Patch::Apply, Err(())) => Patch::Dirty,
-                        (patch, _) => patch,
-                    },
-                    |snapshot| {
-                        if let Ok(row) = &row {
-                            apply_row(snapshot, namespace, name, row.clone(), version);
-                        }
-                    },
-                );
+                if self
+                    .resources
+                    .patch_ready(&key, covers, &change, &projection)
+                {
+                    let projected = if kind_key == typed_key {
+                        typed(&resource_kind.kind, cluster_context, object)
+                    } else {
+                        discovered(resource_kind).map(|kind| {
+                            crate::commands::dynamic_projection::dynamic_resource_summary(
+                                cluster_context,
+                                &kind,
+                                object,
+                            )
+                        })
+                    };
+                    projection =
+                        projected.map_or(Projection::Failed, |row| Projection::Row(Some(row)));
+                    // The cache may have changed while projection ran outside its lock.
+                    self.resources
+                        .patch_ready(&key, covers, &change, &projection);
+                }
             }
         }
         self.mark_derived_dirty(source_key, cluster_context);

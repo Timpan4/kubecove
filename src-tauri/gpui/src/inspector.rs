@@ -281,7 +281,7 @@ impl Inspector {
             cx.subscribe_in(&search, window, |this, _, event, _, cx| {
                 if matches!(event, InputEvent::Change) {
                     this.table_page = 0;
-                    this.filter(cx);
+                    this.filter_search(cx);
                 }
             }),
             cx.subscribe_in(&context_picker, window, |this, _, event, window, cx| {

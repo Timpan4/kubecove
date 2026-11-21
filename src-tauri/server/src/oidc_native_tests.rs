@@ -251,7 +251,7 @@ async fn wrong_verifier_or_redirect_consumes_the_code() {
         );
     }
     assert!(
-        oidc.credentials.lock().unwrap().is_empty(),
+        oidc.credentials.lock().unwrap().is_empty_for_test(),
         "refused codes leave no usable credential"
     );
 }
@@ -261,8 +261,13 @@ async fn expired_code_is_refused_and_its_credential_dropped() {
     let (oidc, _provider) = mock::fixture("http://localhost:43163").await.unwrap();
     let code = native_code(&oidc).await;
     let unexchanged = native_code(&oidc).await;
-    for pending in oidc.codes.lock().unwrap().pending.values_mut() {
-        pending.deadline = unix_now();
+    {
+        let now = unix_now();
+        let mut codes = oidc.codes.lock().unwrap();
+        for pending in codes.pending.values_mut() {
+            pending.deadline = now;
+        }
+        codes.record_deadline(now);
     }
     assert!(exchange(&oidc, &code, VERIFIER, REDIRECT).await.is_err());
     assert!(
@@ -270,7 +275,7 @@ async fn expired_code_is_refused_and_its_credential_dropped() {
             .await
             .is_err()
     );
-    assert!(oidc.credentials.lock().unwrap().is_empty());
+    assert!(oidc.credentials.lock().unwrap().is_empty_for_test());
 }
 
 #[tokio::test]
@@ -295,5 +300,5 @@ async fn provider_denial_reaches_the_loopback_listener() {
     // A denial that does not match the transaction goes to the app, as before.
     let response = oidc.callback(&headers, denied("other")).await.unwrap();
     assert_eq!(location(&response), "/");
-    assert!(oidc.credentials.lock().unwrap().is_empty());
+    assert!(oidc.credentials.lock().unwrap().is_empty_for_test());
 }

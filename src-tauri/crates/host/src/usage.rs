@@ -1,26 +1,19 @@
 #[cfg(feature = "bench-support")]
 pub mod benchmark;
 mod memory;
+mod process_tree;
 #[cfg(feature = "bench-support")]
 pub use benchmark::{BenchUsagePlatform, BenchUsageProcess, benchmark_usage_process_attribution};
 
-#[cfg(target_os = "macos")]
-use super::usage_webview::{
-    is_macos_orphan_webkit_process, macos_orphan_webview_process_candidate,
-    selected_orphan_webview_cohort_start_time,
-};
-#[cfg(target_os = "windows")]
-use super::usage_webview::{is_orphan_webview_start_candidate, is_windows_app_webview_process};
 use super::usage_webview::{is_webview_descendant_process, webview_process_role};
-#[cfg(target_os = "windows")]
-use super::usage_webview::{
-    is_windows_app_webview_browser_process, windows_webview_host_exe_names,
-};
 use chrono::Utc;
 use kubecove_models::AppErrorKind;
 use kubecove_models::{AppError, AppUsageMemory, AppUsageMetrics, AppUsageMetricsBreakdown};
 use memory::{MemoryTotal, WorkingSetBaseline, resident_bytes, sample_process_memory};
-use std::collections::{HashMap, HashSet};
+#[cfg(feature = "bench-support")]
+use process_tree::process_tree_pids_from_roots;
+use process_tree::usage_process_pids;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use sysinfo::{
     Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, get_current_pid,
@@ -73,7 +66,7 @@ impl AppUsageMonitor {
         // command lines to recover the host-exe identity before attribution.
         #[cfg(target_os = "windows")]
         {
-            let mut identity_pids = process_tree_pids(system, current_pid);
+            let mut identity_pids = process_tree::process_tree_pids(system, [current_pid]);
             identity_pids.extend(system.processes().iter().filter_map(|(pid, process)| {
                 process
                     .name()
@@ -152,112 +145,6 @@ pub(crate) fn normalize_cpu_percent(raw_cpu_percent: f32, cpu_count: usize) -> f
 
     let divisor = cpu_count.max(1) as f32;
     (raw_cpu_percent / divisor).clamp(0.0, 100.0)
-}
-
-fn process_tree_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
-    let relations = system
-        .processes()
-        .iter()
-        .map(|(pid, process)| (*pid, process.parent()));
-    process_tree_pids_from_roots([root_pid], relations)
-}
-
-fn usage_process_pids(system: &System, root_pid: Pid) -> HashSet<Pid> {
-    let mut pids = process_tree_pids(system, root_pid);
-    add_related_orphan_webview_pids(system, root_pid, &mut pids);
-    pids
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn add_related_orphan_webview_pids(_system: &System, _root_pid: Pid, _pids: &mut HashSet<Pid>) {}
-
-#[cfg(target_os = "windows")]
-fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut HashSet<Pid>) {
-    let Some(root_process) = system.process(root_pid) else {
-        return;
-    };
-    let root_start_time = root_process.start_time();
-    let host_exe_names = windows_webview_host_exe_names(root_process);
-    if host_exe_names.is_empty() {
-        return;
-    }
-
-    let webview_roots: HashSet<Pid> = system
-        .processes()
-        .iter()
-        .filter_map(|(pid, process)| {
-            if !is_windows_app_webview_process(process, &host_exe_names) {
-                return None;
-            }
-            if is_windows_app_webview_browser_process(process, &host_exe_names)
-                || is_orphan_webview_start_candidate(root_start_time, process.start_time())
-            {
-                Some(*pid)
-            } else {
-                None
-            }
-        })
-        .collect();
-    if webview_roots.is_empty() {
-        return;
-    }
-
-    let relations = system
-        .processes()
-        .iter()
-        .map(|(pid, process)| (*pid, process.parent()));
-    pids.extend(process_tree_pids_from_roots(webview_roots, relations));
-}
-
-#[cfg(target_os = "macos")]
-fn add_related_orphan_webview_pids(system: &System, root_pid: Pid, pids: &mut HashSet<Pid>) {
-    let Some(root_process) = system.process(root_pid) else {
-        return;
-    };
-    let root_start_time = root_process.start_time();
-    let candidate_start_time = selected_orphan_webview_cohort_start_time(
-        root_start_time,
-        system
-            .processes()
-            .iter()
-            .filter(|(pid, process)| !pids.contains(pid) && is_macos_orphan_webkit_process(process))
-            .filter_map(|(_, process)| macos_orphan_webview_process_candidate(process)),
-    );
-
-    let Some(candidate_start_time) = candidate_start_time else {
-        return;
-    };
-
-    pids.extend(
-        system
-            .processes()
-            .iter()
-            .filter(|(_, process)| {
-                is_macos_orphan_webkit_process(process)
-                    && process.start_time() == candidate_start_time
-            })
-            .map(|(pid, _)| *pid),
-    );
-}
-
-fn process_tree_pids_from_roots(
-    root_pids: impl IntoIterator<Item = Pid>,
-    relations: impl IntoIterator<Item = (Pid, Option<Pid>)>,
-) -> HashSet<Pid> {
-    let relations: Vec<(Pid, Option<Pid>)> = relations.into_iter().collect();
-    let mut pids: HashSet<Pid> = root_pids.into_iter().collect();
-    let mut changed = true;
-
-    while changed {
-        changed = false;
-        for (pid, parent) in &relations {
-            if parent.is_some_and(|parent_pid| pids.contains(&parent_pid)) && pids.insert(*pid) {
-                changed = true;
-            }
-        }
-    }
-
-    pids
 }
 
 fn usage_metrics_from_samples<'a, T: UsageProcessView + 'a>(
@@ -517,12 +404,7 @@ fn usage_process_group_with_webview_check(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cpu_percent, process_tree_pids_from_roots};
-    use sysinfo::Pid;
-
-    fn pid(value: u32) -> Pid {
-        Pid::from_u32(value)
-    }
+    use super::normalize_cpu_percent;
 
     // Linux thread tasks share their owning process's address space. Including
     // them in the sample counts the same RSS once per thread.
@@ -540,7 +422,7 @@ mod tests {
                 .parse::<u32>()
                 .expect("numeric thread PID");
             started_tx
-                .send(Pid::from_u32(task_pid))
+                .send(sysinfo::Pid::from_u32(task_pid))
                 .expect("started receiver");
             let _ = stop_rx.recv();
         });
@@ -595,58 +477,5 @@ mod tests {
         assert!((normalize_cpu_percent(240.0, 8) - 30.0).abs() < f32::EPSILON);
         assert!((normalize_cpu_percent(250.0, 0) - 100.0).abs() < f32::EPSILON);
         assert!(normalize_cpu_percent(f32::NAN, 8).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn collects_recursive_child_processes() {
-        let pids = process_tree_pids_from_roots(
-            [pid(10)],
-            [
-                (pid(10), None),
-                (pid(11), Some(pid(10))),
-                (pid(12), Some(pid(11))),
-                (pid(20), None),
-            ],
-        );
-
-        assert!(pids.contains(&pid(10)));
-        assert!(pids.contains(&pid(11)));
-        assert!(pids.contains(&pid(12)));
-        assert!(!pids.contains(&pid(20)));
-    }
-
-    #[test]
-    fn ignores_processes_without_parent_link_to_host() {
-        let pids = process_tree_pids_from_roots(
-            [pid(10)],
-            [
-                (pid(10), None),
-                (pid(11), Some(pid(10))),
-                (pid(30), None),
-                (pid(31), Some(pid(30))),
-            ],
-        );
-
-        assert_eq!(pids, [pid(10), pid(11)].into_iter().collect());
-    }
-
-    #[test]
-    fn collects_multiple_process_roots_for_reused_webview_browser() {
-        let pids = process_tree_pids_from_roots(
-            [pid(10), pid(30)],
-            [
-                (pid(10), None),
-                (pid(30), Some(pid(99))),
-                (pid(31), Some(pid(30))),
-                (pid(32), Some(pid(30))),
-                (pid(40), None),
-                (pid(41), Some(pid(40))),
-            ],
-        );
-
-        assert_eq!(
-            pids,
-            [pid(10), pid(30), pid(31), pid(32)].into_iter().collect()
-        );
     }
 }

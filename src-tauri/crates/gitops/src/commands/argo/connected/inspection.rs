@@ -8,7 +8,7 @@ use crate::models::{
 use kube::core::DynamicObject;
 use serde_json::Value;
 
-pub(crate) fn text(object: &Value, field: &str) -> Option<String> {
+fn text(object: &Value, field: &str) -> Option<String> {
     object.get(field).and_then(Value::as_str).map(str::to_owned)
 }
 pub(crate) fn managed_resource(value: &Value) -> ArgoManagedResource {
@@ -84,7 +84,7 @@ fn history(value: &Value) -> ArgoApplicationHistory {
     }
 }
 
-pub(crate) fn inspector_from_application(
+fn inspector_from_application(
     application: &DynamicObject,
 ) -> Result<ArgoApplicationInspector, AppError> {
     let data = application
@@ -150,7 +150,33 @@ pub(crate) fn inspector_from_application(
     })
 }
 
-pub(crate) fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceComparison {
+pub(crate) fn kubernetes_selected_comparison(
+    application: &DynamicObject,
+    requested: &ArgoManagedResource,
+) -> Result<ArgoResourceComparison, AppError> {
+    let data = application
+        .data
+        .as_object()
+        .ok_or_else(|| AppError::new("invalid Application data", AppErrorKind::Serialization))?;
+    let resource = data
+        .get("status")
+        .and_then(|status| status.get("resources"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|candidate| {
+            let field = |key| candidate.get(key).and_then(Value::as_str);
+            field("group") == requested.group.as_deref()
+                && field("version") == requested.version.as_deref()
+                && field("kind") == requested.kind.as_deref()
+                && field("namespace") == requested.namespace.as_deref()
+                && field("name") == requested.name.as_deref()
+        })
+        .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
+    Ok(kubernetes_comparison(managed_resource(resource)))
+}
+
+fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceComparison {
     ArgoResourceComparison {
         resource,
         exact: Some(false),

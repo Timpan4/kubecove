@@ -5,21 +5,18 @@
 
 use super::{Inspector, Load, Page};
 use crate::backend::CLUSTER_KINDS;
+use crate::model::PreparedRows;
 use gpui_kit::{Context, Task, Window};
-use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
-use std::{rc::Rc, time::Instant};
+use kubecove_lib::models::WatchResourceKey;
+use std::time::Instant;
 
 #[derive(Default)]
 pub(super) struct ClusterState {
-    /// Replaced with the inventory before starting a new cluster read.
-    pub(super) request: Rc<()>,
     /// The context `rows` belong to.
     context: String,
     /// `None` until the page first opens for `context`.
     load: Option<Load>,
-    pub(super) rows: Vec<ResourceSummary>,
-    /// `rows` with inherited GitOps owners, rebuilt by `prepare_rows`.
-    pub(super) prepared: Vec<ResourceSummary>,
+    pub(super) rows: PreparedRows,
     /// The list version of each kind in `rows`, by `watch_id` in `context`.
     pub(super) versions: crate::backend::ListVersions,
     warnings: Vec<String>,
@@ -73,19 +70,35 @@ impl Inspector {
         };
         let backend = self.backend.clone();
         let context = self.scope.context.clone();
+        let rows_context = context.clone();
         let started = Instant::now();
         let read = crate::read_retry::read(cx.background_executor().clone(), move || {
             backend.cluster_resources(context.clone(), std::mem::take(&mut refresh))
         });
         self.cluster.task = Some(cx.spawn(async move |this, cx| {
-            let result = read.await;
+            let result = match read.await {
+                Ok(mut result) => {
+                    let resources = std::mem::take(&mut result.resources);
+                    let rows = cx
+                        .background_executor()
+                        .spawn(async move {
+                            PreparedRows::with_inherited_owners(
+                                resources,
+                                std::slice::from_ref(&rows_context),
+                            )
+                        })
+                        .await;
+                    Ok((result, rows))
+                }
+                Err(error) => Err(error),
+            };
             let _ = this.update(cx, |this, cx| {
                 match result {
-                    Ok(result) => {
+                    Ok((result, rows)) => {
                         this.observation
                             .clear_listed_kind_errors(&result.listed, started);
                         this.supersede_kind_errors(&result.listed, started);
-                        this.cluster.rows = result.resources;
+                        this.cluster.rows = rows;
                         this.cluster.versions = crate::backend::context_versions(
                             &this.cluster.context,
                             result.versions,
@@ -95,7 +108,6 @@ impl Inspector {
                     }
                     Err(error) => this.cluster.load = Some(Load::Failed(error.message)),
                 }
-                this.prepare_rows();
                 this.filter(cx);
             });
         }));
@@ -113,21 +125,8 @@ impl Inspector {
     }
 
     /// Cluster rows join the filter source when the selected scope needs them.
-    pub(super) fn cluster_rows(&self) -> &[ResourceSummary] {
-        if self.wants_cluster_rows() {
-            &self.cluster.rows
-        } else {
-            &[]
-        }
-    }
-
-    /// The prepared cluster rows that join the filter source.
-    pub(super) fn cluster_prepared(&self) -> &[ResourceSummary] {
-        if self.wants_cluster_rows() {
-            &self.cluster.prepared
-        } else {
-            &[]
-        }
+    pub(super) fn cluster_rows(&self) -> Option<&PreparedRows> {
+        self.wants_cluster_rows().then_some(&self.cluster.rows)
     }
 
     /// Whether a cluster-row read is still loading, so a cluster kind's watch

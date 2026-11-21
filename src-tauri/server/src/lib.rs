@@ -33,7 +33,7 @@ use axum::{
 use kubecove_lib::models::{AppError, AppErrorKind};
 use observe::{AuthMode, AuthRefusal, CloseReason, CommandOutcome, SignInFailure};
 use oidc::names_cookie;
-use security::{MissingOrigin, NetworkPolicy, authenticated, equal_secret};
+use security::{GuardState, MissingOrigin, NetworkPolicy, authenticated, equal_secret};
 use serde::Deserialize;
 use serde_json::Value;
 use sessions::Sessions;
@@ -94,6 +94,7 @@ impl IntoResponse for ApiError {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
+    let guard_state = Arc::new(GuardState::new(Arc::clone(&state)));
     let router = Router::new()
         .route("/api/v1/auth", get(authentication_mode))
         .route("/api/v1/oidc/login", post(oidc_login))
@@ -112,18 +113,19 @@ pub fn router(state: Arc<AppState>) -> Router {
         router
     };
     #[cfg(feature = "web-ui")]
-    let router = router.fallback(get(assets::asset));
+    let router = router.fallback(get(assets::asset).with_state(Arc::clone(&guard_state)));
     router
         // Axum's default 2 MiB JSON limit matches the existing workspace import cap.
-        .layer(middleware::from_fn_with_state(Arc::clone(&state), guard))
+        .layer(middleware::from_fn_with_state(guard_state, guard))
         .with_state(state)
 }
 
 async fn guard(
-    State(state): State<Arc<AppState>>,
+    State(guard_state): State<Arc<GuardState>>,
     mut request: axum::extract::Request,
     next: Next,
 ) -> Response {
+    let state = &guard_state.app;
     // HTTP/2 sends the host as `:authority`, which hyper puts in the URI,
     // and no Host header (RFC 9113, section 8.3.1).
     if !request.headers().contains_key(header::HOST)
@@ -246,18 +248,10 @@ async fn guard(
         )
         .into_response();
     }
-    let host = request
-        .headers()
-        .get(header::HOST)
-        .and_then(|host| host.to_str().ok())
-        .expect("validated Host");
-    let policy = state.policy.content_security_policy(host);
+    let policy = guard_state.content_security_policy(request.headers());
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        policy.parse().expect("validated Host CSP"),
-    );
+    headers.insert(header::CONTENT_SECURITY_POLICY, policy.clone());
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         "nosniff".parse().expect("static header"),

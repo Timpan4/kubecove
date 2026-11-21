@@ -10,7 +10,7 @@ use super::table_controls::{GroupRow, group_row_id, pin_id, sort_id};
 use super::table_status::{health_badge, lifecycle_status, row_height_key};
 use super::{Inspector, surface, timestamp_text};
 use crate::model::{
-    Entry, OwnerRef, TableView, group_visual, indexed_table_page, kind_visual, owner_ref,
+    Entry, OwnerRef, TableView, group_visual, kind_visual, owner_ref, project_table_page,
 };
 use crate::table_sort;
 use crate::targets::TestSupportExt;
@@ -24,33 +24,34 @@ use kubecove_lib::models::ResourceSummary;
 impl Inspector {
     /// The table's columns. `multi_context` comes from the workspace, not the
     /// rows, so the Context column stays while a context fails or lists nothing.
-    fn columns(&self, rows: &[ResourceSummary], multi_context: bool) -> Vec<Column> {
+    fn columns(&self, indices: &[usize], multi_context: bool) -> Vec<Column> {
+        let rows = || indices.iter().map(|&index| &self.visible.all_rows()[index]);
         let mut columns = vec![Column::Name, Column::Status];
         if multi_context {
             columns.push(Column::Context);
         }
         columns.extend([Column::Namespace, Column::Kind]);
-        if rows.iter().any(|row| row.ready.is_some()) {
+        if rows().any(|row| row.ready.is_some()) {
             columns.push(Column::Ready);
         }
-        if rows.iter().any(|row| row.restarts.is_some()) {
+        if rows().any(|row| row.restarts.is_some()) {
             columns.push(Column::Restarts);
         }
-        if rows.iter().any(|row| {
+        if rows().any(|row| {
             self.resource_metric(row)
                 .and_then(|m| m.cpu_millicores)
                 .is_some()
         }) {
             columns.push(Column::Cpu);
         }
-        if rows.iter().any(|row| {
+        if rows().any(|row| {
             self.resource_metric(row)
                 .and_then(|m| m.memory_bytes)
                 .is_some()
         }) {
             columns.push(Column::Memory);
         }
-        if rows.iter().any(|row| owner_ref(row).is_some()) {
+        if rows().any(|row| owner_ref(row).is_some()) {
             columns.push(Column::Owner);
         }
         columns.extend([Column::Age, Column::Pin]);
@@ -286,7 +287,7 @@ impl Inspector {
 
     fn table_entry(
         &self,
-        page: &crate::model::TablePage,
+        page: &crate::model::TablePage<usize>,
         columns: &[Column],
         index: usize,
         cx: &mut Context<Self>,
@@ -333,7 +334,7 @@ impl Inspector {
                 )
                 .into_any_element(),
             Entry::Row(index) => {
-                let row = &page.rows[*index];
+                let row = &self.visible.all_rows()[page.rows[*index]];
                 let id = resource_id(row);
                 let tint = self.row_changes.tint(&id);
                 let cells: Vec<AnyElement> = columns
@@ -375,10 +376,15 @@ impl Inspector {
             collapsed: &self.collapsed_groups,
             selected: self.detail.resource(),
         };
-        let page = std::rc::Rc::new(indexed_table_page(&self.visible, &view, |row| {
-            self.usage(row)
-        }));
-        self.observe_row_changes(&page, cx);
+        let page = std::rc::Rc::new(if view.sort == table_sort::Sort::default() {
+            project_table_page(&self.visible, &view, self.visible.order())
+        } else {
+            let order = self
+                .visible
+                .cached_order(view.sort, self.metrics.revision, |row| self.usage(row));
+            project_table_page(&self.visible, &view, &order)
+        });
+        self.observe_row_changes(&page.rows, cx);
         self.table_page = self.table_page.min(page.page_count - 1);
         let contexts = self.workspace_contexts().len();
         let columns = self.columns(&page.rows, contexts > 1);
@@ -386,6 +392,7 @@ impl Inspector {
         let mut live: std::collections::HashSet<String> = page
             .rows
             .iter()
+            .map(|&index| &self.visible.all_rows()[index])
             .flat_map(|row| [resource_id(row), pin_id(row)])
             .collect();
         live.extend(page.entries.iter().filter_map(|entry| match entry {
@@ -423,7 +430,9 @@ impl Inspector {
                 .entries
                 .iter()
                 .map(|entry| match entry {
-                    Entry::Row(index) => row_height_key(&page.rows[*index]),
+                    Entry::Row(index) => {
+                        row_height_key(&self.visible.all_rows()[page.rows[*index]])
+                    }
                     _ => super::windowed::row_id(std::mem::discriminant(entry)),
                 })
                 .collect();

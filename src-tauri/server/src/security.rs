@@ -1,7 +1,7 @@
-use crate::observe::RequestRefusal;
-use axum::http::{HeaderMap, header};
+use crate::{AppState, observe::RequestRefusal};
+use axum::http::{HeaderMap, HeaderValue, header};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use std::io;
+use std::{collections::HashMap, io, sync::Arc};
 use subtle::ConstantTimeEq;
 
 pub const COOKIE_NAME: &str = "kubecove_session";
@@ -63,6 +63,34 @@ pub struct NetworkPolicy {
     pub hosts: Vec<String>,
     pub origins: Vec<String>,
     pub secure: bool,
+}
+
+pub(super) struct GuardState {
+    pub(super) app: Arc<AppState>,
+    host_policies: HashMap<String, HeaderValue>,
+}
+
+impl GuardState {
+    pub(super) fn new(app: Arc<AppState>) -> Self {
+        let host_policies = app
+            .policy
+            .hosts
+            .iter()
+            .filter_map(|host| {
+                let policy = app.policy.content_security_policy(host).parse().ok()?;
+                Some((host.clone(), policy))
+            })
+            .collect();
+        Self { app, host_policies }
+    }
+
+    pub(super) fn content_security_policy(&self, headers: &HeaderMap) -> &HeaderValue {
+        let host = headers
+            .get(header::HOST)
+            .and_then(|host| host.to_str().ok())
+            .expect("validated Host");
+        self.host_policies.get(host).expect("validated Host CSP")
+    }
 }
 
 impl NetworkPolicy {

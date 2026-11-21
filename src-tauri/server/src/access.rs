@@ -3,7 +3,11 @@ use axum::http::{HeaderMap, StatusCode, header};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use kubecove_lib::models::AppErrorKind;
 use serde::Deserialize;
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tokio::{sync::Mutex, time::Instant};
 
 pub const ASSERTION_HEADER: &str = "cf-access-jwt-assertion";
@@ -30,8 +34,22 @@ pub struct CloudflareAccess {
 }
 
 struct KeyCache {
-    jwks: JwkSet,
+    // A present ID with an invalid key still counts as a cache hit.
+    keys: HashMap<String, Option<Arc<DecodingKey>>>,
     fresh_until: Instant,
+}
+
+impl KeyCache {
+    fn new(jwks: JwkSet, fresh_until: Instant) -> Self {
+        let mut keys = HashMap::new();
+        for jwk in jwks.keys {
+            if let Some(kid) = &jwk.common.key_id {
+                keys.entry(kid.clone())
+                    .or_insert_with(|| DecodingKey::from_jwk(&jwk).ok().map(Arc::new));
+            }
+        }
+        Self { keys, fresh_until }
+    }
 }
 
 impl CloudflareAccess {
@@ -80,16 +98,19 @@ impl CloudflareAccess {
         let key = {
             // Serialize refreshes and never fall back to stale keys on fetch failure.
             let mut cache = self.keys.lock().await;
-            if !cache.as_ref().is_some_and(|cache| {
-                cache.fresh_until > Instant::now() && cache.jwks.find(&kid).is_some()
-            }) {
-                *cache = Some(self.fetch_keys().await?);
-            }
-            let jwk = cache
+            let cached_key = cache
                 .as_ref()
-                .and_then(|cache| cache.jwks.find(&kid))
-                .ok_or_else(invalid_assertion)?;
-            DecodingKey::from_jwk(jwk).map_err(|_| invalid_assertion())?
+                .filter(|cache| cache.fresh_until > Instant::now())
+                .and_then(|cache| cache.keys.get(&kid));
+            let key = if let Some(key) = cached_key {
+                key.clone()
+            } else {
+                let fetched = self.fetch_keys().await?;
+                let key = fetched.keys.get(&kid).cloned().flatten();
+                *cache = Some(fetched);
+                key
+            };
+            key.ok_or_else(invalid_assertion)?
         };
         let claims = decode::<Claims>(token, &key, &self.validation)
             .map_err(|_| invalid_assertion())?
@@ -124,12 +145,10 @@ impl CloudflareAccess {
         if jwks.keys.is_empty() {
             return Err(keys_unavailable());
         }
-        Ok(KeyCache {
-            jwks,
-            fresh_until: Instant::now()
-                .checked_add(lifetime)
-                .ok_or_else(keys_unavailable)?,
-        })
+        let fresh_until = Instant::now()
+            .checked_add(lifetime)
+            .ok_or_else(keys_unavailable)?;
+        Ok(KeyCache::new(jwks, fresh_until))
     }
 }
 

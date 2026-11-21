@@ -3,8 +3,8 @@ use super::transport::resource_actions_path;
 use super::{
     ArgoConnectionStore,
     connected::{
-        api_get, connected_comparison, inspector_from_application, kubernetes_application,
-        kubernetes_comparison, managed_resource_path, redact_secret_fields, text,
+        api_get, connected_comparison, kubernetes_application, kubernetes_selected_comparison,
+        managed_resource_path, redact_secret_fields,
     },
 };
 use crate::models::AppErrorKind;
@@ -24,16 +24,14 @@ async fn argo_resource_comparison(
     resource: ArgoManagedResource,
 ) -> Result<ArgoResourceComparison, AppError> {
     if transport == "kubernetes" {
-        let inspector = inspector_from_application(
-            &kubernetes_application(
-                access,
-                &cluster_context,
-                application.namespace.as_deref(),
-                &application.name,
-            )
-            .await?,
-        )?;
-        return kubernetes_selected_comparison(inspector, &resource);
+        let object = kubernetes_application(
+            access,
+            &cluster_context,
+            application.namespace.as_deref(),
+            &application.name,
+        )
+        .await?;
+        return kubernetes_selected_comparison(&object, &resource);
     }
     if transport != "connected" {
         return Err(AppError::new(
@@ -68,48 +66,39 @@ async fn argo_resource_comparison(
     Ok(comparison)
 }
 
-fn kubernetes_selected_comparison(
-    inspector: crate::models::ArgoApplicationInspector,
-    requested: &ArgoManagedResource,
-) -> Result<ArgoResourceComparison, AppError> {
-    let resource = inspector
-        .resources
-        .into_iter()
-        .find(|candidate| {
-            candidate.group == requested.group
-                && candidate.version == requested.version
-                && candidate.kind == requested.kind
-                && candidate.namespace == requested.namespace
-                && candidate.name == requested.name
-        })
-        .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
-    Ok(kubernetes_comparison(resource))
-}
-
 /// Argo CD's managed-resource items carry no API version, and cluster-scoped items an
 /// empty namespace, so they match on the identity the frontend keys by: group, kind,
 /// namespace and name, with empty meaning absent.
 fn same_identity(item: &Value, requested: &ArgoManagedResource) -> bool {
-    let present = |value: Option<String>| value.filter(|value| !value.is_empty());
-    present(text(item, "group")) == present(requested.group.clone())
-        && present(text(item, "kind")) == present(requested.kind.clone())
-        && present(text(item, "namespace")) == present(requested.namespace.clone())
-        && present(text(item, "name")) == present(requested.name.clone())
+    let matches = |key, requested: Option<&str>| {
+        item.get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            == requested.filter(|value| !value.is_empty())
+    };
+    matches("group", requested.group.as_deref())
+        && matches("kind", requested.kind.as_deref())
+        && matches("namespace", requested.namespace.as_deref())
+        && matches("name", requested.name.as_deref())
 }
 
 fn connected_selected_comparison(
     mut value: Value,
     requested: &ArgoManagedResource,
 ) -> Result<ArgoResourceComparison, AppError> {
-    redact_secret_fields(&mut value);
+    let field = if value.get("items").is_some() {
+        "items"
+    } else {
+        "managedResources"
+    };
     let item = value
-        .get("items")
-        .or_else(|| value.get("managedResources"))
-        .and_then(Value::as_array)
+        .get_mut(field)
+        .and_then(Value::as_array_mut)
         .into_iter()
         .flatten()
         .find(|item| same_identity(item, requested))
         .ok_or_else(|| AppError::new("managed resource not found", AppErrorKind::NotFound))?;
+    redact_secret_fields(item);
     let mut comparison = connected_comparison(item);
     // Server actions need the version the item lacks.
     comparison.resource.version = comparison
@@ -124,8 +113,7 @@ pub fn benchmark_kubernetes_selected_comparison(
     object: &kube::core::DynamicObject,
     requested: &ArgoManagedResource,
 ) -> Result<ArgoResourceComparison, AppError> {
-    let inspector = inspector_from_application(object)?;
-    kubernetes_selected_comparison(inspector, requested)
+    kubernetes_selected_comparison(object, requested)
 }
 
 #[cfg(feature = "bench-support")]

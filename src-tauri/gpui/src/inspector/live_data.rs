@@ -238,6 +238,7 @@ impl Inspector {
     pub(super) fn discover_kinds(&mut self, contexts: Vec<String>, cx: &mut Context<Self>) {
         self.live.kinds.clear();
         self.live.catalog.clear();
+        self.row_index.invalidate_filters();
         self.live.discovery_warnings.clear();
         let namespace = self.scope.namespace.clone();
         let backend = self.backend.clone();
@@ -262,6 +263,7 @@ impl Inspector {
                 }
                 let (kinds, warnings) = union_kinds(&catalog_contexts, results);
                 this.live.catalog = kinds;
+                this.row_index.invalidate_filters();
                 this.live
                     .discovery_warnings
                     .extend(warnings.iter().cloned());
@@ -295,6 +297,7 @@ impl Inspector {
                 }
                 let (kinds, warnings) = union_kinds(&contexts, results);
                 this.live.kinds = kinds;
+                this.row_index.invalidate_filters();
                 if this.fill_custom_selection() {
                     this.filter(cx);
                 }
@@ -725,19 +728,26 @@ impl Inspector {
             return;
         }
         self.visible.release_source();
-        self.row_index.invalidate();
         for patch in pending {
             if patch.superseded(&self.observation) {
                 continue;
             }
             self.row_changes.notice(&patch);
-            let rows = self.patch_kind(
+            let (rows, change) = self.patch_kind(
                 &patch.scope,
                 &patch.key,
                 patch.rows,
                 patch.resource_version,
                 patch.names,
             );
+            if let Some((source, change)) = change {
+                self.row_index.apply_patch(
+                    source,
+                    &change,
+                    self.observation.rows(),
+                    &self.cluster.rows,
+                );
+            }
             if let Some(watch) = patch
                 .watch
                 .as_deref()
@@ -747,8 +757,8 @@ impl Inspector {
                 watch.recycled = rows;
             }
         }
-        self.prepare_rows();
-        self.filter(cx);
+        self.update_saved_overview();
+        self.filter_search(cx);
         cx.notify();
     }
 }

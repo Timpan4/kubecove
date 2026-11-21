@@ -1,8 +1,8 @@
 use crate::commands::{
     BackendCancellationRegistry, ClusterAccess, FiniteRead, diagnostic_field,
     helpers::{
-        fetch_and_serialize_cluster_with_encoding, fetch_and_serialize_with_encoding,
-        fetch_resource, redact_secret, serialize_resource_document,
+        fetch_cluster_resource, fetch_resource, redact_secret, resource_json_value,
+        serialize_resource_value,
     },
 };
 use crate::models::AppErrorKind;
@@ -58,109 +58,53 @@ pub async fn resource_yaml_from(
     let encoding = yaml_encoding.unwrap_or_default();
     let ns = namespace.as_deref();
     let name = name.as_str();
-    let yaml = match kind.as_str() {
-        "Pod" => {
-            fetch_and_serialize_with_encoding::<Pod>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "Deployment" => {
-            fetch_and_serialize_with_encoding::<Deployment>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "ReplicaSet" => {
-            fetch_and_serialize_with_encoding::<ReplicaSet>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "Service" => {
-            fetch_and_serialize_with_encoding::<Service>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "ConfigMap" => {
-            fetch_and_serialize_with_encoding::<ConfigMap>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
+    let value = match kind.as_str() {
+        "Pod" => resource_json_value(&fetch_resource::<Pod>(client, ns, name).await?),
+        "Deployment" => resource_json_value(&fetch_resource::<Deployment>(client, ns, name).await?),
+        "ReplicaSet" => resource_json_value(&fetch_resource::<ReplicaSet>(client, ns, name).await?),
+        "Service" => resource_json_value(&fetch_resource::<Service>(client, ns, name).await?),
+        "ConfigMap" => resource_json_value(&fetch_resource::<ConfigMap>(client, ns, name).await?),
         "StatefulSet" => {
-            fetch_and_serialize_with_encoding::<StatefulSet>(client, ns, name, mode, encoding)
-                .await?
-                .1
+            resource_json_value(&fetch_resource::<StatefulSet>(client, ns, name).await?)
         }
-        "DaemonSet" => {
-            fetch_and_serialize_with_encoding::<DaemonSet>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "Ingress" => {
-            fetch_and_serialize_with_encoding::<Ingress>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "Secret" => {
-            let secret = fetch_resource::<Secret>(client, ns, name).await?;
-            serialize_secret_resource_document(secret, mode, encoding)?
-        }
+        "DaemonSet" => resource_json_value(&fetch_resource::<DaemonSet>(client, ns, name).await?),
+        "Ingress" => resource_json_value(&fetch_resource::<Ingress>(client, ns, name).await?),
+        "Secret" => redacted_secret_value(fetch_resource::<Secret>(client, ns, name).await?),
         "PersistentVolumeClaim" => {
-            fetch_and_serialize_with_encoding::<PersistentVolumeClaim>(
-                client, ns, name, mode, encoding,
-            )
-            .await?
-            .1
+            resource_json_value(&fetch_resource::<PersistentVolumeClaim>(client, ns, name).await?)
         }
-        "Job" => {
-            fetch_and_serialize_with_encoding::<Job>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "CronJob" => {
-            fetch_and_serialize_with_encoding::<CronJob>(client, ns, name, mode, encoding)
-                .await?
-                .1
-        }
-        "Node" => {
-            fetch_and_serialize_cluster_with_encoding::<Node>(client, name, mode, encoding)
-                .await?
-                .1
-        }
+        "Job" => resource_json_value(&fetch_resource::<Job>(client, ns, name).await?),
+        "CronJob" => resource_json_value(&fetch_resource::<CronJob>(client, ns, name).await?),
+        "Node" => resource_json_value(&fetch_cluster_resource::<Node>(client, name).await?),
         "StorageClass" => {
-            fetch_and_serialize_cluster_with_encoding::<StorageClass>(client, name, mode, encoding)
-                .await?
-                .1
+            resource_json_value(&fetch_cluster_resource::<StorageClass>(client, name).await?)
         }
         "PersistentVolume" => {
-            fetch_and_serialize_cluster_with_encoding::<PersistentVolume>(
-                client, name, mode, encoding,
-            )
-            .await?
-            .1
+            resource_json_value(&fetch_cluster_resource::<PersistentVolume>(client, name).await?)
         }
-        "CustomResourceDefinition" => {
-            fetch_and_serialize_cluster_with_encoding::<CustomResourceDefinition>(
-                client, name, mode, encoding,
-            )
-            .await?
-            .1
-        }
-        _ => {
-            return Err(AppError::new(
-                format!("unsupported resource kind: {kind}"),
-                AppErrorKind::Cluster,
-            ));
-        }
-    };
-    Ok(yaml)
+        "CustomResourceDefinition" => resource_json_value(
+            &fetch_cluster_resource::<CustomResourceDefinition>(client, name).await?,
+        ),
+        _ => Err(AppError::new(
+            format!("unsupported resource kind: {kind}"),
+            AppErrorKind::Cluster,
+        )),
+    }?;
+    serialize_resource_value(value, mode, encoding)
 }
 
+fn redacted_secret_value(mut secret: Secret) -> Result<serde_json::Value, AppError> {
+    redact_secret(&mut secret);
+    resource_json_value(&secret)
+}
+
+#[allow(dead_code)]
 pub fn serialize_secret_resource_document(
-    mut secret: k8s_openapi::api::core::v1::Secret,
+    secret: Secret,
     mode: YamlViewMode,
     encoding: YamlEncoding,
 ) -> Result<String, AppError> {
-    redact_secret(&mut secret);
-    serialize_resource_document(&secret, mode, encoding)
+    serialize_resource_value(redacted_secret_value(secret)?, mode, encoding)
 }
 
 pub async fn get_resource_yaml(

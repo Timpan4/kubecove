@@ -4,7 +4,6 @@ use crate::models::{
     AppError, ArgoApplicationRef, ArgoManagedResource, ArgoServerEndpoint,
     normalize_service_tunnel_endpoint,
 };
-use futures_util::StreamExt;
 use reqwest::{Certificate, Client as HttpClient};
 use serde_json::Value;
 use std::{net::SocketAddr, time::Duration};
@@ -89,7 +88,7 @@ async fn api_status_error(response: reqwest::Response) -> AppError {
     )
 }
 
-async fn capped_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, AppError> {
+async fn capped_response_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, AppError> {
     if response
         .content_length()
         .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
@@ -97,9 +96,8 @@ async fn capped_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, A
         return Err(response_too_large());
     }
     let mut bytes = Vec::new();
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        push_capped_chunk(&mut bytes, &chunk.map_err(safe_http_error)?)?;
+    while let Some(chunk) = response.chunk().await.map_err(safe_http_error)? {
+        push_capped_chunk(&mut bytes, &chunk)?;
     }
     Ok(bytes)
 }

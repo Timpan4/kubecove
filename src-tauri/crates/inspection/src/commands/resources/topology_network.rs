@@ -3,7 +3,7 @@ use super::topology::{
     topology_node_id,
 };
 use crate::models::{ResourceTopology, TopologyRelation};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub(crate) struct NetworkService {
@@ -69,10 +69,27 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
         }
     }
 
-    let pods: Vec<&TopologyInputResource> = resources_by_id
-        .values()
-        .filter(|input| input.summary.kind == "Pod")
-        .collect();
+    let mut pods_by_namespace: HashMap<&str, Vec<_>> = HashMap::new();
+    for (id, input) in &resources_by_id {
+        if input.summary.kind == "Pod"
+            && let Some(namespace) = input.summary.namespace.as_deref()
+        {
+            pods_by_namespace
+                .entry(namespace)
+                .or_default()
+                .push((id, input));
+        }
+    }
+
+    let mut slices_by_service: HashMap<(&str, &str), Vec<_>> = HashMap::new();
+    for slice in &endpoint_slices {
+        if let Some(service_name) = slice.service_name.as_deref() {
+            slices_by_service
+                .entry((&slice.namespace, service_name))
+                .or_default()
+                .push(slice);
+        }
+    }
 
     for backend in &ingress_backends {
         let ingress_id = resource_id(
@@ -104,17 +121,13 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
         if let Some(node) = nodes_by_id.get_mut(&service_id) {
             node.status = Some(service.service_type.clone());
         }
-        let service_slices: Vec<_> = endpoint_slices
-            .iter()
-            .filter(|slice| {
-                slice.namespace == service.namespace
-                    && slice.service_name.as_deref() == Some(service.name.as_str())
-            })
-            .collect();
+        let service_slices = slices_by_service
+            .get(&(service.namespace.as_str(), service.name.as_str()))
+            .map_or(&[][..], Vec::as_slice);
 
-        let mut linked_pods = HashSet::new();
+        let mut has_linked_pod = false;
         let mut has_pod_targets = false;
-        for slice in &service_slices {
+        for slice in service_slices {
             let slice_id = resource_id(
                 "EndpointSlice",
                 "discovery.k8s.io/v1",
@@ -137,9 +150,10 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
                 has_pod_targets = true;
                 let pod_id = resource_id("Pod", "v1", &slice.namespace, pod_name);
                 if let Some(pod_input) = resources_by_id.get(&pod_id) {
-                    let node = node_from_input(pod_input);
-                    nodes_by_id.insert(node.id.clone(), node);
-                    linked_pods.insert(pod_id.clone());
+                    nodes_by_id
+                        .entry(pod_id.clone())
+                        .or_insert_with(|| node_from_input(pod_input));
+                    has_linked_pod = true;
                     push_edge(
                         &mut edges,
                         &mut edge_keys,
@@ -151,20 +165,23 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
             }
         }
 
-        if service_slices.is_empty() {
-            for pod in pods.iter().filter(|pod| {
-                pod.summary.namespace.as_deref() == Some(service.namespace.as_str())
-                    && selector_matches(&service.selector, &pod.labels)
-            }) {
-                let pod_node = node_from_input(pod);
-                let pod_id = pod_node.id.clone();
-                linked_pods.insert(pod_id.clone());
-                nodes_by_id.insert(pod_id.clone(), pod_node);
+        if service_slices.is_empty()
+            && !service.selector.is_empty()
+            && let Some(pods) = pods_by_namespace.get(service.namespace.as_str())
+        {
+            for &(pod_id, pod) in pods {
+                if !selector_matches(&service.selector, &pod.labels) {
+                    continue;
+                }
+                nodes_by_id
+                    .entry(pod_id.clone())
+                    .or_insert_with(|| node_from_input(pod));
+                has_linked_pod = true;
                 push_edge(
                     &mut edges,
                     &mut edge_keys,
                     service_id.clone(),
-                    pod_id,
+                    pod_id.clone(),
                     TopologyRelation::Selects,
                 );
             }
@@ -179,7 +196,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
                 "Service {}/{} has no selector or EndpointSlice targets",
                 service.namespace, service.name
             ));
-        } else if (service_slices.is_empty() || has_pod_targets) && linked_pods.is_empty() {
+        } else if (service_slices.is_empty() || has_pod_targets) && !has_linked_pod {
             warnings.push(format!(
                 "Service {}/{} has no matching Pod endpoints",
                 service.namespace, service.name
@@ -220,8 +237,7 @@ fn selector_matches(
     selector: &BTreeMap<String, String>,
     labels: &BTreeMap<String, String>,
 ) -> bool {
-    !selector.is_empty()
-        && selector
-            .iter()
-            .all(|(key, value)| labels.get(key) == Some(value))
+    selector
+        .iter()
+        .all(|(key, value)| labels.get(key) == Some(value))
 }

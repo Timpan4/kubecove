@@ -3,13 +3,15 @@
 //! `YamlCodeEditor.svelte` does. Parser errors come first, then parser
 //! warnings, then lint results. `info` findings are marked but never get a lens.
 use super::super::{Inspector, detail::Detail};
-use super::parse::{self, Level};
+use super::folds::YamlSyntax;
+use super::parse::Level;
 use crate::targets::TestSupportExt;
 use crate::{theme::Tokens, ui};
 use gpui_kit::base::input::{Diagnostic, DiagnosticSeverity};
-use gpui_kit::component::input::{EditorState, Position};
+use gpui_kit::component::input::{EditorState, Position, Rope};
 use gpui_kit::{App, Context, Div, Stateful, div, prelude::*, px};
 use kubecove_lib::models::{KubernetesYamlLintDiagnostic, KubernetesYamlLintSeverity};
+use std::collections::BTreeMap;
 
 pub(in crate::inspector) struct Lens {
     /// One-based line the label sits on.
@@ -30,60 +32,118 @@ struct Mark {
     message: String,
 }
 
-/// Marks every finding in the editor and returns the lenses to show. The
-/// marks stay when lenses are off, as the web linter keeps its underlines.
-pub(super) fn update(
-    editor: &mut EditorState,
-    enabled: bool,
-    lint: &[KubernetesYamlLintDiagnostic],
-    cx: &mut Context<EditorState>,
-) -> Vec<Lens> {
-    let text = editor.value().to_string();
-    let mut marks: Vec<Mark> = parse::diagnostics(&text)
-        .into_iter()
-        .map(|finding| Mark {
-            from: finding.range.start,
-            to: finding.range.end,
-            severity: match finding.level {
-                Level::Error => KubernetesYamlLintSeverity::Error,
-                Level::Warning => KubernetesYamlLintSeverity::Warning,
-            },
-            source: "YAML".into(),
-            message: finding.message,
-        })
-        .collect();
-    marks.extend(lint.iter().map(|diagnostic| {
-        let (from, to) = field_range(&text, diagnostic.field_path.as_deref());
-        Mark {
-            from,
-            to,
-            severity: diagnostic.severity.clone(),
-            source: diagnostic.source.clone(),
-            message: diagnostic.message.clone(),
-        }
-    }));
-    if let Some(diagnostics) = editor.diagnostics_mut() {
-        diagnostics.clear();
-        // The editor's diagnostic set is a sum tree that paints and hovers by
-        // seeking an offset, so it takes the marks in document order.
-        let mut ordered: Vec<&Mark> = marks.iter().collect();
-        ordered.sort_by_key(|mark| mark.from);
-        for mark in ordered {
-            diagnostics.push(
-                Diagnostic::new(
-                    position(&text, mark.from)..position(&text, mark.to),
-                    mark.message.clone(),
-                )
-                .with_severity(severity(&mark.severity))
-                .with_source(mark.source.clone()),
-            );
+struct Document {
+    rope: Rope,
+    text: String,
+    line_starts: Vec<usize>,
+    syntax: Vec<Mark>,
+}
+
+impl Document {
+    fn new(rope: &Rope, syntax: &YamlSyntax) -> Self {
+        let text = rope.to_string();
+        let line_starts = std::iter::once(0)
+            .chain(memchr::memchr_iter(b'\n', text.as_bytes()).map(|end| end + 1))
+            .collect();
+        let syntax = syntax
+            .diagnostics(rope, &text)
+            .into_iter()
+            .map(|finding| Mark {
+                from: finding.range.start,
+                to: finding.range.end,
+                severity: match finding.level {
+                    Level::Error => KubernetesYamlLintSeverity::Error,
+                    Level::Warning => KubernetesYamlLintSeverity::Warning,
+                },
+                source: "YAML".into(),
+                message: finding.message,
+            })
+            .collect();
+        Self {
+            rope: rope.clone(),
+            text,
+            line_starts,
+            syntax,
         }
     }
-    cx.notify();
-    if enabled {
-        lenses(&text, &marks)
-    } else {
-        Vec::new()
+
+    fn line(&self, offset: usize) -> usize {
+        self.line_starts.partition_point(|&start| start <= offset) - 1
+    }
+
+    fn position(&self, offset: usize) -> Position {
+        let line = self.line(offset);
+        let column = self.text[self.line_starts[line]..offset]
+            .encode_utf16()
+            .count();
+        Position::new(line as u32, column as u32)
+    }
+}
+
+#[derive(Default)]
+pub(super) struct Diagnostics {
+    document: Option<Document>,
+    lint: Option<Vec<Mark>>,
+}
+
+impl Diagnostics {
+    pub(super) fn clear_lint(&mut self) {
+        self.lint = None;
+    }
+
+    /// The underlines remain when lenses are disabled.
+    pub(super) fn update(
+        &mut self,
+        syntax: &YamlSyntax,
+        editor: &mut EditorState,
+        enabled: bool,
+        lint: &[KubernetesYamlLintDiagnostic],
+        cx: &mut Context<EditorState>,
+    ) -> Vec<Lens> {
+        let rope = editor.text();
+        if self.document.as_ref().is_none_or(|doc| &doc.rope != rope) {
+            self.document = Some(Document::new(rope, syntax));
+            self.clear_lint();
+        }
+        let doc = self.document.as_ref().expect("document cached");
+        let lint = self.lint.get_or_insert_with(|| {
+            lint.iter()
+                .map(|diagnostic| {
+                    let (from, to) = field_range(&doc.text, diagnostic.field_path.as_deref());
+                    Mark {
+                        from,
+                        to,
+                        severity: diagnostic.severity.clone(),
+                        source: diagnostic.source.clone(),
+                        message: diagnostic.message.clone(),
+                    }
+                })
+                .collect()
+        });
+        let marks = || doc.syntax.iter().chain(lint.iter());
+        if let Some(diagnostics) = editor.diagnostics_mut() {
+            diagnostics.clear();
+            // The editor's diagnostic set is a sum tree that paints and hovers by
+            // seeking an offset, so it takes the marks in document order.
+            let mut ordered: Vec<&Mark> = marks().collect();
+            ordered.sort_by_key(|mark| mark.from);
+            for mark in ordered {
+                diagnostics.push(
+                    Diagnostic::new(
+                        doc.position(mark.from)..doc.position(mark.to),
+                        mark.message.clone(),
+                    )
+                    .with_severity(severity(&mark.severity))
+                    .with_source(mark.source.clone()),
+                );
+            }
+        }
+        cx.notify();
+        if enabled {
+            lenses(doc, marks())
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -124,15 +184,6 @@ fn field_range(text: &str, field_path: Option<&str>) -> (usize, usize) {
     fallback
 }
 
-/// The editor position of a byte offset: line and UTF-16 column.
-fn position(text: &str, offset: usize) -> Position {
-    let before = &text[..offset];
-    let line = before.matches('\n').count();
-    let line_start = before.rfind('\n').map_or(0, |index| index + 1);
-    let column = before[line_start..].encode_utf16().count();
-    Position::new(line as u32, column as u32)
-}
-
 fn severity(severity: &KubernetesYamlLintSeverity) -> DiagnosticSeverity {
     match severity {
         KubernetesYamlLintSeverity::Error => DiagnosticSeverity::Error,
@@ -143,28 +194,24 @@ fn severity(severity: &KubernetesYamlLintSeverity) -> DiagnosticSeverity {
 
 /// `forEachYamlErrorLensDiagnostic`: the first non-info finding on each line,
 /// in line order.
-fn lenses(text: &str, marks: &[Mark]) -> Vec<Lens> {
-    let mut chosen: Vec<(usize, &Mark)> = Vec::new();
+fn lenses<'a>(doc: &Document, marks: impl Iterator<Item = &'a Mark>) -> Vec<Lens> {
+    let mut chosen = BTreeMap::new();
     for mark in marks {
         if mark.severity == KubernetesYamlLintSeverity::Info {
             continue;
         }
-        let end = text[mark.from..]
-            .find('\n')
-            .map_or(text.len(), |index| mark.from + index);
-        if chosen.iter().any(|(line_end, _)| *line_end == end) {
-            continue;
-        }
-        chosen.push((end, mark));
+        chosen.entry(doc.line(mark.from)).or_insert(mark);
     }
-    chosen.sort_by_key(|(end, _)| *end);
     chosen
         .into_iter()
-        .map(|(end, mark)| Lens {
-            line: text[..mark.from].matches('\n').count() + 1,
+        .map(|(line, mark)| Lens {
+            line: line + 1,
             label: format!("{}: {}", mark.source, mark.message),
             severity: mark.severity.clone(),
-            end,
+            end: doc
+                .line_starts
+                .get(line + 1)
+                .map_or(doc.text.len(), |&next| next - 1),
         })
         .collect()
 }
@@ -239,7 +286,7 @@ impl Inspector {
         let enabled = self.persisted.preferences.yaml_error_lens_enabled;
         if let Detail::Ready(detail) = &mut self.detail {
             detail.lenses = detail.editor.update(cx, |editor, cx| {
-                update(editor, enabled, &detail.lint.diagnostics, cx)
+                detail.lint.update_diagnostics(editor, enabled, cx)
             });
         }
     }

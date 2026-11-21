@@ -9,7 +9,14 @@ use super::{PreparedRows, Visible, order::Lanes};
 use crate::collate::Key;
 use crate::table_sort::{Column, Sort, Usage, health_state};
 use kubecove_lib::models::ResourceSummary;
-use std::collections::HashMap;
+use std::{cell::Ref, collections::HashMap};
+
+pub(super) struct AlternateOrder {
+    sort: Sort,
+    row_revision: u64,
+    metrics_revision: u64,
+    order: Vec<usize>,
+}
 
 /// Per-row sort values fixed at preparation. They read only name, namespace,
 /// kind and context, which a watch patch never changes in place: a patch that
@@ -222,6 +229,48 @@ fn values(
 }
 
 impl Visible {
+    pub(crate) fn cached_order(
+        &self,
+        sort: Sort,
+        metrics_revision: u64,
+        usage: impl Fn(&ResourceSummary) -> Usage,
+    ) -> Ref<'_, [usize]> {
+        let row_revision = match sort.column {
+            Column::Status | Column::Ready | Column::Restarts | Column::Age => self.source.revision,
+            _ => 0,
+        };
+        let metrics_revision = if matches!(sort.column, Column::Cpu | Column::Memory) {
+            metrics_revision
+        } else {
+            0
+        };
+        let cached = self
+            .alternate_order
+            .borrow()
+            .as_ref()
+            .is_some_and(|cached| {
+                cached.sort == sort
+                    && cached.row_revision == row_revision
+                    && cached.metrics_revision == metrics_revision
+            });
+        if !cached {
+            let order = self.sorted_order(sort, usage);
+            *self.alternate_order.borrow_mut() = Some(AlternateOrder {
+                sort,
+                row_revision,
+                metrics_revision,
+                order,
+            });
+        }
+        Ref::map(self.alternate_order.borrow(), |cache| {
+            cache
+                .as_ref()
+                .expect("alternate sort cached")
+                .order
+                .as_slice()
+        })
+    }
+
     /// The visible rows in display order under `sort`. Ties keep ascending
     /// name order, as `nameCollator` breaks them on the web, even when the
     /// sort is descending, then context rank.

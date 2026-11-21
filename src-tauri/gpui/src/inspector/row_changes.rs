@@ -6,12 +6,10 @@
 use super::Inspector;
 use super::resource_observation::Patch;
 use super::table_columns::{Column, resource_id, resource_id_of};
-use crate::model::{Added, TablePage, identity_hash, identity_hash_of};
+use crate::model::{Added, RowsId, identity_hash_of};
 use crate::motion::{Bezier, Timing};
 use gpui_kit::Context;
-use kubecove_lib::models::ResourceSummary;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// `animate-[sidebar-row-reveal_1s_ease-out]` in `SidebarTreeNode.svelte`.
@@ -38,12 +36,24 @@ pub(super) struct RowChanges {
     /// The rows that reads of those names added.
     pub(super) added: Vec<Added>,
     /// The page the table last drew.
-    drawn: Option<Rc<TablePage>>,
+    drawn: Option<DrawnPage>,
     /// When each highlighted row, by `resource_id`, changed.
     marks: HashMap<String, Instant>,
     now: Option<Instant>,
     /// Whether this frame drew the table.
     seen: bool,
+}
+
+struct DrawnPage {
+    revision: (RowsId, u64),
+    indices: Vec<usize>,
+    rows: Vec<DrawnRow>,
+}
+
+struct DrawnRow {
+    identity: u64,
+    id: String,
+    text: [String; WATCHED.len()],
 }
 
 fn added_id(added: &Added) -> String {
@@ -103,7 +113,7 @@ impl Inspector {
     /// Marks the rows of `page` that a watch notice added or changed since the
     /// table last drew. Reduced motion marks none and ends the highlights
     /// that had started.
-    pub(super) fn observe_row_changes(&mut self, page: &Rc<TablePage>, cx: &mut Context<Self>) {
+    pub(super) fn observe_row_changes(&mut self, page: &[usize], cx: &mut Context<Self>) {
         let now = cx.background_executor().now();
         let mut changes = std::mem::take(&mut self.row_changes);
         changes.seen = true;
@@ -116,29 +126,48 @@ impl Inspector {
                 .retain(|_, since| now < *since + HIGHLIGHT.duration);
         }
         let mut named = std::mem::take(&mut changes.noticed);
+        let source = self.visible.source();
+        let revision = source.revision();
+        let capture = || DrawnPage {
+            revision,
+            indices: page.to_vec(),
+            rows: page
+                .iter()
+                .map(|&index| {
+                    let row = &source[index];
+                    DrawnRow {
+                        identity: source.row_identities()[index],
+                        id: resource_id(row),
+                        text: WATCHED.map(|column| self.cell_text(column, row)),
+                    }
+                })
+                .collect(),
+        };
+        let next = changes
+            .drawn
+            .as_ref()
+            .is_none_or(|drawn| drawn.revision != revision || drawn.indices.as_slice() != page)
+            .then(capture);
         if !named.is_empty()
             && !cx.reduce_motion()
-            && let Some(drawn) = &changes.drawn
+            && let (Some(drawn), Some(next)) = (&changes.drawn, &next)
         {
             named.sort_unstable();
-            let noticed = |row: &&ResourceSummary| named.binary_search(&identity_hash(row)).is_ok();
+            let noticed = |row: &&DrawnRow| named.binary_search(&row.identity).is_ok();
             let added: HashSet<String> = changes.added.iter().map(added_id).collect();
-            let before: HashMap<String, &ResourceSummary> = drawn
+            let before: HashMap<_, _> = drawn
                 .rows
                 .iter()
                 .filter(noticed)
-                .map(|row| (resource_id(row), row))
+                .map(|row| (&row.id, &row.text))
                 .collect();
-            for row in page.rows.iter().filter(noticed) {
-                let id = resource_id(row);
-                let changed = match before.get(&id) {
-                    Some(old) => WATCHED
-                        .iter()
-                        .any(|column| self.cell_text(*column, old) != self.cell_text(*column, row)),
-                    None => added.contains(&id),
+            for row in next.rows.iter().filter(noticed) {
+                let changed = match before.get(&row.id) {
+                    Some(old) => *old != &row.text,
+                    None => added.contains(&row.id),
                 };
                 if changed {
-                    changes.marks.insert(id, now);
+                    changes.marks.insert(row.id.clone(), now);
                 }
             }
         }
@@ -146,7 +175,9 @@ impl Inspector {
         named.clear();
         changes.noticed = named;
         changes.added.clear();
-        changes.drawn = Some(page.clone());
+        if let Some(next) = next {
+            changes.drawn = Some(next);
+        }
         self.row_changes = changes;
     }
 

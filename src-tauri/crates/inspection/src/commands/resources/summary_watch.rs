@@ -17,6 +17,11 @@ use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomRe
 use kube::api::DynamicObject;
 use serde::de::DeserializeOwned;
 
+#[inline(never)]
+fn watch_object_value(object: &DynamicObject) -> Option<serde_json::Value> {
+    serde_json::to_value(object).ok()
+}
+
 /// The row `resources_summary_from` lists for `object` of the typed `kind`.
 /// Each kind goes through the projection its list decodes, so the row matches
 /// a fresh list's row. `None` for a kind without a typed list or an object
@@ -27,9 +32,7 @@ pub fn watched_resource_summary(
     object: &DynamicObject,
 ) -> Option<ResourceSummary> {
     fn decoded<T: DeserializeOwned>(object: &DynamicObject) -> Option<T> {
-        serde_json::to_value(object)
-            .and_then(serde_json::from_value)
-            .ok()
+        serde_json::from_value(watch_object_value(object)?).ok()
     }
     fn typed<K: BuiltinSummary + DeserializeOwned>(
         cluster_context: &str,
