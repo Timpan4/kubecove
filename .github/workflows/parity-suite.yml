@@ -63,14 +63,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
-      # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
-      # GPUI loads Wayland at run time, and its test platform needs no display.
       - name: Install GPUI build dependencies
         if: ${{ inputs.driver != 'web' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
+        uses: ./.github/actions/setup-linux-native-deps
 
       - name: Setup Bun
         if: ${{ !inputs.build-only }}
@@ -119,15 +114,6 @@ jobs:
         if: ${{ inputs.driver != 'web' }}
         run: node scripts/ci-mbx-cargo.mjs
 
-      - name: Cache Bun dependencies
-        if: ${{ !inputs.build-only }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: Install dependencies
         if: ${{ !inputs.build-only }}
         run: bun install --frozen-lockfile
@@ -135,7 +121,22 @@ jobs:
       # The web driver launches the full Chromium build that playwright-core pins.
       - name: Install Chromium
         if: ${{ !inputs.build-only && inputs.driver != 'gpui' }}
-        run: bunx playwright-core install --with-deps --no-shell chromium
+        shell: bash
+        run: |
+          bunx playwright-core install --no-shell chromium
+          # The chromium channel selects the full browser and runs Playwright's
+          # Linux host dependency checks, including ldd, before launching it.
+          probe_chromium() {
+            node --input-type=module -e '
+              import { chromium } from "playwright-core";
+              const browser = await chromium.launch({ channel: "chromium", headless: true });
+              await browser.close();
+            '
+          }
+          if ! probe_chromium; then
+            bunx playwright-core install-deps chromium
+            probe_chromium
+          fi
 
       - name: Build parity test
         if: ${{ inputs.build-only }}

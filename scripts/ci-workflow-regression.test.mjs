@@ -354,7 +354,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const lookup = step("Restore Rust task pass");
   const save = step("Save Rust task pass");
-  const pin = /uses: actions\/cache@([a-f0-9]{40})/.exec(step("Cache Bun dependencies"))[1];
+  const pin = /uses: actions\/cache\/restore@([a-f0-9]{40})/.exec(step("Restore Rust task pass"))[1];
   assert.ok(lookup.includes(`uses: actions/cache/restore@${pin}`));
   assert.ok(save.includes(`uses: actions/cache/save@${pin}`));
   assert.match(lookup, /continue-on-error: true/);
@@ -374,7 +374,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
     return rustCondition(expression, task, skip === undefined ? "" : String(skip), event, successful);
   };
-  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Cache Bun dependencies", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
+  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     assert.equal(condition("Restore Rust task pass", task, false), true);
     for (const event of ["push", "workflow_dispatch"]) assert.equal(condition("Restore Rust task pass", task, false, event), false);
@@ -389,7 +389,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     }
   }
   // Tasks without a Rust workspace never decide, and their shared setup must still run.
-  const shared = { docs: ["Setup Bun"], "frontend-e2e": ["Setup Bun", "Cache Bun dependencies", "Install frontend dependencies"] };
+  const shared = { docs: ["Setup Bun"], "frontend-e2e": ["Setup Bun", "Install frontend dependencies"] };
   for (const task of matrix.include.filter(({ workspace }) => !workspace)) {
     assert.ok(shared[task.task], task.task);
     for (const name of shared[task.task]) assert.equal(condition(name, task, undefined), true, `${task.task}: ${name}`);
@@ -491,14 +491,15 @@ test("pass inputs retain CI and local actions without unrelated workflows", asyn
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const uses = [...workflow.matchAll(/uses: (\.\/\.github\/\S+)/g)].map(([, path]) => path.slice(2));
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
+    const taskActions = uses.filter((path) => path !== ".github/actions/setup-linux-native-deps" || task.task.startsWith("gpui-"));
     const result = spawnSync("bash", ["-c", `git ls-files -z -- .github/workflows/ci.yml ${task.passInputs ?? task.inputs}`], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     const githubFiles = result.stdout.split("\0").filter((path) => path.startsWith(".github/"));
     assert.ok(githubFiles.includes(".github/workflows/ci.yml"), task.task);
     for (const path of githubFiles) {
-      assert.ok(path === ".github/workflows/ci.yml" || uses.some((used) => path === used || path.startsWith(`${used}/`)), `${task.task} includes unrelated ${path}`);
+      assert.ok(path === ".github/workflows/ci.yml" || taskActions.some((used) => path === used || path.startsWith(`${used}/`)), `${task.task} includes unrelated ${path}`);
     }
-    for (const path of uses) assert.ok(githubFiles.some((file) => file === path || file.startsWith(`${path}/`)), `${task.task} misses ${path}`);
+    for (const path of taskActions) assert.ok(githubFiles.some((file) => file === path || file.startsWith(`${path}/`)), `${task.task} misses ${path}`);
   }
 });
 test("pass cache keys partition both hosted images and never match compiler-cache cleanup", () => {
@@ -579,17 +580,50 @@ test("each existing check remains in its selected task", () => {
   assert.match(step("Verify GUI-free dependency tree"), /if grep -E '\^\(tauri /);
 });
 test("lightweight tasks avoid Rust and package setup; CI regressions precede installs", () => {
+  assert.doesNotMatch(workflow, /\.bun\/install\/cache/);
   assert.doesNotMatch(job("changes"), /actions\/checkout|git diff|fetch-depth/);
   assert.match(job("changes"), /actions\/github-script@[a-f0-9]{40}/);
   assert.ok(step("Install frontend dependencies").includes("matrix.task == 'frontend-e2e' || matrix.task == 'server'"));
   assert.ok(job("frontend").indexOf("- name: Test CI orchestration") < job("frontend").indexOf("- name: Install frontend dependencies"));
   assert.ok(step("Setup Rust").includes("matrix.workspace"));
   assert.ok(step("Check documentation").includes("matrix.task == 'docs'"));
-  for (const name of ["Install Tauri Linux dependencies", "Install GPUI build dependencies"]) {
-    assert.match(step(name), /if ! pkg-config --exists/);
-  }
+  assert.match(step("Install Tauri Linux dependencies"), /if ! pkg-config --exists/);
+  assert.match(step("Install GPUI build dependencies"), /uses: \.\/\.github\/actions\/setup-linux-native-deps/);
   assert.ok(step("Install Tauri Linux dependencies").includes("matrix.task == 'rust'"));
   assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
+});
+test("native dependencies are installed only if GPUI cannot link or Playwright cannot launch Chromium", () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  const native = block(read("../.github/actions/setup-linux-native-deps/action.yml"), "run", 6);
+  const suite = read("../.github/workflows/parity-suite.yml");
+  const chromium = block(suite.slice(suite.indexOf("- name: Install Chromium")), "run", 8);
+  const run = (probe, commands, phase) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", commands + probe], {
+    env: { ...process.env, PHASE: phase }, encoding: "utf8",
+  });
+  for (const phase of ["ready", "missing", "broken"]) {
+    const gpui = run(native, [
+      'pkg-config() { printf "%s\n" "-lfontconfig -lxcb -lxkbcommon -lxkbcommon-x11"; }',
+      'cc() { cat >/dev/null; echo link; [[ "$PHASE" == ready || ( "$PHASE" == missing && "$installed" == true ) ]]; }',
+      'sudo() { echo "$*"; installed=true; }',
+      'installed=false',
+      '',
+    ].join("\n"), phase);
+    const web = run(chromium, [
+      'bunx() { echo "$*"; if [[ "$2" == install-deps ]]; then installed=true; fi; }',
+      'node() { echo launch; [[ "$PHASE" == ready || ( "$PHASE" == missing && "$installed" == true ) ]]; }',
+      'installed=false',
+      '',
+    ].join("\n"), phase);
+    assert.equal(gpui.status, phase === "broken" ? 1 : 0, gpui.stderr);
+    assert.equal(web.status, phase === "broken" ? 1 : 0, web.stderr);
+    assert.equal(gpui.stdout.trim(), phase === "ready" ? "link" : [
+      "link", "apt-get update", "apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config", "link",
+    ].join("\n"));
+    assert.equal(web.stdout.trim(), [
+      "playwright-core install --no-shell chromium", "launch",
+      ...(phase === "ready" ? [] : ["playwright-core install-deps chromium", "launch"]),
+    ].join("\n"));
+  }
 });
 function gate(overrides = {}) {
   const env = { ...process.env, CHANGES_RESULT: "success", CHECKS_RESULT: "success", FRONTEND_RESULT: "success" };
@@ -937,8 +971,9 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   }
   const chromium = suite.slice(suite.indexOf("- name: Install Chromium"), suite.indexOf("- name: Build parity test"));
   assert.match(chromium, /if: \$\{\{ !inputs.build-only && inputs.driver != 'gpui' \}\}/);
-  assert.match(suite, /sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config/);
-  assert.match(suite, /run: bunx playwright-core install --with-deps --no-shell chromium/);
+  assert.match(suite, /uses: \.\/\.github\/actions\/setup-linux-native-deps/);
+  assert.doesNotMatch(suite, /\.bun\/install\/cache/);
+  assert.match(suite, /bun install --frozen-lockfile/);
   const upload = suite.slice(suite.indexOf("- name: Upload parity artifacts"));
   assert.match(upload, /^ {8}if: \$\{\{ always\(\) && !inputs.build-only \}\}$/m);
   assert.match(upload, /^ {10}path: e2e\/artifacts\/parity-\*$/m);

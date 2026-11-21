@@ -104,10 +104,10 @@ jobs:
             const server = 'src-tauri :!src-tauri/gpui';
             // Pass reuse covers verification inputs separately from compiler bundles.
             // Root .c* trees cover .cargo/.config, without unrelated .github workflows.
-            // ci.yml is explicit in both key steps; CI uses no local actions/workflows.
+            // CI workflow and the local native setup it calls are explicit key inputs.
             const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
             const desktopPass = `${desktop} ${common}`;
-            const gpuiPass = `${gpui} ${common}`;
+            const gpuiPass = `${gpui} ${common} .github/actions/setup-linux-native-deps`;
             // text_fit also reads the browser-mock fixture that e2e/parity/visual exports from src.
             const gpuiTestPass = `${gpuiPass} src e2e/parity/visual`;
             // cargo tree reads the separate server manifest and lockfile.
@@ -154,14 +154,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -296,15 +288,6 @@ jobs:
         with:
           bun-version: "1.4.4"
 
-      - name: Cache Bun dependencies
-        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: Install frontend dependencies
         if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         run: bun install --frozen-lockfile
@@ -343,11 +326,7 @@ jobs:
 
       - name: Install GPUI build dependencies
         if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
-        run: |
-          if ! pkg-config --exists fontconfig xcb xkbcommon xkbcommon-x11; then
-            sudo apt-get update
-            sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
-          fi
+        uses: ./.github/actions/setup-linux-native-deps
 
       # Cargo 1.100 puts unit state under build/, which the pinned action's target
       # scanner skips. Objects transport exports completed mbx commands instead.
