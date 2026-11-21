@@ -138,6 +138,40 @@ jobs:
       - name: Test frontend
         run: bun test
 
+  backend-rust:
+    name: Backend Rust release checks
+    needs: metadata
+    if: ${{ !inputs.gpui-dry-run }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Test shared backend
+        run: cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
+
+      - name: Lint shared backend
+        run: cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+  kubernetes-compatibility:
+    name: Kubernetes compatibility release checks
+    needs: metadata
+    if: ${{ !inputs.gpui-dry-run }}
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+    with:
+      compatibility-only: true
+
   server-packaging:
     name: Server packaging
     needs: metadata
@@ -205,6 +239,8 @@ jobs:
     needs:
       - metadata
       - frontend
+      - backend-rust
+      - kubernetes-compatibility
       - server-packaging
     if: ${{ always() && !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
@@ -215,14 +251,20 @@ jobs:
         env:
           METADATA_RESULT: ${{ needs.metadata.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BACKEND_RUST_RESULT: ${{ needs.backend-rust.result }}
+          KUBERNETES_COMPATIBILITY_RESULT: ${{ needs.kubernetes-compatibility.result }}
           SERVER_PACKAGING_RESULT: ${{ needs.server-packaging.result }}
         run: |
           set -euo pipefail
           echo "Release metadata: ${METADATA_RESULT}"
           echo "Frontend release checks: ${FRONTEND_RESULT}"
+          echo "Backend Rust release checks: ${BACKEND_RUST_RESULT}"
+          echo "Kubernetes compatibility: ${KUBERNETES_COMPATIBILITY_RESULT}"
           echo "Server and container packaging: ${SERVER_PACKAGING_RESULT}"
           test "${METADATA_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
+          test "${BACKEND_RUST_RESULT}" = "success"
+          test "${KUBERNETES_COMPATIBILITY_RESULT}" = "success"
           test "${SERVER_PACKAGING_RESULT}" = "success"
 
   draft:

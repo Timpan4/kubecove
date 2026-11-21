@@ -4,7 +4,7 @@ import { markProfileIpc, markStartup } from "./startup-marks";
 import { writable } from "svelte/store";
 import { messageFromError } from "./error-redaction";
 import { createChannel, type StreamChannel } from "./stream-channel";
-import type { TauriClient } from "./tauri-runtime";
+import { traceInvoke, type TauriClient } from "./tauri-runtime";
 import type { JsonObject, JsonValue } from "./types";
 
 const SESSION_STORAGE_KEY = "kubecove-browser-resume";
@@ -478,7 +478,7 @@ export function createBrowserTauriClient(): TauriClient {
 		invoke: async <T, Args extends object = object>(
 			command: string,
 			args?: Args,
-		): Promise<T> => {
+		): Promise<T> => traceInvoke(command, args, async () => {
 			const measured = isDiagnosticsEnabled() || process.env.KUBECOVE_PUBLIC_PROFILE === "true";
 			const started = measured ? performance.now() : 0;
 			let succeeded = false;
@@ -512,7 +512,7 @@ export function createBrowserTauriClient(): TauriClient {
 			} finally {
 				if (measured) markProfileIpc(command, started, succeeded, measured);
 			}
-		},
+		}),
 	};
 	return browserClient;
 }

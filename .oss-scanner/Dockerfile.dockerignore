@@ -62,10 +62,14 @@
 !src-tauri/server/
 !src-tauri/server/Cargo.toml
 !src-tauri/server/Cargo.lock
+!src-tauri/server/build.rs
 !src-tauri/server/README.md
 !src-tauri/server/verification.md
 !src-tauri/server/src/
 !src-tauri/server/src/**
+!src-tauri/gpui/
+!src-tauri/gpui/**
+src-tauri/gpui/build
 **/target
 **/node_modules
 **/.git

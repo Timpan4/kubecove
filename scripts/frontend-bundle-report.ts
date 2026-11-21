@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { type Plugin, type Rolldown, version } from "vite";
 
@@ -79,9 +79,9 @@ export function frontendBundleReportPlugin(releaseChannel: string, profiling: bo
 		},
 		async writeBundle(_options, bundle) {
 			const report = await frontendBundleReport(root, outdir, bundle, publicDir);
-			const directory = resolve(root, ".e2e/reports");
-			await mkdir(directory, { recursive: true });
-			await writeFile(resolve(directory, "frontend-bundle.json"), `${JSON.stringify({ ...report, releaseChannel, profiling }, null, 2)}\n`);
+			const path = resolve(root, process.env.KUBECOVE_FRONTEND_BUNDLE_REPORT ?? ".e2e/reports/frontend-bundle.json");
+			await mkdir(dirname(path), { recursive: true });
+			await writeFile(path, `${JSON.stringify({ ...report, releaseChannel, profiling }, null, 2)}\n`);
 		},
 	};
 }

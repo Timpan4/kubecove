@@ -50,11 +50,15 @@ async function frontendFingerprint(directory: string) {
 	return hash.digest("hex");
 }
 
-async function buildFrontend(profile: boolean) {
-	const directory = join(root, "dist");
-	await command(["bun", "x", "vite", "build", "--outDir", directory], { KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profile) }, join(artifacts, `frontend-${profile ? "profile" : "production"}.log`));
-	const report = JSON.parse(await readFile(join(root, ".e2e", "reports", "frontend-bundle.json"), "utf8"));
-	return { directory, sha256: await frontendFingerprint(directory), report, summary: summarizeFrontend(report.files) };
+async function buildFrontend(target: string, artifacts: string, profile: boolean) {
+	const mode = profile ? "profile" : "production";
+	const directory = join(target, `web-${mode}`);
+	const reportPath = join(artifacts, `frontend-${mode}.json`);
+	await command(["bun", "x", "vite", "build", "--outDir", directory], {
+		KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profile), KUBECOVE_FRONTEND_BUNDLE_REPORT: reportPath,
+	}, join(artifacts, `frontend-${mode}.log`));
+	const report = JSON.parse(await readFile(reportPath, "utf8"));
+	return { directory, sha256: await frontendFingerprint(directory), summary: summarizeFrontend(report.files) };
 }
 
 if (process.platform !== "linux") throw new Error("This package characterization measures the Linux ELF server");
@@ -77,23 +81,23 @@ try {
 		await mkdir(directory);
 		if ((await command(["git", "status", "--porcelain"])).trim() || (await command(["git", "rev-parse", "HEAD"])).trim() !== sourceSha) throw new Error("Source changed during comparison");
 		const settings = { ...baseline, ...variant.settings };
-		const env = { CARGO_TARGET_DIR: target, ...Object.fromEntries(Object.entries(settings).flatMap(([name, value]) =>
+		const env = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: target, ...Object.fromEntries(Object.entries(settings).flatMap(([name, value]) =>
 			[[`CARGO_PROFILE_RELEASE_${name}`, value], [`CARGO_PROFILE_BENCH_${name}`, value]])) };
 		const build = ["cargo", "build", "--release", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml"];
-		const production = await buildFrontend(false);
+		const production = await buildFrontend(target, directory, false);
 		productionHash ??= production.sha256;
 		if (production.sha256 !== productionHash) throw new Error("Production frontend changed");
 		const started = performance.now();
-		await command(build, env, join(directory, "production-build.log"));
+		await command(build, { ...env, KUBECOVE_WEB_ASSET_DIR: production.directory }, join(directory, "production-build.log"));
 		const buildMs = performance.now() - started;
 		const binary = join(target, "release", "kubecove-server");
 		const executableBytes = (await stat(binary)).size;
 		const elf = inspectElfSections(await command(["readelf", "--section-headers", "--wide", binary]));
 		await command(["cargo", "bench", "--manifest-path", "src-tauri/Cargo.toml", "--features", "bench-support", "--bench", "backend_hot_paths"], env, join(directory, "benchmarks.txt"));
-		const companion = await buildFrontend(true);
+		const companion = await buildFrontend(target, directory, true);
 		companionHash ??= companion.sha256;
 		if (companion.sha256 !== companionHash) throw new Error("Profile frontend changed");
-		await command(build, env, join(directory, "companion-build.log"));
+		await command(build, { ...env, KUBECOVE_WEB_ASSET_DIR: companion.directory }, join(directory, "companion-build.log"));
 		await observeReleaseStartup(binary, directory, companion.summary.fonts.bundled.map((font) => font.file));
 		const startup = JSON.parse(await readFile(join(directory, "footprint-startup.json"), "utf8"));
 		observations.push({ name: variant.name, settings, buildMs, executableBytes, elf, production: { sha256: productionHash, ...production.summary },

@@ -369,12 +369,20 @@ mod tests {
         }
         connection.close().await;
         assert_eq!(connection.tunnels.list(), Vec::new());
-        assert!(
-            TcpStream::connect((Ipv4Addr::LOCALHOST, forward.local_port))
-                .await
-                .is_err(),
-            "disconnect must close the laptop listener"
-        );
+        // Removing the registration aborts the relay. Tokio drops its listener asynchronously.
+        tokio::time::timeout(kubecove_kube::REQUEST_READ_TIMEOUT, async {
+            loop {
+                match TcpStream::connect((Ipv4Addr::LOCALHOST, forward.local_port)).await {
+                    Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => break,
+                    Err(error) if error.kind() != std::io::ErrorKind::ConnectionReset => {
+                        panic!("unexpected listener probe error: {error}");
+                    }
+                    _ => tokio::task::yield_now().await,
+                }
+            }
+        })
+        .await
+        .expect("disconnect must close the laptop listener");
     }
 
     #[tokio::test]

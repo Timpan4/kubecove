@@ -69,6 +69,8 @@ type ChannelCommandMap = {
 	start_pod_log_stream: { args: { request: PodLogStreamRequest }; result: string };
 	start_pod_exec_session: { args: { request: PodExecSessionRequest }; result: PodExecSessionSummary };
 };
+type CommandArgs = CommandMap[keyof CommandMap]["args"];
+type ChannelArgs = ChannelCommandMap[keyof ChannelCommandMap]["args"] & { channel: string };
 type E2eMessage = StreamMessage | PodExecSessionMessage;
 
 let client: ReturnType<typeof serverClient>;
@@ -87,7 +89,7 @@ const execSessions: string[] = [];
 const argoConnections: string[] = [];
 const execFileAsync = promisify(execFile);
 
-async function commandResult<Result>(command: string, args: object): Promise<Result> {
+async function commandResult<Result>(command: string, args: CommandArgs | ChannelArgs): Promise<Result> {
 	const response = await client.invoke(session, command, args);
 	if (!response.ok) {
 		const { kind } = await response.json();

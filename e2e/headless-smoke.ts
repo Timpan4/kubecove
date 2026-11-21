@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { JsonObject } from "../src/lib/types";
+import { safeDiagnosticText } from "./harness/diagnostics";
 import { serverBinary, startServer } from "./harness/server-process";
 import { channelMarker, serverClient } from "./harness/server-session";
 import { startPortForwardFixture } from "./harness/port-forward-fixture";
@@ -12,30 +14,32 @@ const root = resolve(import.meta.dir, "..");
 const artifactDir = join(root, "e2e/artifacts/headless");
 const temporary = await mkdtemp(join(tmpdir(), "kubecove-headless-"));
 const dataDir = join(temporary, "data");
-await mkdir(dataDir, { mode: 0o700 });
-await chmod(temporary, 0o700);
 const checks: string[] = [];
-const kubeFixture = startPortForwardFixture();
 const fixtureConfig = join(temporary, "fixture-kubeconfig");
-await writeFile(fixtureConfig, JSON.stringify({
-	apiVersion: "v1", kind: "Config",
-	clusters: [{ name: "fixture", cluster: { server: kubeFixture.url.toString() } }],
-	contexts: [{ name: "fixture", context: { cluster: "fixture", user: "fixture" } }],
-	users: [{ name: "fixture", user: {} }], "current-context": "fixture",
-}));
-// The operator selects the fixture through a configured variable; requests may name only it (ADR 0026).
-await writeFile(join(dataDir, "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG", paths: [], showSourceLabels: true }));
 const interrupt = new AbortController();
 const stop = () => interrupt.abort();
 process.once("SIGTERM", stop);
 process.once("SIGINT", stop);
-const server = startServer(process.env.KUBECOVE_SERVER_BINARY ?? serverBinary(), dataDir, {
-	HOME: temporary, XDG_CONFIG_HOME: temporary, KUBECONFIG: join(temporary, "missing-kubeconfig"),
-	KUBECOVE_SMOKE_CONFIG: fixtureConfig, KUBECOVE_SMOKE_MISSING_CONFIG: join(temporary, "missing-kubeconfig"), DBUS_SESSION_BUS_ADDRESS: undefined,
-}, interrupt.signal);
+let server: ReturnType<typeof startServer> | undefined;
+let kubeFixture: ReturnType<typeof startPortForwardFixture> | undefined;
 let client: ReturnType<typeof serverClient> | undefined;
 let failure: string | null = null;
 try {
+	await mkdir(dataDir, { mode: 0o700 });
+	await chmod(temporary, 0o700);
+	kubeFixture = startPortForwardFixture();
+	await writeFile(fixtureConfig, JSON.stringify({
+		apiVersion: "v1", kind: "Config",
+		clusters: [{ name: "fixture", cluster: { server: kubeFixture.url.toString() } }],
+		contexts: [{ name: "fixture", context: { cluster: "fixture", user: "fixture" } }],
+		users: [{ name: "fixture", user: {} }], "current-context": "fixture",
+	}));
+	// The operator selects the fixture through a configured variable; requests may name only it (ADR 0026).
+	await writeFile(join(dataDir, "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG", paths: [], showSourceLabels: true }));
+	server = startServer(process.env.KUBECOVE_SERVER_BINARY ?? serverBinary(), dataDir, {
+		HOME: temporary, XDG_CONFIG_HOME: temporary, KUBECONFIG: join(temporary, "missing-kubeconfig"),
+		KUBECOVE_SMOKE_CONFIG: fixtureConfig, KUBECOVE_SMOKE_MISSING_CONFIG: join(temporary, "missing-kubeconfig"), DBUS_SESSION_BUS_ADDRESS: undefined,
+	}, interrupt.signal);
 	const { origin, token } = await server.ready;
 	client = serverClient(origin, token);
 	const { login, post, invoke, connect } = client;
@@ -75,7 +79,7 @@ try {
 	}
 	checks.push("Cookie/native commands preserve typed results and errors");
 	const sourcesBefore = await (await invoke(first.session, "get_kubeconfig_sources", {})).json();
-	const sourceMutations: Array<[string, object]> = [
+	const sourceMutations: Array<[string, JsonObject]> = [
 		["set_kubeconfig_env_var", { envVar: "KUBECOVE_SMOKE_CONFIG" }],
 		["add_kubeconfig_paths", { paths: [fixtureConfig] }],
 		["remove_kubeconfig_path", { path: fixtureConfig }],
@@ -259,21 +263,31 @@ try {
 			stdout: "pipe", stderr: "inherit",
 		});
 		const [status, output] = await Promise.all([probe.exited, new Response(probe.stdout).text()]);
-		assert.equal(status, 0, "Production native Rust tunnel probe must pass.");
+		const diagnostic = safeDiagnosticText(output).replaceAll(token, "[redacted]").replace(/([?#&](?:resumeToken|token)=)[^\s&"']+/g, "$1[redacted]");
+		assert.equal(status, 0, `Production native Rust tunnel probe must pass.\n${diagnostic}`);
 		assert.ok(output.includes("native_tunnel_delivers_bytes_and_closes_after_upload_eof ... ok"), "The tunnel probe must actually run.");
 		checks.push("Native Rust desktop client preserves bytes and closes on upload EOF, pod EOF and pod errors without a GUI");
 	}
 } catch (error) {
 	failure = error instanceof Error ? error.message : "Headless smoke failed.";
 } finally {
-	client?.closeSockets();
-	await server.stop();
-	process.off("SIGTERM", stop);
-	process.off("SIGINT", stop);
-	kubeFixture.stop(true);
-	await rm(temporary, { recursive: true, force: true });
-	await mkdir(artifactDir, { recursive: true });
-	await writeFile(join(artifactDir, "report.json"), `${JSON.stringify({ passed: failure === null, checks, failure }, null, 2)}\n`);
+	try {
+		for (const cleanup of [
+			() => client?.closeSockets(),
+			() => server?.stop(),
+			() => kubeFixture?.stop(true),
+			() => rm(temporary, { recursive: true, force: true }),
+		]) {
+			try { await cleanup(); } catch (error) {
+				failure = [failure, `Headless cleanup failed: ${String(error)}`].filter(Boolean).join("\n");
+			}
+		}
+	} finally {
+		process.off("SIGTERM", stop);
+		process.off("SIGINT", stop);
+		await mkdir(artifactDir, { recursive: true });
+		await writeFile(join(artifactDir, "report.json"), `${JSON.stringify({ passed: failure === null, checks, failure }, null, 2)}\n`);
+	}
 }
 if (failure) throw new Error(failure);
 console.log(`Headless smoke passed. Report: ${join(artifactDir, "report.json")}`);

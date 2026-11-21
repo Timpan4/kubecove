@@ -121,6 +121,15 @@ jobs:
           fi
 
       # The bundle settings live in `[package.metadata.packager]` of src-tauri/gpui/Cargo.toml.
+      - name: Verify the target kubeconform sidecar
+        env:
+          BUNDLE_TARGET: ${{ matrix.bundle-target }}
+        run: |
+          set -euo pipefail
+          sidecar="src-tauri/bin/kubeconform-$BUNDLE_TARGET"
+          if [ "$RUNNER_OS" = "Windows" ]; then sidecar="$sidecar.exe"; fi
+          "$sidecar" -v
+
       - name: Bundle GPUI client
         env:
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
@@ -136,11 +145,20 @@ jobs:
             --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
           version="$(node -p 'require("./package.json").version')"
           case "$FORMAT" in
-            appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" gpui-updater/ ;;
-            nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" gpui-updater/ ;;
+            appimage)
+              image="kubecove-gpui_${version}_x86_64.AppImage"
+              (cd "$out" && "./$image" --appimage-extract usr/bin/kubeconform && squashfs-root/usr/bin/kubeconform -v)
+              cp "$out/$image" gpui-updater/
+              ;;
+            nsis)
+              installer="kubecove-gpui_${version}_x64-setup.exe"
+              7z l -ba "$out/$installer" | grep -Ei '(^|[[:space:]/\\])kubeconform\.exe[[:space:]]*$'
+              cp "$out/$installer" gpui-updater/
+              ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
             # cargo-packager names the DMG after the product; rename it to match the other GPUI assets.
             app,dmg)
+              "$out/KubeCove GPUI.app/Contents/MacOS/kubeconform" -v
               tar -czf "gpui-updater/kubecove-gpui_${version}_aarch64.app.tar.gz" -C "$out" "KubeCove GPUI.app"
               cp "$out/KubeCove GPUI_${version}_aarch64.dmg" "gpui-updater/kubecove-gpui_${version}_aarch64.dmg"
               ;;

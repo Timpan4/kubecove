@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import { test } from "node:test";
@@ -11,6 +11,7 @@ import { buildGpuiManifest, gpuiUpdaterAssets, verifyUpdaterSignature } from "./
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
 const packaging = parse(readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8"));
 const gpuiRelease = parse(readFileSync(new URL("../.github/workflows/gpui-release.yml", import.meta.url), "utf8"));
+const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
 const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"];
 
 // The nested builders need an executable shim on PATH and unchanged artifact locations.
@@ -311,7 +312,6 @@ test("server build reuses pinned actions already used by release jobs", () => {
 // fails its job; and Cargo started by Bun bypasses the cache unless the shim is on
 // PATH before the suite runs.
 test("release artifacts use local mbx while Linux E2E jobs share one objects cache", () => {
-  const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
   for (const build of [job("server-build", packaging), job("bundle", gpuiRelease)]) {
     const setup = build.steps.find(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
     assert.equal(setup?.with.backend, "local");
@@ -346,9 +346,9 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
     assert.doesNotMatch(JSON.stringify(check), /swatinem\/rust-cache/);
   }
   // The action saves on a push to the default branch only, and of these jobs one runs there.
-  assert.equal(e2e.jobs["real-primary"].if, "github.event_name == 'push'");
+  assert.equal(e2e.jobs["real-primary"].if, "${{ !inputs.compatibility-only && github.event_name == 'push' }}");
   assert.equal(e2e.jobs["real-primary"].strategy, undefined);
-  assert.equal(e2e.jobs["real-matrix"].if, "github.event_name != 'push'");
+  assert.equal(e2e.jobs["real-matrix"].if, "${{ inputs.compatibility-only || github.event_name != 'push' }}");
   assert.deepEqual(e2e.on.push, { branches: ["main"] });
   assert.deepEqual(Object.keys(workflow.on.push), ["tags"]);
   // Desktop smoke builds without a cache (e2e.yml has the reason), so it needs no shim.
@@ -359,7 +359,7 @@ test("publishing can read build artifacts and waits for all release gates", () =
   const publish = job("publish");
   assert.equal(publish.permissions.contents, "write");
   assert.deepEqual(publish.needs, ["prepare", "metadata", "publish-containers"]);
-  assert.deepEqual(job("verify").needs, ["metadata", "frontend", "server-packaging"]);
+  assert.deepEqual(job("verify").needs, ["metadata", "frontend", "backend-rust", "kubernetes-compatibility", "server-packaging"]);
   assert.deepEqual(job("draft").needs, ["prepare", "metadata", "verify"]);
   const stage = job("stage-release-assets");
   assert.deepEqual(stage.needs, ["draft", "gpui", "metadata"]);
@@ -385,7 +385,7 @@ test("publishing can read build artifacts and waits for all release gates", () =
 });
 
 // These conditions use the same boolean operators as JavaScript. Convert job IDs to property lookups.
-function evaluatesJobIf(name, needs, dryRun = false) {
+function evaluatesJobIf(name, needs, dryRun = false, cancelled = false) {
   const expression = job(name).if.match(/^\$\{\{\s*([\s\S]+?)\s*\}\}$/)[1]
     .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
     .replaceAll("inputs.gpui-dry-run", 'inputs["gpui-dry-run"]');
@@ -393,21 +393,46 @@ function evaluatesJobIf(name, needs, dryRun = false) {
     needs,
     inputs: { "gpui-dry-run": dryRun },
     always: () => true,
-    cancelled: () => false,
+    cancelled: () => cancelled,
   });
 }
 
 test("releases publish only after GPUI staging and container publication succeed", () => {
-  const success = { result: "success" };
-  const stage = { metadata: success, draft: success, gpui: success };
-  const publish = { metadata: success, prepare: success, "publish-containers": success };
-  assert.equal(evaluatesJobIf("stage-release-assets", stage), true);
-  assert.equal(evaluatesJobIf("publish", publish), true);
-  assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": success }), true);
-  for (const result of ["failure", "skipped", "cancelled"]) {
-    assert.equal(evaluatesJobIf("stage-release-assets", { ...stage, gpui: { result } }), false, result);
-    assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": { result } }), false, result);
-    assert.equal(evaluatesJobIf("publish", { ...publish, "publish-containers": { result } }), false, result);
+  for (const name of ["stage-release-assets", "publish-containers", "publish"]) {
+    const dependencies = [job(name).needs].flat();
+    const success = Object.fromEntries(dependencies.map((dependency) => [dependency, { result: "success" }]));
+    assert.equal(evaluatesJobIf(name, success), true, name);
+    assert.equal(evaluatesJobIf(name, success, false, true), false, `${name}: workflow cancelled`);
+    for (const dependency of dependencies) {
+      for (const result of ["failure", "skipped", "cancelled"]) {
+        assert.equal(evaluatesJobIf(name, { ...success, [dependency]: { result } }), false, `${name}: ${dependency} ${result}`);
+      }
+    }
+  }
+});
+
+test("release drafts wait for backend checks and every Kubernetes compatibility leg", () => {
+  const backend = job("backend-rust");
+  const compatibility = job("kubernetes-compatibility");
+  assert.match(step(backend, "Test shared backend").run, /cargo test --locked --workspace --manifest-path src-tauri\/Cargo\.toml/);
+  assert.match(step(backend, "Lint shared backend").run, /cargo clippy --locked --workspace --manifest-path src-tauri\/Cargo\.toml .* -D warnings/);
+  assert.equal(compatibility.uses, "./.github/workflows/e2e.yml");
+  assert.equal(compatibility.with["compatibility-only"], true);
+  assert.ok(e2e.on.workflow_call.inputs["compatibility-only"].required);
+  assert.deepEqual(job("real-matrix", e2e).strategy.matrix.kubernetes, ["1.34", "1.35", "1.36", "1.37"]);
+  const verify = job("verify");
+  const gate = step(verify, "Verify required jobs");
+  const allSuccess = Object.fromEntries(Object.entries(gate.env).map(([key, expression]) => {
+    const dependency = expression.match(/needs\.([\w-]+)\.result/)[1];
+    assert.ok(verify.needs.includes(dependency));
+    return [key, "success"];
+  }));
+  assert.equal(gate.env.BACKEND_RUST_RESULT, "${{ needs.backend-rust.result }}");
+  assert.equal(gate.env.KUBERNETES_COMPATIBILITY_RESULT, "${{ needs.kubernetes-compatibility.result }}");
+  const status = (env) => spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...env } }).status;
+  assert.equal(status(allSuccess), 0);
+  for (const key of Object.keys(allSuccess)) {
+    assert.equal(status({ ...allSuccess, [key]: "failure" }), 1, key);
   }
 });
 
@@ -457,6 +482,26 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
       assert.match(uses, /@[a-f0-9]{40}$/, `${uses} must be pinned`);
     }
   }
+});
+
+test("GPUI packages check out and bundle kubeconform for each installer target", () => {
+  const manifest = readFileSync(new URL("../src-tauri/gpui/Cargo.toml", import.meta.url), "utf8");
+  assert.match(manifest, /\[package\.metadata\.packager\][^[]*externalBinaries = \["\.\.\/bin\/kubeconform"\]/);
+  const bundle = job("bundle", gpuiRelease);
+  const sidecar = step(bundle, "Verify the target kubeconform sidecar");
+  const packaging = step(bundle, "Bundle GPUI client");
+  assert.ok(bundle.steps.indexOf(sidecar) < bundle.steps.indexOf(packaging));
+  assert.equal(sidecar.env.BUNDLE_TARGET, packaging.env.BUNDLE_TARGET);
+  assert.match(sidecar.run, /sidecar="src-tauri\/bin\/kubeconform-\$BUNDLE_TARGET"/);
+  assert.match(sidecar.run, /"\$sidecar" -v/);
+  for (const { "bundle-target": target } of bundle.strategy.matrix.include) {
+    const ending = target.includes("windows") ? ".exe" : "";
+    const file = new URL(`../src-tauri/bin/kubeconform-${target}${ending}`, import.meta.url);
+    assert.ok(statSync(file).size > 0, target);
+  }
+  assert.match(packaging.run, /--appimage-extract usr\/bin\/kubeconform/);
+  assert.match(packaging.run, /Contents\/MacOS\/kubeconform" -v/);
+  assert.match(packaging.run, /7z l -ba[^\n]+kubeconform/);
 });
 
 // Produced by `tauri signer sign --app-version 1.2.3` with a throwaway key generated for these

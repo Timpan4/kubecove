@@ -538,14 +538,15 @@ async function desktopSmoke() {
 		if (memoryFixture === "normal" || memoryFixture === "large") fixture = await startMemoryFixture(memoryFixture, dir);
 		const kubeconfig = await writeSmokeConfig(dir, cluster, fixture);
 		const env = { KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_DATA_DIR: dataDir };
-		const binary = await buildBrowserServer(root, artifacts, profiling, execute);
 		if (profiling) {
+			const binary = await buildBrowserServer(root, artifacts, true, execute);
 			const sha = (await execute("git", ["rev-parse", "HEAD"], {}, true)).stdout.trim();
 			const dirty = (await execute("git", ["status", "--porcelain"], {}, true)).stdout.trim();
 			await runServerWdio(binary, dataDir, kubeconfig, { ...env, KUBECOVE_PROFILE: "1", KUBECOVE_PROFILE_SHA: sha,
 				KUBECOVE_PROFILE_DIRTY: String(Boolean(dirty)), KUBECOVE_MEMORY_FIXTURE: memoryFixture,
 				KUBECOVE_MEMORY_FIXTURE_ROWS: fixture && String(fixture.rows) }, artifacts, cancellation.signal, runWdio);
 		} else {
+			const binary = os === "windows" ? undefined : await buildBrowserServer(root, artifacts, false, execute);
 			const target = join(root, "src-tauri/gpui/target");
 			const buildEnv = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: join(root, "src-tauri/gpui/build"), RUSTC_WRAPPER: "" };
 			const cargo = ["cargo", "build", "--locked", "--manifest-path", "src-tauri/gpui/Cargo.toml", "--features", "e2e"];
@@ -564,13 +565,16 @@ async function desktopSmoke() {
 	}
 }
 async function dev() {
-	const record = await create("dev");
 	try {
+		const record = await create("dev");
 		const binary = await buildBrowserServer(root, join(root, "e2e/artifacts", `dev-${runId}`), profiling, execute);
 		await runDevBrowser(binary, record.dataDir, record.kubeconfig, cancellation.signal);
-	} finally { await stoppingChildren; current = undefined; }
+	} finally {
+		await stoppingChildren;
+		if (current?.kind === "dev") await rm(current.dataDir, { recursive: true, force: true });
+		current = undefined;
+	}
 }
-
 const onInterrupt = () => interrupt("SIGINT");
 const onTerminate = () => interrupt("SIGTERM");
 if (["fast", "run", "dev-up", "desktop-smoke", "desktop-profile"].includes(action)) {
@@ -590,10 +594,7 @@ try {
 	console.error(error);
 } finally {
 	await stoppingChildren;
-	if (interruptedBy) {
-		process.exitCode = interruptedBy === "SIGINT" ? 130 : 143;
-		if (current?.kind === "dev") await rm(current.dataDir, { recursive: true, force: true });
-	}
+	if (interruptedBy) process.exitCode = interruptedBy === "SIGINT" ? 130 : 143;
 	process.off("SIGINT", onInterrupt);
 	process.off("SIGTERM", onTerminate);
 }

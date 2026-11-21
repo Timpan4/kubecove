@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { browser } from "@wdio/globals";
+import type { JsonObject } from "../../src/lib/types";
 import { serverClient } from "./server-session";
 
 export async function runnerServer() {
@@ -29,7 +30,7 @@ export async function openServerPage() {
 }
 
 // Execute with the page's own cookie and session so diagnostics reflect the UI.
-export async function pageInvoke<Result>(command: string, args: object = {}): Promise<Result> {
+export async function pageInvoke<Result>(command: string, args: JsonObject = {}): Promise<Result> {
 	return browser.execute(async (name, payload) => {
 		const resume = sessionStorage.getItem("kubecove-browser-resume");
 		if (!resume) throw new Error("Missing browser session");

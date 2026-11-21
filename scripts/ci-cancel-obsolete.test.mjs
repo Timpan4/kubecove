@@ -124,9 +124,10 @@ test("verifies old commits of closed fork PRs with missing associations without 
 test("E2E primary and matrix runs cannot cancel each other's complementary jobs", () => {
   const workflow = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
   const template = workflow.match(/^ {2}group: (.+)$/m)[1];
-  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ github.event_name == 'push' && 'primary' || 'matrix' }}");
-  assert.match(workflow, /real-primary:[\s\S]*?if: github.event_name == 'push'/);
-  for (const job of ["real-matrix", "desktop-smoke"]) assert.match(workflow, new RegExp(`${job}:[\\s\\S]*?if: github.event_name != 'push'`));
+  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ inputs.compatibility-only && 'release-compatibility' || github.event_name == 'push' && 'primary' || 'matrix' }}");
+  assert.match(workflow, /real-primary:[\s\S]*?if: \$\{\{ !inputs\.compatibility-only && github.event_name == 'push' \}\}/);
+  assert.match(workflow, /real-matrix:[\s\S]*?if: \$\{\{ inputs\.compatibility-only \|\| github.event_name != 'push' \}\}/);
+  assert.match(workflow, /desktop-smoke:[\s\S]*?if: \$\{\{ !inputs\.compatibility-only && github.event_name != 'push' \}\}/);
 });
 
 test("selective main pushes cannot cancel full manual CI at the same SHA", () => {

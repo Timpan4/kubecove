@@ -2,19 +2,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { withBrowserServer, writeSmokeConfig } from "../e2e/harness/browser-run";
-import { signalOwnedProcess } from "../e2e/harness/desktop-profile";
+import { captureProcessOutput, trackChild } from "../e2e/harness/lifecycle-processes";
 import { startMemoryFixture } from "../e2e/harness/memory-fixture";
 
 export async function observeReleaseStartup(binary: string, artifacts: string, fonts: string[]) {
 	// The fixture holds credentials. CI may collect artifacts even after a forced stop.
 	const owned = await mkdtemp(join(tmpdir(), "kubecove-footprint-"));
 	const cancellation = new AbortController();
-	let driver: Bun.Subprocess | undefined;
-	let stopping: Promise<void> | undefined;
-	const interrupt = () => {
-		cancellation.abort();
-		if (driver) stopping ??= signalOwnedProcess(driver, "SIGTERM");
-	};
+	const interrupt = () => cancellation.abort();
 	process.on("SIGINT", interrupt);
 	process.on("SIGTERM", interrupt);
 	let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined;
@@ -26,18 +21,31 @@ export async function observeReleaseStartup(binary: string, artifacts: string, f
 				env: { ...process.env, ...server, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PROFILE: "1", KUBECOVE_FOOTPRINT_FONTS: JSON.stringify(fonts) },
 				detached: process.platform !== "win32", stdout: "pipe", stderr: "pipe",
 			});
-			driver = child;
-			const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-			await writeFile(join(artifacts, "wdio-report.txt"), stdout + stderr);
-			cancellation.signal.throwIfAborted();
-			if (code !== 0) throw new Error(`Footprint browser check failed; see ${artifacts}`);
+			const stdout = captureProcessOutput(child.stdout);
+			const stderr = captureProcessOutput(child.stderr);
+			const driver = trackChild(child, async (signal) => {
+				const [code] = await Promise.all([child.exited, stdout.drain(signal), stderr.drain(signal)]);
+				return code;
+			});
+			const stopDriver = () => { void driver.stop("SIGTERM").catch(() => {}); };
+			// A descendant can still hold the output pipes after WDIO exits.
+			void child.exited.then(stopDriver);
+			cancellation.signal.addEventListener("abort", stopDriver, { once: true });
+			if (cancellation.signal.aborted) stopDriver();
+			try {
+				const code = await driver.done;
+				cancellation.signal.throwIfAborted();
+				if (code !== 0) throw new Error(`Footprint browser check failed; see ${artifacts}`);
+			} finally {
+				cancellation.signal.removeEventListener("abort", stopDriver);
+				try { await driver.stop("SIGTERM"); } finally {
+					await writeFile(join(artifacts, "wdio-report.txt"), stdout.text() + stderr.text());
+				}
+			}
 		});
 	} finally {
-		try { await stopping; } finally {
-			fixture?.stop();
-			process.off("SIGINT", interrupt);
-			process.off("SIGTERM", interrupt);
-			await rm(owned, { recursive: true, force: true });
-		}
+		process.off("SIGINT", interrupt);
+		process.off("SIGTERM", interrupt);
+		try { await fixture?.stop(); } finally { await rm(owned, { recursive: true, force: true }); }
 	}
 }

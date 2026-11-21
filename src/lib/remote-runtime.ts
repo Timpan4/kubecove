@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
 // The browser parity driver exercises the native client's remote settings with fixtures.
-async function invoke<T>(command: string, args?: object): Promise<T> {
+async function invoke<T>(command: string, args?: { serverUrl: string; token: string }): Promise<T> {
 	if (process.env.KUBECOVE_PUBLIC_DEV_MOCKS === "true") {
 		const { createDevMockTauriClient } = await import("./tauri-dev-mocks");
 		return createDevMockTauriClient().invoke<T>(command, args);

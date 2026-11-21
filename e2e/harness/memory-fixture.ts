@@ -74,10 +74,13 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 		tls: { key: Bun.file(key), cert: Bun.file(cert) },
 		async fetch(request) {
 			const url = new URL(request.url);
-			if (remoteDesktop && url.pathname.endsWith("/log")) return new Response("kubecove-remote-log-marker\n");
 			requests.push({ epochMs: Date.now(), method: request.method, path: `${url.pathname}${url.search}`, watch: url.searchParams.get("watch") === "true" });
 			if (latencyMs > 0) await Bun.sleep(latencyMs);
 			if (request.method !== "GET") return Response.json({ kind: "Status", status: "Failure", reason: "MethodNotAllowed", code: 405 }, { status: 405 });
+			const logPod = /^\/api\/v1\/namespaces\/profile\/pods\/([^/]+)\/log$/.exec(url.pathname)?.[1];
+			if (remoteDesktop && logPod && pods.some(({ metadata }) => metadata.name === logPod)) {
+				return new Response("kubecove-remote-log-marker\n");
+			}
 			const aggregatedDiscovery = request.headers.get("accept")?.split(",").some((media) => media.split(";").some((parameter) => parameter.trim() === "g=apidiscovery.k8s.io"));
 			if ((url.pathname === "/api" || url.pathname === "/apis") && aggregatedDiscovery) return Response.json({ apiVersion: "apidiscovery.k8s.io/v2", kind: "APIGroupDiscoveryList", metadata: {}, items: aggregated[url.pathname] });
 			const apiDiscovery = discovery.get(url.pathname);

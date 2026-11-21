@@ -83,9 +83,26 @@ async fn exercise_pending_read() {
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].name, "fixture");
     assert!(!pending.is_finished());
+    assert_eq!(namespace_loads(&backend).await, 1);
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
-    // Only now let the real plugin return a credential and exit.
+    // The credential process is owned by a blocking client build. The backend
+    // read must release its cache load while that build is still blocked.
+    while namespace_loads(&backend).await != 0 {
+        tokio::task::yield_now().await;
+    }
     plugin.write_all(b"continue").await.unwrap();
     assert_eq!(plugin.read(&mut [0]).await.unwrap(), 0);
+}
+
+async fn namespace_loads(backend: &NativeBackend) -> usize {
+    backend
+        .diagnostics(true, false)
+        .await
+        .unwrap()
+        .caches
+        .into_iter()
+        .find(|cache| cache.label == "namespaces")
+        .expect("namespace cache diagnostics")
+        .loading
 }

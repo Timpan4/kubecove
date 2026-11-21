@@ -29,7 +29,8 @@ describe("release footprint startup companion", () => {
 				}
 				for (const sheet of Array.from(document.styleSheets)) inspectRules(sheet.cssRules);
 				return {
-				heapBytes: (performance as Performance & { memory: { usedJSHeapSize: number } }).memory.usedJSHeapSize,
+				// SAFETY: Chromium may expose this optional Performance extension.
+				heapBytes: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
 				entries: performance.getEntries().filter((entry) => entry.name.startsWith("kubecove:"))
 					.map(({ name, startTime, duration }) => ({ name, startTime, duration })),
 				fonts: [...files].sort(), fontObservation: "loaded CSS FontFace matched to its bundled src, not request timing",

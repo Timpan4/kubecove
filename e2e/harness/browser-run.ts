@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
@@ -78,6 +78,7 @@ export async function writeSmokeConfig(directory: string, cluster: string, fixtu
 export async function withBrowserServer(binary: string, dataDir: string, kubeconfig: string, signal: AbortSignal,
 	drive: (env: Record<string, string>, exited: Promise<number>) => Promise<void>) {
 	await mkdir(dataDir, { mode: 0o700, recursive: true });
+	await chmod(dataDir, 0o700);
 	const profile = await mkdtemp(join(tmpdir(), "kc-chrome-"));
 	try {
 		const server = startServer(binary, dataDir, { KUBECONFIG: kubeconfig, HOME: dataDir, USERPROFILE: dataDir,

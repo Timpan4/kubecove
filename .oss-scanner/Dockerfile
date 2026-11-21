@@ -6,7 +6,7 @@ FROM rust:1.99.1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d4
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl git pkg-config \
-      libssl-dev \
+      libssl-dev libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
@@ -17,7 +17,8 @@ WORKDIR /src
 COPY . /src
 RUN bun install --frozen-lockfile \
     && cargo fetch --locked --manifest-path src-tauri/Cargo.toml \
-    && cargo fetch --locked --manifest-path src-tauri/server/Cargo.toml
+    && cargo fetch --locked --manifest-path src-tauri/server/Cargo.toml \
+    && cargo fetch --locked --manifest-path src-tauri/gpui/Cargo.toml
 
 ENV CARGO_NET_OFFLINE=true
 RUN --network=none cargo build --locked --manifest-path src-tauri/Cargo.toml \
@@ -25,5 +26,6 @@ RUN --network=none cargo build --locked --manifest-path src-tauri/Cargo.toml \
 RUN --network=none KUBECOVE_PUBLIC_RUNTIME=web bun run build \
     && cargo build --locked --manifest-path src-tauri/server/Cargo.toml \
     && cargo test --locked --manifest-path src-tauri/server/Cargo.toml --no-run
+RUN --network=none cargo build --locked --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui
 
 CMD ["bash"]

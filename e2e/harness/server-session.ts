@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import WebSocket from "ws";
+import type { JsonObject } from "../../src/lib/types";
+import { readinessTimeoutMs } from "./timeouts";
 
 interface Session {
 	resumeToken: string;
@@ -11,20 +14,45 @@ type Frame = { type: string; channelId?: number; message?: { type: string }; err
 
 export const channelMarker = (id: number) => `__KUBECOVE_CHANNEL__:${id}`;
 
-// Bun and Node's Undici WebSocket accept headers for native authenticated clients.
-const AuthenticatedWebSocket = WebSocket as typeof WebSocket & {
-	new (url: URL, options: { headers: Record<string, string> }): WebSocket;
-};
+function frameReader<T>(socket: WebSocket, description: string) {
+	const queued: T[] = [];
+	let pending: { resolve: (frame: T) => void; reject: (error: Error) => void } | undefined;
+	socket.once("close", () => pending?.reject(new Error(`${description} socket closed before the expected frame.`)));
+	return {
+		push(frame: T) {
+			if (!pending) { queued.push(frame); return; }
+			const { resolve } = pending;
+			pending = undefined;
+			resolve(frame);
+		},
+		async next(): Promise<T> {
+			const frame = queued.shift();
+			if (frame !== undefined) return frame;
+			if (socket.readyState !== WebSocket.OPEN) throw new Error(`${description} socket is closed.`);
+			if (pending) throw new Error(`A ${description} frame read is already pending.`);
+			return new Promise<T>((resolve, reject) => {
+				const fail = (error: Error) => {
+					clearTimeout(timer);
+					pending = undefined;
+					reject(error);
+				};
+				const timer = setTimeout(() => fail(new Error(`Timed out waiting for a ${description} frame.`)), readinessTimeoutMs);
+				pending = { resolve: (frame) => { clearTimeout(timer); resolve(frame); }, reject: fail };
+			});
+		},
+	};
+}
 
 export function serverClient(origin: string, token: string) {
 	const sockets = new Set<WebSocket>();
-	async function post(path: string, body: object, headers: Record<string, string> = {}): Promise<Response> {
+	function postJson(path: string, body: string, headers: Record<string, string> = {}): Promise<Response> {
 		return fetch(`${origin}${path}`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Origin: origin, ...headers },
-			body: JSON.stringify(body),
+			body,
 		});
 	}
+	const post = (path: string, body: JsonObject, headers?: Record<string, string>) => postJson(path, JSON.stringify(body), headers);
 
 	async function login(resumeToken?: string): Promise<{ session: Session; cookie: string }> {
 		const response = await post("/api/v1/session", { token, resumeToken });
@@ -39,8 +67,8 @@ export function serverClient(origin: string, token: string) {
 		return { session, cookie: cookie.split(";")[0] };
 	}
 
-	async function invoke(session: Session, command: string, args: object, cookie?: string): Promise<Response> {
-		return post(`/api/v1/invoke/${command}`, args, {
+	function invoke<Args extends object>(session: Session, command: string, args: Args, cookie?: string): Promise<Response> {
+		return postJson(`/api/v1/invoke/${command}`, JSON.stringify(args), {
 			"X-Kubecove-Session": session.resumeToken,
 			...(cookie ? { Cookie: cookie } : { Authorization: `Bearer ${token}` }),
 		});
@@ -50,50 +78,31 @@ export function serverClient(origin: string, token: string) {
 		const url = new URL("/api/v1/channels", origin);
 		url.protocol = "ws:";
 		url.searchParams.set("resumeToken", session.resumeToken);
-		const socket = new AuthenticatedWebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
-		socket.binaryType = "arraybuffer";
+		const socket = new WebSocket(url, { headers: { Authorization: `Bearer ${token}` }, handshakeTimeout: readinessTimeoutMs });
 		sockets.add(socket);
-		const queued: Frame[] = [];
-		const binary: Uint8Array[] = [];
-		let receiver: { resolve: (frame: Frame) => void; reject: (error: Error) => void } | null = null;
-		let binaryReceiver: { resolve: (frame: Uint8Array) => void; reject: (error: Error) => void } | null = null;
-		socket.addEventListener("message", (event) => {
-			if (event.data instanceof ArrayBuffer) {
-				const frame = new Uint8Array(event.data);
-				if (binaryReceiver) { binaryReceiver.resolve(frame); binaryReceiver = null; }
-				else binary.push(frame);
+		const frames = frameReader<Frame>(socket, "Channel");
+		const binary = frameReader<Uint8Array>(socket, "Tunnel");
+		socket.on("message", (data, isBinary) => {
+			const bytes = data instanceof ArrayBuffer ? Buffer.from(data) : Array.isArray(data) ? Buffer.concat(data) : data;
+			if (isBinary) {
+				binary.push(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 				return;
 			}
-			const frame: Frame = JSON.parse(event.data);
+			const frame: Frame = JSON.parse(bytes.toString("utf8"));
 			if (onFrame) { onFrame(frame); return; }
-			if (receiver) { receiver.resolve(frame); receiver = null; }
-			else queued.push(frame);
+			frames.push(frame);
 		});
 		socket.addEventListener("close", () => {
 			sockets.delete(socket);
-			receiver?.reject(new Error("Channel socket closed before the expected frame."));
-			receiver = null;
-			binaryReceiver?.reject(new Error("Tunnel socket closed before the expected bytes."));
-			binaryReceiver = null;
 		});
 		await new Promise<void>((resolveOpen, reject) => {
 			socket.addEventListener("open", () => resolveOpen(), { once: true });
-			socket.addEventListener("error", () => reject(new Error("Channel socket could not connect.")), { once: true });
+			socket.on("error", () => reject(new Error("Channel socket could not connect.")));
 		});
 		return {
 			socket,
-			nextBinary: (): Promise<Uint8Array> => {
-				const frame = binary.shift();
-				if (frame) return Promise.resolve(frame);
-				if (socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Tunnel socket is closed."));
-				return new Promise((resolveFrame, reject) => { binaryReceiver = { resolve: resolveFrame, reject }; });
-			},
-			next: (): Promise<Frame> => {
-				const frame = queued.shift();
-				if (frame) return Promise.resolve(frame);
-				if (socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Channel socket is closed."));
-				return new Promise((resolveFrame, reject) => { receiver = { resolve: resolveFrame, reject }; });
-			},
+			nextBinary: binary.next,
+			next: frames.next,
 			close: async () => {
 				if (socket.readyState === WebSocket.CLOSED) return;
 				await new Promise<void>((resolveClose) => {

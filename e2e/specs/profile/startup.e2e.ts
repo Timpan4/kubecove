@@ -27,7 +27,7 @@ describe("release-shaped startup profile", () => {
 		});
 		const usage = await pageInvoke<AppUsageMetrics>("get_app_usage_metrics", { measureWorkingSet: false });
 		const report = {
-			schemaVersion: 1,
+			schemaVersion: 2,
 			scenario: "launcher-fresh-profile",
 			build: "release-server-with-profiled-web-ui",
 			frontendCollectedAtMs: frontend.collectedAtMs,

@@ -8,9 +8,7 @@ use kubecove_lib::models::AppErrorKind;
 use rust_embed::Embed;
 use std::sync::Arc;
 
-#[derive(Embed)]
-#[folder = "../../dist/"]
-pub(super) struct Assets;
+include!(concat!(env!("OUT_DIR"), "/embedded_assets.rs"));
 
 struct CompressedAsset {
     gzip: Option<&'static [u8]>,

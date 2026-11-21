@@ -263,6 +263,6 @@ export function setAppUpdateApiForTests(api: AppUpdateApi): void {
 export function resetAppUpdateStateForTests(): void {
 	updateApi = browserAppUpdateApi;
 	pendingUpdate = null;
-	setAppUpdatesEnabledForTests(true);
+	setAppUpdatesEnabledForTests(false);
 	useAppUpdateStore.setState(initialState);
 }

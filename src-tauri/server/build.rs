@@ -2,10 +2,18 @@
 fn main() -> std::io::Result<()> {
     use std::{fmt::Write as _, fs, io::Write, path::PathBuf};
 
-    let root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo manifest"))
-        .join("../../dist");
+    let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo manifest"));
+    println!("cargo:rerun-if-env-changed=KUBECOVE_WEB_ASSET_DIR");
+    let root = std::env::var_os("KUBECOVE_WEB_ASSET_DIR")
+        .map_or_else(|| manifest.join("../../dist"), |path| manifest.join(path));
     println!("cargo:rerun-if-changed={}", root.display());
+    let root = root.canonicalize()?;
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo output"));
+    let folder = root.to_str().expect("UTF-8 frontend asset path");
+    fs::write(
+        output.join("embedded_assets.rs"),
+        format!("#[derive(Embed)]\n#[folder = {folder:?}]\npub(super) struct Assets;\n"),
+    )?;
     let mut directories = vec![root.join("assets")];
     let mut files = Vec::new();
     while let Some(directory) = directories.pop() {

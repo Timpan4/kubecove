@@ -23,6 +23,8 @@ productName = "KubeCove GPUI"
 identifier = "com.timpan.kubecove.gpui"
 description = "Native KubeCove Kubernetes workspace"
 category = "DeveloperTool"
+# cargo-packager selects the checked-in binary for --target and installs it beside GPUI.
+externalBinaries = ["../bin/kubeconform"]
 icons = [
   "../icons/32x32.png",
   "../icons/128x128.png",
