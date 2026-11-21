@@ -61,6 +61,68 @@ mod tests {
         }
         assert!(!batches[0][0].git_ops_ownership_partial);
     }
+
+    #[tokio::test]
+    async fn shared_rows_match_owned_assembly_with_scoped_flux_inventory() {
+        use crate::commands::helpers::fetch_flux_ownership_index;
+        use http::{Request, Response};
+        use kube::client::Body;
+
+        let (service, mut handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        let read = fetch_flux_ownership_index(kube::Client::new(service, "default"));
+        let respond = async move {
+            for _ in 0..2 {
+                let (request, send) = handle.next_request().await.unwrap();
+                let mut list = json!({"apiVersion": "v1", "kind": "List", "items": []});
+                if request.uri().path().ends_with("/kustomizations") {
+                    list["items"] = json!([{
+                        "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+                        "kind": "Kustomization",
+                        "metadata": {"name": "apps", "namespace": "flux-system"},
+                        "status": {"inventory": {"entries": [
+                            {"id": "tenant_app_apps_Deployment", "v": "v1"},
+                            {"id": "other_app_apps_Deployment", "v": "v1"},
+                            {"id": "_shared_storage.k8s.io_StorageClass", "v": "v1"}
+                        ]}}
+                    }]);
+                }
+                send.send_response(Response::new(Body::from(
+                    serde_json::to_vec(&list).unwrap(),
+                )));
+            }
+        };
+        let (index, ()) = tokio::join!(read, respond);
+        let index = index.unwrap();
+        assert_eq!(index.retained_item_count(), 3);
+
+        let rows: Vec<ResourceSummary> = serde_json::from_value(json!([
+            {"kind": "Deployment", "apiVersion": "apps/v1", "cluster": "test",
+             "name": "app", "namespace": "tenant", "age": "1m"},
+            {"kind": "Deployment", "apiVersion": "apps/v1", "cluster": "test",
+             "name": "app", "namespace": "other", "age": "1m"},
+            {"kind": "StorageClass", "apiVersion": "storage.k8s.io/v1", "cluster": "test",
+             "name": "shared", "age": "1m"}
+        ]))
+        .unwrap();
+        let namespaces = ["tenant".to_string()];
+        let expected =
+            super::super::assemble_post_fetch_scope(rows.clone(), index.clone(), &namespaces);
+        let shared = SharedRows::new(vec![Arc::new(rows)], &index, &namespaces);
+        assert_eq!(
+            serde_json::to_vec(&shared).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        assert_eq!(shared.changed.len(), 2);
+        for row in shared.into_resources() {
+            let owner_namespace = row
+                .git_ops_owner
+                .as_ref()
+                .and_then(|owner| owner.namespace.as_deref());
+            let expected_namespace =
+                (row.namespace.as_deref() != Some("other")).then_some("flux-system");
+            assert_eq!(owner_namespace, expected_namespace, "{}", row.name);
+        }
+    }
 }
 
 enum RowRef {

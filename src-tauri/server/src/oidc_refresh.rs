@@ -27,7 +27,7 @@ enum RefreshFailure {
 
 #[derive(Default)]
 pub(super) struct Credentials {
-    pub(super) entries: HashMap<String, Credential>,
+    entries: HashMap<String, Credential>,
     // Removals can leave an earlier expiry here until the next scan.
     next_expiry: Option<u64>,
     // Consumed native codes can outlive a credential removed between scans.
@@ -35,6 +35,10 @@ pub(super) struct Credentials {
 }
 
 impl Credentials {
+    pub(super) fn get(&self, key: &str) -> Option<&Credential> {
+        self.entries.get(key)
+    }
+
     pub(super) fn insert(&mut self, key: String, entry: Credential) {
         self.record_expiry(entry.expires_unix);
         self.entries.insert(key, entry);
@@ -55,6 +59,16 @@ impl Credentials {
         let now = unix_now();
         self.entries.get_mut(key).unwrap().expires_unix = now;
         self.record_expiry(now);
+    }
+
+    #[cfg(test)]
+    pub(super) fn tokens_mut_for_test(&mut self, key: &str) -> &mut Option<Tokens> {
+        &mut self.entries.get_mut(key).unwrap().tokens
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty_for_test(&self) -> bool {
+        self.entries.is_empty()
     }
 
     fn take_expired(&mut self, now: u64) -> Vec<(String, Credential)> {
@@ -358,8 +372,7 @@ impl Oidc {
         let now = unix_now();
         let expired = credentials.take_expired(now);
         let removed = std::mem::take(&mut credentials.removed_since_prune);
-        let expired_codes =
-            self.prune_codes(now, &credentials.entries, removed || !expired.is_empty());
+        let expired_codes = self.prune_codes(now, credentials, removed || !expired.is_empty());
         for (key, credential) in expired {
             credential.revoked.cancel();
             self.deactivate(&key);

@@ -152,6 +152,17 @@ impl LogsState {
             picker
         });
         Self {
+            container: containers.first().cloned(),
+            containers,
+            container_picker,
+            aggregate: matches!(summary.kind.as_str(), "Deployment" | "Service"),
+            _subscriptions: subscriptions,
+            ..Self::empty(filter, tail_input)
+        }
+    }
+
+    fn empty(filter: Entity<InputState>, tail_input: Entity<InputState>) -> Self {
+        Self {
             buffer: LogBuffer::default(),
             visible: Vec::new(),
             previous: Vec::new(),
@@ -176,12 +187,12 @@ impl LogsState {
             since: None,
             tail_menu_open: false,
             tail_input,
-            container: containers.first().cloned(),
-            containers,
-            container_picker,
-            aggregate: matches!(summary.kind.as_str(), "Deployment" | "Service"),
+            container: None,
+            containers: Vec::new(),
+            container_picker: None,
+            aggregate: false,
             task: None,
-            _subscriptions: subscriptions,
+            _subscriptions: Vec::new(),
         }
     }
 
@@ -585,5 +596,87 @@ impl Inspector {
             }
         }));
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs::LogLevel;
+    use gpui_kit::{Empty, TestAppContext};
+
+    #[gpui_kit::test]
+    fn filtered_appends_keep_the_visible_list_and_scroll_anchor_after_eviction(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(gpui_kit::init);
+        cx.add_window(|window, cx| {
+            for latest_first in [false, true] {
+                let filter = cx.new(|cx| InputState::new(window, cx));
+                let tail_input = cx.new(|cx| InputState::new(window, cx));
+                let mut state = LogsState::empty(filter, tail_input);
+                state.term = "match".into();
+                state.hidden[LogLevel::Debug.index()] = true;
+                state.set_latest_first(latest_first);
+
+                let initial = (0..MAX_RETAINED_LOG_LINES).map(|index| {
+                    let line = match index % 3 {
+                        0 => "match",
+                        1 => "unrelated",
+                        _ => "level=debug msg=match",
+                    };
+                    (line.to_owned(), None)
+                });
+                state.append(initial.collect());
+                let mut rebuilt = Vec::new();
+                assert_matches_rebuild(&state, &mut rebuilt);
+                assert!(state.visible.contains(&0));
+                assert!(!state.visible.contains(&1));
+                assert!(!state.visible.contains(&2));
+
+                let anchor = 9;
+                let item_ix = state
+                    .visible
+                    .iter()
+                    .position(|&index| index == anchor)
+                    .unwrap();
+                let offset_in_item = px(2.);
+                state.list.scroll_to(ListOffset {
+                    item_ix,
+                    offset_in_item,
+                });
+                assert!(!state.pinned());
+
+                let batches = [
+                    ["level=info msg=match", "unrelated", "level=debug msg=match"],
+                    ["unrelated", "level=debug msg=match", "unrelated"],
+                ];
+                for batch in batches {
+                    let evicted = state.buffer.first_index();
+                    assert!(state.visible.contains(&evicted));
+                    state.append(
+                        batch
+                            .into_iter()
+                            .map(|line| (line.to_owned(), None))
+                            .collect(),
+                    );
+
+                    assert!(state.buffer.line(evicted).is_none());
+                    assert_matches_rebuild(&state, &mut rebuilt);
+                    let top = state.list.logical_scroll_top();
+                    assert_eq!(state.visible[top.item_ix], anchor);
+                    assert_eq!(top.offset_in_item, offset_in_item);
+                }
+            }
+            Empty
+        });
+    }
+
+    fn assert_matches_rebuild(state: &LogsState, rebuilt: &mut Vec<u64>) {
+        state
+            .buffer
+            .visible(&state.term, state.hidden, state.latest_first, rebuilt);
+        assert_eq!(&state.visible, rebuilt);
+        assert_eq!(state.list.item_count(), rebuilt.len());
     }
 }

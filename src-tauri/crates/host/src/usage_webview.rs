@@ -58,7 +58,7 @@ fn process_name_lossy(process: &Process) -> String {
     process.name().to_string_lossy().into_owned()
 }
 
-fn process_identity_text(process: &Process) -> String {
+pub(super) fn process_identity_text(process: &Process) -> String {
     process_identity_text_from_parts(
         process_name_lossy(process),
         process
@@ -83,12 +83,6 @@ pub(super) fn is_webview_descendant_process(process: &Process) -> bool {
 pub(super) fn is_webview_descendant_process_text(process_text: &str) -> bool {
     let name = process_text.to_ascii_lowercase();
     contains_any(&name, DESCENDANT_WEBVIEW_PROCESS_MARKERS)
-}
-
-// macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
-#[allow(dead_code)]
-pub(super) fn is_macos_orphan_webkit_process(process: &Process) -> bool {
-    is_macos_orphan_webkit_process_text(&process_identity_text(process))
 }
 
 // macOS orphan WebKit detection is compiled on every platform so shared tests can cover it.
@@ -145,12 +139,6 @@ fn add_windows_host_exe_name(names: &mut Vec<String>, name: &str) {
 
 // Windows WebView2 detection is compiled on every platform so shared tests can cover it.
 #[allow(dead_code)]
-pub(super) fn is_windows_app_webview_process(process: &Process, host_exe_names: &[String]) -> bool {
-    is_windows_app_webview_process_text(host_exe_names, &process_identity_text(process))
-}
-
-// Windows WebView2 detection is compiled on every platform so shared tests can cover it.
-#[allow(dead_code)]
 pub(super) fn is_windows_app_webview_process_text(
     host_exe_names: &[String],
     process_text: &str,
@@ -160,15 +148,6 @@ pub(super) fn is_windows_app_webview_process_text(
         && host_exe_names
             .iter()
             .any(|name| text.contains(&format!("{WINDOWS_WEBVIEW_HOST_EXE_ARG}{name}")))
-}
-
-// Windows WebView2 detection is compiled on every platform so shared tests can cover it.
-#[allow(dead_code)]
-pub(super) fn is_windows_app_webview_browser_process(
-    process: &Process,
-    host_exe_names: &[String],
-) -> bool {
-    is_windows_app_webview_browser_process_text(host_exe_names, &process_identity_text(process))
 }
 
 // Windows WebView2 detection is compiled on every platform so shared tests can cover it.

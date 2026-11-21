@@ -244,20 +244,24 @@ impl Visible {
         } else {
             0
         };
-        let mut cache = self.alternate_order.borrow_mut();
-        if cache.as_ref().is_none_or(|cached| {
-            cached.sort != sort
-                || cached.row_revision != row_revision
-                || cached.metrics_revision != metrics_revision
-        }) {
-            *cache = Some(AlternateOrder {
+        let cached = self
+            .alternate_order
+            .borrow()
+            .as_ref()
+            .is_some_and(|cached| {
+                cached.sort == sort
+                    && cached.row_revision == row_revision
+                    && cached.metrics_revision == metrics_revision
+            });
+        if !cached {
+            let order = self.sorted_order(sort, usage);
+            *self.alternate_order.borrow_mut() = Some(AlternateOrder {
                 sort,
                 row_revision,
                 metrics_revision,
-                order: self.sorted_order(sort, usage),
+                order,
             });
         }
-        drop(cache);
         Ref::map(self.alternate_order.borrow(), |cache| {
             cache
                 .as_ref()

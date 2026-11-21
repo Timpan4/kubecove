@@ -148,6 +148,20 @@ fn kyaml_uses_bare_keys_and_quoted_strings() {
 }
 
 #[test]
+fn kyaml_quotes_escapes_next_to_multibyte_text() {
+    let special = "å\"水\\🙂\u{0}é\u{8}文\t猫\n日\u{c}月\r雪\u{1f}末";
+    let quoted = serde_json::to_string(special).unwrap();
+    let mut output = String::new();
+    write_kyaml_string(&mut output, special);
+    assert_eq!(output, quoted);
+
+    let document = serde_json::json!({ (special): special });
+    let kyaml = serialize_json_value_document(&document, YamlEncoding::Kyaml).unwrap();
+    let parsed: serde_json::Value = serde_yaml::from_str(&kyaml).unwrap();
+    assert_eq!(parsed, document);
+}
+
+#[test]
 fn kyaml_parses_back_to_equivalent_json() {
     let value = serde_json::json!({
         "apiVersion": "apps/v1",

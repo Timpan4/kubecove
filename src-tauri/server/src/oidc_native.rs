@@ -3,8 +3,8 @@
 //! loopback redirect and exchanges it, with its PKCE verifier, for an opaque
 //! sign-in credential that it then sends as a bearer.
 use super::{
-    Credential, Oidc, TRANSACTION_COOKIE, clear_cookie_header, cookie_header, cookie_value,
-    oidc_unavailable, refresh::Credentials, transaction_cookie, unix_now, verify_transaction,
+    Oidc, TRANSACTION_COOKIE, clear_cookie_header, cookie_header, cookie_value, oidc_unavailable,
+    refresh::Credentials, transaction_cookie, unix_now, verify_transaction,
 };
 use crate::{
     ApiError,
@@ -214,7 +214,7 @@ impl Oidc {
         if pending.deadline <= unix_now()
             || request.redirect_uri != pending.redirect_uri
             || !verifier_matches
-            || !credentials.entries.contains_key(&pending.credential)
+            || credentials.get(&pending.credential).is_none()
         {
             drop(codes);
             // Nobody else can ever obtain this credential.
@@ -233,7 +233,7 @@ impl Oidc {
     pub(super) fn prune_codes(
         &self,
         now: u64,
-        credentials: &HashMap<String, Credential>,
+        credentials: &Credentials,
         credentials_removed: bool,
     ) -> Vec<String> {
         let Ok(mut codes) = self.codes.lock() else {

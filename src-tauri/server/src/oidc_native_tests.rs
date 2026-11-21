@@ -251,7 +251,7 @@ async fn wrong_verifier_or_redirect_consumes_the_code() {
         );
     }
     assert!(
-        oidc.credentials.lock().unwrap().entries.is_empty(),
+        oidc.credentials.lock().unwrap().is_empty_for_test(),
         "refused codes leave no usable credential"
     );
 }
@@ -275,7 +275,7 @@ async fn expired_code_is_refused_and_its_credential_dropped() {
             .await
             .is_err()
     );
-    assert!(oidc.credentials.lock().unwrap().entries.is_empty());
+    assert!(oidc.credentials.lock().unwrap().is_empty_for_test());
 }
 
 #[tokio::test]
@@ -300,5 +300,5 @@ async fn provider_denial_reaches_the_loopback_listener() {
     // A denial that does not match the transaction goes to the app, as before.
     let response = oidc.callback(&headers, denied("other")).await.unwrap();
     assert_eq!(location(&response), "/");
-    assert!(oidc.credentials.lock().unwrap().entries.is_empty());
+    assert!(oidc.credentials.lock().unwrap().is_empty_for_test());
 }

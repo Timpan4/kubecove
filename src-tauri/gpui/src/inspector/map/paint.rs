@@ -151,8 +151,7 @@ impl PreparedEdges {
         canvas: (f32, f32),
         shown: impl Fn((f32, f32, f32, f32)) -> bool,
     ) -> Rc<VisibleItems> {
-        let mut visible = self.visible.borrow_mut();
-        if let Some(cached) = &*visible
+        if let Some(cached) = self.visible.borrow().as_ref()
             && cached.viewport == viewport
             && cached.canvas == canvas
         {
@@ -175,7 +174,7 @@ impl PreparedEdges {
                 .filter_map(|(index, edge)| shown(edge.bounds).then_some(index))
                 .collect(),
         });
-        *visible = Some(VisibleViewport {
+        *self.visible.borrow_mut() = Some(VisibleViewport {
             viewport,
             canvas,
             items: items.clone(),

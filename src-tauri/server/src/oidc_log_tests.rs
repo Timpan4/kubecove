@@ -91,7 +91,9 @@ async fn sign_in_events_carry_no_credentials() {
         .to_owned();
     let (id_token, refresh_token) = {
         let credentials = oidc.credentials.lock().unwrap();
-        let tokens = credentials.entries[&auth.credential.0]
+        let tokens = credentials
+            .get(&auth.credential.0)
+            .unwrap()
             .tokens
             .clone()
             .unwrap();

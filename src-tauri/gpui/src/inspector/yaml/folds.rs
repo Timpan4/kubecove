@@ -55,24 +55,74 @@ pub(in crate::inspector) fn factory() -> (InputHighlighterFactory, YamlSyntax) {
     let syntax = YamlSyntax::default();
     let shared = syntax.clone();
     let factory: InputHighlighterFactory = Rc::new(move |language| {
-        (language == LANGUAGE).then(|| {
-            Box::new(YamlHighlighter {
-                inner: Rc::new(RefCell::new(SyntaxHighlighter::new(LANGUAGE))),
-                syntax: shared.clone(),
-                parse_task: None,
-            }) as Box<dyn InputHighlighter>
-        })
+        (language == LANGUAGE)
+            .then(|| Box::new(YamlHighlighter::new(shared.clone())) as Box<dyn InputHighlighter>)
     });
     (factory, syntax)
 }
 
+struct HighlightState {
+    highlighter: SyntaxHighlighter,
+    parse_pending: bool,
+}
+
+impl HighlightState {
+    fn tree(&self) -> Option<&Tree> {
+        if self.parse_pending {
+            None
+        } else {
+            self.highlighter.tree()
+        }
+    }
+}
+
 struct YamlHighlighter {
-    inner: Rc<RefCell<SyntaxHighlighter>>,
+    inner: Rc<RefCell<HighlightState>>,
     syntax: YamlSyntax,
     parse_task: Option<Task<()>>,
 }
 
 impl YamlHighlighter {
+    fn new(syntax: YamlSyntax) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(HighlightState {
+                highlighter: SyntaxHighlighter::new(LANGUAGE),
+                parse_pending: false,
+            })),
+            syntax,
+            parse_task: None,
+        }
+    }
+
+    fn update_sync(
+        &mut self,
+        edit: Option<tree_sitter::InputEdit>,
+        text: &Rope,
+        timeout: Duration,
+    ) -> bool {
+        let mut inner = self.inner.borrow_mut();
+        if inner.highlighter.text() == text {
+            return !inner.parse_pending;
+        }
+        if inner.parse_pending || text.len() > SYNC_PARSE_MAX_BYTES {
+            // Tree-sitter resumes a cancelled parse on the same parser. Keep
+            // its tree for interim highlighting and wait for a fresh parser.
+            inner.highlighter.edit_tree(edit, text);
+            inner.parse_pending = true;
+            return false;
+        }
+        if edit.is_none() && !inner.highlighter.is_empty() {
+            // A whole-document replacement has no edit to align the old tree.
+            inner.highlighter = SyntaxHighlighter::new(LANGUAGE);
+        }
+        let completed = inner.highlighter.update(edit, text, Some(timeout));
+        inner.parse_pending = !completed;
+        if completed {
+            self.syntax.publish(&inner.highlighter);
+        }
+        completed
+    }
+
     /// Drops a pending background parse when the synchronous one `completed`,
     /// or replaces it with a parse of `text`, as GPUI Kit's adapter does.
     fn finish_update(
@@ -104,9 +154,15 @@ impl YamlHighlighter {
                     (parsed, folds)
                 })
                 .await;
-            syntax.publish(&parsed);
-            *inner.borrow_mut() = parsed;
             let _ = editor.update(cx, |state, cx| {
+                if state.text() != parsed.text() {
+                    return;
+                }
+                syntax.publish(&parsed);
+                *inner.borrow_mut() = HighlightState {
+                    highlighter: parsed,
+                    parse_pending: false,
+                };
                 state.apply_highlighter_fold_candidates(folds, cx);
             });
         }));
@@ -115,7 +171,7 @@ impl YamlHighlighter {
 
 impl InputHighlighter for YamlHighlighter {
     fn language(&self) -> SharedString {
-        self.inner.borrow().language().clone()
+        self.inner.borrow().highlighter.language().clone()
     }
 
     fn update(
@@ -126,23 +182,7 @@ impl InputHighlighter for YamlHighlighter {
         window: &mut Window,
         cx: &mut Context<EditorState>,
     ) {
-        let edit = edit.map(tree_sitter_edit);
-        let completed = {
-            let mut inner = self.inner.borrow_mut();
-            if text.len() > SYNC_PARSE_MAX_BYTES {
-                inner.edit_tree(edit, text);
-                false
-            } else {
-                // A repeated update with the same text can report success even
-                // after a timeout. Only a completed parse may replace the tree.
-                let changed = inner.text() != text;
-                let completed = inner.update(edit, text, Some(SYNC_PARSE_TIMEOUT));
-                if completed && changed {
-                    self.syntax.publish(&inner);
-                }
-                completed
-            }
-        };
+        let completed = self.update_sync(edit.map(tree_sitter_edit), text, SYNC_PARSE_TIMEOUT);
         self.finish_update(completed, text, folding, window, cx);
     }
 
@@ -151,7 +191,7 @@ impl InputHighlighter for YamlHighlighter {
         range: &Range<usize>,
         resolver: &dyn HighlightStyleResolver,
     ) -> Vec<(Range<usize>, HighlightStyle)> {
-        self.inner.borrow().styles(range, resolver)
+        self.inner.borrow().highlighter.styles(range, resolver)
     }
 
     fn fold_ranges(&self, text: &Rope) -> Vec<FoldRange> {
@@ -276,4 +316,37 @@ fn opens_line(node: Node, text: &Rope) -> bool {
     text.slice(start - node.start_position().column..start)
         .chars()
         .all(char::is_whitespace)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostics_use_the_new_draft_after_a_highlighter_timeout() {
+        let syntax = YamlSyntax::default();
+        let mut highlighter = YamlHighlighter::new(syntax.clone());
+        let line = "- interrupted: [one, two, three]\n";
+        let interrupted = Rope::from_str(&line.repeat(SYNC_PARSE_MAX_BYTES / line.len()));
+        assert!(!highlighter.update_sync(None, &interrupted, Duration::ZERO));
+
+        let text = "é: one\né: two\n";
+        let draft = Rope::from_str(text);
+        let edit = tree_sitter::InputEdit {
+            start_byte: 0,
+            old_end_byte: interrupted.len(),
+            new_end_byte: text.len(),
+            start_position: Point::new(0, 0),
+            old_end_position: Point::new(SYNC_PARSE_MAX_BYTES / line.len(), 0),
+            new_end_position: Point::new(2, 0),
+        };
+        assert!(!highlighter.update_sync(Some(edit), &draft, Duration::MAX));
+        assert!(!highlighter.update_sync(None, &draft, Duration::MAX));
+        assert!(syntax.0.borrow().is_none());
+
+        let findings = syntax.diagnostics(&draft, text);
+        assert_eq!(findings.len(), 1);
+        let start = "é: one\n".len();
+        assert_eq!(findings[0].range, start..start + 'é'.len_utf8());
+    }
 }

@@ -287,10 +287,22 @@ fn cluster_scoped_inventory_survives_namespace_filtering_and_enriches_summary() 
     );
 
     let requested = ["default".to_string()];
-    index
-        .owners
-        .retain(|key, _| target_namespace_allowed(key.namespace.as_deref(), &requested));
+    let allowed = summary("Deployment", "api");
+    let cluster = summary_cluster_scoped("StorageClass", "shared");
+    let mut excluded = allowed.clone();
+    excluded.namespace = Some("other".into());
+    for row in [&allowed, &cluster] {
+        assert_eq!(
+            index
+                .enriched_summary(row, &requested)
+                .unwrap()
+                .git_ops_owner,
+            Some(owner.clone())
+        );
+    }
+    assert!(index.enriched_summary(&excluded, &requested).is_none());
 
+    let index = filter_flux_ownership_index(index, &requested);
     assert!(index.owners.contains_key(&ResourceKey {
         namespace: None,
         api_version: "storage.k8s.io/v1".into(),
@@ -310,7 +322,7 @@ fn cluster_scoped_inventory_survives_namespace_filtering_and_enriches_summary() 
         name: "api".into(),
     }));
 
-    let mut summaries = vec![summary_cluster_scoped("StorageClass", "shared")];
+    let mut summaries = vec![cluster];
     enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
 
     assert_eq!(summaries[0].git_ops_owner, Some(owner));
