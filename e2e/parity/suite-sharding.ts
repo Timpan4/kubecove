@@ -1,23 +1,27 @@
 import { readFile } from "node:fs/promises";
+import type { JsonObject } from "../../src/lib/types";
+import { isNumber, isString, object } from "./contract-values";
 
 /** A duration map in milliseconds, or an existing web.json/gpui.json driver report. */
-export function parseTimings(value: unknown): Map<string, number> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a parity timing map or driver report");
+export function parseTimings<Value>(value: Value): Map<string, number> {
+	const timings = object(value);
+	const { scenarios } = timings;
 	const durations = new Map<string, number>();
-	const add = (id: unknown, duration: unknown) => {
-		if (typeof id !== "string" || !id) throw new Error("Expected a scenario ID in parity timings");
-		if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) throw new Error(`Invalid duration for ${id}`);
+	const add = (id: string, duration: JsonObject[string]) => {
+		if (!id) throw new Error("Expected a scenario ID in parity timings");
+		if (!isNumber(duration) || !Number.isFinite(duration) || duration < 0) throw new Error(`Invalid duration for ${id}`);
 		if (durations.has(id)) throw new Error(`Duplicate timing for ${id}`);
 		durations.set(id, duration);
 	};
-	if ("scenarios" in value && Array.isArray(value.scenarios)) {
-		for (const row of value.scenarios) {
-			if (!row || typeof row !== "object" || typeof row.id !== "string" || !row.id) throw new Error("Expected a scenario ID in parity timings");
+	if (Array.isArray(scenarios)) {
+		for (const value of scenarios) {
+			const row = object(value);
+			if (!isString(row.id) || !row.id) throw new Error("Expected a scenario ID in parity timings");
 			// Some legacy or failed report rows have no duration.
 			if (row.durationMs !== undefined) add(row.id, row.durationMs);
 		}
 	} else {
-		for (const [id, duration] of Object.entries(value)) add(id, duration);
+		for (const [id, duration] of Object.entries(timings)) add(id, duration);
 	}
 	return durations;
 }
@@ -64,7 +68,10 @@ export function assignSuiteShards(selected: readonly string[], count: number, ti
 	const fallback = measured[Math.floor(measured.length / 2)] ?? 1;
 	const ordered = selected.map((id, index) => ({ index, duration: timings.get(id) ?? fallback }))
 		.sort((left, right) => right.duration - left.duration || left.index - right.index);
-	const shards = Array.from({ length: count }, () => ({ positions: [] as number[], duration: 0 }));
+	const shards = Array.from({ length: count }, () => {
+		const positions: number[] = [];
+		return { positions, duration: 0 };
+	});
 	for (const { index, duration } of ordered) {
 		const lightest = shards.reduce((best, shard) =>
 			shard.duration < best.duration || (shard.duration === best.duration && shard.positions.length < best.positions.length) ? shard : best,
