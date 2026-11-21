@@ -1,4 +1,4 @@
-//! The command contract shared by Tauri IPC and server HTTP (ADR 0025).
+//! The command contract for the native client and server HTTP dispatch (ADR 0025).
 
 use crate::{AppError, AppErrorKind};
 use serde::de::DeserializeOwned;
@@ -8,10 +8,9 @@ use serde_json::{Map, Value};
 ///
 /// Each entry is `transport mode fn name(wireKey: Type, ...) with HostParam, ...;`:
 ///
-/// - `transport` is `both` (Tauri IPC and server HTTP), `remote_intercepted` (both, and the
-///   desktop remote client runs its own handler on the laptop instead of forwarding the call
-///   unchanged) or `desktop_only`.
-/// - `mode` is `async` or `sync`. Synchronous commands keep Tauri's main-thread execution.
+/// - `transport` is `both` (native and server), `remote_intercepted` (the native client handles the
+///   command locally when connected to a remote server), or `desktop_only`.
+/// - `mode` is `async` or `sync`.
 /// - `name` is the command name and the function in the shared `commands` API.
 /// - Wire arguments use the exact camelCase key the frontend sends, in call order.
 /// - Host parameters follow the wire arguments in call order: `State<T>` for managed state,
@@ -319,10 +318,6 @@ macro_rules! command_contract {
             desktop_only sync fn save_workspace_export_json(fileName: String, content: String)
                 with App;
             desktop_only sync fn pick_workspace_import_json() with App;
-            desktop_only async fn check_gpui_upgrade() with State<GpuiUpgrade>;
-            desktop_only async fn install_gpui_upgrade(version: String) with App, State<GpuiUpgrade>;
-            desktop_only async fn launch_gpui_upgrade() with App, State<GpuiUpgrade>;
-            desktop_only async fn reveal_gpui_upgrade() with App, State<GpuiUpgrade>;
             desktop_only async fn remote_connect(serverUrl: String, token: String)
                 with State<RemoteConnectionStore>;
             desktop_only async fn remote_disconnect() with State<RemoteConnectionStore>;
@@ -350,11 +345,11 @@ macro_rules! command_contract {
 /// Where a declared command is served.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandTransport {
-    /// Tauri IPC and server HTTP.
+    /// Native client and server HTTP.
     Both,
-    /// Tauri IPC and server HTTP; the desktop remote client handles it locally.
+    /// Native client and server HTTP; the desktop remote client handles it locally.
     RemoteIntercepted,
-    /// Tauri IPC only.
+    /// Native client only.
     DesktopOnly,
 }
 

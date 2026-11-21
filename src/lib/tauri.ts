@@ -520,4 +520,3 @@ export function isAppError<Value>(value: Value): value is Value & AppError {
 
 export * from "./tauri-inspection";
 export * from "./tauri-diagnostics";
-export * from "./tauri-gpui-upgrade";

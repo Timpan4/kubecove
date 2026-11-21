@@ -14,10 +14,6 @@ use std::{
     path::PathBuf,
     sync::{OnceLock, RwLock},
 };
-#[cfg(feature = "desktop")]
-use tauri::AppHandle;
-#[cfg(feature = "desktop")]
-use tauri_plugin_dialog::{DialogExt, FilePath};
 
 pub const DEFAULT_KUBECONFIG_ENV_VAR: &str = "KUBECONFIG";
 const SETTINGS_FILE_NAME: &str = "kubeconfig-sources.json";
@@ -456,27 +452,6 @@ pub fn reorder_kubeconfig_paths(paths: Vec<String>) -> Result<KubeconfigSourcesS
     kubeconfig_sources_summary()
 }
 
-#[cfg(feature = "desktop")]
-pub fn pick_kubeconfig_paths<R: tauri::Runtime>(
-    app: AppHandle<R>,
-) -> Result<KubeconfigSourcesSummary, AppError> {
-    let Some(paths) = app
-        .dialog()
-        .file()
-        .set_title("Add kubeconfig files")
-        .add_filter("Kubeconfig", &["yaml", "yml", "conf", "config"])
-        .blocking_pick_files()
-    else {
-        return kubeconfig_sources_summary();
-    };
-
-    let picked = paths
-        .into_iter()
-        .filter_map(file_path_to_string)
-        .collect::<Vec<_>>();
-    add_kubeconfig_paths(picked)
-}
-
 fn validate_env_var_name(env_var: &str) -> Result<(), AppError> {
     let mut chars = env_var.chars();
     let Some(first) = chars.next() else {
@@ -684,14 +659,6 @@ fn append_unique_paths(existing: Vec<String>, additions: Vec<String>) -> Vec<Str
         }
     }
     paths
-}
-
-#[cfg(feature = "desktop")]
-fn file_path_to_string(file_path: FilePath) -> Option<String> {
-    file_path
-        .into_path()
-        .ok()
-        .map(|path| path.to_string_lossy().into_owned())
 }
 
 fn default_kubeconfig_path() -> Option<PathBuf> {

@@ -1,6 +1,6 @@
 # Kubernetes infrastructure
 
-Shared kubeconfig source settings, cluster access by intent (ADR 0026), session-local bearer/caches/diagnostics, cancellation guards, live cache and common resource metadata/projection helpers. `runtime` preserves Tauri state/channel types on desktop and scope-inheriting Tokio tasks on the server. E2E-only source validation stays feature-gated here so all command crates use the same isolated source.
+Shared kubeconfig source settings, cluster access by intent (ADR 0026), session-local bearer/caches/diagnostics, cancellation guards, live cache and common resource metadata/projection helpers. `runtime` provides borrowed state, typed channels and session-scoped Tokio tasks for both hosts. E2E-only source validation stays feature-gated here so all command crates use the same isolated source.
 
 Commands reach Kubernetes only through `ClusterAccess`: resolve it once per request from the selector, then ask it for a read, preview, confirmed-operation, live-session or stream client. It owns source resolution, the ADR 0009 client paths and the fail-closed rule. The `test-support` feature exposes `FixedClusterAccess`, which other crates enable from their dev-dependencies to run commands against `tower_test` mock clients, and `discovery_fixture`, a mock discovery client that also serves an aggregated API publishing `"verbs": null` and can mark group versions or the group lists as unavailable (503).
 

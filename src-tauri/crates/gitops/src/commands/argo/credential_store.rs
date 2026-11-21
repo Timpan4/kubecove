@@ -2,21 +2,16 @@ use crate::{
     commands::helpers::session_scope::SessionScope,
     models::{AppError, AppErrorKind},
 };
-#[cfg(not(feature = "desktop"))]
 use serde::{Deserialize, Serialize};
-#[cfg(not(feature = "desktop"))]
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
-#[cfg(not(feature = "desktop"))]
 use uuid::Uuid;
 
 pub(crate) const ARGO_CREDENTIAL_SERVICE: &str = "KubeCove Argo CD";
 pub(crate) const SESSION_SERVICE: &str = "KubeCove Argo operation sessions";
-#[cfg(not(feature = "desktop"))]
 const PROBE_SERVICE: &str = "KubeCove Credential Store Probe";
-#[cfg(not(feature = "desktop"))]
+#[cfg(unix)]
 const FILE_STORE_KIND: &str = "encryptedFile";
-#[cfg(not(feature = "desktop"))]
 const NATIVE_STORE_KIND: &str = "native";
 
 /// Native credential storage. The desktop remote client also stores its
@@ -27,7 +22,6 @@ pub trait SecureStore: Send + Sync {
     fn delete(&self, service: &str, id: &str) -> Result<(), AppError>;
 }
 
-#[cfg(not(feature = "desktop"))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialStoreDescription {
@@ -35,7 +29,6 @@ pub struct CredentialStoreDescription {
     pub description: String,
 }
 
-#[cfg(not(feature = "desktop"))]
 fn description(kind: &str, text: &str) -> CredentialStoreDescription {
     CredentialStoreDescription {
         kind: kind.to_owned(),
@@ -43,7 +36,6 @@ fn description(kind: &str, text: &str) -> CredentialStoreDescription {
     }
 }
 
-#[cfg(not(feature = "desktop"))]
 fn native_description() -> CredentialStoreDescription {
     description(
         NATIVE_STORE_KIND,
@@ -92,14 +84,12 @@ impl SecureStore for KeyringStore {
 }
 
 static ACTIVE_STORE: OnceLock<RwLock<Arc<dyn SecureStore>>> = OnceLock::new();
-#[cfg(not(feature = "desktop"))]
 static ACTIVE_DESCRIPTION: OnceLock<RwLock<CredentialStoreDescription>> = OnceLock::new();
 
 fn store_slot() -> &'static RwLock<Arc<dyn SecureStore>> {
     ACTIVE_STORE.get_or_init(|| RwLock::new(Arc::new(KeyringStore)))
 }
 
-#[cfg(not(feature = "desktop"))]
 fn description_slot() -> &'static RwLock<CredentialStoreDescription> {
     ACTIVE_DESCRIPTION.get_or_init(|| RwLock::new(native_description()))
 }
@@ -148,14 +138,12 @@ impl SecureStore for NamespacedStore {
     }
 }
 
-#[cfg(not(feature = "desktop"))]
 pub fn active_credential_store_description() -> CredentialStoreDescription {
     description_slot()
         .read()
         .map_or_else(|_| native_description(), |description| description.clone())
 }
 
-#[cfg(not(feature = "desktop"))]
 pub fn initialize_server_credential_store(
     data_dir: PathBuf,
 ) -> Result<CredentialStoreDescription, AppError> {
@@ -202,7 +190,6 @@ pub fn initialize_server_credential_store(
     }
 }
 
-#[cfg(not(feature = "desktop"))]
 fn is_unavailable_keyring_error(error: &AppError) -> bool {
     let mut source = std::error::Error::source(error);
     while let Some(cause) = source {
@@ -220,11 +207,11 @@ fn is_unavailable_keyring_error(error: &AppError) -> bool {
     false
 }
 
-// The server fallback stays compiled in desktop builds so shared tests cover it.
-#[cfg_attr(feature = "desktop", allow(dead_code))]
+// Compile on every platform so the shared tests cover the server fallback.
+#[cfg_attr(not(unix), allow(dead_code))]
 #[path = "credential_store/file.rs"]
 mod file;
-#[cfg(all(unix, not(feature = "desktop")))]
+#[cfg(unix)]
 use file::FileCredentialStore;
 
 #[cfg(test)]

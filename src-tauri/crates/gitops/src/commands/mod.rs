@@ -18,7 +18,6 @@ pub use argo::{
     list_argocd_appprojects, list_argocd_appsets, preflight_argo_operation,
     preview_argo_tunnel_target, run_argo_operation,
 };
-#[cfg(not(feature = "desktop"))]
 pub use argo::{
     CredentialStoreDescription, active_credential_store_description,
     initialize_server_credential_store,

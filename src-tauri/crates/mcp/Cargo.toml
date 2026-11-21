@@ -8,11 +8,6 @@ license = "AGPL-3.0-or-later"
 description = "KubeCove read-only MCP tools and their HTTP endpoint (ADR 0028)"
 
 [features]
-default = []
-desktop = [
-    "kubecove-kube/desktop", "kubecove-inspection/desktop", "kubecove-live/desktop",
-    "kubecove-gitops/desktop", "loopback",
-]
 # The desktop app's own loopback listener; the server mounts the endpoint in its router.
 loopback = ["dep:axum"]
 

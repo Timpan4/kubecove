@@ -3,8 +3,6 @@
 
 fn main() {
     ensure_sidecar_permissions();
-    #[cfg(feature = "desktop")]
-    tauri_build::build();
 }
 
 #[cfg(unix)]

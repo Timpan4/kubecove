@@ -37,7 +37,6 @@ pub use connected::{
     forget_argo_credential, get_argo_application_inspector, get_argo_connection_status,
     preview_argo_tunnel_target,
 };
-#[cfg(not(feature = "desktop"))]
 pub use credential_store::{
     CredentialStoreDescription, active_credential_store_description,
     initialize_server_credential_store,

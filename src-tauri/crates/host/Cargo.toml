@@ -7,16 +7,6 @@ rust-version = "1.99"
 license = "AGPL-3.0-or-later"
 
 [features]
-default = []
-desktop = [
-    "dep:tauri",
-    "dep:tauri-plugin-dialog",
-    "dep:tokio-tungstenite",
-    "dep:rustls",
-    "dep:kubecove-live",
-    "kubecove-kube/desktop",
-    "remote-client",
-]
 remote-client = [
     "dep:tokio-tungstenite",
     "dep:rustls",
@@ -44,8 +34,6 @@ serde_json = { workspace = true, features = ["raw_value"] }
 sysinfo = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
-tauri = { workspace = true, optional = true }
-tauri-plugin-dialog = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 axum = { workspace = true, optional = true, features = ["query"] }

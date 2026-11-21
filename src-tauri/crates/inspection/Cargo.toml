@@ -8,8 +8,6 @@ license = "AGPL-3.0-or-later"
 description = "KubeCove resource inspection, RBAC and guarded Kubernetes operations"
 
 [features]
-default = []
-desktop = ["dep:tauri", "kubecove-kube/desktop"]
 bench-support = ["kubecove-kube/bench-support"]
 
 [dependencies]
@@ -24,7 +22,6 @@ k8s-openapi = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
-tauri = { workspace = true, optional = true }
 
 [dev-dependencies]
 kubecove-kube = { path = "../kube", features = ["test-support"] }

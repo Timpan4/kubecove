@@ -9,10 +9,7 @@ use std::collections::BTreeMap;
 pub mod domain_catalog;
 pub mod resource_catalog;
 
-/// Drives a future on one shared multi-thread tokio runtime, which is what
-/// `tauri::async_runtime::block_on` does. Owning the runtime here lets the benchmarks build
-/// without the `desktop` feature, so CI does not compile and link the GUI stack to measure
-/// backend code.
+/// Drives benchmark futures on one shared multi-thread Tokio runtime.
 pub(crate) fn block_on<F: std::future::Future>(future: F) -> F::Output {
     static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
         tokio::runtime::Builder::new_multi_thread()

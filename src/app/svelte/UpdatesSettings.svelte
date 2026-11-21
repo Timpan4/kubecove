@@ -2,8 +2,6 @@
 	import { Download, RefreshCw } from "lucide-svelte";
 	import { Badge, Button, FieldGroup } from "@/components/ui/svelte";
 	import { canCheckForUpdates } from "@/features/app-updates/store";
-	import GpuiUpgrade from "@/features/app-updates/GpuiUpgrade.svelte";
-	import { isBrowserRuntime, isTauriRuntime } from "@/lib/tauri";
 	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
 	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import SettingsRow from "./SettingsRow.svelte";
@@ -117,7 +115,3 @@
 		</SettingsRow>
 	{/if}
 </FieldGroup>
-
-{#if !isBrowserRuntime() && isTauriRuntime()}
-	<GpuiUpgrade {updatesEnabled} />
-{/if}

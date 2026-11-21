@@ -1,17 +1,13 @@
 # Host support
 
-`kubecove-host` owns process-usage sampling and attribution, desktop connections to
-remote KubeCove servers (including laptop-loopback tunnel relays), and native
-workspace JSON import/export dialogs. It does not own Kubernetes access or app
-startup and command registration.
+`kubecove-host` samples process usage and manages desktop connections to remote
+KubeCove servers, including laptop-loopback tunnel relays.
 
 - `usage` is available without default features, including for the headless server.
   Private `usage_webview` helpers identify platform WebView processes; shared
   attribution tests remain compiled on every platform.
-- `remote` and `workspace_files` require `desktop`. That feature enables the native
-  dependencies and `kubecove-kube/desktop` so runtime state and channels use the
-  same Tauri types as the desktop shell.
-- `bench-support` enables `desktop` and exposes prepared process fixtures and the
+- `remote-client` enables remote connections and tunnel relays for GPUI.
+- `bench-support` exposes prepared process fixtures and the
   production attribution adapter through `usage::benchmark` and `usage` re-exports.
   It does not benchmark OS sampling or remote network calls.
 

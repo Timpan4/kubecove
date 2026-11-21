@@ -4,5 +4,3 @@
 pub mod remote;
 pub mod usage;
 mod usage_webview;
-#[cfg(feature = "desktop")]
-pub mod workspace_files;

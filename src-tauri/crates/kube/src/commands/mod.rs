@@ -28,8 +28,6 @@ pub use diagnostics::{
 pub use finite_read::FiniteRead;
 pub use helpers::forwarded_bearer::enable_forwarded_bearer;
 pub use helpers::session_scope::SessionScope;
-#[cfg(feature = "desktop")]
-pub use kubeconfig::pick_kubeconfig_paths;
 pub use kubeconfig::{
     DEFAULT_KUBECONFIG_ENV_VAR, add_kubeconfig_paths, get_kubeconfig_sources,
     init_kubeconfig_settings_path, remove_kubeconfig_path, reorder_kubeconfig_paths,

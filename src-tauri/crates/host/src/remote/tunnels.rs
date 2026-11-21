@@ -369,6 +369,12 @@ mod tests {
         }
         connection.close().await;
         assert_eq!(connection.tunnels.list(), Vec::new());
+        assert!(
+            TcpStream::connect((Ipv4Addr::LOCALHOST, forward.local_port))
+                .await
+                .is_err(),
+            "disconnect must close the laptop listener"
+        );
     }
 
     #[tokio::test]

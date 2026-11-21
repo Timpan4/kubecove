@@ -514,14 +514,6 @@ mod tests {
             let received = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
             let sink = Arc::clone(&received);
             let channel = Channel::new(move |message| {
-                #[cfg(feature = "desktop")]
-                let message = match message {
-                    tauri::ipc::InvokeResponseBody::Json(json) => {
-                        serde_json::from_str(&json).unwrap()
-                    }
-                    tauri::ipc::InvokeResponseBody::Raw(_) => panic!("expected JSON log message"),
-                };
-                #[cfg(not(feature = "desktop"))]
                 let message = serde_json::to_value(message).unwrap();
                 sink.lock().unwrap().push(message);
                 Ok(())
