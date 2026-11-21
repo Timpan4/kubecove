@@ -1,12 +1,12 @@
 import { createServer } from "node:net";
 
-export async function stopOwnedProfileProcess(child: Bun.Subprocess, signal: "SIGINT" | "SIGTERM"): Promise<void> {
+export async function signalOwnedProcess(child: Bun.Subprocess, signal: "SIGINT" | "SIGTERM"): Promise<void> {
 	if (child.exitCode !== null || child.signalCode !== null) return;
 	if (process.platform === "win32") {
 		await Bun.spawn(["taskkill", "/PID", String(child.pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
 	} else {
 		try {
-			// Only the detached process group created by this profiling run is signalled.
+			// Only the detached process group created by this run is signalled.
 			process.kill(-child.pid, signal);
 		} catch (error) {
 			if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
