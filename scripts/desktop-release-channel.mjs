@@ -2,11 +2,11 @@ import { pathToFileURL } from "node:url";
 
 export function desktopReleaseChannel(version) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) throw new Error("Expected a stable desktop release version");
-  const [major, minor, patch] = version.split(".").map(Number);
-  if (major === 0 && minor === 15 && patch > 1) throw new Error("Both legacy feeds are frozen at 0.15.1");
-  if (major === 0 && minor < 16) {
+  if (version === "0.15.1") {
     return { prefix: "kubecove-gpui", product: "KubeCove GPUI", identifier: "com.timpan.kubecove.gpui", manifest: "latest-gpui.json" };
   }
+  const [major, minor] = version.split(".").map(Number);
+  if (major === 0 && minor < 16) throw new Error("Both legacy feeds are frozen at 0.15.1");
   return { prefix: "kubecove", product: "KubeCove", identifier: "com.timpan.kubecove", manifest: "latest-desktop.json" };
 }
 

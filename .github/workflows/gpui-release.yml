@@ -131,8 +131,9 @@ jobs:
           set -euo pipefail
           # Verify the declared installer identity before signing artifacts for this feed.
           version="$(node -p 'require("./package.json").version')"
-          export EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product)"
-          export EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier)"
+          EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product)"
+          EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier)"
+          export EXPECTED_PRODUCT EXPECTED_ID
           cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/gpui/Cargo.toml |
             node -e 'const packages = JSON.parse(require("node:fs").readFileSync(0)).packages;
               const bundle = packages.find(p => p.name === "kubecove-gpui").metadata.packager;
@@ -146,8 +147,9 @@ jobs:
           prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix)"
           product="$EXPECTED_PRODUCT"
           case "$FORMAT" in
-            appimage) cp "$out/${prefix}_${version}_x86_64.AppImage" gpui-updater/ ;;
-            nsis) cp "$out/${prefix}_${version}_x64-setup.exe" gpui-updater/ ;;
+            # AppImage and NSIS use the main executable name, even when the product changes.
+            appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" "gpui-updater/${prefix}_${version}_x86_64.AppImage" ;;
+            nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" "gpui-updater/${prefix}_${version}_x64-setup.exe" ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
             # cargo-packager names the DMG after the product; rename it to match the other GPUI assets.
             app,dmg)

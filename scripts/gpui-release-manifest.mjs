@@ -80,6 +80,15 @@ export function buildGpuiManifest({ version, tag, repository, notes, publicKey, 
   return { version, notes, pub_date: pubDate, platforms };
 }
 
+export function writeGpuiManifest(dir, options) {
+  const manifest = buildGpuiManifest({
+    ...options, names: readdirSync(dir), read: (name) => readFileSync(join(dir, name)),
+  });
+  const filename = desktopReleaseChannel(options.version).manifest;
+  writeFileSync(join(dir, filename), `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${filename}.`);
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { ASSETS_DIR: dir, GH_REPO: repository, NOTES_FILE: notesFile, RELEASE_TAG: releaseTag = "" } = process.env;
   if (!dir || !repository || !notesFile) throw new Error("ASSETS_DIR, GH_REPO and NOTES_FILE are required.");
@@ -87,17 +96,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const tag = releaseTag || `app-v${version}`;
   if (!releaseTag) console.log(`Dry run: manifest URLs point at ${tag}.`);
-  const manifest = buildGpuiManifest({
+  writeGpuiManifest(dir, {
     version,
     tag,
     repository,
     notes: readFileSync(notesFile, "utf8").trim(),
     publicKey,
     pubDate: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-    names: readdirSync(dir),
-    read: (name) => readFileSync(join(dir, name)),
   });
-  const filename = desktopReleaseChannel(version).manifest;
-  writeFileSync(join(dir, filename), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${filename}.`);
 }

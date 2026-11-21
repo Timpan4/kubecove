@@ -84,8 +84,9 @@ jobs:
         run: |
           version="$(node -p 'require("./package.json").version')"
           manifest="$(node scripts/desktop-release-channel.mjs "$version" manifest)"
+          prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix)"
           echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
-          echo "prefix=$(node scripts/desktop-release-channel.mjs "$version" prefix)" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           if [[ "$version" == 0.15.1 && ! -f src-tauri/tauri.conf.json ]]; then
             echo "::error::The transition release must publish both legacy feeds."
             exit 1
@@ -146,7 +147,7 @@ jobs:
             run: bun run docs:check
 
           - name: Test release orchestration
-            run: node --test scripts/release-workflow-regression.test.mjs
+            run: node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs
 
           - name: Typecheck frontend
             run: bun run typecheck

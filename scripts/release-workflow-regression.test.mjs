@@ -191,7 +191,7 @@ test("parallel frontend checks retain coverage and finish before compilation-hea
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
   const common = [
     "bun run docs:check",
-    "node --test scripts/release-workflow-regression.test.mjs",
+    "node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs",
     "bun run typecheck",
     "bun run lint",
   ];
