@@ -9,12 +9,6 @@ updates:
       timezone: "Europe/Stockholm"
     commit-message:
       prefix: "chore(deps)"
-    ignore:
-      # Must match the major.minor of the Rust tauri-plugin-updater pinned in src-tauri/Cargo.toml.
-      - dependency-name: "@tauri-apps/plugin-updater"
-        update-types:
-          - "version-update:semver-major"
-          - "version-update:semver-minor"
     groups:
       bun-production-minor-patch:
         dependency-type: "production"

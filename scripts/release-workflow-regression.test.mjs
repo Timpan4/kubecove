@@ -62,12 +62,10 @@ function step(job, name) {
   return found;
 }
 
-test("release preparation commits desktop and server version metadata", () => {
+test("release preparation commits frontend, backend, GPUI and server version metadata", () => {
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
   const commands = step(job("prepare", preparation), "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
-  assert.ok(!staged.includes("src-tauri/tauri.conf.json"));
-  assert.match(commands, /if \[\[ -f src-tauri\/tauri\.conf\.json \]\]; then git add src-tauri\/tauri\.conf\.json; fi/);
   for (const path of ["package.json", "src-tauri/Cargo.toml",
     "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock",
     "src-tauri/gpui/Cargo.toml", "src-tauri/gpui/Cargo.lock", "CHANGELOG.md"]) {
@@ -310,21 +308,20 @@ test("server build reuses pinned actions already used by release jobs", () => {
 // Failure modes of the E2E cache: a job that differs from the saver in key, cache settings or
 // compiler flags restores nothing it can use; a second cache setup in one job moves the
 // builds into its own store, so the first restores for nothing; a second saver of the key
-// fails its job; and Cargo started by Bun or Tauri bypasses the cache unless the shim is on
+// fails its job; and Cargo started by Bun bypasses the cache unless the shim is on
 // PATH before the suite runs.
 test("release artifacts use local mbx while Linux E2E jobs share one objects cache", () => {
   const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
-  for (const build of [job("build"), job("server-build", packaging), job("bundle", gpuiRelease)]) {
+  for (const build of [job("server-build", packaging), job("bundle", gpuiRelease)]) {
     const setup = build.steps.find(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
     assert.equal(setup?.with.backend, "local");
     assert.doesNotMatch(JSON.stringify(build), /swatinem\/rust-cache/);
     const activation = step(build, "Activate Cargo caching");
     assert.equal(activation.run, "node scripts/ci-mbx-cargo.mjs");
-    const consumer = build.steps.find(({ uses, run }) => uses?.startsWith("tauri-apps/tauri-action@")
-      || run?.includes("for variant in full slim") || run?.includes("cargo build --locked"));
+    const consumer = build.steps.find(({ run }) => run?.includes("for variant in full slim") || run?.includes("cargo build --locked"));
     assert.ok(build.steps.indexOf(activation) < build.steps.indexOf(consumer));
   }
-  for (const check of [job("e2e"), e2e.jobs["real-primary"], e2e.jobs["real-matrix"]]) {
+  for (const check of [e2e.jobs["real-primary"], e2e.jobs["real-matrix"]]) {
     assert.match(step(check, "Run real suite").run, /^bun run e2e:real -- --kubernetes /);
     assert.doesNotMatch(JSON.stringify(check.steps), /webkit2gtk|gnome-keyring|xvfb-run/);
     const key = check.steps.find(({ id }) => id === "rust-cache");
@@ -361,17 +358,11 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
 test("publishing can read build artifacts and waits for all release gates", () => {
   const publish = job("publish");
   assert.equal(publish.permissions.contents, "write");
-  assert.deepEqual(publish.needs, ["prepare", "metadata", "verify-tauri", "publish-containers"]);
+  assert.deepEqual(publish.needs, ["prepare", "metadata", "publish-containers"]);
   assert.deepEqual(job("verify").needs, ["metadata", "frontend", "server-packaging"]);
   assert.deepEqual(job("draft").needs, ["prepare", "metadata", "verify"]);
-  assert.equal(job("verify-tauri").needs, "build");
-  assert.deepEqual(job("build").needs, ["metadata", "rust", "e2e", "draft"]);
-  assert.equal(step(job("build"), "Build and upload release assets").with.releaseId, "${{ needs.draft.outputs.release-id }}");
-  for (const name of ["rust", "e2e", "build"]) {
-    assert.match(job(name).if, /needs\.metadata\.outputs\.tauri == 'true'/);
-  }
   const stage = job("stage-release-assets");
-  assert.deepEqual(stage.needs, ["draft", "gpui", "metadata", "verify-tauri"]);
+  assert.deepEqual(stage.needs, ["draft", "gpui", "metadata"]);
   assert.equal(stage.permissions.actions, "read");
   assert.equal(stage.permissions.contents, "write");
   assert.match(step(stage, "Download release build artifacts").run, /gh run download/);
@@ -406,35 +397,18 @@ function evaluatesJobIf(name, needs, dryRun = false) {
   });
 }
 
-test("legacy Tauri releases require successful feed verification before publication", () => {
+test("releases publish only after GPUI staging and container publication succeed", () => {
   const success = { result: "success" };
-  const metadata = { ...success, outputs: { tauri: "true" } };
-  for (const result of ["success", "failure", "skipped", "cancelled"]) {
-    const legacy = { metadata, "verify-tauri": { result } };
-    const expected = result === "success";
-    assert.equal(evaluatesJobIf("stage-release-assets", { ...legacy, draft: success, gpui: success }), expected, result);
-    assert.equal(evaluatesJobIf("publish", { ...legacy, prepare: success, "publish-containers": success }), expected, result);
-  }
-});
-
-test("GPUI-only releases publish with a skipped legacy feed and verified assets", () => {
-  // Without a status function, Actions applies an implicit success() check to needs.
-  for (const name of ["stage-release-assets", "publish-containers", "publish"]) {
-    assert.match(job(name).if, /^\$\{\{ !cancelled\(\) && /);
-  }
-  const success = { result: "success" };
-  const failure = { result: "failure" };
-  const gpuiOnly = { metadata: { ...success, outputs: { tauri: "" } }, "verify-tauri": { result: "skipped" } };
-  const stage = { ...gpuiOnly, draft: success, gpui: success };
+  const stage = { metadata: success, draft: success, gpui: success };
+  const publish = { metadata: success, prepare: success, "publish-containers": success };
   assert.equal(evaluatesJobIf("stage-release-assets", stage), true);
-  assert.equal(evaluatesJobIf("stage-release-assets", { ...stage, gpui: failure }), false);
+  assert.equal(evaluatesJobIf("publish", publish), true);
   assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": success }), true);
   for (const result of ["failure", "skipped", "cancelled"]) {
+    assert.equal(evaluatesJobIf("stage-release-assets", { ...stage, gpui: { result } }), false, result);
     assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": { result } }), false, result);
+    assert.equal(evaluatesJobIf("publish", { ...publish, "publish-containers": { result } }), false, result);
   }
-  const publish = { ...gpuiOnly, prepare: success, "publish-containers": success };
-  assert.equal(evaluatesJobIf("publish", publish), true);
-  assert.equal(evaluatesJobIf("publish", { ...publish, "publish-containers": failure }), false);
 });
 
 // A dry run starts from a branch, so any job that reads `github.ref_name` as a release tag must not run.

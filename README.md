@@ -42,7 +42,7 @@ These tools remain useful. KubeCove is a local Kubernetes workspace for the part
 
 ## Security and local operation
 
-KubeCove has a Tauri desktop app and a separate `kubecove-server` for concurrent remote-host sessions. The Svelte frontend uses typed Tauri commands locally; remote clients use authenticated HTTP and WebSocket adapters over the same Rust command surface.
+KubeCove has a native GPUI desktop app and a separate `kubecove-server` for concurrent remote-host sessions. The server serves the Svelte browser client and exposes the shared Rust command surface over authenticated HTTP and WebSocket connections.
 
 - Kubeconfig contents, tokens, client keys, and certificate data remain backend-side rather than becoming normal frontend state.
 - The application deploys no cluster agent and exposes no generic local-shell bridge. Pod exec is a specific, target-scoped workflow.
@@ -95,7 +95,7 @@ Installers are beta builds and may show platform trust prompts. KubeCove does no
 
 ## Stack
 
-KubeCove is built with Svelte and Tauri/Rust. [Product and architecture](docs/product-and-architecture.md) covers the desktop trust boundary and engineering structure.
+KubeCove uses GPUI for the native client, Svelte for the browser client, and Rust for the shared backend. [Product and architecture](docs/product-and-architecture.md) covers the trust boundary and engineering structure.
 
 ## License
 

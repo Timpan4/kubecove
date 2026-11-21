@@ -47,9 +47,6 @@
 !src-tauri/Cargo.toml
 !src-tauri/Cargo.lock
 !src-tauri/build.rs
-!src-tauri/tauri.conf.json
-!src-tauri/tauri.e2e.conf.json
-!src-tauri/tauri.dev-kind.conf.json
 !src-tauri/src/
 !src-tauri/src/**
 !src-tauri/crates/
@@ -62,8 +59,6 @@
 !src-tauri/bin/**
 !src-tauri/icons/
 !src-tauri/icons/**
-!src-tauri/capabilities/
-!src-tauri/capabilities/**
 !src-tauri/server/
 !src-tauri/server/Cargo.toml
 !src-tauri/server/Cargo.lock

@@ -211,8 +211,7 @@ for (const [path, selected] of [
   ["src-tauri/crates/gitops/src/commands/argo/connected.rs", ["rust"]],
   ["src-tauri/crates/host/src/commands/usage.rs", ["rust"]],
   ["src-tauri/crates/inspection/Cargo.toml", ["nix", "rust"]],
-  ["src-tauri/capabilities/default.yaml", ["rust"]],
-  ["src-tauri/tauri.conf.json", ["frontend", "rust"]],
+  ["src-tauri/gpui/updater.json", ["frontend", "rust"]],
   ["src-tauri/Cargo.lock", ["nix", "rust"]],
   ["tools/new-cli/Cargo.lock", ["nix", "rust"]],
   ["Cargo.toml", ["nix", "rust"]],
@@ -377,7 +376,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
     return rustCondition(expression, task, skip === undefined ? "" : String(skip), event, successful);
   };
-  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify server command wrappers", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
+  const builds = ["Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify server command wrappers", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     assert.equal(condition("Restore Rust task pass", task, false), true);
     for (const event of ["push", "workflow_dispatch"]) assert.equal(condition("Restore Rust task pass", task, false, event), false);
@@ -399,7 +398,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     assert.equal(condition("Decide Rust task reuse", task, undefined), false);
   }
   assert.ok(job("checks").indexOf("- name: Key the Rust cache by its inputs") < job("checks").indexOf("- name: Restore Rust task pass"));
-  assert.ok(job("checks").indexOf("- name: Decide Rust task reuse") < job("checks").indexOf("- name: Install Tauri Linux dependencies"));
+  assert.ok(job("checks").indexOf("- name: Decide Rust task reuse") < job("checks").indexOf("- name: Install GPUI build dependencies"));
   assert.ok(job("checks").indexOf("- name: Verify Rust task completion") > job("checks").indexOf("- name: Upload headless verification report"));
   assert.ok(step("Verify Rust task completion").includes("PASS_STEPS: ${{ toJSON(steps) }}"));
 });
@@ -601,9 +600,7 @@ test("lightweight tasks avoid Rust and package setup; CI regressions precede ins
   assert.ok(job("frontend").indexOf("- name: Test CI orchestration") < job("frontend").indexOf("- name: Install frontend dependencies"));
   assert.ok(step("Setup Rust").includes("matrix.workspace"));
   assert.ok(step("Check documentation").includes("matrix.task == 'docs'"));
-  assert.match(step("Install Tauri Linux dependencies"), /if ! pkg-config --exists/);
   assert.match(step("Install GPUI build dependencies"), /uses: \.\/\.github\/actions\/setup-linux-native-deps/);
-  assert.ok(step("Install Tauri Linux dependencies").includes("matrix.task == 'rust'"));
   assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
 });
 test("native dependencies are installed only if GPUI cannot link or Playwright cannot launch Chromium", () => {
@@ -732,15 +729,14 @@ test("release PRs use normal CI selection and skip Nix like other PRs", () => {
 });
 test("Rust verification selects all workspace members despite root-only default-members", () => {
   const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  const release = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
   const hook = readFileSync(new URL("../.githooks/pre-commit-user", import.meta.url), "utf8");
   const commands = [
     ...["rust:test", "rust:check", "rust:lint"].map((name) => scripts[name]),
-    ...[job("checks"), release].flatMap((source) => [...source.matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/g)].map((match) => match[1])),
+    ...[...job("checks").matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/g)].map((match) => match[1]),
     ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
   ];
-  // The GUI-free backend command was already required in the former server job.
-  assert.equal(commands.length, 9);
+  // Three package scripts, three CI checks (including the API-only server lane), and the hook.
+  assert.equal(commands.length, 7);
   for (const command of commands) {
     const args = command.trim().split(/\s+/);
     const cargoArgs = args.slice(0, args.indexOf("--") === -1 ? args.length : args.indexOf("--"));
@@ -763,7 +759,7 @@ test("Rust dependency audits cover every checked-in lockfile with narrow excepti
     return [dirname(/--file (\S+)/.exec(command)[1]), [...command.matchAll(/--ignore (\S+)/g)].map((match) => match[1])];
   }).sort(([left], [right]) => left.localeCompare(right));
   assert.deepEqual(audits.map(([directory]) => directory), lockfileDirectories);
-  assert.deepEqual(audits, [["src-tauri", ["RUSTSEC-2024-0429"]], ["src-tauri/gpui", []], ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]]]);
+  assert.deepEqual(audits, [["src-tauri", []], ["src-tauri/gpui", []], ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]]]);
   assert.match(step("Audit server Rust dependencies"), /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {

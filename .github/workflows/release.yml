@@ -63,7 +63,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      tauri: ${{ steps.legacy.outputs.enabled }}
       release-body: ${{ steps.release_body.outputs.body }}
 
     steps:
@@ -76,11 +75,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
-
-      - name: Detect legacy Tauri packages
-        id: legacy
-        run: |
-          if [[ -f src-tauri/tauri.conf.json ]]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; fi
 
       - name: Validate release tag and versions
         env:
@@ -143,119 +137,6 @@ jobs:
       # Svelte compilation tests need the runner after the parallel checks finish.
       - name: Test frontend
         run: bun test
-
-  rust:
-    name: Legacy Tauri Rust release checks
-    needs: metadata
-    if: ${{ !inputs.gpui-dry-run && needs.metadata.outputs.tauri == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # The cache action never updates the package lists on a hosted runner. A list older than
-      # the archive asks for package versions the mirror has dropped, the install fails with 404,
-      # and the action then saves an empty cache.
-      - name: Refresh apt package lists
-        run: sudo apt-get update
-
-      - name: Install Linux Tauri dependencies
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: >-
-            build-essential
-            libayatana-appindicator3-dev
-            librsvg2-dev
-            libssl-dev
-            libwebkit2gtk-4.1-dev
-            patchelf
-          version: release-verify-tauri-linux-v1
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-
-      - name: Cache Rust
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          working-directory: src-tauri
-          cache-generation: kubecove-rust-ci
-
-      - name: Test Rust
-        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
-
-      - name: Lint Rust
-        run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-
-  e2e:
-    name: Legacy Tauri Kubernetes ${{ matrix.kubernetes }} release E2E
-    needs: metadata
-    if: ${{ !inputs.gpui-dry-run && needs.metadata.outputs.tauri == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-    strategy:
-      fail-fast: false
-      matrix:
-        kubernetes: ["1.34", "1.35", "1.36", "1.37"]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.4.4"
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-
-      # The key, the cache settings and CARGO_PROFILE_DEV_DEBUG match e2e.yml, whose push job
-      # saves this cache on main. A tag run restores it and never saves.
-      - name: Key the Rust cache by its inputs
-        id: rust-cache
-        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
-
-      - name: Setup Mr Boxington
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.30.0"
-          working-directory: src-tauri
-          cache-key: ${{ steps.rust-cache.outputs.key }}
-          restore-keys: ${{ steps.rust-cache.outputs.prefix }}
-          github-cache-mode: objects
-          isolate-objects-cache: true
-          clean-target-before-export: true
-
-      - name: Activate Cargo caching
-        run: node scripts/ci-mbx-cargo.mjs
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run fast suite
-        run: bun run e2e:fast
-
-      - name: Run real suite
-        run: bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
-
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: release-e2e-${{ matrix.kubernetes }}-${{ github.run_id }}
-          path: |
-            e2e/artifacts/**
-            .artifacts/e2e/**
-          if-no-files-found: ignore
 
   server-packaging:
     name: Server packaging
@@ -354,9 +235,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
-    outputs:
-      release-id: ${{ steps.release_id.outputs.id }}
-
     steps:
       - name: Create release before asset builds
         if: needs.prepare.outputs.release-draft == 'true' && needs.prepare.outputs.release-exists != 'true'
@@ -375,190 +253,16 @@ jobs:
             --draft \
             --verify-tag
 
-      - name: Read release ID
-        id: release_id
-        env:
-          GH_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          id="$(gh release view "$TAG_NAME" --json databaseId --jq '.databaseId')"
-          echo "id=$id" >> "$GITHUB_OUTPUT"
-
-  build:
-    name: Build legacy Tauri ${{ matrix.label }}
-    needs:
-      - metadata
-      - rust
-      - e2e
-      - draft
-    if: ${{ !inputs.gpui-dry-run && needs.metadata.outputs.tauri == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: macOS universal
-            platform: macos-latest
-            args: "--target universal-apple-darwin --bundles app,dmg"
-            rust-targets: "aarch64-apple-darwin x86_64-apple-darwin"
-            expected-updater-assets: "KubeCove___VERSION___universal.app.tar.gz KubeCove___VERSION___universal.app.tar.gz.sig"
-          - label: Windows x64
-            platform: windows-latest
-            args: "--target x86_64-pc-windows-msvc"
-            rust-targets: "x86_64-pc-windows-msvc"
-            expected-updater-assets: "KubeCove___VERSION___x64-setup.exe KubeCove___VERSION___x64-setup.exe.sig"
-          - label: Linux x64
-            platform: ubuntu-latest
-            args: "--target x86_64-unknown-linux-gnu"
-            rust-targets: "x86_64-unknown-linux-gnu"
-            expected-updater-assets: "KubeCove___VERSION___amd64.AppImage KubeCove___VERSION___amd64.AppImage.sig"
-
-    runs-on: ${{ matrix.platform }}
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # See the note on the same step in the rust job.
-      - name: Refresh apt package lists
-        if: matrix.platform == 'ubuntu-latest'
-        run: sudo apt-get update
-
-      - name: Install Linux Tauri dependencies
-        if: matrix.platform == 'ubuntu-latest'
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: >-
-            build-essential
-            file
-            libayatana-appindicator3-dev
-            libfuse2
-            librsvg2-dev
-            libssl-dev
-            libwebkit2gtk-4.1-dev
-            patchelf
-            rpm
-          version: release-build-tauri-linux-v1
-
-      - name: Setup Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.4.4"
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install Rust targets
-        run: rustup target add ${{ matrix.rust-targets }}
-
-      - name: Cache Rust
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
-        with:
-          version: "1.29.2"
-          backend: local
-
-      - name: Activate Cargo caching
-        run: node scripts/ci-mbx-cargo.mjs
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Prepare universal kubeconform sidecar
-        if: matrix.platform == 'macos-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-          lipo -create \
-            src-tauri/bin/kubeconform-aarch64-apple-darwin \
-            src-tauri/bin/kubeconform-x86_64-apple-darwin \
-            -output src-tauri/bin/kubeconform-universal-apple-darwin
-          chmod 755 src-tauri/bin/kubeconform-universal-apple-darwin
-
-      - name: Build and upload release assets
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          KUBECOVE_PUBLIC_RELEASE_CHANNEL: stable
-        with:
-          releaseId: ${{ needs.draft.outputs.release-id }}
-          releaseBody: ${{ needs.metadata.outputs.release-body }}
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          args: ${{ matrix.args }}
-
-      - name: Verify release assets
-        shell: bash
-        env:
-          GH_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
-          EXPECTED_UPDATER_ASSETS: ${{ matrix.expected-updater-assets }}
-        run: |
-          set -euo pipefail
-          version="${TAG_NAME#app-v}"
-          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > release-assets.txt
-
-          for asset_template in $EXPECTED_UPDATER_ASSETS; do
-            asset="${asset_template//__VERSION__/$version}"
-            grep -qx "$asset" release-assets.txt
-          done
-
-  verify-tauri:
-    name: Verify legacy Tauri updater feed
-    needs: build
-    if: ${{ !inputs.gpui-dry-run }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Verify legacy platform coverage
-        env:
-          GH_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release download "$TAG_NAME" --pattern latest.json
-          jq -e --arg version "${TAG_NAME#app-v}" '
-            .version == $version and
-            (.platforms as $p | all("darwin-aarch64", "darwin-x86_64",
-              "linux-x86_64", "linux-x86_64-appimage", "windows-x86_64", "windows-x86_64-nsis";
-              ($p[.].url and $p[.].signature)))
-          ' latest.json
-
   stage-release-assets:
     name: Upload and verify release assets
     needs:
       - draft
       - gpui
       - metadata
-      - verify-tauri
-    # Override the implicit success() check so a GPUI-only release can skip verify-tauri.
     if: >-
       ${{ !cancelled() && !inputs.gpui-dry-run
           && needs.draft.result == 'success' && needs.gpui.result == 'success'
-          && needs.metadata.result == 'success'
-          && ((needs.metadata.outputs.tauri == 'true' && needs.verify-tauri.result == 'success')
-              || (needs.metadata.outputs.tauri != 'true' && needs.verify-tauri.result == 'skipped')) }}
+          && needs.metadata.result == 'success' }}
     permissions:
       actions: read
       contents: write
@@ -705,14 +409,11 @@ jobs:
     needs:
       - prepare
       - metadata
-      - verify-tauri
       - publish-containers
     if: >-
       ${{ !cancelled() && !inputs.gpui-dry-run
           && needs.prepare.result == 'success' && needs.publish-containers.result == 'success'
-          && needs.metadata.result == 'success'
-          && ((needs.metadata.outputs.tauri == 'true' && needs.verify-tauri.result == 'success')
-              || (needs.metadata.outputs.tauri != 'true' && needs.verify-tauri.result == 'skipped')) }}
+          && needs.metadata.result == 'success' }}
     permissions:
       contents: write
     runs-on: ubuntu-latest

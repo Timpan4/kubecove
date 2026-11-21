@@ -12,7 +12,6 @@ try {
 	const versions = readWorkspaceReleaseVersions();
 
 	console.log(`package.json version: ${versions.packageVersion}`);
-	if (versions.tauriVersion) console.log(`tauri.conf.json version: ${versions.tauriVersion}`);
 	console.log(`Cargo.toml version: ${versions.cargoVersion}`);
 	console.log(`release ref: ${refType} ${tagName}`);
 

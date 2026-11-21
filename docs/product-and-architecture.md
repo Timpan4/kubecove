@@ -70,7 +70,7 @@ The Svelte frontend is untrusted relative to the Rust backend.
 
 - Raw kubeconfig contents, tokens, client keys, and certificate data stay backend-side.
 - The frontend cannot run arbitrary shell commands.
-- Desktop Kubernetes access crosses typed Tauri commands; the headless server exposes the same Rust command surface through authenticated HTTP and WebSocket adapters. Both normally use `kube-rs`.
+- The GPUI desktop client calls the shared Rust backend directly. The Svelte client calls it through the server's authenticated HTTP and WebSocket adapters. Kubernetes access uses `kube-rs`.
 - Connected Argo CD credentials, TLS handling, request limits, Secret redaction, preflight or operation-session state, and execution stay backend-side.
 - Frontend responses are bounded, serialized summaries, details, YAML, stream events, results, or typed errors.
 - Secret disclosure is explicit and transient. Connected Argo Secret payloads are redacted before crossing the boundary.
@@ -87,7 +87,7 @@ AI agents are a separate, opt-in client type. Each host can serve read-only MCP 
 
 ## Frontend shape
 
-An opt-in GPUI Kit client ships alongside the Svelte app under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md). Releases publish it as a separate app for Linux x64, macOS Apple silicon and Windows x64 (see the [release guide](release.md#native-gpui-client)). Both interfaces share Rust backend behavior and frontend-independent acceptance scenarios; see the [native client guide](../src-tauri/gpui/README.md).
+GPUI Kit powers the desktop client on Linux x64, macOS Apple silicon and Windows x64. The desktop and Svelte browser clients share the Rust backend and acceptance scenarios under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md). See the [native client guide](../src-tauri/gpui/README.md) and [release guide](release.md#native-gpui-client).
 
 The Svelte application shell lives under `src/app/svelte/`. Feature code owns domain surfaces; shared components and pure logic remain separate.
 
@@ -107,7 +107,7 @@ src/
     resource-detail/
     resources/
     workspaces/
-  lib/                   stores, types, pure logic, typed Tauri wrappers
+  lib/                   stores, types, pure logic, typed server command wrappers
 ```
 
 Frontend rules:
@@ -130,11 +130,11 @@ The server's data directory stores kubeconfig-source settings, source paths, and
 
 ## Backend shape
 
-The Rust backend is a workspace of private crates with a small desktop composition root. Independent command domains compile separately, while both hosts use the same contracts and session infrastructure.
+The Rust backend is a workspace of private crates with a shared library as its entry point. Independent command domains compile separately. Both hosts use the same contracts and session infrastructure.
 
 ```text
 src-tauri/
-  src/                   Tauri shell, cross-domain cancellation, benchmark aggregation
+  src/                   shared command exports, cross-domain cancellation, benchmark aggregation
   crates/
     models/              serde contracts, health assessment and typed errors
     kube/                clients, session scope, shared projections, caches and diagnostics
@@ -142,10 +142,11 @@ src-tauri/
     live/                watches, logs, exec and port forwarding
     gitops/              Argo CD, Flux and Helm
     host/                usage, native files and desktop remote client
-  server/                separate headless workspace and transport adapters
+  gpui/                  native desktop workspace
+  server/                headless server workspace and transport adapters
 ```
 
-See [private backend crates](../src-tauri/crates/README.md) for dependency direction and workspace checks. The existing `kubecove_lib::{commands, models, runtime}` facade remains shared by both hosts. The server has a separate workspace/lockfile so desktop feature unification cannot pull Tauri into a headless build.
+See [private backend crates](../src-tauri/crates/README.md) for dependency direction and workspace checks. Both hosts use `kubecove_lib::{commands, models, runtime}` and have independent lockfiles and build profiles.
 
 Backend rules:
 
@@ -185,4 +186,4 @@ Future work is tracked through GitHub Issues and GitHub Milestones rather than c
 
 Security-sensitive areas such as broader exec targets, Git-writing, Flux or Helm mutations, provider CLI integration, or AI-assisted operations require a fresh ADR before implementation.
 
-Exact dependency and application versions live in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and release metadata. Kubernetes support policy lives in [ADR 0011](decisions/0011-rolling-kubernetes-support.md) and the release workflows, not duplicated version literals here.
+Exact dependency and application versions live in `package.json`, the backend, server and GPUI Cargo manifests and lockfiles, and release metadata. Kubernetes support policy lives in [ADR 0011](decisions/0011-rolling-kubernetes-support.md) and the E2E matrix.

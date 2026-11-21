@@ -7,10 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun --bun vite",
-    "tauri:dev-server": "bun scripts/tauri-dev-server.ts",
     "build": "bun run typecheck && bun --bun vite build",
     "preview": "bun --bun vite preview",
-    "tauri": "bun scripts/tauri.ts",
     "test": "bun test",
     "test:svelte": "node --test scripts/svelte-check-tsrs.integration.mjs",
     "test:bench-groups": "node --test scripts/codspeed-frontend-partition.integration.mjs",
