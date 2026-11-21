@@ -291,13 +291,15 @@ export const argoActions = {
 				if (!(await dialog.getByRole("button", { name: "Connect", exact: true }).isVisible())) throw new Error("The Argo CD connection form is not shown");
 				break;
 			case "expectInWindow": {
-				// The dialog's box must lie inside the window, so no edge is clipped.
-				const box = await dialog.boundingBox();
 				const viewport = page.viewportSize();
-				if (!box || !viewport) throw new Error("The Argo CD connection dialog has no box");
-				if (box.x < 0 || box.y < 0 || box.x + box.width > viewport.width || box.y + box.height > viewport.height) {
-					throw new Error(`The Argo CD connection dialog ${JSON.stringify(box)} overflows the ${viewport.width}x${viewport.height} window`);
-				}
+				if (!viewport) throw new Error("The Argo CD connection dialog has no viewport");
+				// setViewportSize can resolve before Chromium lays out the dialog at the new size.
+				await page.waitForFunction(({ element, viewport }) => {
+					const box = element.getBoundingClientRect();
+					return window.innerWidth === viewport.width && window.innerHeight === viewport.height
+						&& box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0
+						&& box.right <= viewport.width && box.bottom <= viewport.height;
+				}, { element: await dialog.elementHandle(), viewport });
 				break;
 			}
 			case "expectReachable": {

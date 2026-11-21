@@ -445,7 +445,7 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
     // text_fit reads the fonts under src-tauri/gpui and the fixture exported from the browser mocks.
     "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "src-tauri/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
     "server-backend": [...shared, "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock"],
-    server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
+    server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
   };
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     // Exercise the exact shell pathspec arguments supplied to the key writer.
@@ -539,6 +539,13 @@ test("pass cache keys partition both hosted images and never match compiler-cach
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("each existing check remains in its selected task", () => {
+  const checks = job("checks");
+  const smoke = step("Verify HTTP and WebSocket lifecycle");
+  assert.match(smoke, /background: true/);
+  assert.ok(checks.indexOf(step("Build headless server")) < checks.indexOf(smoke));
+  assert.ok(checks.indexOf(smoke) < checks.indexOf(step("Test headless server")));
+  assert.ok(checks.indexOf(step("Lint headless server")) < checks.indexOf("      - wait-all:"));
+  assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
     frontend: ["node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs", "node --test scripts/release-workflow-regression.test.mjs", ...["audit", "docs:check", "typecheck", "typecheck:bench", "svelte:check", "lint", "lint:anti-slop", "test:bench-groups", "test:svelte"].map((name) => `bun run ${name}`), "bun test"],
     "frontend-e2e": ["bun run e2e:fast"],
@@ -552,7 +559,7 @@ test("each existing check remains in its selected task", () => {
     server: [
       "mbx test --manifest-path src-tauri/server/Cargo.toml --locked", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings",
       "mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings",
-      "bun run build", "mbx build --manifest-path src-tauri/server/Cargo.toml --locked", "bun e2e/headless-smoke.ts",
+      "bun run build", "mbx build --manifest-path src-tauri/server/Cargo.toml --locked", "bun test tests/server-command-contract.test.ts", "bun e2e/headless-smoke.ts --browser",
     ],
   };
   for (const [task, expected] of Object.entries(commands)) {

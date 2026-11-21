@@ -7,6 +7,10 @@ The Svelte web frontend and the GPUI native client share one set of UI acceptanc
 
 `bun run e2e:parity` exports the fixture, runs both drivers and passes only when both report every scenario as passed. A passing mock scenario proves UI integration through the command seam, not a real Kubernetes request or a packaged application.
 
+Every GPUI UI change that applies to a `kubecove-server` deployment must ship its Svelte equivalent and a shared scenario in the same PR. Only `desktop_only` behavior is exempt. For styling or layout changes, run `bun scripts/gpui-visual.ts` for the affected views and compare both renders.
+
+The server CI job also checks the exported Svelte wrappers against every `both` and `remote_intercepted` Rust command. It builds the web runtime into the server and runs `bun e2e/headless-smoke.ts --browser` against that binary. Chromium signs in, loads the fixture context, inspects server settings, and displays the session closure delivered over the channel socket. The shared remote-settings scenarios exercise both clients with mock data. The real server owns its kubeconfig sources and refuses client edits.
+
 ## Focused checks
 
 Run new scenarios in each driver before the full suite. This catches missing native test registration and driver input mistakes without rerunning unrelated views. From the worktree root, with its local TMPDIR already set:

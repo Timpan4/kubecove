@@ -368,6 +368,11 @@ try {
 	assert.ok(listenerClosed, "Explicit disconnect must close server forward listeners.");
 	assert.equal((await post("/api/v1/session/close", {}, { Authorization: `Bearer ${token}`, "X-Kubecove-Session": second.session.resumeToken })).status, 200);
 	checks.push("Explicit disconnect revokes only that session");
+	if (Bun.argv.includes("--browser")) {
+		const { verifyServerBrowser } = await import("./harness/server-browser");
+		await verifyServerBrowser(origin, token);
+		checks.push("Embedded Svelte sign-in, context invoke, server settings and WebSocket session revocation in Chromium");
+	}
 	if (process.env.KUBECOVE_NATIVE_REMOTE_PROBE) {
 		const probe = Bun.spawn([
 			process.env.CARGO ?? "cargo", "test", "--locked", "--manifest-path", "src-tauri/Cargo.toml",
