@@ -43,7 +43,11 @@ jobs:
         run: |
           set -euo pipefail
           if release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>release-error.txt)"; then
-            echo "release-draft=$release_draft" >> "$GITHUB_OUTPUT"
+            if [[ "$release_draft" != "true" ]]; then
+              echo "::error::Release $TAG_NAME is already published; refusing to overwrite live release assets." >&2
+              exit 1
+            fi
+            echo "release-draft=true" >> "$GITHUB_OUTPUT"
             echo "release-exists=true" >> "$GITHUB_OUTPUT"
           elif grep -qiE "not found|404" release-error.txt; then
             echo "release-draft=true" >> "$GITHUB_OUTPUT"
@@ -59,6 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      tauri: ${{ steps.legacy.outputs.enabled }}
       release-body: ${{ steps.release_body.outputs.body }}
 
     steps:
@@ -71,6 +76,11 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
+
+      - name: Detect legacy Tauri packages
+        id: legacy
+        run: |
+          if [[ -f src-tauri/tauri.conf.json ]]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; fi
 
       - name: Validate release tag and versions
         env:
@@ -135,8 +145,9 @@ jobs:
         run: bun test
 
   rust:
-    name: Rust release checks
-    if: ${{ !inputs.gpui-dry-run }}
+    name: Legacy Tauri Rust release checks
+    needs: metadata
+    if: ${{ !inputs.gpui-dry-run && needs.metadata.outputs.tauri == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -181,8 +192,9 @@ jobs:
         run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
   e2e:
-    name: Kubernetes ${{ matrix.kubernetes }} release E2E
-    if: ${{ !inputs.gpui-dry-run }}
+    name: Legacy Tauri Kubernetes ${{ matrix.kubernetes }} release E2E
+    needs: metadata
+    if: ${{ !inputs.gpui-dry-run && needs.metadata.outputs.tauri == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -292,7 +304,7 @@ jobs:
       release-tag: ${{ github.ref_name }}
 
   # The only job a GPUI dry run starts. It gets read-only contents and uploads workflow
-  # artifacts; publish uploads them to the release. A dry run passes no tag, so the
+  # artifacts; stage-release-assets uploads them to the release. A dry run passes no tag, so the
   # manifest points at app-v<version> instead of the branch name.
   gpui:
     name: GPUI client bundles
@@ -348,8 +360,6 @@ jobs:
     needs:
       - metadata
       - frontend
-      - rust
-      - e2e
       - server-packaging
     if: ${{ always() && !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
@@ -360,20 +370,14 @@ jobs:
         env:
           METADATA_RESULT: ${{ needs.metadata.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
-          RUST_RESULT: ${{ needs.rust.result }}
-          E2E_RESULT: ${{ needs.e2e.result }}
           SERVER_PACKAGING_RESULT: ${{ needs.server-packaging.result }}
         run: |
           set -euo pipefail
           echo "Release metadata: ${METADATA_RESULT}"
           echo "Frontend release checks: ${FRONTEND_RESULT}"
-          echo "Rust release checks: ${RUST_RESULT}"
-          echo "Kubernetes E2E matrix: ${E2E_RESULT}"
           echo "Server and container packaging: ${SERVER_PACKAGING_RESULT}"
           test "${METADATA_RESULT}" = "success"
           test "${FRONTEND_RESULT}" = "success"
-          test "${RUST_RESULT}" = "success"
-          test "${E2E_RESULT}" = "success"
           test "${SERVER_PACKAGING_RESULT}" = "success"
 
   draft:
@@ -385,6 +389,9 @@ jobs:
     if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
+    outputs:
+      release-id: ${{ steps.release_id.outputs.id }}
 
     steps:
       - name: Create release before asset builds
@@ -404,14 +411,25 @@ jobs:
             --draft \
             --verify-tag
 
+      - name: Read release ID
+        id: release_id
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          id="$(gh release view "$TAG_NAME" --json databaseId --jq '.databaseId')"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
   build:
-    name: Build ${{ matrix.label }}
+    name: Build legacy Tauri ${{ matrix.label }}
     needs:
-      - prepare
       - metadata
-      - verify
+      - rust
+      - e2e
       - draft
-    if: ${{ !inputs.gpui-dry-run }}
+    if: ${{ !inputs.gpui-dry-run && needs.metadata.outputs.tauri == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -517,12 +535,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           KUBECOVE_PUBLIC_RELEASE_CHANNEL: stable
         with:
-          tagName: app-v__VERSION__
-          releaseName: "KubeCove v__VERSION__"
+          releaseId: ${{ needs.draft.outputs.release-id }}
           releaseBody: ${{ needs.metadata.outputs.release-body }}
-          releaseDraft: ${{ needs.prepare.outputs.release-draft }}
-          prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
 
@@ -543,19 +558,46 @@ jobs:
             grep -qx "$asset" release-assets.txt
           done
 
-  publish:
-    name: Publish release
-    needs:
-      - prepare
-      - verify
-      - build
-      - server-packaging
-      - gpui
+  verify-tauri:
+    name: Verify legacy Tauri updater feed
+    needs: build
     if: ${{ !inputs.gpui-dry-run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify legacy platform coverage
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG_NAME" --pattern latest.json
+          jq -e --arg version "${TAG_NAME#app-v}" '
+            .version == $version and
+            (.platforms as $p | all("darwin-aarch64", "darwin-x86_64",
+              "linux-x86_64", "linux-x86_64-appimage", "windows-x86_64", "windows-x86_64-nsis";
+              ($p[.].url and $p[.].signature)))
+          ' latest.json
+
+  stage-release-assets:
+    name: Upload and verify release assets
+    needs:
+      - draft
+      - gpui
+      - metadata
+      - verify-tauri
+    # Override the implicit success() check so a GPUI-only release can skip verify-tauri.
+    if: >-
+      ${{ !cancelled() && !inputs.gpui-dry-run
+          && needs.draft.result == 'success' && needs.gpui.result == 'success'
+          && needs.metadata.result == 'success'
+          && ((needs.metadata.outputs.tauri == 'true' && needs.verify-tauri.result == 'success')
+              || (needs.metadata.outputs.tauri != 'true' && needs.verify-tauri.result == 'skipped')) }}
     permissions:
       actions: read
       contents: write
-      packages: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -570,7 +612,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.run_id }}
-        run: gh run download "$RUN_ID" --repo "$GH_REPO" --dir run-assets
+        run: gh run download "$RUN_ID" --repo "$GH_REPO" --pattern 'kubecove-server-*' --pattern kubecove-gpui-release --dir run-assets
+
+      - name: Verify release is still a draft
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')"
+          if [[ "$release_draft" != "true" ]]; then
+            echo "::error::Release $TAG_NAME is already published; refusing to overwrite live release assets." >&2
+            exit 1
+          fi
 
       - name: Upload headless server release assets
         env:
@@ -597,7 +652,7 @@ jobs:
           version="${TAG_NAME#app-v}"
           tmp="$(mktemp -d)"
           gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > "$tmp/assets.txt"
-          gh release download "$TAG_NAME" --pattern latest.json --pattern latest-gpui.json --clobber --dir "$tmp"
+          gh release download "$TAG_NAME" --pattern latest-gpui.json --clobber --dir "$tmp"
           UPDATER_CHECK_DIR="$tmp" RELEASE_VERSION="$version" node <<'EOF'
           const { readFileSync } = require("node:fs");
 
@@ -606,18 +661,10 @@ jobs:
           const assets = new Set(readFileSync(`${dir}/assets.txt`, "utf8")
             .split(/\r?\n/)
             .filter(Boolean));
-          const latest = JSON.parse(readFileSync(`${dir}/latest.json`, "utf8"));
-          const platforms = latest.platforms ?? {};
           const gpui = JSON.parse(readFileSync(`${dir}/latest-gpui.json`, "utf8"));
           const gpuiPlatforms = gpui.platforms ?? {};
 
           const requiredAssets = [
-            `KubeCove_${version}_universal.app.tar.gz`,
-            `KubeCove_${version}_universal.app.tar.gz.sig`,
-            `KubeCove_${version}_amd64.AppImage`,
-            `KubeCove_${version}_amd64.AppImage.sig`,
-            `KubeCove_${version}_x64-setup.exe`,
-            `KubeCove_${version}_x64-setup.exe.sig`,
             ...["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"].flatMap((target) =>
               ["", "-slim"].flatMap((suffix) => {
                 const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
@@ -626,36 +673,43 @@ jobs:
             ...[`kubecove-gpui_${version}_aarch64.app.tar.gz`, `kubecove-gpui_${version}_x86_64.AppImage`,
               `kubecove-gpui_${version}_x64-setup.exe`].flatMap((bundle) => [bundle, `${bundle}.sig`]),
             `kubecove-gpui_${version}_aarch64.dmg`,
-            "latest.json",
             "latest-gpui.json",
-          ];
-          const requiredPlatforms = [
-            "darwin-aarch64",
-            "darwin-x86_64",
-            "linux-x86_64",
-            "linux-x86_64-appimage",
-            "windows-x86_64",
-            "windows-x86_64-nsis",
           ];
           // The GPUI client ships no Intel macOS build.
           const requiredGpuiPlatforms = ["darwin-aarch64", "linux-x86_64", "windows-x86_64"];
 
           const missingAssets = requiredAssets.filter((asset) => !assets.has(asset));
-          const missingPlatforms = requiredPlatforms.filter((platform) => !platforms[platform]);
           // Each GPUI entry must name this version and point at an asset of this release.
           const badGpuiPlatforms = requiredGpuiPlatforms.filter((platform) => {
             const entry = gpuiPlatforms[platform];
             return gpui.version !== version || !entry?.signature || !assets.has(String(entry.url).split("/").pop());
           });
 
-          if (missingAssets.length > 0 || missingPlatforms.length > 0 || badGpuiPlatforms.length > 0) {
+          if (missingAssets.length > 0 || badGpuiPlatforms.length > 0) {
             throw new Error([
               missingAssets.length ? `missing assets: ${missingAssets.join(", ")}` : null,
-              missingPlatforms.length ? `missing platforms: ${missingPlatforms.join(", ")}` : null,
               badGpuiPlatforms.length ? `missing GPUI platforms: ${badGpuiPlatforms.join(", ")}` : null,
             ].filter(Boolean).join("; "));
           }
           EOF
+
+  publish-containers:
+    name: Publish container images
+    needs: stage-release-assets
+    if: ${{ !cancelled() && !inputs.gpui-dry-run && needs.stage-release-assets.result == 'success' }}
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download container images
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: gh run download "$RUN_ID" --repo "$GH_REPO" --pattern 'kubecove-container-*' --dir run-assets
 
       - name: Publish container images
         env:
@@ -682,6 +736,24 @@ jobs:
             docker buildx imagetools create --tag "$image" "$image-amd64" "$image-arm64"
           done
 
+  publish:
+    name: Publish release
+    needs:
+      - prepare
+      - metadata
+      - verify-tauri
+      - publish-containers
+    if: >-
+      ${{ !cancelled() && !inputs.gpui-dry-run
+          && needs.prepare.result == 'success' && needs.publish-containers.result == 'success'
+          && needs.metadata.result == 'success'
+          && ((needs.metadata.outputs.tauri == 'true' && needs.verify-tauri.result == 'success')
+              || (needs.metadata.outputs.tauri != 'true' && needs.verify-tauri.result == 'skipped')) }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
       - name: Publish completed release
         if: needs.prepare.outputs.release-draft == 'true'
         env:

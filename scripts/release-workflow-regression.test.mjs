@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { posix, win32 } from "node:path";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, posix, win32 } from "node:path";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { parse } from "yaml";
@@ -65,7 +66,9 @@ test("release preparation commits desktop and server version metadata", () => {
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
   const commands = step(job("prepare", preparation), "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
-  for (const path of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml",
+  assert.ok(!staged.includes("src-tauri/tauri.conf.json"));
+  assert.match(commands, /if \[\[ -f src-tauri\/tauri\.conf\.json \]\]; then git add src-tauri\/tauri\.conf\.json; fi/);
+  for (const path of ["package.json", "src-tauri/Cargo.toml",
     "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock",
     "src-tauri/gpui/Cargo.toml", "src-tauri/gpui/Cargo.lock", "CHANGELOG.md"]) {
     assert.ok(staged.includes(path), `Release commit omits ${path}`);
@@ -240,9 +243,9 @@ test("both container variants and architectures are verified before registry pub
   assert.ok(verify.needs.includes("server-packaging"));
   assert.equal(step(verify, "Verify required jobs").env.SERVER_PACKAGING_RESULT, "${{ needs.server-packaging.result }}");
   assert.match(step(verify, "Verify required jobs").run, /test "\$\{SERVER_PACKAGING_RESULT\}" = "success"/);
-  const publish = job("publish");
+  const publish = job("publish-containers");
   assert.equal(publish.permissions.packages, "write");
-  assert.ok(publish.needs.includes("server-packaging"));
+  assert.equal(publish.needs, "stage-release-assets");
   const publishCommands = step(publish, "Publish container images").run;
   assert.match(publishCommands, /docker load/);
   assert.match(publishCommands, /--password-stdin/);
@@ -251,8 +254,6 @@ test("both container variants and architectures are verified before registry pub
   assert.match(publishCommands, /suffix="-slim"/);
   assert.match(publishCommands, /docker buildx imagetools create/);
   assert.doesNotMatch(publishCommands, /docker build --/);
-  assert.ok(publish.steps.indexOf(step(publish, "Publish container images")) >
-    publish.steps.indexOf(step(publish, "Verify final updater platform coverage")));
 });
 
 test("native builds include Linux arm64 and both variants without a desktop runtime", () => {
@@ -357,29 +358,91 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
 
 test("publishing can read build artifacts and waits for all release gates", () => {
   const publish = job("publish");
-  assert.equal(publish.permissions.actions, "read");
   assert.equal(publish.permissions.contents, "write");
-  for (const need of ["prepare", "verify", "build", "server-packaging", "gpui"]) {
-    assert.ok(publish.needs.includes(need), need);
+  assert.deepEqual(publish.needs, ["prepare", "metadata", "verify-tauri", "publish-containers"]);
+  assert.deepEqual(job("verify").needs, ["metadata", "frontend", "server-packaging"]);
+  assert.deepEqual(job("draft").needs, ["prepare", "metadata", "verify"]);
+  assert.equal(job("verify-tauri").needs, "build");
+  assert.deepEqual(job("build").needs, ["metadata", "rust", "e2e", "draft"]);
+  assert.equal(step(job("build"), "Build and upload release assets").with.releaseId, "${{ needs.draft.outputs.release-id }}");
+  for (const name of ["rust", "e2e", "build"]) {
+    assert.match(job(name).if, /needs\.metadata\.outputs\.tauri == 'true'/);
   }
-  assert.match(step(publish, "Download release build artifacts").run, /gh run download/);
-  assert.match(step(publish, "Upload headless server release assets").run, /gh release upload[^\n]+kubecove-server-\*\/kubecove-server_\*/);
-  // The artifact name the GPUI workflow uploads is the one publish sends to the release.
+  const stage = job("stage-release-assets");
+  assert.deepEqual(stage.needs, ["draft", "gpui", "metadata", "verify-tauri"]);
+  assert.equal(stage.permissions.actions, "read");
+  assert.equal(stage.permissions.contents, "write");
+  assert.match(step(stage, "Download release build artifacts").run, /gh run download/);
+  const serverUpload = step(stage, "Upload headless server release assets");
+  assert.match(serverUpload.run, /gh release upload[^\n]+kubecove-server-\*\/kubecove-server_\*/);
+  const gpuiUpload = step(stage, "Upload GPUI release assets");
+  assert.match(gpuiUpload.run, /gh release upload "\$TAG_NAME" run-assets\/kubecove-gpui-release\/\* --clobber/);
+  const verification = step(stage, "Verify final updater platform coverage");
+  for (const upload of [serverUpload, gpuiUpload]) {
+    assert.ok(stage.steps.indexOf(upload) < stage.steps.indexOf(verification));
+  }
+
+  // The reusable workflow signs and verifies before uploading the artifact used by the staging job.
+  assert.equal(job("gpui").uses, "./.github/workflows/gpui-release.yml");
   const signed = job("sign", gpuiRelease);
-  assert.equal(step(signed, "Upload GPUI release assets").with.name, "kubecove-gpui-release");
-  assert.match(step(publish, "Upload GPUI release assets").run, /gh release upload "\$TAG_NAME" run-assets\/kubecove-gpui-release\/\* --clobber/);
-  assert.ok(publish.steps.indexOf(step(publish, "Upload GPUI release assets")) <
-    publish.steps.indexOf(step(publish, "Verify final updater platform coverage")));
+  const artifact = step(signed, "Upload GPUI release assets");
+  assert.equal(artifact.with.name, "kubecove-gpui-release");
+  assert.ok(signed.steps.indexOf(step(signed, "Sign GPUI bundles")) < signed.steps.indexOf(artifact));
+  assert.ok(signed.steps.indexOf(step(signed, "Verify signatures and write latest-gpui.json")) < signed.steps.indexOf(artifact));
+});
+
+// These conditions use the same boolean operators as JavaScript. Convert job IDs to property lookups.
+function evaluatesJobIf(name, needs, dryRun = false) {
+  const expression = job(name).if.match(/^\$\{\{\s*([\s\S]+?)\s*\}\}$/)[1]
+    .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
+    .replaceAll("inputs.gpui-dry-run", 'inputs["gpui-dry-run"]');
+  return runInNewContext(expression, {
+    needs,
+    inputs: { "gpui-dry-run": dryRun },
+    always: () => true,
+    cancelled: () => false,
+  });
+}
+
+test("legacy Tauri releases require successful feed verification before publication", () => {
+  const success = { result: "success" };
+  const metadata = { ...success, outputs: { tauri: "true" } };
+  for (const result of ["success", "failure", "skipped", "cancelled"]) {
+    const legacy = { metadata, "verify-tauri": { result } };
+    const expected = result === "success";
+    assert.equal(evaluatesJobIf("stage-release-assets", { ...legacy, draft: success, gpui: success }), expected, result);
+    assert.equal(evaluatesJobIf("publish", { ...legacy, prepare: success, "publish-containers": success }), expected, result);
+  }
+});
+
+test("GPUI-only releases publish with a skipped legacy feed and verified assets", () => {
+  // Without a status function, Actions applies an implicit success() check to needs.
+  for (const name of ["stage-release-assets", "publish-containers", "publish"]) {
+    assert.match(job(name).if, /^\$\{\{ !cancelled\(\) && /);
+  }
+  const success = { result: "success" };
+  const failure = { result: "failure" };
+  const gpuiOnly = { metadata: { ...success, outputs: { tauri: "" } }, "verify-tauri": { result: "skipped" } };
+  const stage = { ...gpuiOnly, draft: success, gpui: success };
+  assert.equal(evaluatesJobIf("stage-release-assets", stage), true);
+  assert.equal(evaluatesJobIf("stage-release-assets", { ...stage, gpui: failure }), false);
+  assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": success }), true);
+  for (const result of ["failure", "skipped", "cancelled"]) {
+    assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": { result } }), false, result);
+  }
+  const publish = { ...gpuiOnly, prepare: success, "publish-containers": success };
+  assert.equal(evaluatesJobIf("publish", publish), true);
+  assert.equal(evaluatesJobIf("publish", { ...publish, "publish-containers": failure }), false);
 });
 
 // A dry run starts from a branch, so any job that reads `github.ref_name` as a release tag must not run.
 test("a GPUI dry run starts only the GPUI job and can never write a release", () => {
   const input = workflow.on.workflow_dispatch.inputs["gpui-dry-run"];
   assert.deepEqual({ type: input.type, default: input.default }, { type: "boolean", default: false });
-  const others = Object.entries(workflow.jobs).filter(([name]) => name !== "gpui");
+  const others = Object.keys(workflow.jobs).filter((name) => name !== "gpui");
   assert.ok(others.length > 0);
-  for (const [name, { if: condition = "" }] of others) {
-    assert.match(condition, /^\$\{\{ (always\(\) && )?!inputs\.gpui-dry-run \}\}$/, `${name} must skip a dry run`);
+  for (const name of others) {
+    assert.equal(evaluatesJobIf(name, {}, true), false, `${name} must skip a dry run`);
   }
   const gpui = job("gpui");
   assert.equal(gpui.uses, "./.github/workflows/gpui-release.yml");
@@ -409,10 +472,8 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
   assert.doesNotMatch(JSON.stringify(bundle), /secrets\./);
   const signing = step(job("sign", gpuiRelease), "Sign GPUI bundles");
   assert.equal(signing.env.TAURI_SIGNING_PRIVATE_KEY, "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}");
-  // The GPUI client rejects a signature whose trusted comment lacks the manifest version.
-  assert.match(signing.run, /bun x tauri signer sign --app-version "\$version" "\$file"/);
-  // The DMG is a manual download outside the updater feed, so it is not signed.
-  assert.match(signing.run, /\[\[ "\$file" == \*\.dmg \]\] && continue/);
+  assert.match(signing.run, /bash scripts\/sign-gpui-release.sh gpui-release "\$version"/);
+  assert.doesNotMatch(JSON.stringify(gpuiRelease), /tauri\.conf\.json|bun x tauri|bun install/);
   assert.match(step(bundle, "Bundle GPUI client").run, /cp "\$out\/KubeCove GPUI_\$\{version\}_aarch64\.dmg" "gpui-updater\/kubecove-gpui_\$\{version\}_aarch64\.dmg"/);
   assert.match(step(job("sign", gpuiRelease), "Verify signatures and write latest-gpui.json").run, /node scripts\/gpui-release-manifest\.mjs/);
   for (const gpuiJob of Object.values(gpuiRelease.jobs)) {
@@ -440,7 +501,7 @@ test("GPUI signature verification accepts only the updater key, the exact bytes,
   assert.doesNotThrow(() => verifyUpdaterSignature(signature));
   // A signature made for another asset is refused, as the client refuses the Tauri app's.
   assert.throws(() => verifyUpdaterSignature({ ...signature, name: "kubecove-gpui_1.2.3_x64-setup.exe" }), /file:kubecove-gpui_1\.2\.3_x64-setup\.exe/);
-  const productionKey = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8")).plugins.updater.pubkey;
+  const productionKey = JSON.parse(readFileSync(new URL("../src-tauri/gpui/updater.json", import.meta.url), "utf8")).public_key;
   assert.throws(() => verifyUpdaterSignature({ ...signature, publicKey: productionKey }), /different key/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, data: Buffer.from("kubecove gpui fixture!\n") }), /does not match the file/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, version: "1.2.4" }), /version:1\.2\.4/);
@@ -471,14 +532,10 @@ test("latest-gpui.json lists every platform with its release URL and signature, 
 });
 
 test("final verification rejects every missing archive, checksum, installer or updater platform", () => {
-  const publish = job("publish");
-  const verification = step(publish, "Verify final updater platform coverage");
+  const verification = step(job("stage-release-assets"), "Verify final updater platform coverage");
   const code = verification.run.match(/node <<'EOF'\n([\s\S]+)\nEOF/)[1];
   const version = "1.2.3";
   const assets = [
-    `KubeCove_${version}_universal.app.tar.gz`, `KubeCove_${version}_universal.app.tar.gz.sig`,
-    `KubeCove_${version}_amd64.AppImage`, `KubeCove_${version}_amd64.AppImage.sig`,
-    `KubeCove_${version}_x64-setup.exe`, `KubeCove_${version}_x64-setup.exe.sig`, "latest.json",
     ...targets.flatMap((target) => ["", "-slim"].flatMap((suffix) => {
       const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
       return [archive, `${archive}.sha256`];
@@ -487,38 +544,92 @@ test("final verification rejects every missing archive, checksum, installer or u
     `kubecove-gpui_${version}_aarch64.dmg`,
     "latest-gpui.json",
   ];
-  const platforms = Object.fromEntries(["darwin-aarch64", "darwin-x86_64", "linux-x86_64",
-    "linux-x86_64-appimage", "windows-x86_64", "windows-x86_64-nsis"].map((key) => [key, {}]));
   const gpuiPlatforms = Object.fromEntries(Object.entries(gpuiUpdaterAssets(version)).map(([key, name]) =>
     [key, { signature: "sig", url: `https://github.com/owner/repo/releases/download/app-v${version}/${name}` }]));
-  const validate = (names, coverage, gpui = { version, platforms: gpuiPlatforms }) => runInNewContext(code, {
+  const validate = (names, gpui = { version, platforms: gpuiPlatforms }) => runInNewContext(code, {
     process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version } },
     require: (name) => {
       assert.equal(name, "node:fs");
       return { readFileSync: (path) => {
         if (path === "/check/assets.txt") return names.join("\n");
-        if (path === "/check/latest-gpui.json") return JSON.stringify(gpui);
-        assert.equal(path, "/check/latest.json");
-        return JSON.stringify({ platforms: coverage });
+        assert.equal(path, "/check/latest-gpui.json");
+        return JSON.stringify(gpui);
       } };
     },
   });
-  assert.doesNotThrow(() => validate(assets, platforms));
+  assert.doesNotThrow(() => validate(assets));
   for (const missing of assets) {
-    assert.throws(() => validate(assets.filter((asset) => asset !== missing), platforms), /missing assets/);
-  }
-  for (const missing of Object.keys(platforms)) {
-    assert.throws(() => validate(assets, Object.fromEntries(Object.entries(platforms).filter(([key]) => key !== missing))),
-      /missing platforms/);
+    assert.throws(() => validate(assets.filter((asset) => asset !== missing)), /missing assets/);
   }
   for (const missing of Object.keys(gpuiPlatforms)) {
     const coverage = Object.fromEntries(Object.entries(gpuiPlatforms).filter(([key]) => key !== missing));
-    assert.throws(() => validate(assets, platforms, { version, platforms: coverage }), /missing GPUI platforms/);
+    assert.throws(() => validate(assets, { version, platforms: coverage }), /missing GPUI platforms/);
   }
-  assert.throws(() => validate(assets, platforms, { version: "1.2.2", platforms: gpuiPlatforms }), /missing GPUI platforms/);
+  assert.throws(() => validate(assets, { version: "1.2.2", platforms: gpuiPlatforms }), /missing GPUI platforms/);
   const elsewhere = { ...gpuiPlatforms, "linux-x86_64": { signature: "sig", url: "https://example.com/other.AppImage" } };
-  assert.throws(() => validate(assets, platforms, { version, platforms: elsewhere }), /missing GPUI platforms: linux-x86_64/);
-  const final = step(publish, "Publish completed release");
-  assert.ok(publish.steps.indexOf(final) > publish.steps.indexOf(verification));
+  assert.throws(() => validate(assets, { version, platforms: elsewhere }), /missing GPUI platforms: linux-x86_64/);
+  const final = step(job("publish"), "Publish completed release");
   assert.equal(final.if, "needs.prepare.outputs.release-draft == 'true'");
+});
+
+test("prepare and stage-release-assets reject an already-published release", () => {
+  const detect = step(job("prepare"), "Detect existing release state");
+  const stageCheck = step(job("stage-release-assets"), "Verify release is still a draft");
+  const stageSteps = job("stage-release-assets").steps.map((entry) => entry.name);
+  assert.ok(stageSteps.indexOf("Verify release is still a draft") < stageSteps.indexOf("Upload headless server release assets"));
+
+  const runGuard = (script, mode) => {
+    const dir = mkdtempSync(join(tmpdir(), "kubecove-release-guard-"));
+    try {
+      const ghPath = join(dir, "gh");
+      const outputPath = join(dir, "github-output.txt");
+      writeFileSync(outputPath, "");
+      writeFileSync(
+        ghPath,
+        mode === "404"
+          ? "#!/usr/bin/env bash\necho 'release not found' >&2\nexit 1\n"
+          : `#!/usr/bin/env bash\necho '${mode}'\n`,
+      );
+      chmodSync(ghPath, 0o755);
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-c", script], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH ?? ""}`,
+          GITHUB_OUTPUT: outputPath,
+          TAG_NAME: "app-v1.2.3",
+        },
+      });
+      return { status: result.status, stderr: result.stderr, output: readFileSync(outputPath, "utf8") };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  const published = runGuard(detect.run, "false");
+  assert.notEqual(published.status, 0);
+  assert.match(published.stderr, /already published; refusing to overwrite live release assets/);
+  assert.equal(published.output, "");
+
+  const draft = runGuard(detect.run, "true");
+  assert.equal(draft.status, 0);
+  assert.equal(draft.output, "release-draft=true\nrelease-exists=true\n");
+
+  const missing = runGuard(detect.run, "404");
+  assert.equal(missing.status, 0);
+  assert.equal(missing.output, "release-draft=true\nrelease-exists=false\n");
+
+  const stagePublished = runGuard(stageCheck.run, "false");
+  assert.notEqual(stagePublished.status, 0);
+  assert.match(stagePublished.stderr, /already published; refusing to overwrite live release assets/);
+  assert.equal(stagePublished.output, "");
+
+  const stageDraft = runGuard(stageCheck.run, "true");
+  assert.equal(stageDraft.status, 0);
+  assert.equal(stageDraft.output, "");
+
+  const stageMissing = runGuard(stageCheck.run, "404");
+  assert.notEqual(stageMissing.status, 0);
+  assert.equal(stageMissing.output, "");
 });

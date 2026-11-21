@@ -1,9 +1,7 @@
 // Verifies the signed GPUI updater artifacts and writes `latest-gpui.json` beside them.
 //
-// Each `.sig` comes from `tauri signer sign --app-version`, so it is a base64 minisign
-// signature, the format tauri-plugin-updater and the GPUI client read. Verification uses
-// the updater public key committed in `src-tauri/tauri.conf.json`. The manifest follows
-// Tauri's static JSON format; the Tauri feed `latest.json` is not touched.
+// Each .sig contains base64-encoded minisign text with a prehashed signature.
+// The GPUI client and this verifier read the same release public key.
 //
 // Usage: ASSETS_DIR=<dir> GH_REPO=<owner/repo> NOTES_FILE=<file> [RELEASE_TAG=app-v<version>]
 //   node scripts/gpui-release-manifest.mjs
@@ -33,7 +31,7 @@ function fail(label, reason) {
 }
 
 // Minisign layout: the key blob is "Ed" + 8-byte key ID + 32-byte Ed25519 key. The signature
-// blob is the algorithm ("ED" signs the BLAKE2b-512 hash, "Ed" the raw bytes) + key ID +
+// blob is the algorithm ("ED" signs the BLAKE2b-512 hash) + key ID +
 // 64-byte signature, and a global signature covers that signature plus the trusted comment.
 // `name` is the asset's file name; the signer records the name of the file it signed.
 export function verifyUpdaterSignature({ publicKey, signature, data, version, name, label = name }) {
@@ -45,14 +43,14 @@ export function verifyUpdaterSignature({ publicKey, signature, data, version, na
   if (!untrusted.startsWith("untrusted comment:")) fail(label, "not a minisign signature");
   const signatureBlob = Buffer.from(blob, "base64");
   const algorithm = signatureBlob.toString("latin1", 0, 2);
-  if (signatureBlob.length !== 74 || (algorithm !== "ED" && algorithm !== "Ed")) fail(label, "unsupported signature algorithm");
+  if (signatureBlob.length !== 74 || algorithm !== "ED") fail(label, "unsupported signature algorithm");
   if (!signatureBlob.subarray(2, 10).equals(keyBlob.subarray(2, 10))) fail(label, "signed by a different key than the updater public key");
   const prefix = "trusted comment: ";
   if (!trustedLine.startsWith(prefix)) fail(label, "missing trusted comment");
   const trusted = trustedLine.slice(prefix.length);
   const signed = signatureBlob.subarray(10);
 
-  const message = algorithm === "ED" ? createHash("blake2b512").update(data).digest() : data;
+  const message = createHash("blake2b512").update(data).digest();
   if (!verify(null, message, key, signed)) fail(label, "the signature does not match the file");
   if (!verify(null, Buffer.concat([signed, Buffer.from(trusted, "utf8")]), key, Buffer.from(globalBlob, "base64"))) {
     fail(label, "the trusted comment signature does not match");
@@ -85,8 +83,8 @@ export function buildGpuiManifest({ version, tag, repository, notes, publicKey, 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { ASSETS_DIR: dir, GH_REPO: repository, NOTES_FILE: notesFile, RELEASE_TAG: releaseTag = "" } = process.env;
   if (!dir || !repository || !notesFile) throw new Error("ASSETS_DIR, GH_REPO and NOTES_FILE are required.");
-  const tauri = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
-  const version = tauri.version;
+  const { public_key: publicKey } = JSON.parse(readFileSync(new URL("../src-tauri/gpui/updater.json", import.meta.url), "utf8"));
+  const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const tag = releaseTag || `app-v${version}`;
   if (!releaseTag) console.log(`Dry run: manifest URLs point at ${tag}.`);
   const manifest = buildGpuiManifest({
@@ -94,7 +92,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     tag,
     repository,
     notes: readFileSync(notesFile, "utf8").trim(),
-    publicKey: tauri.plugins.updater.pubkey,
+    publicKey,
     pubDate: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     names: readdirSync(dir),
     read: (name) => readFileSync(join(dir, name)),

@@ -30,8 +30,8 @@ const originMainSha = run("git", ["rev-parse", "origin/main"]).stdout.trim();
 const latestReleaseTagVersion = readLatestRemoteReleaseTagVersion();
 // SAFETY: remote release metadata only reads optional `version`, validated by `requireVersion` before use.
 const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: string };
-// SAFETY: remote release metadata only reads optional `version`, validated by `requireVersion` before use.
-const tauriConfig = JSON.parse(readRemoteFile("src-tauri/tauri.conf.json")) as { version?: string };
+const tauriPath = "src-tauri/tauri.conf.json";
+const hasTauriConfig = run("git", ["ls-tree", "--name-only", "origin/main", "--", tauriPath]).stdout.trim() === tauriPath;
 const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
 
 const { packageVersion, tauriVersion, cargoVersion } = parseRemoteVersions();
@@ -42,7 +42,7 @@ try {
 	fail([
 		"Release versions on origin/main must match:",
 		`  origin/main:package.json: ${packageVersion}`,
-		`  origin/main:src-tauri/tauri.conf.json: ${tauriVersion}`,
+		...(hasTauriConfig ? [`  origin/main:${tauriPath}: ${tauriVersion}`] : []),
 		`  origin/main:src-tauri/Cargo.toml: ${cargoVersion}`,
 	].join("\n"));
 }
@@ -110,10 +110,9 @@ function parseRemoteVersions() {
 	try {
 		return {
 			packageVersion: requireVersion("origin/main:package.json", packageJson.version),
-			tauriVersion: requireVersion(
-				"origin/main:src-tauri/tauri.conf.json",
-				tauriConfig.version,
-			),
+			tauriVersion: hasTauriConfig
+				? requireVersion(`origin/main:${tauriPath}`, JSON.parse(readRemoteFile(tauriPath)).version)
+				: undefined,
 			cargoVersion: parseCargoPackageVersion(
 				cargoToml,
 				"origin/main:src-tauri/Cargo.toml",

@@ -19,10 +19,10 @@
 //! exactly one app bundle; lost executable permissions; an installer left beside the verified
 //! one under its staged name.
 //!
-//! The keys below are throwaway test keys made with `tauri signer generate`. The signatures
-//! come from `tauri signer sign`, the tool the release uses, so the encoding checked here is
-//! the one a release produces. The signer records the signed file's name, so each signature
-//! was made over a copy of `PAYLOAD` named as a release asset is.
+//! The throwaway keys and signatures below come from `tauri signer generate` and `tauri signer sign`.
+//! These fixtures check legacy Tauri signer compatibility alongside the standalone minisign release
+//! checks. The signer records the file name, so each signature covers a copy of `PAYLOAD` named
+//! like a release asset.
 use crate::scratch::Scratch;
 use kubecove_gpui::backend::updates::{
     self, Artifact, AvailableUpdate, DownloadProgress, Feed, InstallTarget, Relaunch, UpdateStatus,
@@ -203,10 +203,12 @@ fn a_release_is_offered_only_when_newer_and_built_for_this_platform() {
 }
 
 #[test]
-fn the_feed_is_the_gpui_manifest_beside_the_desktop_feed() {
+fn the_release_feed_points_to_the_published_gpui_manifest() {
     let feed = Feed::release().unwrap();
-    assert!(feed.endpoint.starts_with("https://"));
-    assert!(feed.endpoint.ends_with("/latest-gpui.json"));
+    assert_eq!(
+        feed.endpoint,
+        "https://github.com/Timpan4/kubecove/releases/latest/download/latest-gpui.json"
+    );
     assert!(!feed.public_key.is_empty());
 }
 

@@ -2,7 +2,7 @@
 //!
 //! Each release publishes one signed build per platform and `latest-gpui.json`, a manifest in
 //! the Tauri updater's static format. The manifest and the download are untrusted. A build is
-//! installed only when its bytes carry a signature from the key in `tauri.conf.json` and that
+//! installed only when its bytes carry a signature from the key in `gpui/updater.json` and that
 //! signature names the version the manifest announced.
 use base64::Engine as _;
 use kubecove_lib::models::{AppError, AppErrorKind};
@@ -79,30 +79,20 @@ impl Relaunch {
 }
 
 /// The release feed and the key its builds are signed with.
+#[derive(serde::Deserialize)]
 pub struct Feed {
     pub endpoint: String,
     pub public_key: String,
 }
 
-const MANIFEST: &str = "latest-gpui.json";
 /// Every release asset of this client starts with this, and the signer records the asset's
 /// file name in the signature.
 const ARTIFACT_PREFIX: &str = "kubecove-gpui_";
 
 impl Feed {
-    /// The GPUI manifest sits beside the desktop app's `latest.json` on the same release, and
-    /// both clients trust the same key, so neither value is maintained twice.
     pub fn release() -> Result<Self, AppError> {
-        let invalid = || AppError::new("Invalid updater configuration", AppErrorKind::Validation);
-        let config: serde_json::Value =
-            serde_json::from_str(include_str!("../../../tauri.conf.json"))
-                .map_err(|_| invalid())?;
-        let updater = &config["plugins"]["updater"];
-        let desktop = updater["endpoints"][0].as_str().ok_or_else(invalid)?;
-        let directory = desktop.strip_suffix("latest.json").ok_or_else(invalid)?;
-        Ok(Self {
-            endpoint: format!("{directory}{MANIFEST}"),
-            public_key: updater["pubkey"].as_str().ok_or_else(invalid)?.to_owned(),
+        serde_json::from_str(include_str!("../../updater.json")).map_err(|error| {
+            AppError::new("Invalid gpui/updater.json", AppErrorKind::Validation).with_source(error)
         })
     }
 }
@@ -232,7 +222,7 @@ impl Signed {
     }
 
     /// Hashes the build as it arrives. The stream form accepts only prehashed signatures, so
-    /// the legacy unhashed form is refused; the Tauri signer always prehashes.
+    /// the legacy unhashed form is refused; release bundles use prehashed signatures.
     fn stream(&self) -> Result<StreamVerifier<'_>, AppError> {
         self.public_key
             .verify_stream(&self.signature)

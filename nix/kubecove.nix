@@ -1,71 +1,45 @@
 {
   lib,
-  stdenv,
   rustPlatform,
-  cargo-tauri,
-  glib-networking,
-  gtk3,
-  kubeconform,
-  libayatana-appindicator,
-  libsecret,
-  librsvg,
-  openssl,
+  makeBinaryWrapper,
   pkg-config,
-  webkitgtk_4_1,
-  wrapGAppsHook3,
-  frontend,
+  fontconfig,
+  libxcb,
+  libxkbcommon,
+  libglvnd,
+  vulkan-loader,
+  wayland,
+  kubeconform,
 }:
 
-let
-  version = (builtins.fromTOML (builtins.readFile ../src-tauri/Cargo.toml)).package.version;
-  tauriConfig = builtins.toJSON {
-    build = {
-      beforeBuildCommand = "";
-      frontendDist = "${frontend}";
-    };
-    bundle = {
-      createUpdaterArtifacts = false;
-      externalBin = [ ];
-    };
-  };
-in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "kubecove";
-  inherit version;
+  version = (builtins.fromTOML (builtins.readFile ../src-tauri/gpui/Cargo.toml)).package.version;
 
   src = lib.fileset.toSource {
     root = ../.;
-    fileset = ../src-tauri;
+    fileset = lib.fileset.difference ../src-tauri (lib.fileset.unions [
+      (lib.fileset.maybeMissing ../src-tauri/bin)
+      (lib.fileset.maybeMissing ../src-tauri/gpui/build)
+      (lib.fileset.maybeMissing ../src-tauri/gpui/target)
+    ]);
   };
 
-  cargoLock.lockFile = ../src-tauri/Cargo.lock;
+  cargoRoot = "src-tauri/gpui";
+  buildAndTestSubdir = finalAttrs.cargoRoot;
+  cargoLock.lockFile = ../src-tauri/gpui/Cargo.lock;
+  cargoBuildFlags = [ "--bin" "kubecove-gpui" ];
   doCheck = false;
 
-  nativeBuildInputs = [
-    cargo-tauri.hook
-    pkg-config
-  ]
-  ++ lib.optionals stdenv.hostPlatform.isLinux [ wrapGAppsHook3 ];
+  nativeBuildInputs = [ makeBinaryWrapper pkg-config ];
+  buildInputs = [ fontconfig libxcb libxkbcommon ];
 
-  buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
-    glib-networking
-    gtk3
-    libayatana-appindicator
-    libsecret
-    librsvg
-    openssl
-    webkitgtk_4_1
-  ];
-
-  cargoRoot = "src-tauri";
-  buildAndTestSubdir = finalAttrs.cargoRoot;
-  tauriBuildFlags = [
-    "--config"
-    tauriConfig
-  ];
-
-  preFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
-    gappsWrapperArgs+=(--set KUBECOVE_KUBECONFORM "${lib.getExe kubeconform}")
+  # GPUI loads the graphics and Wayland libraries at runtime.
+  postInstall = ''
+    mv "$out/bin/kubecove-gpui" "$out/bin/kubecove"
+    wrapProgram "$out/bin/kubecove" \
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ fontconfig libglvnd vulkan-loader wayland ]}" \
+      --set KUBECOVE_KUBECONFORM "${lib.getExe kubeconform}"
   '';
 
   meta = {
