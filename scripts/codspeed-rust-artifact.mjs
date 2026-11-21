@@ -12,7 +12,7 @@ const target = "x86_64-unknown-linux-gnu";
 // cargo-codspeed 5.0.1 copies the analysis executable here. Simulation uses
 // only this file, the package working directory and CODSPEED_CARGO_WORKSPACE_ROOT.
 const executable = join(workspace, "target", "codspeed", "analysis", "kubecove", benchmark);
-const buildArgs = ["--mode", "simulation", "--profile", "bench", "--no-default-features", "--features", "bench-support", "--bench", benchmark, "--locked"];
+const buildArgs = ["--measurement-mode", "simulation", "--profile", "bench", "--no-default-features", "--features", "bench-support", "--bench", benchmark, "--locked"];
 const sha256 = /^[a-f0-9]{64}$/;
 
 async function digest(path) {

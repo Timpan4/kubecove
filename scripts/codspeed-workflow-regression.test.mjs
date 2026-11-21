@@ -269,6 +269,9 @@ test("one Rust job builds on the existing runner and each shard verifies its art
   const build = job("rust-build");
   const shards = job("rust");
   for (const name of ["rust-build", "rust", "rust-saver"]) assert.match(job(name), /^ {4}runs-on: ubuntu-latest$/m);
+  assert.match(build, /^ {4}timeout-minutes: 30$/m);
+  const artifactScript = readFileSync(new URL("./codspeed-rust-artifact.mjs", import.meta.url), "utf8");
+  assert.match(artifactScript, /\["--measurement-mode", "simulation",/);
   assert.doesNotMatch(shards, /rust-toolchain|rust-cache|mr-boxington|ci-mbx-cargo|cargo codspeed build|cargo-codspeed-x86/);
   assert.match(build, /cache-targets: false/);
   assert.match(build, /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' \}\}/);
@@ -332,7 +335,7 @@ test("Rust shards reject missing or tampered artifacts before installing the exe
     const commit = git("rev-parse", "HEAD");
     const metadata = {
       commit, toolchain, target: "x86_64-unknown-linux-gnu",
-      buildArgs: ["--mode", "simulation", "--profile", "bench", "--no-default-features", "--features", "bench-support", "--bench", benchmark, "--locked"],
+      buildArgs: ["--measurement-mode", "simulation", "--profile", "bench", "--no-default-features", "--features", "bench-support", "--bench", benchmark, "--locked"],
       cargoLockSha256: digest(lock), executableSha256: digest(executable),
     };
     const run = ({ overrides, invalidDigest, omitManifest, binary = executable } = {}) => {
