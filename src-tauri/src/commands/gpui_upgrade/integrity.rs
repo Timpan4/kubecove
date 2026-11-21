@@ -68,8 +68,18 @@ pub(super) fn sha256(source: impl Read) -> Result<Digest, AppError> {
 /// Check the artifact and each directory that could replace it. An ownership or
 /// permissions check that the filesystem cannot answer disables launch.
 pub(super) fn protected_path(path: &Path) -> bool {
+    protected_path_at_depth(path, 0)
+}
+
+pub(super) fn protected_staging_parent(path: &Path) -> bool {
+    // A sticky parent permits creating a private child without letting peers replace it.
+    protected_path_at_depth(path, 1)
+}
+
+fn protected_path_at_depth(path: &Path, offset: usize) -> bool {
     path.is_absolute()
         && path.ancestors().enumerate().all(|(depth, component)| {
+            let depth = depth + offset;
             fs::symlink_metadata(component).is_ok_and(|meta| {
                 (meta.is_dir() || (depth == 0 && meta.is_file()))
                     && protected(component, &meta, depth)

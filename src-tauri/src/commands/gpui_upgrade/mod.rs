@@ -20,15 +20,27 @@ use std::{
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_opener::OpenerExt;
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::{
+    io::AsyncWriteExt,
+    sync::{Mutex, OwnedMutexGuard},
+};
 
 #[derive(Default)]
 pub struct GpuiUpgrade {
-    installed: Mutex<Option<Arc<Installed>>>,
-    action: Mutex<()>,
+    installed: Arc<Mutex<Option<Arc<Installed>>>>,
+    action: Arc<Mutex<()>>,
 }
 
 impl GpuiUpgrade {
+    fn begin_install(&self) -> Result<InstallAction, AppError> {
+        Ok(InstallAction {
+            _guard: Arc::clone(&self.action)
+                .try_lock_owned()
+                .map_err(|_| busy())?,
+            installed: Arc::clone(&self.installed),
+        })
+    }
+
     async fn installed_info(&self) -> Result<Option<GpuiUpgradeInfo>, AppError> {
         let snapshot = self.installed.lock().await.clone();
         let Some(installed) = snapshot else {
@@ -36,6 +48,28 @@ impl GpuiUpgrade {
         };
         // Permission checks may touch a removable or network volume.
         blocking(move || Ok(Some(installed.info()))).await
+    }
+}
+
+struct InstallAction {
+    _guard: OwnedMutexGuard<()>,
+    installed: Arc<Mutex<Option<Arc<Installed>>>>,
+}
+
+impl InstallAction {
+    async fn publish(
+        self,
+        publish: impl FnOnce() -> Result<Installed, AppError> + Send + 'static,
+    ) -> Result<GpuiUpgradeInfo, AppError> {
+        // Once publication starts, the worker owns the action and records the result
+        // even when the IPC caller stops waiting for it.
+        blocking(move || Ok(self.commit(publish()?))).await
+    }
+
+    fn commit(self, installed: Installed) -> GpuiUpgradeInfo {
+        let installed = Arc::new(installed);
+        *self.installed.blocking_lock() = Some(Arc::clone(&installed));
+        installed.info()
     }
 }
 
@@ -155,7 +189,7 @@ pub async fn install_gpui_upgrade<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, GpuiUpgrade>,
 ) -> Result<Option<GpuiUpgradeInfo>, AppError> {
-    let _action = state.action.try_lock().map_err(|_| busy())?;
+    let action = state.begin_install()?;
     if let Some(info) = state.installed_info().await? {
         return Ok(Some(info));
     }
@@ -174,10 +208,16 @@ pub async fn install_gpui_upgrade<R: Runtime>(
     let Some(folder) = blocking(move || choose_folder(&app, platform)).await? else {
         return Ok(None);
     };
-    let result =
-        install_release(release, feed.public_key, &folder, &cache, feed::client()?).await?;
-    *state.installed.lock().await = Some(Arc::new(result));
-    state.installed_info().await
+    install_release(
+        release,
+        feed.public_key,
+        &folder,
+        &cache,
+        feed::client()?,
+        action,
+    )
+    .await
+    .map(Some)
 }
 
 async fn install_release(
@@ -186,28 +226,25 @@ async fn install_release(
     folder: &Path,
     cache: &Path,
     client: reqwest::Client,
-) -> Result<Installed, AppError> {
+    action: InstallAction,
+) -> Result<GpuiUpgradeInfo, AppError> {
     let platform = release.platform;
     let version = release.version.clone();
     let lock = install::lock_install(cache)?;
     let folder = folder.canonicalize().map_err(io_error)?;
-    // A previous installer may still be running or waiting for the user after Tauri quits.
-    let (installer_dir, lease) = if platform == Platform::Windows {
-        let (dir, lease) = install::stage_installer(&folder)?;
-        (Some(dir), Some(lease))
+    let staging_root = if platform == Platform::Windows {
+        &folder
     } else {
-        (None, None)
+        cache
     };
-    let folder = installer_dir
-        .as_ref()
-        .map_or(folder, |dir| dir.path().to_owned());
-    let path = install::destination(&folder, platform, &version)?;
-    // A shared application directory must never own the predictable, reclaimable download.
-    let mut staged = install::stage(
-        installer_dir
-            .as_ref()
-            .map_or(cache, tempfile::TempDir::path),
-    )?;
+    let (staging, lease) = install::stage_installer(staging_root)?;
+    let destination = if platform == Platform::Windows {
+        staging.path()
+    } else {
+        &folder
+    };
+    let path = install::destination(destination, platform, &version)?;
+    let mut staged = install::stage(staging.path())?;
     let mut output = tokio::fs::File::from_std(staged.as_file().try_clone().map_err(io_error)?);
     let mut response = client
         .get(&release.artifact.url)
@@ -224,35 +261,38 @@ async fn install_release(
     }
     output.flush().await.map_err(io_error)?;
     drop(output);
-    blocking(move || {
-        let _lock = lock;
-        let artifact_digest = feed::verify(
-            staged.as_file_mut(),
-            &release.artifact.signature,
-            &public_key,
-            &version,
-            &platform.asset(&version),
-        )?;
-        let digest = if platform == Platform::Mac {
-            staged.rewind().map_err(io_error)?;
-            install::publish_bundle(staged, &folder)?
-        } else {
-            install::publish_executable(staged, platform, &path)?;
-            Some(artifact_digest)
-        };
-        let launch_digest = digest.filter(|_| integrity::protected_install(platform, &path));
-        if let Some(directory) = installer_dir {
-            let _ = directory.keep();
-        }
-        Ok(Installed {
-            platform,
-            version,
-            path,
-            launch_digest,
-            _installer_lease: lease,
+    action
+        .publish(move || {
+            let _lock = lock;
+            let artifact_digest = feed::verify(
+                staged.as_file_mut(),
+                &release.artifact.signature,
+                &public_key,
+                &version,
+                &platform.asset(&version),
+            )?;
+            let digest = if platform == Platform::Mac {
+                staged.rewind().map_err(io_error)?;
+                install::publish_bundle(staged, &folder)?
+            } else {
+                install::publish_executable(staged, platform, &path)?;
+                Some(artifact_digest)
+            };
+            let launch_digest = digest.filter(|_| integrity::protected_install(platform, &path));
+            // Settings and Windows setup still need the installer after publication.
+            let installer_lease = (platform == Platform::Windows).then(|| {
+                let _ = staging.keep();
+                lease
+            });
+            Ok(Installed {
+                platform,
+                version,
+                path,
+                launch_digest,
+                _installer_lease: installer_lease,
+            })
         })
-    })
-    .await
+        .await
 }
 
 async fn blocking<T: Send + 'static>(

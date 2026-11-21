@@ -8,14 +8,24 @@ use std::{
 use tempfile::NamedTempFile;
 
 pub(super) const BUNDLE: &str = "KubeCove GPUI.app";
+const INSTALLER_PREFIX: &str = "installer-";
+const SESSION_MARKER: &str = ".session";
 
 /// The installation lock serializes cleanup across processes. A session keeps
 /// its directory leased while its installer is still available in Settings.
 pub(super) fn stage_installer(temp: &Path) -> Result<(tempfile::TempDir, fs::File), AppError> {
-    const PREFIX: &str = "installer-";
-    const LEASE: &str = ".session";
+    let temp = temp.canonicalize().map_err(io_error)?;
+    if !integrity::protected_staging_parent(&temp) {
+        return Err(invalid("Cannot stage GPUI in a shared folder"));
+    }
     let parent = temp.join("kubecove-gpui-upgrade");
-    match fs::create_dir(&parent) {
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    match builder.create(&parent) {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
         result => result.map_err(io_error)?,
     }
@@ -24,11 +34,21 @@ pub(super) fn stage_installer(temp: &Path) -> Result<(tempfile::TempDir, fs::Fil
             "Cannot stage the GPUI installer in a shared temporary folder",
         ));
     }
-    for entry in fs::read_dir(&parent).map_err(io_error)?.flatten() {
+    cleanup_stale_installer_dirs(&parent).map_err(io_error)?;
+    let dir = private_staging(&parent, INSTALLER_PREFIX)?;
+    let lease = fs::File::create_new(dir.path().join(SESSION_MARKER)).map_err(io_error)?;
+    lease
+        .try_lock()
+        .map_err(|_| invalid("Cannot reserve the GPUI installer directory"))?;
+    Ok((dir, lease))
+}
+
+fn cleanup_stale_installer_dirs(parent: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(parent)?.flatten() {
         if !entry
             .file_name()
             .as_encoded_bytes()
-            .starts_with(PREFIX.as_bytes())
+            .starts_with(INSTALLER_PREFIX.as_bytes())
             || !entry.file_type().is_ok_and(|t| t.is_dir())
         {
             continue;
@@ -37,27 +57,38 @@ pub(super) fn stage_installer(temp: &Path) -> Result<(tempfile::TempDir, fs::Fil
         if !integrity::protected_path(&path) {
             continue;
         }
-        match fs::File::options()
-            .read(true)
-            .write(true)
-            .open(path.join(LEASE))
-        {
-            Ok(file) if file.try_lock().is_err() => continue,
-            Err(e) if e.kind() != io::ErrorKind::NotFound => continue,
-            _ => {}
-        }
-        // Windows refuses removal while setup still has its executable open.
-        let _ = fs::remove_dir_all(path);
+        let _ = remove_stale_installer(&path);
     }
-    let dir = tempfile::Builder::new()
-        .prefix(PREFIX)
-        .tempdir_in(parent)
-        .map_err(io_error)?;
-    let lease = fs::File::create_new(dir.path().join(LEASE)).map_err(io_error)?;
-    lease
-        .try_lock()
-        .map_err(|_| invalid("Cannot reserve the GPUI installer directory"))?;
-    Ok((dir, lease))
+    Ok(())
+}
+
+fn remove_stale_installer(path: &Path) -> io::Result<()> {
+    let marker = path.join(SESSION_MARKER);
+    if !marker.symlink_metadata()?.is_file() {
+        return Ok(());
+    }
+    let lease = fs::File::options().read(true).write(true).open(&marker)?;
+    lease.try_lock()?;
+
+    // An open Windows installer can prevent deletion. Keep the marker for the next pass.
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_name() == SESSION_MARKER {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    fs::remove_file(&marker)?;
+    drop(lease);
+    if let Err(error) = fs::remove_dir(path) {
+        let _ = fs::File::create_new(marker);
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// All instances use the same per-user lock while reclaiming the previous download and
@@ -102,16 +133,8 @@ pub(super) fn destination(
     }
 }
 
-/// Called with the installation lock held. Never follow links or recursively clean a directory.
+/// The caller owns a fresh private staging directory until publication finishes.
 pub(super) fn stage(folder: &Path) -> Result<NamedTempFile, AppError> {
-    let name = ".kubecove-gpui-bridge.download";
-    let path = folder.join(name);
-    match path.symlink_metadata() {
-        Ok(meta) if meta.is_file() => fs::remove_file(path).map_err(io_error)?,
-        Ok(_) => return Err(invalid("Unsafe GPUI staging path")),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(io_error(e)),
-    }
     let mut options = fs::OpenOptions::new();
     options.create_new(true).read(true).write(true);
     #[cfg(windows)]
@@ -126,8 +149,7 @@ pub(super) fn stage(folder: &Path) -> Result<NamedTempFile, AppError> {
         options.mode(0o600);
     }
     tempfile::Builder::new()
-        .prefix(name)
-        .rand_bytes(0)
+        .prefix(".download-")
         .make_in(folder, |path| options.open(path))
         .map_err(io_error)
 }
@@ -180,7 +202,7 @@ pub(super) fn publish_executable(
             let folder = target
                 .parent()
                 .ok_or_else(|| invalid("Missing installation folder"))?;
-            let staging = private_staging(folder, ".kubecove-gpui-")?;
+            let staging = publication_staging(folder, ".kubecove-gpui-")?;
             let mut copy = NamedTempFile::new_in(staging.path()).map_err(io_error)?;
             let mut source = error.file;
             source.rewind().map_err(io_error)?;
@@ -204,7 +226,7 @@ pub(super) fn publish_bundle(
     folder: &Path,
 ) -> Result<Option<ring::digest::Digest>, AppError> {
     let protected = integrity::protected_path(folder);
-    let staging = private_staging(folder, ".kubecove-gpui-bundle-")?;
+    let staging = publication_staging(folder, ".kubecove-gpui-bundle-")?;
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive));
     for entry in tar.entries().map_err(io_error)? {
         let mut entry = entry.map_err(io_error)?;
@@ -254,6 +276,16 @@ pub(super) fn publish_bundle(
     Ok(digest)
 }
 
+fn publication_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir, AppError> {
+    // A shared destination can still accept a rename from a protected ancestor
+    // on the same volume. Keep the source outside directories other users can replace.
+    let parent = folder
+        .ancestors()
+        .find(|p| integrity::protected_staging_parent(p))
+        .ok_or_else(|| invalid("Cannot find a protected GPUI publication folder"))?;
+    private_staging(parent, prefix)
+}
+
 fn private_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir, AppError> {
     let mut builder = tempfile::Builder::new();
     #[cfg(unix)]
@@ -261,5 +293,12 @@ fn private_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir, App
         use std::os::unix::fs::PermissionsExt;
         builder.permissions(fs::Permissions::from_mode(0o700));
     }
-    builder.prefix(prefix).tempdir_in(folder).map_err(io_error)
+    let dir = builder
+        .prefix(prefix)
+        .tempdir_in(folder)
+        .map_err(io_error)?;
+    if !integrity::protected_path(dir.path()) {
+        return Err(invalid("Cannot protect the GPUI staging directory"));
+    }
+    Ok(dir)
 }

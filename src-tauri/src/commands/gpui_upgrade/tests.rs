@@ -25,24 +25,10 @@ fn rosetta_and_unsupported_platforms() {
 }
 
 #[test]
-fn installation_lock_protects_stale_cleanup_and_releases_after_failure() {
+fn installation_lock_is_exclusive_and_releases_on_drop() {
     let root = tempfile::tempdir().unwrap();
     let lock = lock_install(root.path()).unwrap();
     assert!(lock_install(root.path()).is_err());
-    let stale = stage(root.path()).unwrap().keep().unwrap().1;
-    fs::write(&stale, b"partial download").unwrap();
-    let replacement = stage(root.path()).unwrap();
-    assert_eq!(replacement.as_file().metadata().unwrap().len(), 0);
-    drop(replacement);
-    assert!(!stale.exists());
-    #[cfg(unix)]
-    {
-        let tauri = root.path().join("Tauri.AppImage");
-        fs::write(&tauri, b"Tauri").unwrap();
-        std::os::unix::fs::symlink(&tauri, &stale).unwrap();
-        assert!(stage(root.path()).is_err());
-        assert_eq!(fs::read(tauri).unwrap(), b"Tauri");
-    }
     drop(lock);
     assert!(lock_install(root.path()).is_ok());
 }
@@ -212,7 +198,7 @@ fn gpui_upgrade_installed_info_serializes_a_non_utf8_path() {
 }
 
 #[test]
-fn windows_staging_reclaims_only_inactive_installers() {
+fn staging_reclaims_only_inactive_installers() {
     let root = tempfile::tempdir().unwrap();
     let temp = root.path().canonicalize().unwrap();
     let (stale, lease) = stage_installer(&temp).unwrap();
@@ -227,6 +213,81 @@ fn windows_staging_reclaims_only_inactive_installers() {
     assert!(!stale.exists());
     assert!(active.path().exists());
     assert!(unrelated.exists());
+}
+
+#[test]
+fn preserves_installer_directory_without_session_marker() {
+    let root = tempfile::tempdir().unwrap();
+    let temp = root.path().canonicalize().unwrap();
+    let (active, _lease) = stage_installer(&temp).unwrap();
+    let unmarked = active.path().parent().unwrap().join("installer-unmarked");
+    fs::create_dir(&unmarked).unwrap();
+    let sentinel = unmarked.join("sentinel");
+    fs::write(&sentinel, b"unrelated data").unwrap();
+
+    let (_next, _lease) = stage_installer(&temp).unwrap();
+
+    assert_eq!(fs::read_dir(&unmarked).unwrap().count(), 1);
+    assert_eq!(fs::read(&sentinel).unwrap(), b"unrelated data");
+}
+
+#[cfg(unix)]
+#[test]
+fn preserves_installer_directory_with_symlinked_session_marker() {
+    let root = tempfile::tempdir().unwrap();
+    let temp = root.path().canonicalize().unwrap();
+    let (active, _lease) = stage_installer(&temp).unwrap();
+    let directory = active.path().parent().unwrap().join("installer-symlink");
+    fs::create_dir(&directory).unwrap();
+    let outside = temp.join("unrelated-file");
+    fs::write(&outside, b"unrelated data").unwrap();
+    let marker = directory.join(".session");
+    std::os::unix::fs::symlink(&outside, &marker).unwrap();
+
+    let (_next, _lease) = stage_installer(&temp).unwrap();
+
+    assert_eq!(fs::read_link(marker).unwrap(), outside);
+    assert_eq!(fs::read(outside).unwrap(), b"unrelated data");
+}
+
+#[tokio::test]
+async fn publication_keeps_action_and_records_install_after_waiter_is_aborted() {
+    use std::sync::Arc;
+    use tokio::sync::oneshot;
+
+    let state = super::GpuiUpgrade::default();
+    let action = state.begin_install().unwrap();
+    let path = tempfile::tempdir().unwrap();
+    let executable = path.path().join(Platform::Linux.asset(VERSION));
+    let (entered, publishing) = oneshot::channel();
+    let (resume, ready) = oneshot::channel();
+    let publish_path = executable.clone();
+    let waiter = tokio::spawn(action.publish(move || {
+        entered.send(()).unwrap();
+        ready.blocking_recv().unwrap();
+        fs::write(&publish_path, PAYLOAD).unwrap();
+        Ok(super::Installed {
+            platform: Platform::Linux,
+            version: VERSION.into(),
+            path: publish_path,
+            launch_digest: None,
+            _installer_lease: None,
+        })
+    }));
+    publishing.await.unwrap();
+    waiter.abort();
+    assert!(waiter.await.unwrap_err().is_cancelled());
+    assert!(state.begin_install().is_err());
+    resume.send(()).unwrap();
+
+    let _action = Arc::clone(&state.action).lock_owned().await;
+    let Some(crate::models::GpuiUpgradeInfo::Installed { path, .. }) =
+        state.installed_info().await.unwrap()
+    else {
+        panic!("publication did not record the install");
+    };
+    assert_eq!(path, executable.to_string_lossy());
+    assert_eq!(fs::read(executable).unwrap(), PAYLOAD);
 }
 
 #[tokio::test]
@@ -250,6 +311,7 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
     let manifest = serde_json::json!({"version":VERSION, "platforms":{"linux-x86_64":{
         "signature":SIGNATURE, "url":"https://example.org/asset"
     }}});
+    let state = super::GpuiUpgrade::default();
     let _ = rustls::crypto::ring::default_provider().install_default();
     for length in [PAYLOAD.len() + 1, PAYLOAD.len()] {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
@@ -259,10 +321,26 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
             .unwrap()
             .unwrap();
         build.artifact.url = format!("http://{}/asset", listener.local_addr().unwrap());
+        let staging = cache.join("kubecove-gpui-upgrade");
+        let staging_parent = &staging;
         let server = async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = [0; 1024];
             assert!(stream.read(&mut request).await.unwrap() > 0);
+            let directories: Vec<_> = fs::read_dir(staging_parent)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .collect();
+            let [directory] = directories.as_slice() else {
+                panic!("expected one staging directory, got {directories:?}");
+            };
+            assert!(directory.join(".session").is_file());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = fs::metadata(directory).unwrap().permissions().mode();
+                assert_eq!(mode & 0o777, 0o700);
+            }
             let headers =
                 format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n");
             stream.write_all(headers.as_bytes()).await.unwrap();
@@ -275,6 +353,7 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
             &apps,
             &cache,
             reqwest::Client::new(),
+            state.begin_install().unwrap(),
         );
         tokio::pin!(install);
         // Dropping the server future cancels accept if installation fails before connecting.
@@ -284,7 +363,8 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
         };
         let appimage = apps.join(Platform::Linux.asset(VERSION));
         if length == PAYLOAD.len() {
-            let installed = result.unwrap();
+            result.unwrap();
+            let installed = state.installed.lock().await.clone().unwrap();
             assert_eq!(installed.path, appimage.canonicalize().unwrap());
             assert_eq!(fs::read(&appimage).unwrap(), PAYLOAD);
             #[cfg(unix)]
@@ -304,9 +384,10 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
             }
         } else {
             assert!(result.is_err());
+            assert!(state.installed_info().await.unwrap().is_none());
             assert!(!appimage.exists());
         }
         assert_eq!(fs::read(&tauri).unwrap(), b"Tauri");
-        assert!(!cache.join(".kubecove-gpui-bridge.download").exists());
+        assert!(fs::read_dir(staging).unwrap().next().is_none());
     }
 }
