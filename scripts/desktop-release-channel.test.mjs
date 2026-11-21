@@ -14,6 +14,12 @@ test("historical release tags cannot publish a latest feed", () => {
   }
 });
 
+test("a pre-transition dry run uses the frozen legacy channel", () => {
+  assert.deepEqual(desktopReleaseChannel("0.15.0", { dryRun: true }), desktopReleaseChannel("0.15.1"));
+  assert.throws(() => desktopReleaseChannel("0.15.0"), /frozen at 0\.15\.1/);
+  assert.throws(() => desktopReleaseChannel("0.15.2", { dryRun: true }), /frozen at 0\.15\.1/);
+});
+
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
 const stage = workflow.jobs["stage-release-assets"];
 const freeze = stage.steps.find(step => step.name === "Carry forward frozen legacy feeds");
@@ -21,9 +27,10 @@ const freeze = stage.steps.find(step => step.name === "Carry forward frozen lega
 test("the bundle step stages cargo-packager outputs under the public channel names", () => {
   const bundles = parse(readFileSync(new URL("../.github/workflows/gpui-release.yml", import.meta.url), "utf8"));
   const step = bundles.jobs.bundle.steps.find(step => step.name === "Bundle GPUI client");
-  for (const [version, prefix, product, identifier] of [
-    ["0.15.1", "kubecove-gpui", "KubeCove GPUI", "com.timpan.kubecove.gpui"],
-    ["0.16.0", "kubecove", "KubeCove", "com.timpan.kubecove"],
+  for (const [version, releaseTag, prefix, product, identifier] of [
+    ["0.15.0", "", "kubecove-gpui", "KubeCove GPUI", "com.timpan.kubecove.gpui"],
+    ["0.15.1", "app-v0.15.1", "kubecove-gpui", "KubeCove GPUI", "com.timpan.kubecove.gpui"],
+    ["0.16.0", "app-v0.16.0", "kubecove", "KubeCove", "com.timpan.kubecove"],
   ]) {
     const directory = mkdtempSync(join(tmpdir(), "kubecove-bundle-"));
     try {
@@ -39,7 +46,7 @@ test("the bundle step stages cargo-packager outputs under the public channel nam
       }
       for (const format of ["appimage", "nsis", "app,dmg"]) {
         const result = spawnSync("bash", ["-ec", 'cargo() { case "$1" in metadata) cat metadata.json ;; packager) return 0 ;; *) return 1 ;; esac; }\n' + step.run], {
-          cwd: directory, encoding: "utf8", env: { ...process.env, BUNDLE_TARGET: "fixture", FORMAT: format },
+          cwd: directory, encoding: "utf8", env: { ...process.env, BUNDLE_TARGET: "fixture", FORMAT: format, RELEASE_TAG: releaseTag },
         });
         assert.equal(result.status, 0, result.stderr);
       }

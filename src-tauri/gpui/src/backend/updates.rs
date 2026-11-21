@@ -162,12 +162,13 @@ async fn check_feeds(
             }
             result => result.err(),
         };
-    match check_legacy(client, endpoint, target, current).await {
-        Ok(UpdateStatus::Unpublished) => {
-            consolidated_error.map_or(Ok(UpdateStatus::Unpublished), Err)
-        }
-        Ok(status) => Ok(status),
-        Err(error) => Err(consolidated_error.unwrap_or(error)),
+    match (
+        check_legacy(client, endpoint, target, current).await,
+        consolidated_error,
+    ) {
+        (Ok(status @ UpdateStatus::Available(_)), _) => Ok(status),
+        (_, Some(error)) => Err(error),
+        (result, None) => result,
     }
 }
 

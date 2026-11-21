@@ -14,8 +14,8 @@ import { pathToFileURL } from "node:url";
 import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 // macOS ships for Apple silicon only, so there is no darwin-x86_64 entry.
-export function gpuiUpdaterAssets(version) {
-  const { prefix } = desktopReleaseChannel(version);
+export function gpuiUpdaterAssets(version, { dryRun = false } = {}) {
+  const { prefix } = desktopReleaseChannel(version, { dryRun });
   return {
     "linux-x86_64": `${prefix}_${version}_x86_64.AppImage`,
     "darwin-aarch64": `${prefix}_${version}_aarch64.app.tar.gz`,
@@ -65,11 +65,11 @@ export function verifyUpdaterSignature({ publicKey, signature, data, version, na
 }
 
 // `read(name)` returns a file's bytes from the assets directory, or throws when it is missing.
-export function buildGpuiManifest({ version, tag, repository, notes, publicKey, pubDate, names, read }) {
+export function buildGpuiManifest({ version, tag, repository, notes, publicKey, pubDate, names, read, dryRun = false }) {
   if (tag !== `app-v${version}`) throw new Error(`Release tag ${tag} does not match app version ${version}.`);
   const present = new Set(names);
   const platforms = {};
-  for (const [platform, name] of Object.entries(gpuiUpdaterAssets(version))) {
+  for (const [platform, name] of Object.entries(gpuiUpdaterAssets(version, { dryRun }))) {
     for (const required of [name, `${name}.sig`]) {
       if (!present.has(required)) throw new Error(`Missing ${required}. Found: ${[...present].sort().join(", ") || "nothing"}.`);
     }
@@ -84,7 +84,7 @@ export function writeGpuiManifest(dir, options) {
   const manifest = buildGpuiManifest({
     ...options, names: readdirSync(dir), read: (name) => readFileSync(join(dir, name)),
   });
-  const filename = desktopReleaseChannel(options.version).manifest;
+  const filename = desktopReleaseChannel(options.version, { dryRun: options.dryRun }).manifest;
   writeFileSync(join(dir, filename), `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${filename}.`);
 }
@@ -99,6 +99,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   writeGpuiManifest(dir, {
     version,
     tag,
+    dryRun: !releaseTag,
     repository,
     notes: readFileSync(notesFile, "utf8").trim(),
     publicKey,

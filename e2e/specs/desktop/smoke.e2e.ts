@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { describe, it } from "mocha";
+import { SETTINGS_STORAGE_KEY } from "../../../src/lib/storage-keys";
 import type { AppUsageMetrics, ClusterContext } from "../../../src/lib/types";
 
 type TauriBridge = {
@@ -27,12 +28,12 @@ describe("native desktop smoke", () => {
 		const directory = process.env.KUBECOVE_DATA_DIR;
 		if (!directory) throw new Error("Missing isolated data directory");
 		const snapshot = join(directory, "tauri-migration.json");
-		await browser.execute(() => {
-			localStorage.setItem("kubecove-settings", JSON.stringify({ version: 0, state: { timestampTimezone: "utc" } }));
-		});
+		await browser.execute((key) => {
+			localStorage.setItem(key, JSON.stringify({ version: 0, state: { timestampTimezone: "utc" } }));
+		}, SETTINGS_STORAGE_KEY);
 		await browser.refresh();
 		await browser.waitUntil(() => existsSync(snapshot) &&
-			JSON.parse(readFileSync(snapshot, "utf8")).entries["kubecove-settings"]?.state?.timestampTimezone === "utc");
+			JSON.parse(readFileSync(snapshot, "utf8")).entries[SETTINGS_STORAGE_KEY]?.state?.timestampTimezone === "utc");
 		expect(JSON.parse(readFileSync(snapshot, "utf8"))).toMatchObject({ schemaVersion: 1 });
 		const contexts = await listKubeContexts();
 		expect(contexts).toHaveLength(2);

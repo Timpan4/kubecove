@@ -172,31 +172,26 @@ export function updateWorkspaceReleaseVersions(
 
 	const channel = existsSync(join(root, "src-tauri", "gpui", "Cargo.toml")) ? desktopReleaseChannel(targetVersion) : undefined;
 	const hasTauriConfig = existsSync(tauriPath);
-	const jsonConfigs = (hasTauriConfig ? [packagePath, tauriPath] : [packagePath]).map((path) => {
+	const updates = (hasTauriConfig ? [packagePath, tauriPath] : [packagePath]).map((path) => {
 		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
 		if (Object.prototype.toString.call(parsed) !== "[object Object]") {
 			throw new Error(`${path} must contain a JSON object.`);
 		}
 		// SAFETY: Object.prototype.toString verified a plain JSON object; writer only sets `version`.
-		return { path, config: parsed as { version?: string } };
-	});
-	for (const { path, config } of jsonConfigs) {
+		const config = parsed as { version?: string };
 		config.version = targetVersion;
-		writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-	}
+		return { path, contents: `${JSON.stringify(config, null, 2)}\n` };
+	});
 
 	const cargoToml = readFileSync(cargoPath, "utf8");
-	writeFileSync(
-		cargoPath,
-		replaceCargoField(cargoToml, "package", "version", targetVersion, cargoPath),
-	);
+	updates.push({
+		path: cargoPath,
+		contents: replaceCargoField(cargoToml, "package", "version", targetVersion, cargoPath),
+	});
 
 	if (existsSync(cargoLockPath)) {
 		const cargoLock = readFileSync(cargoLockPath, "utf8");
-		writeFileSync(
-			cargoLockPath,
-			replaceCargoLockPackageVersion(cargoLock, targetVersion),
-		);
+		updates.push({ path: cargoLockPath, contents: replaceCargoLockPackageVersion(cargoLock, targetVersion) });
 	}
 	for (const { directory, packageName } of SIDE_WORKSPACES) {
 		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
@@ -207,12 +202,16 @@ export function updateWorkspaceReleaseVersions(
 			contents = replaceCargoField(contents, section, "productName", channel.product, manifestPath);
 			contents = replaceCargoField(contents, section, "identifier", channel.identifier, manifestPath);
 		}
-		writeFileSync(manifestPath, contents);
+		updates.push({ path: manifestPath, contents });
 		const lockPath = join(root, "src-tauri", directory, "Cargo.lock");
 		if (existsSync(lockPath)) {
 			const lock = replaceCargoLockPackageVersion(readFileSync(lockPath, "utf8"), targetVersion, "kubecove", lockPath);
-			writeFileSync(lockPath, replaceCargoLockPackageVersion(lock, targetVersion, packageName, lockPath));
+			updates.push({ path: lockPath, contents: replaceCargoLockPackageVersion(lock, targetVersion, packageName, lockPath) });
 		}
+	}
+
+	for (const { path, contents } of updates) {
+		writeFileSync(path, contents);
 	}
 
 	return {

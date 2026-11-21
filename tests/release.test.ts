@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -300,6 +300,34 @@ example = "9.9.9"
 			"must contain a JSON object.",
 		);
 		expect(readFileSync(join(root, "package.json"), "utf8")).toBe(originalPackage);
+	});
+
+	test("rejects missing packager identifier before changing any release file", () => {
+		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
+		const files = {
+			"package.json": '{"version":"0.15.1"}\n',
+			"src-tauri/tauri.conf.json": '{"version":"0.15.1"}\n',
+			"src-tauri/Cargo.toml": '[package]\nname = "kubecove"\nversion = "0.15.1"\n',
+			"src-tauri/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n',
+			"src-tauri/server/Cargo.toml": '[package]\nname = "kubecove-server"\nversion = "0.15.1"\n',
+			"src-tauri/server/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.15.1"\n',
+			"src-tauri/gpui/Cargo.toml": '[package]\nname = "kubecove-gpui"\nversion = "0.15.1"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\n',
+			"src-tauri/gpui/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.15.1"\n',
+		};
+		try {
+			for (const directory of ["src-tauri/server", "src-tauri/gpui"]) {
+				mkdirSync(join(root, directory), { recursive: true });
+			}
+			for (const [path, contents] of Object.entries(files)) {
+				writeFileSync(join(root, path), contents);
+			}
+			expect(() => updateWorkspaceReleaseVersions("0.16.0", root)).toThrow("is missing package.metadata.packager.identifier");
+			for (const [path, contents] of Object.entries(files)) {
+				expect(readFileSync(join(root, path), "utf8")).toBe(contents);
+			}
+		} finally {
+			rmSync(root, { recursive: true });
+		}
 	});
 
 	test("classifies release notes from existing commit prefixes", () => {

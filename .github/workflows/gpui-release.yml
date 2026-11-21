@@ -125,14 +125,17 @@ jobs:
         env:
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
           FORMAT: ${{ matrix.format }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
         # Leave APPIMAGE_EXTRACT_AND_RUN unset: with it, the extracted appimage plugin runs
         # appimagetool from another directory and it cannot find the AppDir.
         run: |
           set -euo pipefail
           # Verify the declared installer identity before signing artifacts for this feed.
           version="$(node -p 'require("./package.json").version')"
-          EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product)"
-          EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier)"
+          channel_mode=""
+          if [[ -z "$RELEASE_TAG" ]]; then channel_mode=--dry-run; fi
+          EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product "$channel_mode")"
+          EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier "$channel_mode")"
           export EXPECTED_PRODUCT EXPECTED_ID
           cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/gpui/Cargo.toml |
             node -e 'const packages = JSON.parse(require("node:fs").readFileSync(0)).packages;
@@ -144,7 +147,7 @@ jobs:
           mkdir -p "$out" gpui-updater
           cargo packager --manifest-path src-tauri/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
             --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
-          prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix)"
+          prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix "$channel_mode")"
           product="$EXPECTED_PRODUCT"
           case "$FORMAT" in
             # AppImage and NSIS use the main executable name, even when the product changes.
@@ -207,12 +210,15 @@ jobs:
 
       - name: Sign GPUI bundles
         env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           version="$(node -p 'require("./package.json").version')"
-          bash scripts/sign-gpui-release.sh gpui-release "$version"
+          channel_mode=""
+          if [[ -z "$RELEASE_TAG" ]]; then channel_mode=--dry-run; fi
+          bash scripts/sign-gpui-release.sh gpui-release "$version" "$channel_mode"
 
       - name: Verify signatures and write latest-gpui.json
         env:

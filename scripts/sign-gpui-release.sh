@@ -4,7 +4,8 @@
 set -euo pipefail
 dir=$1
 version=$2
-prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix)"
+shift 2
+prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix "$@")"
 umask 077
 scratch="$(mktemp -d)"
 trap 'rm -rf -- "$scratch"' EXIT
