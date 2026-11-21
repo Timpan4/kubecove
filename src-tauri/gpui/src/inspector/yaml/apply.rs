@@ -8,17 +8,81 @@ use super::super::Inspector;
 use super::super::detail::{Detail, ResourceDetail};
 use super::super::request::InFlight;
 use crate::unified_diff::{self, DiffLine};
-use gpui_kit::{Context, Task, Window};
+use gpui_kit::{Context, SharedString, Task, Window};
 use kubecove_lib::models::{
     AppError, ResourceSummary, YamlApplyPreview, YamlApplyRequest, YamlViewMode,
 };
+use std::cell::OnceCell;
+
+const COMPACT_DIFF_LINES: usize = 24;
 
 pub(super) struct Review {
     pub request: YamlApplyRequest,
-    pub lines: Vec<DiffLine>,
-    pub full_lines: Vec<DiffLine>,
+    compact: ReviewDiff,
+    full: ReviewDiff,
     /// The diff shows every line instead of its compact form.
     pub show_full: bool,
+}
+
+struct ReviewDiff {
+    lines: Vec<DiffLine>,
+    hidden: usize,
+    label: OnceCell<SharedString>,
+    clean: OnceCell<Vec<DiffLine>>,
+}
+
+impl ReviewDiff {
+    fn new(mut lines: Vec<DiffLine>, full: bool) -> Self {
+        let hidden = if full {
+            0
+        } else {
+            lines.len().saturating_sub(COMPACT_DIFF_LINES)
+        };
+        lines.truncate(lines.len() - hidden);
+        Self {
+            lines,
+            hidden,
+            label: OnceCell::new(),
+            clean: OnceCell::new(),
+        }
+    }
+}
+
+impl Review {
+    pub(super) fn diff(&self, git: bool) -> (&[DiffLine], SharedString, usize) {
+        let diff = if self.show_full {
+            &self.full
+        } else {
+            &self.compact
+        };
+        let label = diff.label.get_or_init(|| {
+            diff.lines
+                .iter()
+                .map(|line| line.text.as_ref())
+                .collect::<Vec<_>>()
+                .join("\n")
+                .into()
+        });
+        let lines = if git {
+            &diff.lines
+        } else {
+            diff.clean.get_or_init(|| {
+                diff.lines
+                    .iter()
+                    .map(|line| DiffLine {
+                        kind: line.kind,
+                        text: line
+                            .text
+                            .strip_prefix(['+', '-', ' '])
+                            .unwrap_or(&line.text)
+                            .to_owned()
+                            .into(),
+                    })
+                    .collect()
+            })
+        };
+        (lines, label.clone(), diff.hidden)
+    }
 }
 
 pub(super) enum Phase {
@@ -182,21 +246,18 @@ fn review(
     style: crate::preferences::DiffStyle,
 ) -> Review {
     let (current, dry_run) = (&preview.current_yaml, &preview.dry_run_yaml);
-    let force = request.force_conflicts;
     request.expected_uid = Some(preview.uid.clone());
     request.expected_resource_version = Some(preview.resource_version.clone());
+    let (compact, full) = unified_diff::dry_run_pair(
+        current,
+        dry_run,
+        style == crate::preferences::DiffStyle::Git,
+        request.force_conflicts,
+    );
     Review {
         show_full: false,
-        lines: if style == crate::preferences::DiffStyle::Git {
-            unified_diff::dry_run_git(current, dry_run, false)
-        } else {
-            unified_diff::dry_run(current, dry_run, false, force)
-        },
-        full_lines: if style == crate::preferences::DiffStyle::Git {
-            unified_diff::dry_run_git(current, dry_run, true)
-        } else {
-            unified_diff::dry_run(current, dry_run, true, force)
-        },
+        compact: ReviewDiff::new(compact, false),
+        full: ReviewDiff::new(full, true),
         request,
     }
 }

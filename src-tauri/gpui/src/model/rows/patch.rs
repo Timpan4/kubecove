@@ -1,6 +1,7 @@
 //! Reconcile watch reads while preserving keys whose inputs did not change.
+mod named;
 use super::PreparedRows;
-use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
+use kubecove_lib::models::{GitOpsOwnerSummary, ResourceSummary, WatchResourceKey};
 use std::{
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
@@ -71,15 +72,6 @@ impl NameIndex {
             None => self.cluster.contains(name),
         }
     }
-    fn iter(&self) -> impl Iterator<Item = (Option<&str>, &str)> {
-        let cluster = self.cluster.iter().map(|name| (None, name.as_str()));
-        let namespaced = self.namespaces.iter().flat_map(|(namespace, names)| {
-            names
-                .iter()
-                .map(move |name| (Some(namespace.as_str()), name.as_str()))
-        });
-        cluster.chain(namespaced)
-    }
 }
 
 enum Coverage {
@@ -112,27 +104,18 @@ impl Coverage {
     }
 }
 
-fn same_projection(a: &ResourceSummary, b: &ResourceSummary) -> bool {
-    let same_owner = match (&a.git_ops_owner, &b.git_ops_owner) {
-        (None, None) => true,
-        (Some(a), Some(b)) => {
-            a.provider == b.provider
-                && a.kind == b.kind
-                && a.name == b.name
-                && a.namespace == b.namespace
-                && a.partial == b.partial
-                && a.confidence == b.confidence
-                && a.provenance == b.provenance
-        }
-        _ => false,
-    };
+fn same_projection(
+    a: &ResourceSummary,
+    b: &ResourceSummary,
+    owner: &Option<GitOpsOwnerSummary>,
+) -> bool {
     a.plural == b.plural
         && a.group == b.group
         && a.owner_ref == b.owner_ref
         && a.argo_app == b.argo_app
         && a.helm_release == b.helm_release
         && a.git_ops_ownership_partial == b.git_ops_ownership_partial
-        && same_owner
+        && owner == &b.git_ops_owner
 }
 
 fn same_identity(a: &ResourceSummary, b: &ResourceSummary) -> bool {
@@ -142,10 +125,6 @@ fn same_identity(a: &ResourceSummary, b: &ResourceSummary) -> bool {
         && a.cluster == b.cluster
         && a.api_version == b.api_version
         && a.dynamic == b.dynamic
-}
-
-fn same_keys(a: &ResourceSummary, b: &ResourceSummary) -> bool {
-    same_identity(a, b) && same_projection(a, b)
 }
 
 /// One context's watch of one resource key. Rows of other contexts are
@@ -198,9 +177,16 @@ pub(crate) struct Added {
     pub name: String,
 }
 
+pub(crate) enum RowsChange {
+    /// Rows replaced in place without changing any prepared keys.
+    Updated(Vec<usize>),
+    Rebuilt,
+}
+
 /// Applies a watch read of `key` in `context` to `current`. Rows of other
 /// contexts stay as they are. Returns whether a row was added, deleted or
 /// changed its keys.
+#[cfg(test)]
 pub(crate) fn reconcile(
     current: &mut Vec<ResourceSummary>,
     context: &str,
@@ -210,7 +196,10 @@ pub(crate) fn reconcile(
     added: &mut Vec<Added>,
 ) -> bool {
     let names = names.map(NameIndex::from);
-    reconcile_indexed(current, Watch { context, key }, rows, names.as_ref(), added)
+    matches!(
+        reconcile_indexed(current, Watch { context, key }, rows, names.as_ref(), added),
+        RowsChange::Rebuilt
+    )
 }
 
 fn reconcile_indexed(
@@ -219,7 +208,7 @@ fn reconcile_indexed(
     rows: Vec<ResourceSummary>,
     names: Option<&NameIndex>,
     added: &mut Vec<Added>,
-) -> bool {
+) -> RowsChange {
     // `Name` holds no context; `matches` admits only rows of the watch's
     // context, so two contexts' rows never share a name here.
     let matches = |row: &ResourceSummary| {
@@ -234,12 +223,18 @@ fn reconcile_indexed(
         .map(|row| ((row.namespace.clone(), row.name.clone()), row))
         .collect();
     let mut keys_changed = false;
+    let mut updated = Vec::new();
+    let mut index = 0;
     current.retain_mut(|row| {
+        let position = index;
+        index += 1;
         if !matches(row) {
             return true;
         }
         if let Some(new) = next.remove(&(row.namespace.clone(), row.name.clone())) {
-            keys_changed |= !same_keys(row, &new);
+            keys_changed |=
+                !same_identity(row, &new) || !same_projection(row, &new, &row.git_ops_owner);
+            updated.push(position);
             *row = new;
             true
         } else {
@@ -257,7 +252,11 @@ fn reconcile_indexed(
         }));
     }
     current.extend(next.into_values());
-    keys_changed
+    if keys_changed {
+        RowsChange::Rebuilt
+    } else {
+        RowsChange::Updated(updated)
+    }
 }
 
 impl PreparedRows {
@@ -273,6 +272,7 @@ impl PreparedRows {
         names: Option<ObservedNames>,
     ) -> Vec<ResourceSummary> {
         self.patch_noting(context, key, rows, names, &mut Vec::new())
+            .0
     }
 
     /// Applies a watch read as `patch` does and records in `added` the rows a
@@ -281,32 +281,54 @@ impl PreparedRows {
         &mut self,
         context: &str,
         key: &WatchResourceKey,
+        rows: Vec<ResourceSummary>,
+        names: Option<ObservedNames>,
+        added: &mut Vec<Added>,
+    ) -> (Vec<ResourceSummary>, RowsChange) {
+        let result = self.patch_rows(Watch { context, key }, rows, names, added);
+        if matches!(&result.1, RowsChange::Updated(indices) if !indices.is_empty()) {
+            self.revision += 1;
+        }
+        result
+    }
+
+    fn patch_rows(
+        &mut self,
+        watch: Watch<'_>,
         mut rows: Vec<ResourceSummary>,
         names: Option<ObservedNames>,
         added: &mut Vec<Added>,
-    ) -> Vec<ResourceSummary> {
-        let watch = Watch { context, key };
-        // Watch rows carry the backend's owners, so compare them with those. If no
-        // key changes, the rows keep their positions and the same inherited owners.
-        self.swap_owners();
+    ) -> (Vec<ResourceSummary>, RowsChange) {
+        if let Some(names) = &names
+            && let Some(indices) = self.replace_named(
+                watch,
+                &mut rows,
+                names
+                    .iter()
+                    .map(|(ns, name)| (ns.as_deref(), name.as_str())),
+            )
+        {
+            return (rows, RowsChange::Updated(indices));
+        }
         let kind = self
             .kinds
             .iter()
-            .position(|(kind, _)| *kind == key.resource_kind.kind);
+            .position(|(kind, _)| *kind == watch.key.resource_kind.kind);
         let names = match kind {
             Some(kind) => match self.patch_members(kind, watch, &mut rows, names) {
-                Ok(()) => return rows,
+                Ok(change) => return (rows, change),
                 Err(names) => names,
             },
             None => names.map(NameIndex::from),
         };
         let _span = crate::frame_profile::scope("watch", "reconcile");
-        if reconcile_indexed(&mut self.rows, watch, rows, names.as_ref(), added) {
-            self.rebuild();
-        } else {
-            self.swap_owners();
+        self.swap_owners();
+        let change = reconcile_indexed(&mut self.rows, watch, rows, names.as_ref(), added);
+        match &change {
+            RowsChange::Rebuilt => self.rebuild(),
+            RowsChange::Updated(_) => self.swap_owners(),
         }
-        Vec::new()
+        (Vec::new(), change)
     }
 
     /// Patches the listed rows of a kind the view holds in the watch's context
@@ -318,7 +340,7 @@ impl PreparedRows {
         watch: Watch<'_>,
         rows: &mut Vec<ResourceSummary>,
         names: Option<ObservedNames>,
-    ) -> Result<(), Option<NameIndex>> {
+    ) -> Result<RowsChange, Option<NameIndex>> {
         let rank = self
             .contexts
             .iter()
@@ -350,93 +372,55 @@ impl PreparedRows {
         };
         drop(span);
         let _span = crate::frame_profile::scope("watch", "replace_rows");
-        match coverage {
-            Coverage::All if ordered => {
-                let keys_changed = members()
-                    .zip(rows.iter())
-                    .any(|(index, row)| !same_projection(&self.rows[index], row));
-                if count == self.rows.len() {
-                    std::mem::swap(&mut self.rows, rows);
-                } else {
-                    for (index, row) in members().zip(rows.iter_mut()) {
-                        std::mem::swap(&mut self.rows[index], row);
-                    }
-                }
-                self.settle(keys_changed);
-                Ok(())
-            }
-            Coverage::Named(names) if ordered => {
-                let mut keys_changed = false;
-                for (index, row) in members().zip(rows.iter_mut()) {
-                    if names.contains(row.namespace.as_deref(), &row.name) {
-                        keys_changed |= !same_projection(&self.rows[index], row);
-                        std::mem::swap(&mut self.rows[index], row);
-                    }
-                }
-                self.settle(keys_changed);
-                Ok(())
-            }
-            Coverage::All => Err(None),
+        let positions: Vec<(usize, usize)> = match coverage {
+            Coverage::All if ordered => members().zip(0..).collect(),
+            Coverage::Named(names) if ordered => members()
+                .zip(0..)
+                .filter(|&(_, position)| {
+                    let row = &rows[position];
+                    names.contains(row.namespace.as_deref(), &row.name)
+                })
+                .collect(),
+            Coverage::All => return Err(None),
             Coverage::Named(names) => {
-                if self.replace_named(watch, rows, &names) {
-                    self.settle(false);
-                    Ok(())
-                } else {
-                    Err(Some(names))
-                }
+                return Err(Some(names));
             }
-        }
-    }
-
-    /// Restores inherited owners after rows were replaced in place, or prepares
-    /// the rows again when a replaced row changed its keys.
-    fn settle(&mut self, keys_changed: bool) {
+        };
+        let keys_changed = positions.iter().any(|&(index, position)| {
+            !same_projection(
+                &self.rows[index],
+                &rows[position],
+                self.backend_owner(index),
+            )
+        });
         if keys_changed {
-            self.rebuild();
-        } else {
             self.swap_owners();
         }
-    }
-
-    /// Replaces each named row with its row in `rows` when every name is one
-    /// row the view holds and the read still lists, with the same keys.
-    /// Returns `false`, with nothing replaced, when a name was added, deleted,
-    /// held twice or changed keys.
-    fn replace_named(
-        &mut self,
-        watch: Watch<'_>,
-        rows: &mut [ResourceSummary],
-        names: &NameIndex,
-    ) -> bool {
-        // The read's named rows, sorted by slot hash like the view's slots.
-        let read = slot_table(rows.iter().enumerate().filter(|(_, row)| {
-            watch.lists(row) && names.contains(row.namespace.as_deref(), &row.name)
-        }));
-        let current = &self.rows;
-        let slots = self
-            .slots
-            .get_or_insert_with(|| slot_table(current.iter().enumerate()));
-        let mut pairs = Vec::with_capacity(read.len());
-        for (namespace, name) in names.iter() {
-            let hash = watch.slot(namespace, name);
-            let (Ok(held), Ok(listed)) = (
-                find_slot(slots, current, hash, watch, namespace, name),
-                find_slot(&read, rows, hash, watch, namespace, name),
-            ) else {
-                return false;
-            };
-            match (held, listed) {
-                (Some(index), Some(position)) if same_keys(&current[index], &rows[position]) => {
-                    pairs.push((index, position));
+        if positions.len() == self.rows.len() && positions.len() == rows.len() {
+            if !keys_changed {
+                self.swap_owners();
+            }
+            std::mem::swap(&mut self.rows, rows);
+            if !keys_changed {
+                self.swap_owners();
+            }
+        } else {
+            for &(index, position) in &positions {
+                if keys_changed {
+                    std::mem::swap(&mut self.rows[index], &mut rows[position]);
+                } else {
+                    self.replace_row(index, &mut rows[position]);
                 }
-                (None, None) => {}
-                _ => return false,
             }
         }
-        for (index, position) in pairs {
-            std::mem::swap(&mut self.rows[index], &mut rows[position]);
+        if keys_changed {
+            self.rebuild();
+            Ok(RowsChange::Rebuilt)
+        } else {
+            Ok(RowsChange::Updated(
+                positions.into_iter().map(|(index, _)| index).collect(),
+            ))
         }
-        true
     }
 }
 
@@ -450,44 +434,4 @@ fn kind_members<'a>(
         .iter()
         .copied()
         .filter(move |&index| Some(context[index]) == rank)
-}
-
-/// Row indices sorted by the hash of their cluster, kind, namespace and name.
-fn slot_table<'a>(rows: impl Iterator<Item = (usize, &'a ResourceSummary)>) -> Vec<(u64, u32)> {
-    let mut slots: Vec<_> = rows
-        .map(|(index, row)| {
-            (
-                slot_hash(&row.cluster, &row.kind, row.namespace.as_deref(), &row.name),
-                u32::try_from(index).expect("row index fits u32"),
-            )
-        })
-        .collect();
-    slots.sort_unstable();
-    slots
-}
-
-/// The one row in `slots` that `watch` lists under this name.
-/// `Ok(None)` when there is none; `Err` when two rows share the name.
-fn find_slot(
-    slots: &[(u64, u32)],
-    rows: &[ResourceSummary],
-    hash: u64,
-    watch: Watch<'_>,
-    namespace: Option<&str>,
-    name: &str,
-) -> Result<Option<usize>, ()> {
-    let start = slots.partition_point(|&(slot, _)| slot < hash);
-    let mut found = None;
-    for &(_, index) in slots[start..].iter().take_while(|(slot, _)| *slot == hash) {
-        let index = index as usize;
-        let row = &rows[index];
-        if row.namespace.as_deref() == namespace
-            && row.name == name
-            && watch.lists(row)
-            && found.replace(index).is_some()
-        {
-            return Err(());
-        }
-    }
-    Ok(found)
 }

@@ -45,7 +45,7 @@ pub(super) struct LogsState {
     pub buffer: LogBuffer,
     /// Arrival indices in display order after the text and level filters.
     pub visible: Vec<u64>,
-    /// The previous `visible`, which `refilter` diffs against and reuses.
+    /// The previous index for a refilter, or new matches for a newest-first append.
     previous: Vec<u64>,
     pub list: ListState,
     pub status: LogStatus,
@@ -227,13 +227,10 @@ impl LogsState {
         !self.term.is_empty() || self.hidden.iter().any(|hidden| *hidden)
     }
 
-    /// Recomputes the visible rows and tells the list what changed. Appends
-    /// and evictions splice; other changes remeasure.
+    /// Recomputes the visible rows after a filter or sort change.
     pub fn refilter(&mut self) {
         let pinned = self.pinned();
-        let levels = self.buffer.has_levels();
-        let levels_changed = levels != self.levels;
-        self.levels = levels;
+        let levels_changed = self.update_levels();
         // The two index lists swap roles, so a refilter allocates only when
         // the visible rows outgrow both.
         std::mem::swap(&mut self.visible, &mut self.previous);
@@ -248,8 +245,8 @@ impl LogsState {
         // Evicted lines leave the oldest end; new lines arrive at the newest end.
         let first = self.buffer.first_index();
         self.row_focus.get_mut().retain(|index, _| *index >= first);
-        let evicted = previous.iter().filter(|index| **index < first).count();
         if !self.latest_first {
+            let evicted = previous.partition_point(|&index| index < first);
             let kept = &previous[evicted..];
             if next.starts_with(kept) {
                 self.list.splice(0..evicted, 0);
@@ -261,7 +258,7 @@ impl LogsState {
                 return;
             }
         } else {
-            let kept = &previous[..previous.len() - evicted];
+            let kept = &previous[..previous.partition_point(|&index| index >= first)];
             if next.ends_with(kept) {
                 let kept_len = kept.len();
                 self.list.splice(kept_len..previous.len(), 0);
@@ -278,6 +275,40 @@ impl LogsState {
         self.list.reset(next.len());
         if pinned {
             self.jump_to_latest();
+        }
+    }
+
+    fn update_levels(&mut self) -> bool {
+        let levels = self.buffer.has_levels();
+        std::mem::replace(&mut self.levels, levels) != levels
+    }
+
+    fn append_visible(&mut self, from: u64, pinned: bool) {
+        let first = self.buffer.first_index();
+        let levels_changed = self.update_levels();
+        if self.latest_first {
+            let kept = self.visible.partition_point(|&index| index >= first);
+            self.list.splice(kept..self.visible.len(), 0);
+            self.visible.truncate(kept);
+            self.previous.clear();
+            self.buffer
+                .extend_visible(from, &self.term, self.hidden, true, &mut self.previous);
+            self.list.splice(0..0, self.previous.len());
+            drop(self.visible.splice(0..0, self.previous.drain(..)));
+        } else {
+            let evicted = self.visible.partition_point(|&index| index < first);
+            self.list.splice(0..evicted, 0);
+            drop(self.visible.drain(..evicted));
+            let kept = self.visible.len();
+            self.buffer
+                .extend_visible(from, &self.term, self.hidden, false, &mut self.visible);
+            self.list.splice(kept..kept, self.visible.len() - kept);
+        }
+        if levels_changed {
+            self.list.remeasure();
+        }
+        if self.latest_first && pinned {
+            self.list.scroll_to(ListOffset::default());
         }
     }
 
@@ -325,11 +356,17 @@ impl LogsState {
             return;
         }
         let following = self.pinned();
+        let first = self.buffer.first_index();
+        let from = self.buffer.next_index();
         let added = self.buffer.append(batch);
-        self.toggled
-            .retain(|index| self.buffer.line(*index).is_some());
-        // Evictions shift buffer positions, so `refilter` remeasures then.
-        self.refilter();
+        let retained = self.buffer.first_index();
+        if first != retained {
+            self.toggled.retain(|index| *index >= retained);
+            self.row_focus
+                .get_mut()
+                .retain(|index, _| *index >= retained);
+        }
+        self.append_visible(from, following);
         if !following {
             self.unseen += added;
         }

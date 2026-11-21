@@ -139,10 +139,18 @@ impl Inspector {
             .observation
             .rows()
             .iter()
-            .chain(self.cluster_rows())
             .filter(|row| launcher.in_scope(row))
             .cloned()
             .collect();
+        if let Some(cluster) = self.cluster_rows() {
+            resources.extend(
+                cluster
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| launcher.in_scope(row))
+                    .map(|(index, _)| cluster.backend_row(index)),
+            );
+        }
         // The web warms its index in workspace kind order, preserving the
         // API's order within each kind.
         resources.sort_by_key(|row| {

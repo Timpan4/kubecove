@@ -5,6 +5,9 @@
 //! `tab` renders the result and `lens` marks it in the editor.
 use super::super::Inspector;
 use super::apply::apply_request;
+use super::folds::YamlSyntax;
+use super::lens::{Diagnostics, Lens};
+use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Task, Window};
 use kubecove_lib::models::{AppError, KubernetesYamlLintDiagnostic, KubernetesYamlLintStatusNote};
 use std::time::Duration;
@@ -21,12 +24,32 @@ pub(in crate::inspector) struct Lint {
     /// classify it the way `FriendlyError` does.
     pub(super) error: Option<AppError>,
     task: Option<Task<()>>,
+    syntax: YamlSyntax,
+    marks: Diagnostics,
 }
 
 impl Lint {
+    pub(in crate::inspector) fn new(syntax: YamlSyntax) -> Self {
+        Self {
+            syntax,
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn update_diagnostics(
+        &mut self,
+        editor: &mut EditorState,
+        enabled: bool,
+        cx: &mut Context<EditorState>,
+    ) -> Vec<Lens> {
+        self.marks
+            .update(&self.syntax, editor, enabled, &self.diagnostics, cx)
+    }
+
     /// `clearYamlLint`: drops the result and any pending lint.
     pub(super) fn clear(&mut self) {
         self.diagnostics.clear();
+        self.marks.clear_lint();
         self.notes.clear();
         self.error = None;
         self.task = None;
@@ -46,8 +69,12 @@ impl Inspector {
             return;
         };
         detail.lint.clear();
-        let draft = detail.editor.read(cx).value().to_string();
-        if detail.yaml.editing() && !draft.trim().is_empty() {
+        if detail.yaml.editing() {
+            let draft = detail.editor.read(cx).text().to_string();
+            if draft.trim().is_empty() {
+                self.refresh_yaml_lens(cx);
+                return;
+            }
             let mut request = apply_request(&detail.data.summary, draft, false);
             request.yaml_encoding = detail.yaml_view.format;
             let timer = cx.background_executor().timer(LINT_DELAY);
@@ -57,6 +84,7 @@ impl Inspector {
                 let result = read.await;
                 let _ = this.update_in(cx, |this, _window, cx| {
                     if let Some(detail) = this.yaml_apply() {
+                        detail.lint.marks.clear_lint();
                         match result {
                             Ok(lint) => {
                                 detail.lint.diagnostics = lint.diagnostics;

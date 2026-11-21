@@ -36,6 +36,10 @@ impl LogBuffer {
             .map_or(self.next_index, |line| line.index)
     }
 
+    pub(crate) fn next_index(&self) -> u64 {
+        self.next_index
+    }
+
     pub fn counts(&self) -> [usize; 4] {
         self.counts
     }
@@ -84,6 +88,22 @@ impl LogBuffer {
     /// hidden levels. Unleveled lines stay visible, as in the web.
     pub fn visible(&self, term: &str, hidden: [bool; 4], latest_first: bool, out: &mut Vec<u64>) {
         out.clear();
+        self.extend_visible(self.first_index(), term, hidden, latest_first, out);
+    }
+
+    /// Adds matches among the retained lines at or after the given arrival index.
+    pub(crate) fn extend_visible(
+        &self,
+        from: u64,
+        term: &str,
+        hidden: [bool; 4],
+        latest_first: bool,
+        out: &mut Vec<u64>,
+    ) {
+        let offset = from.min(self.next_index).saturating_sub(self.first_index());
+        let lines = self
+            .lines
+            .range(usize::try_from(offset).expect("retained log offset fits usize")..);
         let phrase = term.contains(' ');
         // Unquoted logfmt fields already appear in the raw search text.
         let mut token = String::new();
@@ -118,9 +138,9 @@ impl LogBuffer {
                     }))
         };
         if latest_first {
-            out.extend(self.lines.iter().rev().filter(shown).map(|line| line.index));
+            out.extend(lines.rev().filter(shown).map(|line| line.index));
         } else {
-            out.extend(self.lines.iter().filter(shown).map(|line| line.index));
+            out.extend(lines.filter(shown).map(|line| line.index));
         }
     }
 }

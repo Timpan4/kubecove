@@ -4,7 +4,7 @@
 //! sign-in credential that it then sends as a bearer.
 use super::{
     Credential, Oidc, TRANSACTION_COOKIE, clear_cookie_header, cookie_header, cookie_value,
-    oidc_unavailable, transaction_cookie, unix_now, verify_transaction,
+    oidc_unavailable, refresh::Credentials, transaction_cookie, unix_now, verify_transaction,
 };
 use crate::{
     ApiError,
@@ -58,10 +58,21 @@ struct PendingCode {
 #[derive(Default)]
 pub(super) struct NativeCodes {
     pending: HashMap<String, PendingCode>,
+    // A consumed code can leave an earlier deadline here until the next scan.
+    next_deadline: Option<u64>,
     /// Exchanged codes and the credential each produced, kept until that
     /// credential expires or is revoked, so a replay at any time while it is
     /// usable revokes it (RFC 9700 4.2.4).
     consumed: HashMap<String, String>,
+}
+
+impl NativeCodes {
+    fn record_deadline(&mut self, deadline: u64) {
+        self.next_deadline = Some(
+            self.next_deadline
+                .map_or(deadline, |next| next.min(deadline)),
+        );
+    }
 }
 
 impl NativeStart {
@@ -140,19 +151,18 @@ impl Oidc {
             .query_pairs_mut()
             .append_pair("code", &code)
             .append_pair("state", &request.state);
-        self.codes
-            .lock()
-            .map_err(|_| oidc_unavailable())?
-            .pending
-            .insert(
-                code,
-                PendingCode {
-                    credential: credential.to_owned(),
-                    redirect_uri: request.redirect_uri,
-                    challenge: request.challenge,
-                    deadline,
-                },
-            );
+        let mut codes = self.codes.lock().map_err(|_| oidc_unavailable())?;
+        codes.record_deadline(deadline);
+        codes.pending.insert(
+            code,
+            PendingCode {
+                credential: credential.to_owned(),
+                redirect_uri: request.redirect_uri,
+                challenge: request.challenge,
+                deadline,
+            },
+        );
+        drop(codes);
         Ok(Redirect::to(redirect.as_str()).into_response())
     }
 
@@ -204,7 +214,7 @@ impl Oidc {
         if pending.deadline <= unix_now()
             || request.redirect_uri != pending.redirect_uri
             || !verifier_matches
-            || !credentials.contains_key(&pending.credential)
+            || !credentials.entries.contains_key(&pending.credential)
         {
             drop(codes);
             // Nobody else can ever obtain this credential.
@@ -224,29 +234,39 @@ impl Oidc {
         &self,
         now: u64,
         credentials: &HashMap<String, Credential>,
+        credentials_removed: bool,
     ) -> Vec<String> {
         let Ok(mut codes) = self.codes.lock() else {
             return Vec::new();
         };
-        codes.consumed.retain(|_, credential| {
-            credentials
-                .get(credential)
-                .is_some_and(|entry| entry.expires_unix > now)
-        });
+        if credentials_removed {
+            codes.consumed.retain(|_, credential| {
+                credentials
+                    .get(credential)
+                    .is_some_and(|entry| entry.expires_unix > now)
+            });
+        }
+        if codes.next_deadline.is_none_or(|deadline| deadline > now) {
+            return Vec::new();
+        }
+        let mut next_deadline: Option<u64> = None;
         let expired = codes
             .pending
-            .iter()
-            .filter(|(_, code)| code.deadline <= now)
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
+            .extract_if(|_, code| {
+                let deadline = code.deadline;
+                if deadline <= now {
+                    return true;
+                }
+                next_deadline = Some(next_deadline.map_or(deadline, |next| next.min(deadline)));
+                false
+            })
+            .map(|(_, code)| code.credential)
+            .collect();
+        codes.next_deadline = next_deadline;
         expired
-            .into_iter()
-            .filter_map(|key| codes.pending.remove(&key))
-            .map(|code| code.credential)
-            .collect()
     }
 
-    fn revoke_entry(&self, credentials: &mut HashMap<String, Credential>, key: &str) {
+    pub(super) fn revoke_entry(&self, credentials: &mut Credentials, key: &str) {
         if let Some(credential) = credentials.remove(key) {
             credential.revoked.cancel();
         }

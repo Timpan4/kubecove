@@ -19,7 +19,6 @@ use openidconnect::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -33,6 +32,7 @@ pub const AUTH_COOKIE: &str = "__Host-kubecove_oidc";
 
 #[path = "oidc_refresh.rs"]
 mod refresh;
+use refresh::Credentials;
 
 #[path = "oidc_validate.rs"]
 mod validate;
@@ -138,7 +138,7 @@ pub struct Oidc {
     http: reqwest::Client,
     metadata: CoreProviderMetadata,
     transaction_key: [u8; 32],
-    credentials: Mutex<HashMap<String, Credential>>,
+    credentials: Mutex<Credentials>,
     /// Desktop authorization codes (ADR 0031). Lock after `credentials`.
     codes: Mutex<NativeCodes>,
     /// The open sessions, each with the sign-in whose ID token its
@@ -235,7 +235,7 @@ impl Oidc {
             http,
             metadata,
             transaction_key,
-            credentials: Mutex::new(HashMap::new()),
+            credentials: Mutex::default(),
             codes: Mutex::default(),
             bound: Mutex::new(Vec::new()),
             allow_http_test: false,
@@ -534,7 +534,7 @@ impl Oidc {
             http: client(Duration::from_secs(30), false)?,
             metadata,
             transaction_key: key,
-            credentials: Mutex::new(HashMap::new()),
+            credentials: Mutex::default(),
             codes: Mutex::default(),
             bound: Mutex::new(Vec::new()),
             allow_http_test: true,

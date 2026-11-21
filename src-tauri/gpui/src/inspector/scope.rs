@@ -238,7 +238,6 @@ impl Inspector {
         if !kept {
             self.warnings.clear();
         }
-        self.prepare_rows();
         self.filter(cx);
         let SharedScopeReads {
             builtin,
@@ -345,9 +344,6 @@ impl Inspector {
                                 union_namespaces(applied.namespaces, &this.namespaces)
                             };
                             this.warnings = this.scope_warnings(applied.warnings);
-                            let span = crate::frame_profile::scope("scope", "prepare_rows");
-                            this.prepare_rows();
-                            drop(span);
                             this.filter(cx);
                         }
                         Err(error) => this.live.refresh_error = Some(error),
@@ -365,20 +361,18 @@ impl Inspector {
     }
 
     pub(super) fn filter(&mut self, cx: &mut Context<Self>) {
+        self.row_index.invalidate_filters();
         let _span = crate::frame_profile::scope("scope", "filter");
         self.update_saved_overview();
+        self.filter_search(cx);
+    }
+
+    pub(super) fn filter_search(&mut self, cx: &mut Context<Self>) {
         self.filter_rows(cx);
         // The page render rebuilds the map once per frame, so several filters
         // before a frame, or one before a new topology replaces the old, cost one.
         self.map.links_stale = true;
         cx.notify();
-    }
-
-    /// Resolves cluster-row inheritance before the filter source joins it with scope rows.
-    pub(super) fn prepare_rows(&mut self) {
-        let mut prepared = self.cluster.rows.clone();
-        crate::model::inherit_gitops_owners(&mut prepared);
-        self.cluster.prepared = prepared;
     }
 
     /// The resource scope read of every context in two stages: built-ins
@@ -514,12 +508,9 @@ impl Inspector {
         if !self.persisted.preferences.show_custom_resources {
             return kinds;
         }
-        for row in self.observation.rows().iter() {
-            if self.persisted.preferences.show_custom_resources
-                && row.dynamic == Some(true)
-                && !kinds.contains(&row.kind)
-            {
-                kinds.push(row.kind.clone());
+        for kind in self.observation.rows().custom_kinds() {
+            if !kinds.iter().any(|listed| listed == kind) {
+                kinds.push(kind.to_owned());
             }
         }
         for kind in &self.live.kinds {

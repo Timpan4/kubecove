@@ -2,7 +2,7 @@
 use super::{Applied, ResourceObservation};
 use crate::backend::ScopeResult;
 use crate::inspector::Load;
-use crate::model::{ObservedNames, PreparedRows};
+use crate::model::{ObservedNames, PreparedRows, RowsChange};
 use crate::workspaces::reads::ContextResults;
 use kubecove_lib::models::{AppError, NamespaceSummary, ResourceSummary};
 use std::{rc::Rc, time::Instant};
@@ -245,7 +245,7 @@ impl ResourceObservation {
         version: Option<String>,
         names: Option<ObservedNames>,
         added: &mut Vec<crate::model::Added>,
-    ) -> Vec<ResourceSummary> {
+    ) -> (Vec<ResourceSummary>, RowsChange) {
         if let Some(index) = self.position(&scope.context) {
             let id = crate::backend::watch_id(&scope.context, key);
             match version {

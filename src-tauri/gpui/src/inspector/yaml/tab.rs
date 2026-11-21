@@ -19,9 +19,6 @@ use kubecove_lib::models::{
     KubernetesYamlLintStatusNote, ResourceSummary,
 };
 
-/// Lines the compact dry-run diff shows (`yamlDiffLines.slice(0, 24)`).
-const COMPACT_DIFF_LINES: usize = 24;
-
 /// The Apply control's description and tooltip until a dry run reviews the draft.
 const APPLY_NEEDS_DRY_RUN: &str = "Run a dry run before applying.";
 
@@ -149,23 +146,7 @@ fn dry_run_diff(
     cx: &mut Context<Inspector>,
 ) -> Div {
     let full = review.show_full;
-    let lines = if full {
-        &review.full_lines
-    } else {
-        &review.lines
-    };
-    let shown = if full {
-        &lines[..]
-    } else {
-        &lines[..lines.len().min(COMPACT_DIFF_LINES)]
-    };
-    let hidden = lines.len() - shown.len();
-    let text: SharedString = shown
-        .iter()
-        .map(|line| line.text.as_ref())
-        .collect::<Vec<_>>()
-        .join("\n")
-        .into();
+    let (shown, text, hidden) = review.diff(style == crate::preferences::DiffStyle::Git);
     div()
         .rounded(px(8.))
         .border_1()
@@ -210,30 +191,7 @@ fn dry_run_diff(
                 .max_h(px(288.))
                 .overflow_y_scroll()
                 .py(px(4.))
-                .child({
-                    let clean: Vec<_> = shown
-                        .iter()
-                        .cloned()
-                        .map(|mut line| {
-                            line.text = line
-                                .text
-                                .strip_prefix(['+', '-', ' '])
-                                .unwrap_or(&line.text)
-                                .to_owned()
-                                .into();
-                            line
-                        })
-                        .collect();
-                    diff_lines(
-                        if style == crate::preferences::DiffStyle::Git {
-                            shown
-                        } else {
-                            &clean
-                        },
-                        19.5,
-                    )
-                    .into_any_element()
-                }),
+                .child(diff_lines(shown, 19.5).into_any_element()),
         )
         .when(hidden > 0, |pane| {
             pane.child(

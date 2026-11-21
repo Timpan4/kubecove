@@ -30,10 +30,10 @@ fn signed(claims: &Value, algorithm: Algorithm, kid: &str) -> String {
 
 pub(crate) fn access() -> CloudflareAccess {
     let access = CloudflareAccess::new("test", "test-audience").unwrap();
-    *access.keys.try_lock().unwrap() = Some(KeyCache {
-        jwks: serde_json::from_value(json!({"keys": [fixture()["jwk"]]})).unwrap(),
-        fresh_until: Instant::now() + Duration::from_secs(3600),
-    });
+    *access.keys.try_lock().unwrap() = Some(KeyCache::new(
+        serde_json::from_value(json!({"keys": [fixture()["jwk"]]})).unwrap(),
+        Instant::now() + Duration::from_secs(3600),
+    ));
     access
 }
 

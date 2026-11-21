@@ -1,6 +1,6 @@
 use crate::{
     ApiError, AppState, AuthenticationRevoked, access::AccessIdentity, access_subject,
-    authentication_ended, sessions::Owner,
+    authentication_ended, sessions::Owner, tunnel::TunnelReply,
 };
 use axum::{
     Extension,
@@ -13,7 +13,6 @@ use axum::{
 use futures_util::{FutureExt, SinkExt, StreamExt};
 use kubecove_lib::models::{AppError, AppErrorKind, MAX_TUNNEL_FRAME_BYTES, PortForwardRequest};
 use serde::Deserialize;
-use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -90,14 +89,15 @@ async fn run(
                             text.as_str(),
                         )))
                         .await;
-                        Some(Message::Text(message.to_string().into()))
+                        Some(message)
                     }
                     Message::Binary(frame) => match owner.tunnels.send_binary(&frame).await {
-                        Ok(Some(connection_id)) => Some(Message::Text(
-                            json!({"type":"tunnel_closed","connectionId":connection_id})
-                                .to_string()
-                                .into(),
-                        )),
+                        Ok(Some(connection_id)) => Some(
+                            TunnelReply::Closed {
+                                connection_id: &connection_id,
+                            }
+                            .to_message(),
+                        ),
                         Ok(None) => None,
                         Err(_) => return,
                     },
@@ -157,7 +157,7 @@ enum TunnelControl {
     Eof { connection_id: String },
 }
 
-async fn control(owner: &Arc<Owner>, responses: &mpsc::Sender<Message>, text: &str) -> Value {
+async fn control(owner: &Arc<Owner>, responses: &mpsc::Sender<Message>, text: &str) -> Message {
     let Ok(control) = serde_json::from_str::<TunnelControl>(text) else {
         let error = AppError::new("invalid tunnel control frame", AppErrorKind::Validation);
         return tunnel_error(None, None, &error);
@@ -175,15 +175,22 @@ async fn control(owner: &Arc<Owner>, responses: &mpsc::Sender<Message>, text: &s
             forward_id,
             request,
         } => match owner.tunnels.register(forward_id.clone(), request).await {
-            Ok(target) => json!({"type":"tunnel_registered","forwardId":forward_id,
-                "resolvedPodName":target.pod_name,"resolvedPodPort":target.pod_port,
-                "kubeconfigSourceKey":target.kubeconfig_source_key,
-                "kubeconfigSourceLabel":target.kubeconfig_source_label}),
+            Ok(target) => TunnelReply::Registered {
+                forward_id: &forward_id,
+                resolved_pod_name: &target.pod_name,
+                resolved_pod_port: target.pod_port,
+                kubeconfig_source_key: target.kubeconfig_source_key.as_deref(),
+                kubeconfig_source_label: target.kubeconfig_source_label.as_deref(),
+            }
+            .to_message(),
             Err(error) => tunnel_error(Some(&forward_id), None, &error),
         },
         TunnelControl::Unregister { forward_id } => {
             owner.tunnels.unregister(&forward_id);
-            json!({"type":"tunnel_unregistered","forwardId":forward_id})
+            TunnelReply::Unregistered {
+                forward_id: &forward_id,
+            }
+            .to_message()
         }
         TunnelControl::Open {
             forward_id,
@@ -194,27 +201,45 @@ async fn control(owner: &Arc<Owner>, responses: &mpsc::Sender<Message>, text: &s
                 .open(&forward_id, connection_id.clone(), responses.clone())
                 .await
             {
-                Ok(()) => {
-                    json!({"type":"tunnel_opened","forwardId":forward_id,"connectionId":connection_id})
+                Ok(()) => TunnelReply::Opened {
+                    forward_id: &forward_id,
+                    connection_id: &connection_id,
                 }
+                .to_message(),
                 Err(error) => tunnel_error(Some(&forward_id), Some(&connection_id), &error),
             }
         }
         TunnelControl::Close { connection_id } => {
             owner.tunnels.close_connection(&connection_id);
-            json!({"type":"tunnel_closed","connectionId":connection_id})
+            TunnelReply::Closed {
+                connection_id: &connection_id,
+            }
+            .to_message()
         }
         TunnelControl::Eof { connection_id } => {
-            let message = if owner.tunnels.finish_upload(&connection_id) {
-                "tunnel_eof_ack"
+            let reply = if owner.tunnels.finish_upload(&connection_id) {
+                TunnelReply::EofAck {
+                    connection_id: &connection_id,
+                }
             } else {
-                "tunnel_closed"
+                TunnelReply::Closed {
+                    connection_id: &connection_id,
+                }
             };
-            json!({"type":message,"connectionId":connection_id})
+            reply.to_message()
         }
     }
 }
 
-fn tunnel_error(forward_id: Option<&str>, connection_id: Option<&str>, error: &AppError) -> Value {
-    json!({"type":"tunnel_error","forwardId":forward_id,"connectionId":connection_id,"error":error})
+fn tunnel_error(
+    forward_id: Option<&str>,
+    connection_id: Option<&str>,
+    error: &AppError,
+) -> Message {
+    TunnelReply::Error {
+        forward_id,
+        connection_id,
+        error,
+    }
+    .to_message()
 }

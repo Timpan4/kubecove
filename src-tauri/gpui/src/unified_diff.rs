@@ -47,8 +47,7 @@ fn hunk_range(range: std::ops::Range<usize>) -> String {
     format!("{start},{}", range.len())
 }
 
-fn hunks(old: &str, new: &str, context: usize) -> Vec<Hunk> {
-    let diff = TextDiff::from_lines(old, new);
+fn hunks(diff: &TextDiff<'_, '_, str>, context: usize) -> Vec<Hunk> {
     diff.grouped_ops(context)
         .iter()
         .map(|group| {
@@ -83,12 +82,15 @@ fn hunks(old: &str, new: &str, context: usize) -> Vec<Hunk> {
 
 /// `buildUnifiedDiff` with its default `current` and `dry-run` labels.
 fn unified(old: &str, new: &str, context: usize, labels: (&str, &str, &str)) -> Vec<DiffLine> {
+    unified_hunks(hunks(&TextDiff::from_lines(old, new), context), labels)
+}
+
+fn unified_hunks(hunks: Vec<Hunk>, labels: (&str, &str, &str)) -> Vec<DiffLine> {
     let (old_name, new_name, empty) = labels;
     let mut lines = vec![
         line(DiffLineKind::Header, format!("--- {old_name}")),
         line(DiffLineKind::Header, format!("+++ {new_name}")),
     ];
-    let hunks = hunks(old, new, context);
     if hunks.is_empty() {
         lines.push(line(DiffLineKind::Empty, empty.to_owned()));
     }
@@ -119,21 +121,20 @@ pub fn argo(target: &str, live: &str) -> Vec<DiffLine> {
     )
 }
 
-fn context(current: &str, dry_run: &str, full: bool) -> usize {
-    if full {
-        current
-            .split('\n')
-            .count()
-            .max(dry_run.split('\n').count())
-            .max(CONTEXT_LINES)
-    } else {
-        CONTEXT_LINES
+/// `buildYamlDryRunDiff`, rendered in either its clean or Git style.
+fn dry_run_lines(
+    diff: &TextDiff<'_, '_, str>,
+    context: usize,
+    git: bool,
+    force_conflicts: bool,
+) -> Vec<DiffLine> {
+    let hunks = hunks(diff, context);
+    if git {
+        return unified_hunks(
+            hunks,
+            ("current", "dry-run", "No server-side dry-run changes."),
+        );
     }
-}
-
-/// `buildYamlDryRunDiff` with the default `clean` diff style.
-pub fn dry_run(current: &str, dry_run: &str, full: bool, force_conflicts: bool) -> Vec<DiffLine> {
-    let hunks = hunks(current, dry_run, context(current, dry_run, full));
     let mut lines: Vec<DiffLine> = Vec::new();
     if hunks.is_empty() {
         lines.push(line(DiffLineKind::Empty, "No server-side dry-run changes."));
@@ -149,12 +150,21 @@ pub fn dry_run(current: &str, dry_run: &str, full: bool, force_conflicts: bool) 
     lines
 }
 
-pub fn dry_run_git(current: &str, dry_run: &str, full: bool) -> Vec<DiffLine> {
-    unified(
-        current,
-        dry_run,
-        context(current, dry_run, full),
-        ("current", "dry-run", "No server-side dry-run changes."),
+pub(crate) fn dry_run_pair(
+    current: &str,
+    dry_run: &str,
+    git: bool,
+    force_conflicts: bool,
+) -> (Vec<DiffLine>, Vec<DiffLine>) {
+    let diff = TextDiff::from_lines(current, dry_run);
+    let full = current
+        .split('\n')
+        .count()
+        .max(dry_run.split('\n').count())
+        .max(CONTEXT_LINES);
+    (
+        dry_run_lines(&diff, CONTEXT_LINES, git, force_conflicts),
+        dry_run_lines(&diff, full, git, force_conflicts),
     )
 }
 
@@ -188,9 +198,10 @@ mod tests {
     fn identical_input_reports_no_changes() {
         let lines = compact("a\n", "a\n");
         assert_eq!(lines[2].text.as_ref(), "No server-side dry-run changes.");
-        let clean = dry_run("a\n", "a\n", false, false);
-        assert_eq!(clean[0].text.as_ref(), "No server-side dry-run changes.");
-        assert_eq!(clean[2].text.as_ref(), "  force-conflicts: false");
+        let (compact, full) = dry_run_pair("a\n", "a\n", false, false);
+        assert_eq!(compact[0].text.as_ref(), "No server-side dry-run changes.");
+        assert_eq!(compact[2].text.as_ref(), "  force-conflicts: false");
+        assert_eq!(compact, full);
     }
 
     // Hunk ranges can break in these ways: an empty old side (empty file) or
@@ -202,7 +213,7 @@ mod tests {
     // after line 0.
 
     fn headers(old: &str, new: &str, context: usize) -> Vec<String> {
-        hunks(old, new, context)
+        hunks(&TextDiff::from_lines(old, new), context)
             .into_iter()
             .map(|hunk| hunk.header)
             .collect()
@@ -220,8 +231,14 @@ mod tests {
 
     #[test]
     fn edits_at_either_end_keep_one_based_starts() {
-        assert_eq!(headers("b\nc\n", "a\nb\nc\n", CONTEXT_LINES), ["@@ -1,2 +1,3 @@"]);
-        assert_eq!(headers("a\nb\n", "a\nb\nc\n", CONTEXT_LINES), ["@@ -1,2 +1,3 @@"]);
+        assert_eq!(
+            headers("b\nc\n", "a\nb\nc\n", CONTEXT_LINES),
+            ["@@ -1,2 +1,3 @@"]
+        );
+        assert_eq!(
+            headers("a\nb\n", "a\nb\nc\n", CONTEXT_LINES),
+            ["@@ -1,2 +1,3 @@"]
+        );
         assert!(headers("", "", CONTEXT_LINES).is_empty());
     }
 

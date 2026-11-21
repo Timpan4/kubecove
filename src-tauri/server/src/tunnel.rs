@@ -6,7 +6,7 @@ use kubecove_lib::{
         encode_tunnel_frame, is_tunnel_connection_id,
     },
 };
-use serde_json::json;
+use serde::Serialize;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -19,6 +19,43 @@ use tokio::{
 
 pub(crate) const RELAY_QUEUE_MESSAGES: usize = 16;
 
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all_fields = "camelCase")]
+pub(crate) enum TunnelReply<'a> {
+    #[serde(rename = "tunnel_registered")]
+    Registered {
+        forward_id: &'a str,
+        resolved_pod_name: &'a str,
+        resolved_pod_port: u16,
+        kubeconfig_source_key: Option<&'a str>,
+        kubeconfig_source_label: Option<&'a str>,
+    },
+    #[serde(rename = "tunnel_unregistered")]
+    Unregistered { forward_id: &'a str },
+    #[serde(rename = "tunnel_opened")]
+    Opened {
+        forward_id: &'a str,
+        connection_id: &'a str,
+    },
+    #[serde(rename = "tunnel_closed")]
+    Closed { connection_id: &'a str },
+    #[serde(rename = "tunnel_eof_ack")]
+    EofAck { connection_id: &'a str },
+    #[serde(rename = "tunnel_error")]
+    Error {
+        forward_id: Option<&'a str>,
+        connection_id: Option<&'a str>,
+        error: &'a AppError,
+    },
+}
+
+impl TunnelReply<'_> {
+    pub(crate) fn to_message(&self) -> Message {
+        let text = serde_json::to_string(self).expect("serializable tunnel reply");
+        Message::Text(text.into())
+    }
+}
+
 #[derive(Default)]
 struct TunnelState {
     forwards: HashMap<String, PortForwardRequest>,
@@ -28,7 +65,7 @@ struct TunnelState {
 
 struct TunnelConnection {
     forward_id: String,
-    incoming: Option<mpsc::Sender<Vec<u8>>>,
+    incoming: Option<mpsc::Sender<Bytes>>,
     task: JoinHandle<()>,
 }
 
@@ -124,19 +161,18 @@ impl TunnelRegistry {
             ))
             .await;
             let message = match result {
-                Ok(()) => {
-                    json!({ "type": "tunnel_closed", "connectionId": connection_id_for_task })
+                Ok(()) => TunnelReply::Closed {
+                    connection_id: &connection_id_for_task,
                 }
-                Err(error) => json!({
-                    "type": "tunnel_error",
-                    "forwardId": forward_id_for_task,
-                    "connectionId": connection_id_for_task,
-                    "error": error,
-                }),
+                .to_message(),
+                Err(error) => TunnelReply::Error {
+                    forward_id: Some(&forward_id_for_task),
+                    connection_id: Some(&connection_id_for_task),
+                    error: &error,
+                }
+                .to_message(),
             };
-            let _ = outbound
-                .send(Message::Text(message.to_string().into()))
-                .await;
+            let _ = outbound.send(message).await;
             registry.remove_connection(&connection_id_for_task, false);
         });
 
@@ -172,7 +208,7 @@ impl TunnelRegistry {
         Ok(())
     }
 
-    pub(crate) async fn send_binary(&self, frame: &[u8]) -> Result<Option<String>, AppError> {
+    pub(crate) async fn send_binary(&self, frame: &Bytes) -> Result<Option<String>, AppError> {
         let (connection_id, payload) = decode_tunnel_frame(frame)
             .ok_or_else(|| tunnel_validation("invalid tunnel data frame"))?;
         let sender = self
@@ -186,7 +222,7 @@ impl TunnelRegistry {
             self.close_connection(connection_id);
             return Ok(Some(connection_id.to_string()));
         };
-        if sender.send(payload.to_vec()).await.is_err() {
+        if sender.send(frame.slice_ref(payload)).await.is_err() {
             self.close_connection(connection_id);
             return Ok(Some(connection_id.to_string()));
         }
@@ -251,7 +287,7 @@ impl TunnelRegistry {
 
 async fn relay_connection(
     target: kubecove_lib::commands::sessions::TunnelTarget,
-    mut incoming: mpsc::Receiver<Vec<u8>>,
+    mut incoming: mpsc::Receiver<Bytes>,
     outbound: mpsc::Sender<Message>,
     connection_id: String,
 ) -> Result<(), AppError> {

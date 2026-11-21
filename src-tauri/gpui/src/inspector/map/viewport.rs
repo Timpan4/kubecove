@@ -265,7 +265,8 @@ impl Inspector {
             .1
             .clone();
         drop(edge_cache);
-        let visible_edges = edges.visible(&shown);
+        let visible = edges.visible(view, viewport, size.get(), shown);
+        let paint = visible.clone();
         let motion = self.map.edge_clock.motion();
         let edge_layer = canvas(
             move |bounds, window, _| {
@@ -278,7 +279,7 @@ impl Inspector {
             },
             move |bounds, (), window, _| {
                 if let Some(viewport) = viewport {
-                    edges.paint(bounds.origin, &visible_edges, viewport, motion, window);
+                    edges.paint(bounds.origin, &paint.edges, viewport, motion, window);
                 }
             },
         )
@@ -286,13 +287,11 @@ impl Inspector {
         .size_full();
         let nodes: Vec<AnyElement> = viewport.map_or_default(|viewport| {
             let z = viewport.zoom;
-            view.nodes
+            visible
+                .nodes
                 .iter()
-                .enumerate()
-                .filter(|(_, node)| {
-                    shown((node.x, node.y, node.x + node.width, node.y + node.height))
-                })
-                .map(|(index, node)| {
+                .map(|&index| {
+                    let node = &view.nodes[index];
                     let content = match &node.item {
                         FlowItem::Resource(index) => {
                             let resource = &topology.nodes[*index];

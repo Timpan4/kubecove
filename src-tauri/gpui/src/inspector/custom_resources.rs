@@ -55,7 +55,6 @@ impl Inspector {
         self.observation
             .install_custom(context, result, scope_started);
         self.warnings = self.scope_warnings(self.observation.warnings());
-        self.prepare_rows();
         self.filter(cx);
         cx.notify();
     }
@@ -153,10 +152,7 @@ impl Inspector {
         };
         let mut rows = vec![Row::new(self.custom_search_input(), SEARCH_HEIGHT)];
         rows.extend(self.custom_kind_rows(cx));
-        fold.clip(rows)
-            .into_iter()
-            .map(Row::into_element)
-            .collect()
+        fold.clip(rows).into_iter().map(Row::into_element).collect()
     }
 
     fn custom_kind_rows(&self, cx: &mut Context<Self>) -> Vec<Row> {

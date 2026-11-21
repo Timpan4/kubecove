@@ -5,45 +5,111 @@ use kube::{
     Client,
     api::{Api, ApiResource, DynamicObject, ListParams},
 };
-use std::collections::HashMap;
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 
 pub const MAX_FLUX_OWNER_OBJECTS: usize = 64;
 pub const MAX_FLUX_INVENTORY_ENTRIES: usize = 2048;
 
 #[derive(Debug, Clone, Default)]
 pub struct FluxOwnershipIndex {
-    owners: HashMap<ResourceKey, GitOpsOwnerSummary>,
+    owners: HashMap<ResourceKey<String>, GitOpsOwnerSummary>,
     pub partial: bool,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct ResourceKey {
-    namespace: Option<String>,
-    api_version: String,
-    kind: String,
-    name: String,
+struct ResourceKey<S> {
+    namespace: Option<S>,
+    api_version: S,
+    kind: S,
+    name: S,
 }
 
-impl ResourceKey {
-    fn for_summary(summary: &ResourceSummary) -> Self {
-        Self {
-            namespace: summary.namespace.clone(),
-            api_version: summary.api_version.clone().unwrap_or_default(),
-            kind: summary.kind.clone(),
-            name: summary.name.clone(),
+// The same identity can be hashed without allocating the strings of the owned key.
+trait ResourceIdentity {
+    fn key(&self) -> ResourceKey<&str>;
+}
+
+impl<S: AsRef<str>> ResourceIdentity for ResourceKey<S> {
+    fn key(&self) -> ResourceKey<&str> {
+        ResourceKey {
+            namespace: self.namespace.as_ref().map(AsRef::as_ref),
+            api_version: self.api_version.as_ref(),
+            kind: self.kind.as_ref(),
+            name: self.name.as_ref(),
         }
     }
 }
 
+impl Hash for dyn ResourceIdentity + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key().hash(state);
+    }
+}
+
+impl PartialEq for dyn ResourceIdentity + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for dyn ResourceIdentity + '_ {}
+
+impl<'a> Borrow<dyn ResourceIdentity + 'a> for ResourceKey<String> {
+    fn borrow(&self) -> &(dyn ResourceIdentity + 'a) {
+        self
+    }
+}
+
 impl FluxOwnershipIndex {
-    pub fn would_enrich(&self, summary: &ResourceSummary) -> bool {
-        if self.partial && !summary.git_ops_ownership_partial {
-            return true;
+    fn owner(&self, summary: &ResourceSummary) -> Option<&GitOpsOwnerSummary> {
+        let key = ResourceKey {
+            namespace: summary.namespace.as_deref(),
+            api_version: summary.api_version.as_deref().unwrap_or_default(),
+            kind: summary.kind.as_str(),
+            name: summary.name.as_str(),
+        };
+        let identity: &dyn ResourceIdentity = &key;
+        self.owners.get(identity)
+    }
+
+    /// Copies a row only when scoped Flux inventory changes its ownership or partialness.
+    pub fn enriched_summary(
+        &self,
+        summary: &ResourceSummary,
+        namespaces: &[String],
+    ) -> Option<ResourceSummary> {
+        let owner = if summary.git_ops_owner.is_none() {
+            self.owner(summary)
+                .filter(|_| {
+                    namespaces.is_empty()
+                        || target_namespace_allowed(summary.namespace.as_deref(), namespaces)
+                })
+                .cloned()
+                .map(|mut owner| {
+                    owner.partial = self.partial;
+                    owner
+                })
+        } else {
+            None
+        };
+
+        let needs_partial = self.partial
+            && (!summary.git_ops_ownership_partial
+                || summary
+                    .git_ops_owner
+                    .as_ref()
+                    .is_some_and(|owner| !owner.partial));
+        if owner.is_none() && !needs_partial {
+            return None;
         }
-        if let Some(owner) = &summary.git_ops_owner {
-            return self.partial && !owner.partial;
-        }
-        !self.owners.is_empty() && self.owners.contains_key(&ResourceKey::for_summary(summary))
+
+        let mut summary = summary.clone();
+        apply_enrichment(&mut summary, owner, self.partial);
+        Some(summary)
     }
 
     pub fn retained_item_count(&self) -> usize {
@@ -52,7 +118,7 @@ impl FluxOwnershipIndex {
 
     pub(crate) fn shallow_payload_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
-            + self.owners.len() * std::mem::size_of::<(ResourceKey, GitOpsOwnerSummary)>()
+            + self.owners.len() * std::mem::size_of::<(ResourceKey<String>, GitOpsOwnerSummary)>()
     }
 }
 
@@ -106,9 +172,8 @@ pub async fn read_flux_ownership_index(
     Ok(filter_flux_ownership_index(index, namespaces))
 }
 
-/// Lists Flux owner objects cluster-wide. Namespace scoping happens later in
-/// [`filter_flux_ownership_index`] so callers can cache the fetched index and
-/// re-scope it per request without re-listing.
+/// Lists Flux owner objects cluster-wide so callers can cache the index and
+/// scope it per request without re-listing.
 pub async fn fetch_flux_ownership_index(client: Client) -> Result<FluxOwnershipIndex, AppError> {
     // The owner kinds are listed together and indexed in catalog order. A
     // cancelled list ends the read at once; other failures mark it partial.
@@ -251,344 +316,29 @@ pub fn enrich_resource_summaries_with_flux_inventory(
     index: &FluxOwnershipIndex,
 ) {
     for summary in summaries.iter_mut() {
-        summary.git_ops_ownership_partial |= index.partial;
-        if let Some(owner) = summary.git_ops_owner.as_mut() {
-            owner.partial |= index.partial;
-            continue;
-        }
-        if let Some(owner) = index.owners.get(&ResourceKey::for_summary(summary)) {
-            let mut owner = owner.clone();
-            owner.partial |= index.partial;
-            summary.git_ops_owner = Some(owner);
-        }
+        let owner = if summary.git_ops_owner.is_none() {
+            index.owner(summary).cloned()
+        } else {
+            None
+        };
+        apply_enrichment(summary, owner, index.partial);
+    }
+}
+
+fn apply_enrichment(
+    summary: &mut ResourceSummary,
+    new_owner: Option<GitOpsOwnerSummary>,
+    partial: bool,
+) {
+    summary.git_ops_ownership_partial |= partial;
+    if let Some(owner) = new_owner {
+        summary.git_ops_owner = Some(owner);
+    }
+    if let Some(owner) = &mut summary.git_ops_owner {
+        owner.partial |= partial;
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use http::{Request, Response, header::CONTENT_TYPE};
-    use kube::client::Body;
-    use serde_json::json;
-
-    type MockHandle = tower_test::mock::Handle<Request<Body>, Response<Body>>;
-
-    fn mock_client() -> (Client, MockHandle) {
-        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-        (Client::new(service, "default"), handle)
-    }
-
-    fn json_response(status: u16, body: serde_json::Value) -> Response<Body> {
-        Response::builder()
-            .status(status)
-            .header(CONTENT_TYPE, "application/json")
-            .body(Body::from(serde_json::to_vec(&body).unwrap()))
-            .unwrap()
-    }
-
-    fn inventory_list() -> serde_json::Value {
-        json!({
-            "apiVersion": "v1",
-            "items": [{
-                "apiVersion": "apps/v1",
-                "kind": "Deployment",
-                "metadata": {"name": "api", "namespace": "default"},
-                "status": {
-                    "inventory": {
-                        "entries": [{"id": "default_api_apps_Deployment", "version": "v1"}]
-                    }
-                }
-            }]
-        })
-    }
-
-    #[tokio::test]
-    async fn provider_list_failure_preserves_evidence_from_next_kind() {
-        let (client, mut handle) = mock_client();
-        let read = read_flux_ownership_index(client, &[]);
-        let respond = async move {
-            let (_, send) = handle.next_request().await.expect("Kustomization request");
-            send.send_response(json_response(
-                500,
-                json!({
-                    "apiVersion": "v1", "kind": "Status", "message": "provider unavailable"
-                }),
-            ));
-
-            let (_, send) = handle.next_request().await.expect("HelmRelease request");
-            send.send_response(json_response(200, inventory_list()));
-        };
-
-        let (index, ()) = tokio::join!(read, respond);
-        let index = index.expect("partial index");
-        assert!(index.partial);
-        assert!(index.owners.contains_key(&ResourceKey {
-            namespace: Some("default".into()),
-            api_version: "apps/v1".into(),
-            kind: "Deployment".into(),
-            name: "api".into(),
-        }));
-    }
-
-    #[tokio::test]
-    async fn cancelled_provider_list_failure_is_fatal() {
-        let (client, mut handle) = mock_client();
-        let read = read_flux_ownership_index(client, &[]);
-        let respond = async move {
-            let (_, send) = handle.next_request().await.expect("Kustomization request");
-            send.send_error(crate::models::WorkspaceRequestCancelled);
-        };
-
-        let (result, ()) = tokio::join!(read, respond);
-        assert_eq!(
-            result.expect_err("cancellation should be fatal").kind,
-            AppErrorKind::Cancelled
-        );
-    }
-
-    #[test]
-    fn continuation_token_marks_inventory_partial() {
-        assert!(has_continuation_token(Some("next-page")));
-        assert!(!has_continuation_token(Some("")));
-        assert!(!has_continuation_token(None));
-    }
-
-    #[test]
-    fn parses_defensively() {
-        assert_eq!(
-            parse_inventory_id("default_api_apps_Deployment"),
-            Some((
-                Some("default".into()),
-                "api".into(),
-                "apps".into(),
-                "Deployment".into(),
-            ))
-        );
-        assert_eq!(
-            parse_inventory_id("_shared_storage.k8s.io_StorageClass"),
-            Some((
-                None,
-                "shared".into(),
-                "storage.k8s.io".into(),
-                "StorageClass".into(),
-            ))
-        );
-        assert_eq!(parse_inventory_id("bad"), None);
-        assert_eq!(parse_inventory_id("__apps_Deployment"), None);
-    }
-
-    #[test]
-    fn complete_inventory_is_not_partial_and_coverage_marks_unmatched_rows() {
-        let mut index = FluxOwnershipIndex::default();
-        index.owners.insert(
-            ResourceKey {
-                namespace: Some("default".into()),
-                api_version: "apps/v1".into(),
-                kind: "Deployment".into(),
-                name: "api".into(),
-            },
-            GitOpsOwnerSummary {
-                provider: "flux".into(),
-                kind: "Kustomization".into(),
-                name: "apps".into(),
-                namespace: Some("flux-system".into()),
-                confidence: "inventory".into(),
-                provenance: "flux-inventory".into(),
-                partial: false,
-            },
-        );
-        let mut summaries = vec![summary("Deployment", "api"), summary("Service", "missing")];
-
-        assert!(index.would_enrich(&summaries[0]));
-        assert!(!index.would_enrich(&summaries[1]));
-
-        enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
-
-        assert!(!summaries[0].git_ops_owner.as_ref().unwrap().partial);
-        assert_eq!(summaries[1].git_ops_owner, None);
-        assert!(!summaries.iter().any(|row| row.git_ops_ownership_partial));
-        assert!(summaries.iter().all(|row| !index.would_enrich(row)));
-
-        index.partial = true;
-        assert!(summaries.iter().all(|row| index.would_enrich(row)));
-        enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
-        assert!(summaries.iter().all(|row| row.git_ops_ownership_partial));
-        assert!(summaries[0].git_ops_owner.as_ref().unwrap().partial);
-        assert!(summaries.iter().all(|row| !index.would_enrich(row)));
-    }
-
-    fn summary(kind: &str, name: &str) -> ResourceSummary {
-        let mut summary: ResourceSummary = serde_json::from_value(json!({
-            "kind": kind,
-            "cluster": "kind-dev",
-            "name": name,
-            "namespace": "default",
-            "age": "1m",
-            "health": "unknown"
-        }))
-        .expect("summary");
-        summary.api_version = Some(
-            match kind {
-                "Deployment" => "apps/v1",
-                _ => "v1",
-            }
-            .to_string(),
-        );
-        summary
-    }
-
-    #[test]
-    fn api_version_is_part_of_inventory_identity() {
-        let owner = GitOpsOwnerSummary {
-            provider: "flux".into(),
-            kind: "Kustomization".into(),
-            name: "apps".into(),
-            namespace: Some("flux-system".into()),
-            confidence: "inventory".into(),
-            provenance: "flux-inventory".into(),
-            partial: false,
-        };
-        let mut index = FluxOwnershipIndex::default();
-        index.owners.insert(
-            ResourceKey {
-                namespace: Some("default".into()),
-                api_version: "apps/v1".into(),
-                kind: "Deployment".into(),
-                name: "api".into(),
-            },
-            owner,
-        );
-        let mut summaries = vec![summary("Deployment", "api")];
-        enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
-        assert!(summaries[0].git_ops_owner.is_some());
-
-        summaries[0].api_version = Some("example.com/v1".into());
-        summaries[0].git_ops_owner = None;
-        enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
-        assert!(summaries[0].git_ops_owner.is_none());
-    }
-
-    #[test]
-    fn core_and_incomplete_inventory_versions_are_handled_safely() {
-        assert_eq!(normalized_api_version("", Some("v1")), Some("v1".into()));
-        assert_eq!(
-            normalized_api_version("apps", Some("v1")),
-            Some("apps/v1".into())
-        );
-        assert_eq!(normalized_api_version("apps", None), None);
-        assert_eq!(normalized_api_version("apps", Some("")), None);
-
-        let mut index = FluxOwnershipIndex::default();
-        let parsed = parse_inventory_id("default_config__ConfigMap").unwrap();
-        let api_version = normalized_api_version(&parsed.2, Some("v1")).unwrap();
-        index.owners.insert(
-            ResourceKey {
-                namespace: parsed.0,
-                api_version,
-                kind: parsed.3,
-                name: parsed.1,
-            },
-            GitOpsOwnerSummary {
-                provider: "flux".into(),
-                kind: "Kustomization".into(),
-                name: "apps".into(),
-                namespace: None,
-                confidence: "inventory".into(),
-                provenance: "flux-inventory".into(),
-                partial: false,
-            },
-        );
-        let mut summaries = vec![summary("ConfigMap", "config")];
-        enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
-        assert!(summaries[0].git_ops_owner.is_some());
-    }
-    #[test]
-    fn cluster_scoped_inventory_survives_namespace_filtering_and_enriches_summary() {
-        let owner = GitOpsOwnerSummary {
-            provider: "flux".into(),
-            kind: "Kustomization".into(),
-            name: "apps".into(),
-            namespace: Some("flux-system".into()),
-            confidence: "inventory".into(),
-            provenance: "flux-inventory".into(),
-            partial: false,
-        };
-        let mut index = FluxOwnershipIndex::default();
-        index.owners.insert(
-            ResourceKey {
-                namespace: None,
-                api_version: "storage.k8s.io/v1".into(),
-                kind: "StorageClass".into(),
-                name: "shared".into(),
-            },
-            owner.clone(),
-        );
-        index.owners.insert(
-            ResourceKey {
-                namespace: Some("default".into()),
-                api_version: "apps/v1".into(),
-                kind: "Deployment".into(),
-                name: "api".into(),
-            },
-            owner.clone(),
-        );
-        index.owners.insert(
-            ResourceKey {
-                namespace: Some("other".into()),
-                api_version: "apps/v1".into(),
-                kind: "Deployment".into(),
-                name: "api".into(),
-            },
-            owner.clone(),
-        );
-
-        let requested = ["default".to_string()];
-        index
-            .owners
-            .retain(|key, _| target_namespace_allowed(key.namespace.as_deref(), &requested));
-
-        assert!(index.owners.contains_key(&ResourceKey {
-            namespace: None,
-            api_version: "storage.k8s.io/v1".into(),
-            kind: "StorageClass".into(),
-            name: "shared".into(),
-        }));
-        assert!(index.owners.contains_key(&ResourceKey {
-            namespace: Some("default".into()),
-            api_version: "apps/v1".into(),
-            kind: "Deployment".into(),
-            name: "api".into(),
-        }));
-        assert!(!index.owners.contains_key(&ResourceKey {
-            namespace: Some("other".into()),
-            api_version: "apps/v1".into(),
-            kind: "Deployment".into(),
-            name: "api".into(),
-        }));
-
-        let mut summaries = vec![summary_cluster_scoped("StorageClass", "shared")];
-        enrich_resource_summaries_with_flux_inventory(&mut summaries, &index);
-
-        assert_eq!(summaries[0].git_ops_owner, Some(owner));
-    }
-
-    fn summary_cluster_scoped(kind: &str, name: &str) -> ResourceSummary {
-        let mut summary: ResourceSummary = serde_json::from_value(json!({
-            "kind": kind,
-            "cluster": "kind-dev",
-            "name": name,
-            "namespace": null,
-            "age": "1m",
-            "health": "unknown"
-        }))
-        .expect("summary");
-        summary.api_version = Some(
-            match kind {
-                "StorageClass" => "storage.k8s.io/v1",
-                _ => "v1",
-            }
-            .to_string(),
-        );
-        summary
-    }
-}
+#[path = "flux_inventory_tests.rs"]
+mod tests;

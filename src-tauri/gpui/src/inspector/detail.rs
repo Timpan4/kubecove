@@ -154,6 +154,7 @@ impl ResourceDetail {
             f32::from(viewport.width).to_bits(),
             f32::from(viewport.height).to_bits(),
         ));
+        let (factory, syntax) = yaml::fold_factory();
         let editor = cx.new(|cx| {
             let mut editor = EditorState::new(window, cx)
                 .language("yaml")
@@ -161,7 +162,7 @@ impl ResourceDetail {
                 // The web marks indentation with tints instead of guide lines.
                 .indent_guides(false)
                 .default_value(data.yaml.clone());
-            editor.set_highlighter_factory(yaml::fold_factory(), cx);
+            editor.set_highlighter_factory(factory, cx);
             editor
         });
         let marks = YamlMarks::new(&editor, cx);
@@ -185,7 +186,7 @@ impl ResourceDetail {
         Self {
             metadata: Default::default(),
             lenses: Vec::new(),
-            lint: Default::default(),
+            lint: yaml::Lint::new(syntax),
             secrets: Default::default(),
             forward,
             opened_health: data.summary.health_assessment.clone(),
@@ -543,137 +544,156 @@ impl Inspector {
         let loading = self
             .loading
             .phase("detail", matches!(self.detail, Detail::Loading(_)));
-        let body: AnyElement = match &self.detail {
-            Detail::Closed => unreachable!("closed detail returned early"),
-            _ if loading.shown() => {
-                ui::muted(ui::xs("Loading resource details...")).into_any_element()
-            }
-            Detail::Loading(_) => div().into_any_element(),
-            _ if !loading.ready() => div().into_any_element(),
-            Detail::Failed(failed) => {
-                let permission =
-                    friendly_error::resource_permission(&failed.resource, "get").map(|target| {
-                        feedback::Permission {
+        let body: AnyElement =
+            match &self.detail {
+                Detail::Closed => unreachable!("closed detail returned early"),
+                _ if loading.shown() => {
+                    ui::muted(ui::xs("Loading resource details...")).into_any_element()
+                }
+                Detail::Loading(_) => div().into_any_element(),
+                _ if !loading.ready() => div().into_any_element(),
+                Detail::Failed(failed) => {
+                    let permission = friendly_error::resource_permission(&failed.resource, "get")
+                        .map(|target| feedback::Permission {
                             cluster: failed.resource.cluster.clone(),
                             target,
-                        }
-                    });
-                self.friendly_failure(
-                    "detail-error",
-                    Some(failed.error.kind),
-                    &failed.error.message,
-                    friendly_error::Context {
-                        operation: Some(friendly_error::Operation::Details),
-                        fallback_title: Some("Failed to load details"),
-                        ..Default::default()
-                    },
-                    permission,
-                    cx,
-                )
-            }
-            Detail::Ready(detail) => {
-                let summary = &detail.data.summary;
-                let identity = format!(
-                    "{} {} {}",
-                    summary.kind,
-                    summary.namespace.as_deref().unwrap_or("Cluster"),
-                    summary.name
-                );
-                let content: AnyElement = match detail.tab {
-                    DetailTab::Details => details_tab(
-                        detail,
-                        &self.timeline,
-                        self.persisted.preferences.timestamp_timezone,
-                        &self.loading,
+                        });
+                    self.friendly_failure(
+                        "detail-error",
+                        Some(failed.error.kind),
+                        &failed.error.message,
+                        friendly_error::Context {
+                            operation: Some(friendly_error::Operation::Details),
+                            fallback_title: Some("Failed to load details"),
+                            ..Default::default()
+                        },
+                        permission,
                         cx,
                     )
-                    .into_any_element(),
-                    DetailTab::Forward => self.forward_tab(cx).into_any_element(),
-                    DetailTab::Exec => self.exec_view(cx),
-                    DetailTab::Events => events_tab(
-                        detail,
-                        self.persisted.preferences.timestamp_timezone,
-                        &self.loading,
-                        cx,
-                    ),
-                    DetailTab::Logs => logs_tab(
-                        detail,
-                        self.persisted.preferences.log_layout,
-                        &self.loading,
-                        &self.overlay_motion,
-                        cx,
-                    ),
-                    DetailTab::Revisions => revisions_tab(detail, &self.loading, cx),
-                    DetailTab::Argo => self.argo_detail_tab(detail, cx),
-                    DetailTab::Actions => actions_tab(detail, &self.loading, cx),
-                    DetailTab::Yaml => {
-                        yaml_tab(self, detail, &self.persisted.preferences, cx).into_any_element()
-                    }
-                };
-                let content = crate::frame_profile::element(
-                    match detail.tab {
-                        DetailTab::Details => "detail.details",
-                        DetailTab::Forward => "detail.forward",
-                        DetailTab::Exec => "detail.exec",
-                        DetailTab::Events => "detail.events",
-                        DetailTab::Logs => "detail.logs",
-                        DetailTab::Revisions => "detail.revisions",
-                        DetailTab::Argo => "detail.argo",
-                        DetailTab::Actions => "detail.actions",
-                        DetailTab::Yaml => "detail.yaml",
-                    },
-                    content,
-                );
-                // The whole body replaces the detail indicator; a tab's
-                // content replaces that tab's own.
-                let reveal = self.loading.reveal("detail").or_else(|| {
-                    self.loading.reveal(match detail.tab {
-                        DetailTab::Events => "events",
-                        DetailTab::Revisions => "revisions",
-                        _ => return None,
-                    })
-                });
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .when_some(reveal, |body, opacity| body.opacity(opacity))
-                    .when(
-                        matches!(
-                            detail.tab,
-                            DetailTab::Details | DetailTab::Events | DetailTab::Argo | DetailTab::Yaml
-                        ),
-                        |body| body.flex_none(),
-                    )
-                    .child(
-                        div()
-                            .id("detail-identity")
-                            .test_support()
-                            .aria_label(identity)
-                            .absolute()
-                            .size_0(),
-                    )
-                    .when(matches!(detail.tab, DetailTab::Details | DetailTab::Events), |body| {
-                        body.children(
-                            [
-                                ("events-watch-warning", "Events watch failed", &detail.events.watch_error),
-                                ("events-refresh-warning", "Events refresh failed", &detail.events.refresh_error),
-                            ]
-                            .into_iter()
-                            .filter_map(|(id, heading, error)| {
-                                let message = SharedString::from(format!("{heading}: {}", error.as_ref()?));
-                                Some(ui::muted(ui::xs(message.clone()))
-                                    .id(id)
-                                    .test_support()
-                                    .aria_label(message))
-                            }),
+                }
+                Detail::Ready(detail) => {
+                    let summary = &detail.data.summary;
+                    let identity = format!(
+                        "{} {} {}",
+                        summary.kind,
+                        summary.namespace.as_deref().unwrap_or("Cluster"),
+                        summary.name
+                    );
+                    let content: AnyElement = match detail.tab {
+                        DetailTab::Details => details_tab(
+                            detail,
+                            &self.timeline,
+                            self.persisted.preferences.timestamp_timezone,
+                            &self.loading,
+                            cx,
                         )
-                    })
-                    .child(content)
-                    .into_any_element()
-            }
-        };
+                        .into_any_element(),
+                        DetailTab::Forward => self.forward_tab(cx).into_any_element(),
+                        DetailTab::Exec => self.exec_view(cx),
+                        DetailTab::Events => events_tab(
+                            detail,
+                            self.persisted.preferences.timestamp_timezone,
+                            &self.loading,
+                            cx,
+                        ),
+                        DetailTab::Logs => logs_tab(
+                            detail,
+                            self.persisted.preferences.log_layout,
+                            &self.loading,
+                            &self.overlay_motion,
+                            cx,
+                        ),
+                        DetailTab::Revisions => revisions_tab(detail, &self.loading, cx),
+                        DetailTab::Argo => self.argo_detail_tab(detail, cx),
+                        DetailTab::Actions => actions_tab(detail, &self.loading, cx),
+                        DetailTab::Yaml => yaml_tab(self, detail, &self.persisted.preferences, cx)
+                            .into_any_element(),
+                    };
+                    let content = crate::frame_profile::element(
+                        match detail.tab {
+                            DetailTab::Details => "detail.details",
+                            DetailTab::Forward => "detail.forward",
+                            DetailTab::Exec => "detail.exec",
+                            DetailTab::Events => "detail.events",
+                            DetailTab::Logs => "detail.logs",
+                            DetailTab::Revisions => "detail.revisions",
+                            DetailTab::Argo => "detail.argo",
+                            DetailTab::Actions => "detail.actions",
+                            DetailTab::Yaml => "detail.yaml",
+                        },
+                        content,
+                    );
+                    // The whole body replaces the detail indicator; a tab's
+                    // content replaces that tab's own.
+                    let reveal = self.loading.reveal("detail").or_else(|| {
+                        self.loading.reveal(match detail.tab {
+                            DetailTab::Events => "events",
+                            DetailTab::Revisions => "revisions",
+                            _ => return None,
+                        })
+                    });
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_h_0()
+                        .when_some(reveal, |body, opacity| body.opacity(opacity))
+                        .when(
+                            matches!(
+                                detail.tab,
+                                DetailTab::Details
+                                    | DetailTab::Events
+                                    | DetailTab::Argo
+                                    | DetailTab::Yaml
+                            ),
+                            |body| body.flex_none(),
+                        )
+                        .child(
+                            div()
+                                .id("detail-identity")
+                                .test_support()
+                                .aria_label(identity)
+                                .absolute()
+                                .size_0(),
+                        )
+                        .when(
+                            matches!(detail.tab, DetailTab::Details | DetailTab::Events),
+                            |body| {
+                                body.children(
+                                    [
+                                        (
+                                            "events-watch-warning",
+                                            "Events watch failed",
+                                            &detail.events.watch_error,
+                                        ),
+                                        (
+                                            "events-refresh-warning",
+                                            "Events refresh failed",
+                                            &detail.events.refresh_error,
+                                        ),
+                                    ]
+                                    .into_iter()
+                                    .filter_map(
+                                        |(id, heading, error)| {
+                                            let message = SharedString::from(format!(
+                                                "{heading}: {}",
+                                                error.as_ref()?
+                                            ));
+                                            Some(
+                                                ui::muted(ui::xs(message.clone()))
+                                                    .id(id)
+                                                    .test_support()
+                                                    .aria_label(message),
+                                            )
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                        .child(content)
+                        .into_any_element()
+                }
+            };
         let scroll = match &self.detail {
             Detail::Ready(detail) => Some(&detail.scroll),
             _ => None,

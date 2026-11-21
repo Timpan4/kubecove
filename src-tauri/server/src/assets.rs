@@ -1,4 +1,4 @@
-use crate::{ApiError, AppState, index_with_policy};
+use crate::{ApiError, index_with_policy, security::GuardState};
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode, Uri, header},
@@ -20,7 +20,7 @@ struct CompressedAsset {
 include!(concat!(env!("OUT_DIR"), "/compressed_assets.rs"));
 
 pub(super) async fn asset(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<GuardState>>,
     headers: HeaderMap,
     uri: Uri,
 ) -> Response {
@@ -38,14 +38,13 @@ pub(super) async fn asset(
         return StatusCode::NOT_FOUND.into_response();
     };
     if path == "index.html" {
-        let host = headers
-            .get(header::HOST)
-            .and_then(|host| host.to_str().ok())
-            .expect("validated Host");
-        let policy = state.policy.content_security_policy(host);
+        let policy = state
+            .content_security_policy(&headers)
+            .to_str()
+            .expect("validated Host CSP");
         let html = std::str::from_utf8(&asset.data)
             .ok()
-            .and_then(|html| index_with_policy(html, &policy));
+            .and_then(|html| index_with_policy(html, policy));
         return html.map_or_else(
             || StatusCode::INTERNAL_SERVER_ERROR.into_response(),
             |html| ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response(),
@@ -55,7 +54,7 @@ pub(super) async fn asset(
         .first_or_octet_stream()
         .to_string();
     let Some(compressed) = compressed_asset(path) else {
-        return ([(header::CONTENT_TYPE, mime)], asset.data.into_owned()).into_response();
+        return ([(header::CONTENT_TYPE, mime)], asset.data).into_response();
     };
     let encoding = negotiate(&headers, &compressed);
     let mut response = match encoding {
@@ -64,7 +63,7 @@ pub(super) async fn asset(
             .expect("negotiated Brotli")
             .into_response(),
         "gzip" => compressed.gzip.expect("negotiated gzip").into_response(),
-        _ => asset.data.into_owned().into_response(),
+        _ => asset.data.into_response(),
     };
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, mime.parse().expect("MIME header"));

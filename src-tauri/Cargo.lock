@@ -2693,7 +2693,6 @@ dependencies = [
  "k8s-openapi",
  "kube-client",
  "kube-core",
- "kube-derive",
 ]
 
 [[package]]
@@ -2745,25 +2744,10 @@ dependencies = [
  "http",
  "jiff",
  "k8s-openapi",
- "schemars 1.2.3",
  "serde",
  "serde-value",
  "serde_json",
  "thiserror 2.0.21",
-]
-
-[[package]]
-name = "kube-derive"
-version = "5.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9f4ad02a27b7385ca9da44d83788aca4f11feeebf2ee57ded3003037051019f"
-dependencies = [
- "darling",
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "syn 3.0.9",
 ]
 
 [[package]]

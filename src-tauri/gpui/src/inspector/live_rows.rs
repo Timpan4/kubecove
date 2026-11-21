@@ -1,7 +1,8 @@
 //! Snapshot reconciliation patches listed and visible rows without rebuilding the table.
 use super::Inspector;
+use super::row_index::PatchSource;
 use crate::backend::Scope;
-use crate::model::ObservedNames;
+use crate::model::{ObservedNames, RowsChange};
 use kubecove_lib::models::{ResourceSummary, WatchResourceKey};
 
 impl Inspector {
@@ -23,12 +24,12 @@ impl Inspector {
         rows: Vec<ResourceSummary>,
         resource_version: Option<String>,
         names: Option<ObservedNames>,
-    ) -> Vec<ResourceSummary> {
+    ) -> (Vec<ResourceSummary>, Option<(PatchSource, RowsChange)>) {
         let _span = crate::frame_profile::scope("watch", "patch");
         if !self.observation.accepts(scope)
             || self.behind_shown(scope, key, resource_version.as_deref())
         {
-            return rows;
+            return (rows, None);
         }
         let cluster_kind = crate::backend::CLUSTER_KINDS.contains(&key.resource_kind.kind.as_str());
         // The Cluster Overview's cluster read covers the selected context only.
@@ -36,7 +37,7 @@ impl Inspector {
             && self.page == super::Page::ClusterOverview
             && scope.context != self.scope.context
         {
-            return rows;
+            return (rows, None);
         }
         if names.is_none() {
             self.observation.kind_relisted(&scope.context, key);
@@ -50,8 +51,7 @@ impl Inspector {
                 Some(version) => self.cluster.versions.insert(id, version),
                 None => self.cluster.versions.remove(&id),
             };
-            crate::model::reconcile(
-                &mut self.cluster.rows,
+            let (retired, change) = self.cluster.rows.patch_noting(
                 &scope.context,
                 key,
                 rows,
@@ -59,16 +59,17 @@ impl Inspector {
                 &mut self.row_changes.added,
             );
             self.observation.rows_patched();
-            Vec::new()
+            (retired, Some((PatchSource::Cluster, change)))
         } else {
-            self.observation.patch(
+            let (retired, change) = self.observation.patch(
                 scope,
                 key,
                 rows,
                 resource_version,
                 names,
                 &mut self.row_changes.added,
-            )
+            );
+            (retired, Some((PatchSource::Scope, change)))
         }
     }
 

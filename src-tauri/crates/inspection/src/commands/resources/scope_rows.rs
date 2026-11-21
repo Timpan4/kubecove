@@ -1,7 +1,6 @@
-use crate::commands::helpers::{FluxOwnershipIndex, enrich_resource_summaries_with_flux_inventory};
+use crate::commands::helpers::FluxOwnershipIndex;
 use crate::models::ResourceSummary;
 use serde::{Serialize, Serializer};
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -30,7 +29,7 @@ mod tests {
                 index.clone(),
                 &[],
             );
-            let shared = SharedRows::new(batches.clone(), &index);
+            let shared = SharedRows::new(batches.clone(), &index, &[]);
             assert_eq!(
                 serde_json::to_vec(&shared).unwrap(),
                 serde_json::to_vec(&expected).unwrap()
@@ -77,23 +76,25 @@ pub struct SharedRows {
 }
 
 impl SharedRows {
-    pub(super) fn new(batches: Vec<Arc<Vec<ResourceSummary>>>, index: &FluxOwnershipIndex) -> Self {
-        let mut unique = BTreeMap::new();
+    pub(super) fn new(
+        batches: Vec<Arc<Vec<ResourceSummary>>>,
+        index: &FluxOwnershipIndex,
+        namespaces: &[String],
+    ) -> Self {
+        let mut unique = Vec::with_capacity(batches.iter().map(|batch| batch.len()).sum());
         for (batch_index, batch) in batches.iter().enumerate() {
             for (row_index, row) in batch.iter().enumerate() {
-                unique.insert(super::row_key(row), (batch_index, row_index));
+                unique.push((super::row_key(row), (batch_index, row_index)));
             }
         }
+        // For equal keys, put the last row first so deduplication retains it.
+        unique.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
+        unique.dedup_by(|a, b| a.0 == b.0);
         let mut rows = Vec::with_capacity(unique.len());
         let mut changed = Vec::new();
-        for (batch, row) in unique.into_values() {
+        for (_, (batch, row)) in unique {
             let summary = &batches[batch][row];
-            if index.would_enrich(summary) {
-                let mut summary = summary.clone();
-                enrich_resource_summaries_with_flux_inventory(
-                    std::slice::from_mut(&mut summary),
-                    index,
-                );
+            if let Some(summary) = index.enriched_summary(summary, namespaces) {
                 rows.push(RowRef::Changed(changed.len()));
                 changed.push(summary);
             } else {

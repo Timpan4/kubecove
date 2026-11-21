@@ -22,6 +22,7 @@ use gpui_kit::{
 };
 use std::cell::{OnceCell, RefCell};
 use std::ops::Range;
+use std::rc::Rc;
 
 /// The pulse's dot and its halo in flow units, from `.ownership-map-pulse` and
 /// `.ownership-map-pulse-halo` in `App.css`, and the halo's opacity.
@@ -49,6 +50,18 @@ impl EdgePaint {
 pub(super) struct PreparedEdges {
     source: Vec<EdgePaint>,
     geometry: RefCell<Option<Geometry>>,
+    visible: RefCell<Option<VisibleViewport>>,
+}
+
+struct VisibleViewport {
+    viewport: Option<Viewport>,
+    canvas: (f32, f32),
+    items: Rc<VisibleItems>,
+}
+
+pub(super) struct VisibleItems {
+    pub nodes: Vec<usize>,
+    pub edges: Vec<usize>,
 }
 
 /// Edge triangles at one zoom, in flow coordinates times the zoom. Edges are
@@ -125,14 +138,49 @@ impl PreparedEdges {
         Self {
             source,
             geometry: RefCell::default(),
+            visible: RefCell::default(),
         }
     }
 
-    /// The edges whose bounds pass `shown`, in paint order.
-    pub fn visible(&self, shown: impl Fn((f32, f32, f32, f32)) -> bool) -> Vec<usize> {
-        (0..self.source.len())
-            .filter(|&index| shown(self.source[index].bounds))
-            .collect()
+    /// The owning graph has its own cache. Edge animation reuses its viewport
+    /// membership while the canvas and transform stay fixed.
+    pub fn visible(
+        &self,
+        view: &topology::View,
+        viewport: Option<Viewport>,
+        canvas: (f32, f32),
+        shown: impl Fn((f32, f32, f32, f32)) -> bool,
+    ) -> Rc<VisibleItems> {
+        let mut visible = self.visible.borrow_mut();
+        if let Some(cached) = &*visible
+            && cached.viewport == viewport
+            && cached.canvas == canvas
+        {
+            return cached.items.clone();
+        }
+        let items = Rc::new(VisibleItems {
+            nodes: view
+                .nodes
+                .iter()
+                .enumerate()
+                .filter_map(|(index, node)| {
+                    shown((node.x, node.y, node.x + node.width, node.y + node.height))
+                        .then_some(index)
+                })
+                .collect(),
+            edges: self
+                .source
+                .iter()
+                .enumerate()
+                .filter_map(|(index, edge)| shown(edge.bounds).then_some(index))
+                .collect(),
+        });
+        *visible = Some(VisibleViewport {
+            viewport,
+            canvas,
+            items: items.clone(),
+        });
+        items
     }
 
     pub fn paint(

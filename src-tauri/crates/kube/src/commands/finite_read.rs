@@ -115,12 +115,25 @@ impl<'a> FiniteRead<'a> {
         result: &Result<T, AppError>,
         summary: impl FnOnce(&T) -> Vec<BackendDiagnosticField>,
     ) {
+        self.log_finish(
+            started,
+            &self.labels(),
+            started.elapsed().as_millis(),
+            result.as_ref().map(summary),
+        );
+    }
+
+    #[inline(never)]
+    fn log_finish(
+        &self,
+        started: Instant,
+        labels: &str,
+        ms: u128,
+        result: Result<Vec<BackendDiagnosticField>, &AppError>,
+    ) {
         let command = self.command;
-        let labels = self.labels();
-        let ms = started.elapsed().as_millis();
         match result {
-            Ok(value) => {
-                let fields = summary(value);
+            Ok(fields) => {
                 // Summary fields already shown as labels are not repeated.
                 let details = fields
                     .iter()

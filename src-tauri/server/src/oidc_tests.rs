@@ -29,9 +29,7 @@ async fn expired_sign_in_cannot_refresh_or_publish() {
     oidc.credentials
         .lock()
         .unwrap()
-        .get_mut(&auth.credential.0)
-        .unwrap()
-        .expires_unix = unix_now();
+        .expire_for_test(&auth.credential.0);
     assert!(oidc.ensure_fresh(&auth.credential.0).await.is_err());
     assert!(auth.revoked.is_cancelled());
     assert!(scope.bearer().is_none());
@@ -56,6 +54,7 @@ async fn sign_in_expiring_during_refresh_cannot_publish_the_response() {
     oidc.credentials
         .lock()
         .unwrap()
+        .entries
         .get_mut(&auth.credential.0)
         .unwrap()
         .tokens
@@ -71,9 +70,7 @@ async fn sign_in_expiring_during_refresh_cannot_publish_the_response() {
     oidc.credentials
         .lock()
         .unwrap()
-        .get_mut(&auth.credential.0)
-        .unwrap()
-        .expires_unix = unix_now();
+        .expire_for_test(&auth.credential.0);
     drop(gate);
     assert!(renewal.await.is_err());
     assert!(auth.revoked.is_cancelled());
@@ -94,7 +91,7 @@ async fn provider_outage_suspends_expired_token_and_recovers_without_new_login()
     provider.set_claim_mode(mock::ClaimMode::RefreshUnavailable);
     oidc.ensure_fresh(&auth.credential.0).await.unwrap();
     assert!(scope.bearer().is_some(), "unexpired tokens remain usable");
-    let expires = oidc.credentials.lock().unwrap()[&auth.credential.0]
+    let expires = oidc.credentials.lock().unwrap().entries[&auth.credential.0]
         .tokens
         .as_ref()
         .unwrap()
@@ -137,6 +134,7 @@ async fn unusable_refresh_retains_rotation_for_recovery() {
         oidc.credentials
             .lock()
             .unwrap()
+            .entries
             .get_mut(&auth.credential.0)
             .unwrap()
             .tokens
@@ -168,6 +166,7 @@ async fn a_slow_refresh_does_not_block_another_sign_in() {
     oidc.credentials
         .lock()
         .unwrap()
+        .entries
         .get_mut(&alice.credential.0)
         .unwrap()
         .tokens
@@ -235,7 +234,8 @@ async fn close_during_resume_cannot_restore_session_credentials() {
     let info: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let resume = info["resumeToken"].as_str().unwrap().to_owned();
     let owner = state.sessions.owner(&resume).await.unwrap();
-    let refresh_gate = Arc::clone(&oidc.credentials.lock().unwrap()[&auth.credential.0].refreshing);
+    let refresh_gate =
+        Arc::clone(&oidc.credentials.lock().unwrap().entries[&auth.credential.0].refreshing);
     let refreshing = refresh_gate.lock().await;
     let mut resuming = Box::pin(crate::login(
         State(Arc::clone(&state)),
@@ -651,7 +651,7 @@ async fn sign_in_without_forwarding_keeps_no_tokens_and_ends_with_the_id_token()
     let response = oidc.callback(&headers, callback).await.unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let credentials = oidc.credentials.lock().unwrap();
-    let credential = credentials.values().next().unwrap();
+    let credential = credentials.entries.values().next().unwrap();
     assert!(credential.tokens.is_none());
     assert!(credential.expires_unix <= unix_now() + 300);
 }

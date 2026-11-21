@@ -12,6 +12,7 @@ fn bind_expired_token_without_refresh(oidc: &Oidc) -> String {
     oidc.credentials
         .lock()
         .unwrap()
+        .entries
         .get_mut(&key)
         .unwrap()
         .tokens = Some(Tokens {
@@ -46,9 +47,11 @@ async fn stalled_renewal_does_not_block_other_sign_ins_or_later_ticks() {
         bind_expired_token_without_refresh(&oidc),
     ];
     keys.sort_unstable();
-    let gate = Arc::clone(&oidc.credentials.lock().unwrap()[&keys[0]].refreshing);
+    let gate = Arc::clone(&oidc.credentials.lock().unwrap().entries[&keys[0]].refreshing);
     let _stalled = gate.lock().await;
-    let revoked = oidc.credentials.lock().unwrap()[&keys[1]].revoked.clone();
+    let revoked = oidc.credentials.lock().unwrap().entries[&keys[1]]
+        .revoked
+        .clone();
     let mut renewals = Box::pin(oidc.refresh_forever());
     assert!(renewals.as_mut().now_or_never().is_none());
     tokio::time::advance(REFRESH_INTERVAL).await;
@@ -61,7 +64,9 @@ async fn stalled_renewal_does_not_block_other_sign_ins_or_later_ticks() {
     );
 
     let later = bind_expired_token_without_refresh(&oidc);
-    let revoked = oidc.credentials.lock().unwrap()[&later].revoked.clone();
+    let revoked = oidc.credentials.lock().unwrap().entries[&later]
+        .revoked
+        .clone();
     tokio::time::advance(REFRESH_INTERVAL).await;
     assert!(renewals.as_mut().now_or_never().is_none());
     assert!(

@@ -25,19 +25,50 @@ const PARSE_DEBOUNCE: Duration = Duration::from_millis(150);
 
 const LANGUAGE: &str = "yaml";
 
-pub(in crate::inspector) fn factory() -> InputHighlighterFactory {
-    Rc::new(|language| {
+#[derive(Clone, Default)]
+pub(in crate::inspector) struct YamlSyntax(Rc<RefCell<Option<ParsedYaml>>>);
+
+struct ParsedYaml {
+    text: Rope,
+    tree: Tree,
+}
+
+impl YamlSyntax {
+    pub(super) fn diagnostics(&self, rope: &Rope, text: &str) -> Vec<super::parse::Finding> {
+        let state = self.0.borrow();
+        let tree = state
+            .as_ref()
+            .filter(|parsed| &parsed.text == rope)
+            .map(|parsed| &parsed.tree);
+        super::parse::diagnostics(text, tree)
+    }
+
+    fn publish(&self, parsed: &SyntaxHighlighter) {
+        *self.0.borrow_mut() = parsed.tree().map(|tree| ParsedYaml {
+            text: parsed.text().clone(),
+            tree: tree.clone(),
+        });
+    }
+}
+
+pub(in crate::inspector) fn factory() -> (InputHighlighterFactory, YamlSyntax) {
+    let syntax = YamlSyntax::default();
+    let shared = syntax.clone();
+    let factory: InputHighlighterFactory = Rc::new(move |language| {
         (language == LANGUAGE).then(|| {
             Box::new(YamlHighlighter {
                 inner: Rc::new(RefCell::new(SyntaxHighlighter::new(LANGUAGE))),
+                syntax: shared.clone(),
                 parse_task: None,
             }) as Box<dyn InputHighlighter>
         })
-    })
+    });
+    (factory, syntax)
 }
 
 struct YamlHighlighter {
     inner: Rc<RefCell<SyntaxHighlighter>>,
+    syntax: YamlSyntax,
     parse_task: Option<Task<()>>,
 }
 
@@ -57,6 +88,7 @@ impl YamlHighlighter {
             return;
         }
         let inner = self.inner.clone();
+        let syntax = self.syntax.clone();
         let text = text.clone();
         self.parse_task = Some(cx.spawn_in(window, async move |editor, cx| {
             cx.background_executor().timer(PARSE_DEBOUNCE).await;
@@ -72,6 +104,7 @@ impl YamlHighlighter {
                     (parsed, folds)
                 })
                 .await;
+            syntax.publish(&parsed);
             *inner.borrow_mut() = parsed;
             let _ = editor.update(cx, |state, cx| {
                 state.apply_highlighter_fold_candidates(folds, cx);
@@ -100,7 +133,14 @@ impl InputHighlighter for YamlHighlighter {
                 inner.edit_tree(edit, text);
                 false
             } else {
-                inner.update(edit, text, Some(SYNC_PARSE_TIMEOUT))
+                // A repeated update with the same text can report success even
+                // after a timeout. Only a completed parse may replace the tree.
+                let changed = inner.text() != text;
+                let completed = inner.update(edit, text, Some(SYNC_PARSE_TIMEOUT));
+                if completed && changed {
+                    self.syntax.publish(&inner);
+                }
+                completed
             }
         };
         self.finish_update(completed, text, folding, window, cx);

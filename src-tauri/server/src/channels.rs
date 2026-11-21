@@ -14,7 +14,8 @@ const RETAINED_MESSAGES: usize = 1_000;
 const RETAINED_BYTES: usize = MAX_WEBSOCKET_MESSAGE_BYTES - CHANNEL_MESSAGE_ENVELOPE_BYTES;
 
 struct PendingMessage {
-    message: String,
+    frame: String,
+    payload_bytes: usize,
     // Coalesce oversized drops at their position without allocating queue entries.
     dropped_after: usize,
 }
@@ -53,34 +54,39 @@ impl ChannelHub {
             .or_default();
         let hub = Arc::clone(self);
         Channel::new(move |message| {
-            let message = serde_json::to_string(&message).map_err(|_| ChannelClosed)?;
+            let message = {
+                let payload = serde_json::to_string(&message).map_err(|_| ChannelClosed)?;
+                let payload_bytes = payload.len();
+                (payload_bytes <= RETAINED_BYTES).then(|| PendingMessage {
+                    frame: format!(
+                        "{{\"channelId\":{id},\"message\":{payload},\"type\":\"channel\"}}"
+                    ),
+                    payload_bytes,
+                    dropped_after: 0,
+                })
+            };
             let mut pending = hub.pending.lock().map_err(|_| ChannelClosed)?;
             if pending.closed {
                 return Err(ChannelClosed);
             }
             let channel = pending.channels.get_mut(&id).ok_or(ChannelClosed)?;
-            if message.len() > RETAINED_BYTES {
-                if let Some(last) = channel.messages.back_mut() {
-                    last.dropped_after = last.dropped_after.saturating_add(1);
-                } else {
-                    channel.dropped = channel.dropped.saturating_add(1);
-                }
-            } else {
+            if let Some(message) = message {
                 while channel.messages.len() == RETAINED_MESSAGES
-                    || channel.bytes + message.len() > RETAINED_BYTES
+                    || channel.bytes + message.payload_bytes > RETAINED_BYTES
                 {
                     let evicted = channel.messages.pop_front().expect("retained message");
-                    channel.bytes -= evicted.message.len();
+                    channel.bytes -= evicted.payload_bytes;
                     channel.dropped = channel
                         .dropped
                         .saturating_add(1)
                         .saturating_add(evicted.dropped_after);
                 }
-                channel.bytes += message.len();
-                channel.messages.push_back(PendingMessage {
-                    message,
-                    dropped_after: 0,
-                });
+                channel.bytes += message.payload_bytes;
+                channel.messages.push_back(message);
+            } else if let Some(last) = channel.messages.back_mut() {
+                last.dropped_after = last.dropped_after.saturating_add(1);
+            } else {
+                channel.dropped = channel.dropped.saturating_add(1);
             }
             drop(pending);
             hub.ready.notify_one();
@@ -107,17 +113,15 @@ impl ChannelHub {
             .expect("selected pending channel");
         if channel.dropped != 0 {
             let dropped = std::mem::take(&mut channel.dropped);
+            drop(pending);
             return Some(format!(
                 "{{\"channelId\":{id},\"dropped\":{dropped},\"type\":\"channel_gap\"}}"
             ));
         }
         let message = channel.messages.pop_front()?;
-        channel.bytes -= message.message.len();
+        channel.bytes -= message.payload_bytes;
         channel.dropped = message.dropped_after;
-        let message = message.message;
-        Some(format!(
-            "{{\"channelId\":{id},\"message\":{message},\"type\":\"channel\"}}"
-        ))
+        Some(message.frame)
     }
 
     pub fn remove(&self, id: u64) {

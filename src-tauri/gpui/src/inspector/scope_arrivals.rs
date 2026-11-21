@@ -84,7 +84,6 @@ impl Inspector {
         } else {
             self.warnings = self.scope_warnings(self.observation.warnings());
         }
-        self.prepare_rows();
         self.filter(cx);
         cx.notify();
         self.note_apply(
