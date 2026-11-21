@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -66,7 +66,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           DEPENDENCIES_RESULT: ${{ steps.dependencies.outcome }}
           SELECTION_CHECK_RESULT: ${{ steps.selection-check.outcome }}
-          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
           fallback() {
@@ -79,18 +78,6 @@ jobs:
               git ls-files 'benchmarks/*.bench.ts' || echo 'Benchmark file listing unavailable; the benchmark runner will discover all files.'
             } >> "${GITHUB_STEP_SUMMARY}"
           }
-          if [[ "${RELEASE_PR}" == true ]]; then
-            {
-              echo 'frontend=false'
-              echo 'rust=false'
-              echo 'frontend_matrix={"include":[]}'
-            } >> "${GITHUB_OUTPUT}"
-            {
-              echo '## Benchmark selection'
-              echo 'Labeled same-repository release PR. Frontend benchmarks and Rust shards skipped.'
-            } >> "${GITHUB_STEP_SUMMARY}"
-            exit 0
-          fi
           if [[ "${DEPENDENCIES_RESULT}" != "success" || "${SELECTION_CHECK_RESULT}" != "success" ]]; then
             fallback
             exit 0
@@ -128,7 +115,7 @@ jobs:
       id-token: write
     needs:
       - changes
-    if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -172,7 +159,7 @@ jobs:
       id-token: write
     needs:
       - changes
-    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     # Every shard builds the same benchmark binary under one cache key, and the cache action
     # fails a job whose save loses GitHub's reservation of the key to another job (four of
@@ -285,7 +272,7 @@ jobs:
       id-token: write
     needs:
       - changes
-    if: ${{ needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -313,7 +300,6 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
-          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
           RUST_REQUIRED: ${{ needs.changes.outputs.rust }}
           RUST_RESULT: ${{ needs.rust.result }}
           RUST_SAVER_RESULT: ${{ needs.rust-saver.result }}
@@ -326,25 +312,18 @@ jobs:
             echo '## Benchmark job results'
             echo "Frontend: ${FRONTEND_RESULT} (selected: ${FRONTEND_REQUIRED})."
             echo "Rust: ${RUST_RESULT}; cache-saving shard: ${RUST_SAVER_RESULT} (selected: ${RUST_REQUIRED})."
-            echo "Release PR skip policy: ${RELEASE_PR}."
           } >> "${GITHUB_STEP_SUMMARY}"
           test "${CHANGES_RESULT}" = "success"
-          if [[ "${RELEASE_PR}" == "true" ]]; then
-            test "${FRONTEND_RESULT}" = "skipped"
-            test "${RUST_RESULT}" = "skipped"
-            test "${RUST_SAVER_RESULT}" = "skipped"
-          else
-            verify_result() {
-              local required="$1"
-              local result="$2"
-              if [[ "${required}" == "true" ]]; then
-                test "${result}" = "success"
-              else
-                test "${required}" = "false"
-                test "${result}" = "skipped"
-              fi
-            }
-            verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
-            verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
-            verify_result "${RUST_REQUIRED}" "${RUST_SAVER_RESULT}"
-          fi
+          verify_result() {
+            local required="$1"
+            local result="$2"
+            if [[ "${required}" == "true" ]]; then
+              test "${result}" = "success"
+            else
+              test "${required}" = "false"
+              test "${result}" = "skipped"
+            fi
+          }
+          verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
+          verify_result "${RUST_REQUIRED}" "${RUST_RESULT}"
+          verify_result "${RUST_REQUIRED}" "${RUST_SAVER_RESULT}"

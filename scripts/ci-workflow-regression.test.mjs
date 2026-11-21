@@ -592,7 +592,7 @@ test("lightweight tasks avoid Rust and package setup; CI regressions precede ins
   assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
 });
 function gate(overrides = {}) {
-  const env = { ...process.env, CHANGES_RESULT: "success", RELEASE_PR: "false", CHECKS_RESULT: "success", FRONTEND_RESULT: "success" };
+  const env = { ...process.env, CHANGES_RESULT: "success", CHECKS_RESULT: "success", FRONTEND_RESULT: "success" };
   for (const key of domains) { env[`${key.toUpperCase()}_REQUIRED`] = "true"; }
   env.NIX_RESULT = "success";
   return spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(job("check"), "run", 8)], {
@@ -617,19 +617,13 @@ test("stable required check rejects any failed, cancelled, skipped or unknown ma
     assert.notEqual(gate({ ...skipped, [name]: "true" }), 0);
   }
 });
-test("pull requests skip Nix; only same-repository labeled release PRs skip the matrix", () => {
+test("release PRs use normal CI selection and skip Nix like other PRs", () => {
   assert.ok(job("nix").includes("github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true'"));
   assert.ok(job("check").includes("NIX_REQUIRED: ${{ github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true' }}"));
-  assert.equal(gate({ NIX_REQUIRED: "false", NIX_RESULT: "skipped" }), 0);
-  const release = { RELEASE_PR: "true", FRONTEND_RESULT: "skipped", CHECKS_RESULT: "skipped", NIX_REQUIRED: "false", NIX_RESULT: "skipped" };
+  const release = { RELEASE_PR: "true", NIX_REQUIRED: "false", NIX_RESULT: "skipped" };
   assert.equal(gate(release), 0);
-  for (const name of ["FRONTEND_RESULT", "CHECKS_RESULT", "NIX_RESULT"]) {
-    for (const result of ["failure", "cancelled", "success"]) assert.notEqual(gate({ ...release, [name]: result }), 0);
-  }
-  for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
-    assert.ok(job("checks").includes(condition));
-    assert.ok(job("frontend").includes(condition));
-  }
+  assert.notEqual(gate({ ...release, FRONTEND_RESULT: "skipped" }), 0);
+  assert.notEqual(gate({ ...release, CHECKS_RESULT: "skipped" }), 0);
 });
 test("Rust verification selects all workspace members despite root-only default-members", () => {
   const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -830,15 +824,13 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.match(selection, /run: bun e2e\/parity\/ci-selection\.ts/);
   assert.match(selection, /^ {6}attempt: \$\{\{ github.run_attempt \}\}$/m);
   assert.doesNotMatch(selection, /cargo |playwright|bun install/);
-  for (const condition of ["github.event.pull_request.head.repo.full_name != github.repository", "!startsWith(github.head_ref, 'release/app-v')", "!contains(github.event.pull_request.labels.*.name, 'release')"]) {
-    assert.ok(selection.includes(condition), condition);
-  }
+  assert.match(selection, /^ {4}if: \$\{\{ github.event_name == 'pull_request' \}\}$/m);
   const result = job("pull-request-result", parity);
   assert.match(result, /^ {4}name: Parity result$/m);
   assert.match(result, /^ {4}needs:\n {6}- pull-request-selection\n {6}- pull-request-web\n {6}- pull-request-gpui\n {6}- pull-request-spike$/m);
   assert.ok(result.includes("if: ${{ always() && github.event_name == 'pull_request' }}"));
   // Execute the real shell gate for the supported job graphs and every unexpected outcome.
-  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, RELEASE_PR: "false", REGULAR_SELECTED: "", SPIKE_SELECTED: "", WEB_RESULT: "success", GPUI_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8" }).status;
+  const verify = (env) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", block(result, "run", 8)], { env: { ...process.env, REGULAR_SELECTED: "", SPIKE_SELECTED: "", WEB_RESULT: "success", GPUI_RESULT: "success", SPIKE_RESULT: "success", ...env }, encoding: "utf8" }).status;
   for (const [regular, spike] of [["", ""], ["true", "true"], ["true", "false"], ["false", "true"], ["false", "false"]]) {
     const good = { REGULAR_SELECTED: regular, SPIKE_SELECTED: spike, WEB_RESULT: regular === "false" ? "skipped" : "success", GPUI_RESULT: regular === "false" ? "skipped" : "success", SPIKE_RESULT: spike === "false" ? "skipped" : "success" };
     assert.equal(verify(good), 0);
@@ -848,8 +840,7 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
       }
     }
   }
-  assert.equal(verify({ WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
-  assert.notEqual(verify({ RELEASE_PR: "true" }), 0);
+  assert.notEqual(verify({ WEB_RESULT: "skipped", GPUI_RESULT: "skipped", SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
   // Evaluate the actual job if expressions, including failed planning and empty output fallback.
   const enabled = (name, outputs, result = "success", event = "pull_request") => {
     const expression = /if: \$\{\{ (.+) \}\}/.exec(job(name, parity))[1].replaceAll("needs.pull-request-selection", "needs.selection");
@@ -885,7 +876,7 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
     assert.equal(value(job(name, parity), "scenarios", unpublished), "");
     assert.equal(enabled(name, {}, "failure"), true, "planner failure runs full suite");
     for (const outcome of ["failure", "cancelled"]) assert.equal(enabled(name, empty, outcome), true, `a ${outcome} planner's outputs are ignored`);
-    assert.equal(enabled(name, {}, "skipped"), false, "release PR stays skipped");
+    assert.equal(enabled(name, {}, "skipped"), false, "unexpected planner skip is rejected by the gate");
     assert.equal(enabled(name, {}, "success", "push"), false, "main graph stays separate");
     assert.equal(value(job(name, parity), "scenarios", { ids: '["one"]' }), '["one"]');
     assert.equal(value(job(name, parity), "scenarios", empty), "[]");
@@ -916,7 +907,7 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.equal(value(result, "PARITY_SELECTION_REASON", empty, "failure"), '"Selection planner failed; full suite"');
   // Failure mode: the report check stops running, and job results alone pass the gate.
   const validate = result.slice(result.indexOf("      - name: Validate merged driver reports\n"));
-  assert.match(validate, /^ {6}- name: Validate merged driver reports\n {8}if: \$\{\{ needs.pull-request-selection.result != 'skipped' \}\}\n {8}env:$/m);
+  assert.match(validate, /^ {6}- name: Validate merged driver reports\n {8}env:$/m);
   assert.match(validate, /^ {8}run: bun e2e\/parity\/merge-reports\.ts parity-reports$/m);
   assert.match(selection, /^ {6}- name: Upload selection\n {8}continue-on-error: true$/m);
   assert.match(job("pull-request-spike", parity), /^ {8}driver: \[web, gpui\]$/m);

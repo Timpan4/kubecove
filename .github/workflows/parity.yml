@@ -12,7 +12,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -24,8 +24,7 @@ concurrency:
 jobs:
   pull-request-selection:
     name: Parity selection (pull request)
-    # Release PRs change only versions and changelogs, so they skip it as in ci.yml.
-    if: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     # The job took 15 s in run 43484678727. A stalled checkout, setup or upload ends at
     # the limit "Parity result" uses below, and the drivers then run the full suite.
@@ -132,7 +131,6 @@ jobs:
       scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
 
   # Advisory check with a stable name; validates only the declared selection.
-  # Release PRs pass only when the parity jobs were deliberately skipped, as in ci.yml.
   pull-request-result:
     name: Parity result
     needs:
@@ -151,26 +149,23 @@ jobs:
           SPIKE_RESULT: ${{ needs.pull-request-spike.result }}
           REGULAR_SELECTED: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.regular || '' }}
           SPIKE_SELECTED: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.spike || '' }}
-          RELEASE_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
           echo "Web: ${WEB_RESULT}; GPUI: ${GPUI_RESULT}; topology spike: ${SPIKE_RESULT}"
           regular=success
           spike=success
-          if [[ "${RELEASE_PR}" == "true" || "${REGULAR_SELECTED}" == "false" ]]; then regular=skipped; fi
-          if [[ "${RELEASE_PR}" == "true" || "${SPIKE_SELECTED}" == "false" ]]; then spike=skipped; fi
+          if [[ "${REGULAR_SELECTED}" == "false" ]]; then regular=skipped; fi
+          if [[ "${SPIKE_SELECTED}" == "false" ]]; then spike=skipped; fi
           test "${WEB_RESULT}" = "${regular}"
           test "${GPUI_RESULT}" = "${regular}"
           test "${SPIKE_RESULT}" = "${spike}"
 
       - name: Checkout
-        if: ${{ needs.pull-request-selection.result != 'skipped' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        if: ${{ needs.pull-request-selection.result != 'skipped' }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
@@ -186,7 +181,6 @@ jobs:
           path: parity-reports
 
       - name: Validate merged driver reports
-        if: ${{ needs.pull-request-selection.result != 'skipped' }}
         env:
           PARITY_SCENARIOS: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
           PARITY_SELECTION_ATTEMPT: ${{ needs.pull-request-selection.outputs.attempt }}

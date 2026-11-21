@@ -78,13 +78,10 @@ test("release preparation does not use manual dispatch for required PR checks", 
     assert.doesNotMatch(run, /gh workflow run (ci|codspeed)\.yml/,
       "workflow_dispatch jobs cannot satisfy PR ruleset checks");
   }
-  for (const name of ["ci", "codspeed"]) {
+  for (const name of ["ci", "codspeed", "parity"]) {
     const checks = parse(readFileSync(new URL(`../.github/workflows/${name}.yml`, import.meta.url), "utf8"));
-    assert.ok(Object.hasOwn(checks.on, "pull_request"), `${name} must accept eligible PR events`);
-    const activities = checks.on.pull_request?.types;
-    for (const activity of ["opened", "synchronize"]) {
-      assert.ok(activities === undefined || activities.includes(activity), `${name} must accept PR ${activity}`);
-    }
+    assert.deepEqual(checks.on.pull_request.types, ["opened", "synchronize", "reopened"]);
+    assert.doesNotMatch(JSON.stringify(checks.jobs), /pull_request\.labels|RELEASE_PR|release\/app-v/);
   }
 });
 

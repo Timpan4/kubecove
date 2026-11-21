@@ -45,7 +45,7 @@ function detect(paths, overrides = {}) {
     const result = bash(`git() { if [[ "$1" == "diff" ]]; then if [[ "$GIT_FAILURE" == true ]]; then return 1; fi; printf '%s' "$CHANGED_PATHS" | tr '\\n' '\\0'; fi; }\nnode() { if [[ "$NODE_FAILURE" == true ]]; then return 1; fi; if [[ "$1" == scripts/codspeed-detect.mjs && -n "\${NODE_OUTPUT+set}" ]]; then printf '%s' "$NODE_OUTPUT" >> "$GITHUB_OUTPUT"; return 0; fi; command node "$@"; }\n${runBlock(job("changes"))}`, {
       BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), EVENT_NAME: "pull_request",
       DEPENDENCIES_RESULT: "success", SELECTION_CHECK_RESULT: "success",
-      GIT_FAILURE: "false", NODE_FAILURE: "false", RELEASE_PR: "false",
+      GIT_FAILURE: "false", NODE_FAILURE: "false",
       CHANGED_PATHS: paths.join("\n"), GITHUB_OUTPUT: output, RUNNER_TEMP: root,
       GITHUB_STEP_SUMMARY: join(root, "summary"), ...overrides,
     });
@@ -56,7 +56,7 @@ function detect(paths, overrides = {}) {
     if (overrides.NODE_OUTPUT === undefined) {
       const summary = readFileSync(join(root, "summary"), "utf8");
       assert.match(summary, /Rust shards/);
-      for (const file of benchmarkFiles()) assert.ok(summary.includes(file) || summary.includes("Running every frontend file") || summary.includes("Labeled same-repository release PR"), file);
+      for (const file of benchmarkFiles()) assert.ok(summary.includes(file) || summary.includes("Running every frontend file"), file);
     }
     return { frontend: outputs.frontend, rust: outputs.rust };
   } finally {
@@ -168,12 +168,9 @@ test("the selector runs everything when it cannot read the changed paths", () =>
   const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-detect-"));
   try {
     const output = join(root, "output");
-    const result = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: "", RELEASE_PR: "false", SELECTION_FALLBACK: "" }, encoding: "utf8" });
+    const result = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: "", SELECTION_FALLBACK: "" }, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(output, "utf8"), 'frontend=true\nrust=true\nfrontend_matrix={"include":[{"group":0,"selection":""}]}\n');
-    const release = spawnSync(process.execPath, ["scripts/codspeed-detect.mjs", join(root, "missing")], { cwd: new URL("../", import.meta.url), env: { ...process.env, EVENT_NAME: "pull_request", GITHUB_OUTPUT: join(root, "release-output"), GITHUB_STEP_SUMMARY: "", RELEASE_PR: "true", SELECTION_FALLBACK: "" }, encoding: "utf8" });
-    assert.equal(release.status, 0, release.stderr);
-    assert.equal(readFileSync(join(root, "release-output"), "utf8"), 'frontend=false\nrust=false\nfrontend_matrix={"include":[]}\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -192,19 +189,16 @@ test("a failed selector setup step still reaches the detection step", () => {
   assert.match(changes.slice(changes.indexOf("      - name: Detect frontend and Rust benchmark changes\n")), /^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m);
 });
 
-// Failure mode: a release pull request whose selector setup failed reports that every
-// benchmark runs, while the benchmark jobs skip a release pull request.
-for (const overrides of [{}, { DEPENDENCIES_RESULT: "failure" }, { SELECTION_CHECK_RESULT: "failure" }, { GIT_FAILURE: "true" }, { NODE_FAILURE: "true" }]) {
-  test(`a release pull request selects nothing: ${JSON.stringify(overrides)}`, () => {
-    assert.deepEqual(detect(["bun.lock"], { RELEASE_PR: "true", ...overrides }), { frontend: "false", rust: "false" });
-  });
-}
+test("release metadata cannot skip benchmarks selected by the diff", () => {
+  const paths = ["package.json", "src-tauri/Cargo.toml", "CHANGELOG.md"];
+  assert.deepEqual(detect(paths, { RELEASE_PR: "true" }), { frontend: "true", rust: "true" });
+});
 
 function gate(overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "codspeed-gate-"));
   try {
     return bash(runBlock(job("check")), {
-      CHANGES_RESULT: "success", RELEASE_PR: "false",
+      CHANGES_RESULT: "success",
       FRONTEND_REQUIRED: "true", FRONTEND_RESULT: "success",
       RUST_REQUIRED: "true", RUST_RESULT: "success", RUST_SAVER_RESULT: "success",
       GITHUB_STEP_SUMMARY: join(root, "summary"), ...overrides,
@@ -325,15 +319,6 @@ test("benchmark jobs install the CodSpeed runner from its pinned GitHub release"
   assert.ok(action.indexOf("sha256sum --check --status") < action.indexOf('bash "${installer}" --quiet'));
   assert.ok(action.includes('GH_MATRIX: "${{ toJson(matrix) }}"') && action.includes('GH_STRATEGY: "${{ toJson(strategy) }}"'));
   assert.ok(action.includes('codspeed run --mode=simulation --setup-cache-dir="${HOME}/.cache/codspeed-action" -- "${CODSPEED_INPUT_RUN}"'));
-});
-
-test("release PRs still require both benchmark jobs to be skipped", () => {
-  const release = { RELEASE_PR: "true", FRONTEND_RESULT: "skipped", RUST_RESULT: "skipped", RUST_SAVER_RESULT: "skipped" };
-  assert.equal(gate(release), 0);
-  assert.notEqual(gate({ ...release, FRONTEND_RESULT: "success" }), 0);
-  assert.notEqual(gate({ ...release, RUST_RESULT: "success" }), 0);
-  assert.notEqual(gate({ ...release, RUST_SAVER_RESULT: "success" }), 0);
-  assert.notEqual(gate({ ...release, RELEASE_PR: "false" }), 0);
 });
 
 // Vitest's collected name-filter contract is checked separately by

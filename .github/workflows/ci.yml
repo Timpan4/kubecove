@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   # The Nix lock refresh workflow dispatches CI on its pull request branch.
   workflow_dispatch:
 
@@ -137,7 +137,7 @@ jobs:
     name: Frontend checks
     needs:
       - changes
-    if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -211,7 +211,7 @@ jobs:
       actions: read
     needs:
       - changes
-    if: ${{ (needs.changes.outputs.docs == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.docs == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     # Retain the existing Rust cold-cache allowance; this is not a timing target.
     timeout-minutes: 30
@@ -588,7 +588,6 @@ jobs:
           CHECKS_RESULT: ${{ needs.checks.result }}
           NIX_REQUIRED: ${{ github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true' }}
           NIX_RESULT: ${{ needs.nix.result }}
-          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
           echo "Change detection: ${CHANGES_RESULT}"
@@ -599,26 +598,19 @@ jobs:
           for required in "${DOCS_REQUIRED}" "${FRONTEND_REQUIRED}" "${RUST_REQUIRED}" "${NIX_REQUIRED}"; do
             [[ "${required}" == "true" || "${required}" == "false" ]]
           done
-          if [[ "${RELEASE_PR}" == "true" ]]; then
-            test "${FRONTEND_RESULT}" = "skipped"
-            test "${CHECKS_RESULT}" = "skipped"
-            test "${NIX_RESULT}" = "skipped"
-          else
-            verify_result() {
-              local required="$1"
-              local result="$2"
-              if [[ "${required}" == "true" ]]; then
-                test "${result}" = "success"
-              else
-                test "${required}" = "false"
-                test "${result}" = "skipped"
-              fi
-            }
-            checks_required=false
-            if [[ "${DOCS_REQUIRED}" == "true" || "${FRONTEND_REQUIRED}" == "true" || "${RUST_REQUIRED}" == "true" ]]; then
-              checks_required=true
+          verify_result() {
+            local required="$1"
+            local result="$2"
+            if [[ "${required}" == "true" ]]; then
+              test "${result}" = "success"
+            else
+              test "${result}" = "skipped"
             fi
-            verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
-            verify_result "${checks_required}" "${CHECKS_RESULT}"
-            verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"
+          }
+          checks_required=false
+          if [[ "${DOCS_REQUIRED}" == "true" || "${FRONTEND_REQUIRED}" == "true" || "${RUST_REQUIRED}" == "true" ]]; then
+            checks_required=true
           fi
+          verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
+          verify_result "${checks_required}" "${CHECKS_RESULT}"
+          verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"
