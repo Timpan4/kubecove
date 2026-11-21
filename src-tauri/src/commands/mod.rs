@@ -1,5 +1,12 @@
 //! Host composition and the stable command API used by desktop and server.
 
+#[cfg(feature = "desktop")]
+mod gpui_upgrade;
+#[cfg(feature = "desktop")]
+pub use gpui_upgrade::{
+    GpuiUpgrade, check_gpui_upgrade, install_gpui_upgrade, launch_gpui_upgrade, reveal_gpui_upgrade,
+};
+
 #[cfg(feature = "bench-support")]
 pub mod bench_support;
 

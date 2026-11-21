@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { describe, it } from "mocha";
 import type { AppUsageMetrics, ClusterContext } from "../../../src/lib/types";
@@ -28,6 +29,19 @@ describe("native desktop smoke", () => {
 		await settings.waitForClickable();
 		await settings.click();
 		await expect($("body")).toHaveText(expect.stringContaining("Settings"));
+		await $("button=Updates").click();
+		await expect($("h3=Switch to KubeCove GPUI")).toBeDisplayed();
+		if (process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL !== "stable") {
+			const check = $("button=Check for GPUI release");
+			await expect(check).toBeClickable();
+			await check.click();
+		}
+		const status = $('section[aria-labelledby="gpui-upgrade-title"] [aria-live] p');
+		await expect(status).toHaveText(
+			expect.stringMatching(/^(No compatible GPUI release is available|KubeCove GPUI (requires Apple silicon|has no release))/),
+		);
+		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
+		if (artifacts) await browser.saveScreenshot(join(artifacts, "gpui-migration.png"));
 	});
 
 	it("samples the memory figures this platform reports", async () => {
