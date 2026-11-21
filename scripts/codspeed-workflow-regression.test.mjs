@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { benchmarkFiles, benchmarkGroups, benchmarkSelection } from "./codspeed-benchmark-suites.mjs";
 import { frontendMatrix } from "./codspeed-selection.mjs";
 
@@ -105,6 +107,7 @@ for (const [path, frontend, rust] of [
   // Failure mode: a change to a script the Rust shards run merges without those shards running.
   ["scripts/ci-rust-cache-key.mjs", false, true],
   ["scripts/ci-mbx-cargo.mjs", false, true],
+  ["scripts/codspeed-rust-artifact.mjs", true, true],
   // Frontend fixtures follow import closures. Rust retains its conservative fixture rule.
   ["e2e/parity/web.ts", false, false],
   ["e2e/parity/scenarios/argo-gaps.json", false, false],
@@ -201,7 +204,7 @@ function gate(overrides = {}) {
     return bash(runBlock(job("check")), {
       CHANGES_RESULT: "success",
       FRONTEND_REQUIRED: "true", FRONTEND_RESULT: "success",
-      RUST_REQUIRED: "true", RUST_RESULT: "success", RUST_SAVER_RESULT: "success",
+      RUST_REQUIRED: "true", RUST_BUILD_RESULT: "success", RUST_RESULT: "success", RUST_SAVER_RESULT: "success",
       GITHUB_STEP_SUMMARY: join(root, "summary"), ...overrides,
     }).status;
   } finally {
@@ -213,14 +216,14 @@ test("the stable gate requires successful detection and all selected jobs", () =
   assert.match(job("check"), /name: CodSpeed Performance Analysis/);
   assert.match(job("check"), /if: always\(\)/);
   assert.equal(gate(), 0);
-  assert.equal(gate({ FRONTEND_REQUIRED: "false", FRONTEND_RESULT: "skipped", RUST_REQUIRED: "false", RUST_RESULT: "skipped", RUST_SAVER_RESULT: "skipped" }), 0);
+  assert.equal(gate({ FRONTEND_REQUIRED: "false", FRONTEND_RESULT: "skipped", RUST_REQUIRED: "false", RUST_BUILD_RESULT: "skipped", RUST_RESULT: "skipped", RUST_SAVER_RESULT: "skipped" }), 0);
   for (const result of ["failure", "cancelled", "skipped", ""]) {
     assert.notEqual(gate({ CHANGES_RESULT: result }), 0);
   }
 });
 
-// The Rust shards are two jobs (the saving shard and the read-only ones), and each must pass.
-for (const [domain, results] of [["FRONTEND", ["FRONTEND_RESULT"]], ["RUST", ["RUST_RESULT", "RUST_SAVER_RESULT"]]]) {
+// The shared build and both groups of Rust shards have to pass.
+for (const [domain, results] of [["FRONTEND", ["FRONTEND_RESULT"]], ["RUST", ["RUST_BUILD_RESULT", "RUST_RESULT", "RUST_SAVER_RESULT"]]]) {
   test(`the gate rejects incomplete ${domain} jobs and accepts only deliberate skips`, () => {
     const skipped = Object.fromEntries(results.map((name) => [name, "skipped"]));
     for (const name of results) {
@@ -240,7 +243,6 @@ for (const [domain, results] of [["FRONTEND", ["FRONTEND_RESULT"]], ["RUST", ["R
 test("Rust benchmark shard filters split every benchmark path into exactly one shard", () => {
   const filters = [...`${job("rust")}\n${job("rust-saver")}`.matchAll(/^ {12}filter: "(.+)"$/gm)].map((match) => new RegExp(match[1]));
   assert.equal(filters.length, 6);
-  assert.match(job("rust"), /cargo codspeed run --bench backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
   const leading = [...Array.from({ length: 95 }, (_, index) => String.fromCharCode(32 + index)), "é", "Ω"].filter((character) => character !== ":");
   for (const character of leading) {
     for (const path of [`${character}bench`, `module::${character}bench`, `a::b::${character}bench::Type`]) {
@@ -250,61 +252,120 @@ test("Rust benchmark shard filters split every benchmark path into exactly one s
       assert.ok(shards[0].test(`x::${last}`), `${path} must be judged by its last segment`);
     }
   }
-  // Rust benchmarks gate the required check through the results of both shard jobs.
-  assert.match(job("check"), /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
-  assert.match(job("check"), /RUST_SAVER_RESULT: \$\{\{ needs\.rust-saver\.result \}\}/);
-  assert.match(job("check"), /^ {6}- rust\n {6}- rust-saver$/m);
-  assert.match(job("rust"), /cache-targets: false/);
-  // The key follows the build inputs, so an unchanged build skips the export and upload.
-  assert.ok(job("rust").includes("run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml src-tauri ':!src-tauri/gpui' ':!src-tauri/server'"));
-  assert.ok(job("rust").includes("cache-key: ${{ steps.rust-cache.outputs.key }}"));
-  assert.ok(job("rust").includes("restore-keys: ${{ steps.rust-cache.outputs.prefix }}"));
-  assert.ok(job("rust").indexOf("dtolnay/rust-toolchain@") < job("rust").indexOf("scripts/ci-rust-cache-key.mjs"));
-  assert.ok(job("rust").indexOf("scripts/ci-rust-cache-key.mjs") < job("rust").indexOf("jdx/mr-boxington-action@"));
-  assert.match(job("rust"), /github-cache-mode: objects/);
-  // The cache is inactive unless the shim is on PATH, and one shard saving is enough: every shard builds the same binary.
-  assert.match(job("rust"), /version: "1\.30\.0"/);
-  assert.match(job("rust"), /isolate-objects-cache: true/);
-  assert.match(job("rust"), /clean-target-before-export: true/);
-  assert.match(job("rust"), /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' && matrix\.shard == 'ac' \}\}/);
-  // Failure mode: the shards share one cache key, and a second saver fails its job when
-  // GitHub has reserved the key for the first. Exactly one shard may save. GitHub's
-  // `cache-mode` makes the others read-only, and it takes one literal per job, so the
-  // saving shard is a job of its own with the same steps and condition. A step-level
-  // ACTIONS_CACHE_MODE does nothing: the runner overrides it (run 43407667697).
-  const shards = (name) => [...job(name).matchAll(/^ {10}- shard: (\w+)$/gm)].map(([, shard]) => shard);
-  assert.deepEqual(shards("rust-saver"), ["ac"]);
-  assert.deepEqual(shards("rust"), ["dl", "es", "hr", "jn", "other"]);
-  assert.match(job("rust"), /^ {4}cache-mode: read$/m);
-  assert.doesNotMatch(job("rust-saver"), /cache-mode/);
-  // One at the top of the workflow would take the saver's access as well.
-  assert.equal(workflow.match(/^ *cache-mode:/gm)?.length, 1);
-  assert.doesNotMatch(workflow, /ACTIONS_CACHE_MODE: /);
+  assert.match(job("rust"), /CODSPEED_CARGO_WORKSPACE_ROOT="\$PWD" exec \.\/target\/codspeed\/analysis\/kubecove\/backend_hot_paths '\$\{\{ matrix\.filter \}\}'/);
+  assert.deepEqual([...job("rust").matchAll(/^ {10}- shard: (\w+)$/gm)].map(([, shard]) => shard), ["dl", "es", "hr", "jn", "other"]);
+  assert.match(job("rust-saver"), /^ {10}- shard: ac$/m);
   assert.match(job("rust"), /^ {4}steps: &rust-steps$/m);
   assert.match(job("rust-saver"), /^ {4}steps: \*rust-steps$/m);
-  for (const key of ["name", "if", "runs-on"]) {
-    const value = (name) => new RegExp(`^ {4}${key}: (.+)$`, "m").exec(job(name))?.[1];
-    assert.ok(value("rust"), `Missing ${key}`);
-    assert.equal(value("rust-saver"), value("rust"), `the saver's ${key} differs`);
-  }
-  assert.ok(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs") < job("rust").indexOf("cargo codspeed build"));
-  // The benchmark build leaves out the desktop feature, so it needs no GUI packages and
-  // links no GUI stack. `bench-support` must not turn the feature back on in any crate.
-  assert.match(job("rust"), /^ {8}run: cargo codspeed build --no-default-features --features bench-support --bench backend_hot_paths --locked$/m);
-  assert.doesNotMatch(job("rust"), /apt-get|webkit/);
+  for (const name of ["rust", "rust-saver"]) assert.match(job(name), /^ {4}needs: \[changes, rust-build\]$/m);
+});
+
+test("one Rust job builds on the existing runner and each shard verifies its artifact before simulation", () => {
+  const check = job("check");
+  assert.match(check, /^ {6}- rust-build\n {6}- rust\n {6}- rust-saver$/m);
+  assert.match(check, /RUST_BUILD_RESULT: \$\{\{ needs\.rust-build\.result \}\}/);
+  assert.match(check, /RUST_RESULT: \$\{\{ needs\.rust\.result \}\}/);
+  assert.match(check, /RUST_SAVER_RESULT: \$\{\{ needs\.rust-saver\.result \}\}/);
+  const build = job("rust-build");
+  const shards = job("rust");
+  for (const name of ["rust-build", "rust", "rust-saver"]) assert.match(job(name), /^ {4}runs-on: ubuntu-latest$/m);
+  assert.doesNotMatch(shards, /rust-toolchain|rust-cache|mr-boxington|ci-mbx-cargo|cargo codspeed build|cargo-codspeed-x86/);
+  assert.match(build, /cache-targets: false/);
+  assert.match(build, /save-if: \$\{\{ github\.ref == 'refs\/heads\/main' \}\}/);
+  assert.match(build, /github-cache-mode: objects/);
+  assert.match(build, /isolate-objects-cache: true/);
+  assert.match(build, /clean-target-before-export: true/);
+  assert.match(build, /version: "1\.30\.0"/);
+  assert.match(build, /cache-key: \$\{\{ steps\.rust-cache\.outputs\.key \}\}/);
+  assert.match(build, /restore-keys: \$\{\{ steps\.rust-cache\.outputs\.prefix \}\}/);
+  assert.match(build, /CARGO_CODSPEED_SHA256: df4b2618fda2aa19f8b92e8d745548a49d9ce20785472eeb584fdc2c99624395/);
+  assert.match(build, /download\/v5\.0\.1\/cargo-codspeed-x86_64-unknown-linux-musl/);
+  assert.doesNotMatch(build, /id-token: write|apt-get|webkit/);
+  assert.match(build, /codspeed-backend \.github\/workflows\/codspeed\.yml scripts\/codspeed-rust-artifact\.mjs src-tauri/);
+  assert.match(build, /artifact-id: \$\{\{ steps\.upload\.outputs\.artifact-id \}\}/);
+  assert.match(build, /if-no-files-found: error/);
+  assert.match(shards, /artifact-ids: \$\{\{ needs\.rust-build\.outputs\.artifact-id \}\}/);
+  assert.match(shards, /digest-mismatch: error/);
+  assert.match(shards, /EXPECTED_MANIFEST_SHA256: \$\{\{ needs\.rust-build\.outputs\.manifest-sha256 \}\}/);
+  assert.match(shards, /EXPECTED_TOOLCHAIN: \$\{\{ needs\.rust-build\.outputs\.toolchain \}\}/);
+  const inOrder = (source, steps) => {
+    for (const [index, name] of steps.entries()) {
+      const position = source.indexOf(name);
+      assert.notEqual(position, -1, name);
+      if (index > 0) assert.ok(position > source.indexOf(steps[index - 1]), name);
+    }
+  };
+  inOrder(build, ["dtolnay/rust-toolchain@", "node scripts/ci-rust-cache-key.mjs", "jdx/mr-boxington-action@", "node scripts/ci-mbx-cargo.mjs", "node scripts/codspeed-rust-artifact.mjs build", "actions/upload-artifact@"]);
+  inOrder(shards, ["Require the build artifact identity", "actions/download-artifact@", "node scripts/codspeed-rust-artifact.mjs install", "./.github/actions/codspeed-run"]);
   for (const manifest of ["", "crates/kube/", "crates/inspection/", "crates/live/", "crates/gitops/", "crates/host/"]) {
     const features = /^bench-support = \[[^\]]*\]/m.exec(readFileSync(new URL(`../src-tauri/${manifest}Cargo.toml`, import.meta.url), "utf8"))?.[0];
     assert.ok(features, `${manifest}Cargo.toml has no bench-support feature`);
     assert.doesNotMatch(features, /"desktop"/, `${manifest}Cargo.toml`);
   }
-  assert.notEqual(job("rust").indexOf("run: node scripts/ci-mbx-cargo.mjs"), -1);
-  assert.match(job("rust"), /cargo-codspeed-x86_64-unknown-linux-musl/);
-  assert.match(job("rust"), /CARGO_CODSPEED_SHA256/);
 });
 
 // Failure modes: the upstream action downloads the runner installer from codspeed.io, which
 // answered HTTP 429 or 504 in five runs in two weeks; a version that differs from the pinned
 // digest fails every job; uploads without the matrix context do not merge into one report.
+test("Rust shards reject missing or tampered artifacts before installing the executable", () => {
+  if (process.platform !== "linux" || process.arch !== "x64") return;
+  const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-artifact-"));
+  const artifact = join(root, "artifact");
+  const benchmark = "backend_hot_paths";
+  const installed = join(root, "src-tauri", "target", "codspeed", "analysis", "kubecove", benchmark);
+  const lock = "test lockfile\n";
+  const executable = "test executable\n";
+  const toolchain = `1.100.0/${"b".repeat(40)}`;
+  const digest = (value) => createHash("sha256").update(value).digest("hex");
+  const git = (...args) => {
+    const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    mkdirSync(artifact);
+    mkdirSync(join(root, "src-tauri"));
+    writeFileSync(join(root, "src-tauri", "Cargo.lock"), lock);
+    git("init", "-q");
+    git("add", "src-tauri/Cargo.lock");
+    git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture");
+    const commit = git("rev-parse", "HEAD");
+    const metadata = {
+      commit, toolchain, target: "x86_64-unknown-linux-gnu",
+      buildArgs: ["--mode", "simulation", "--profile", "bench", "--no-default-features", "--features", "bench-support", "--bench", benchmark, "--locked"],
+      cargoLockSha256: digest(lock), executableSha256: digest(executable),
+    };
+    const run = ({ overrides, invalidDigest, omitManifest, binary = executable } = {}) => {
+      const manifest = JSON.stringify({ ...metadata, ...overrides });
+      if (!omitManifest) writeFileSync(join(artifact, "manifest.json"), manifest);
+      writeFileSync(join(artifact, benchmark), binary);
+      return spawnSync(process.execPath, [fileURLToPath(new URL("./codspeed-rust-artifact.mjs", import.meta.url)), "install", artifact], {
+        cwd: root, encoding: "utf8",
+        env: { ...process.env, GITHUB_SHA: commit, EXPECTED_TOOLCHAIN: toolchain, EXPECTED_MANIFEST_SHA256: invalidDigest ? digest("wrong") : digest(manifest) },
+      });
+    };
+    for (const [input, reason] of [
+      [{ omitManifest: true }, /Unexpected benchmark artifact files/],
+      [{ invalidDigest: true }, /manifest digest does not match/],
+      [{ overrides: { commit: "a".repeat(40) } }, /build identity does not match/],
+      [{ overrides: { toolchain: `1.99.1/${"b".repeat(40)}` } }, /build identity does not match/],
+      [{ overrides: { target: "aarch64-unknown-linux-gnu" } }, /build identity does not match/],
+      [{ overrides: { buildArgs: ["--features", "desktop"] } }, /build identity does not match/],
+      [{ overrides: { cargoLockSha256: digest("wrong") } }, /build identity does not match/],
+      [{ binary: "tampered" }, /executable digest does not match/],
+    ]) {
+      const result = run(input);
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.match(result.stderr, reason);
+      assert.equal(existsSync(installed), false);
+    }
+    const result = run();
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(installed, "utf8"), executable);
+    assert.equal(statSync(installed).mode & 0o777, 0o755);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("benchmark jobs install the CodSpeed runner from its pinned GitHub release", () => {
   const action = readFileSync(new URL("../.github/actions/codspeed-run/action.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
   assert.doesNotMatch(workflow, /CodSpeedHQ\/action@|codspeed\.io/);
