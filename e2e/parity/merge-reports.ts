@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { type Contract, loadContract, validateReports } from "./contract";
 import { count, object, string } from "./contract-values";
 import { selectedContract } from "./selected-contract";
+import { newestAttempts } from "./shard-attempts";
 
 export type Driver = "web" | "gpui";
 type Report = { driver: Driver; scenarios: unknown[] };
@@ -76,21 +77,6 @@ export function mergeReports(contract: Contract, values: unknown[]): Report[] {
 	return merged;
 }
 
-/**
- * A shard uploads its artifact as `<name>-attempt-<n>`. "Re-run failed jobs" keeps the passed
- * shards' artifacts from the earlier attempt and adds new ones for the shards it ran again, so
- * the newest attempt of each shard is its result, whether it passed or failed.
- */
-export function newestAttempts(names: string[]): string[] {
-	const newest = new Map<string, { name: string; attempt: number }>();
-	for (const name of names) {
-		const match = /^(.*)-attempt-(\d+)$/.exec(name);
-		const [shard, attempt] = match ? [string(match[1]), Number(match[2])] : [name, 0];
-		if (attempt >= (newest.get(shard)?.attempt ?? 0)) newest.set(shard, { name, attempt });
-	}
-	return [...newest.values()].map(({ name }) => name);
-}
-
 /** Reads downloaded artifacts. Each run must have finished and passed its declared driver. */
 export async function collectReports(root: string, selectionAttempt = 0): Promise<unknown[]> {
 	const reports: unknown[] = [];
@@ -99,11 +85,14 @@ export async function collectReports(root: string, selectionAttempt = 0): Promis
 		if (entries.some((entry) => entry.name === "scenarios.txt")) {
 			const result = object(JSON.parse(await readFile(join(directory, "result.json"), "utf8")));
 			if (result.status !== "passed") throw new Error(`Parity run did not pass: ${directory}`);
-			const driver = parseDriver(result.driver);
+			const drivers = result.driver === "both" ? (["web", "gpui"] as const) : [parseDriver(result.driver)];
 			const ids = (await readFile(join(directory, "scenarios.txt"), "utf8")).split("\n").filter(Boolean);
-			const report: unknown = JSON.parse(await readFile(join(directory, `${driver}.json`), "utf8"));
-			validateDriverReport({ scenarios: ids.map((id) => ({ id, title: id, steps: [] })) }, driver, report);
-			reports.push(report);
+			const selection = { scenarios: ids.map((id) => ({ id, title: id, steps: [] })) };
+			for (const driver of drivers) {
+				const report: unknown = JSON.parse(await readFile(join(directory, `${driver}.json`), "utf8"));
+				validateDriverReport(selection, driver, report);
+				reports.push(report);
+			}
 			return;
 		}
 		for (const entry of entries) if (entry.isDirectory()) await visit(join(directory, entry.name));

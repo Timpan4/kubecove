@@ -5,29 +5,42 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import type { CodeInfo, Range, ScenarioCoverage } from "./coverage-map";
 import { toRanges } from "./coverage-map";
+import { GPUI_CRATE_ROOT } from "./gpui-prebuilt";
 
 /** Flags the coverage build adds; `code_coverage.rs` in the GPUI parity tests reads the cfg. */
 export const COVERAGE_RUSTFLAGS = "-C instrument-coverage --cfg kubecove_coverage";
 
-async function output(command: string[], cwd?: string): Promise<string> {
-	const child = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
+export const exitProfileDirectory = (artifacts: string) => join(artifacts, "gpui-exit-profiles");
+export const gpuiProfilePattern = (artifacts: string, owner: "build" | `worker-${number}`) => join(exitProfileDirectory(artifacts), owner, "%p-%m.profraw");
+
+async function output(command: string[], signal: AbortSignal, cwd?: string): Promise<string> {
+	signal.throwIfAborted();
+	const child = Bun.spawn(command, { cwd, signal, stdout: "pipe", stderr: "pipe" });
 	const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-	if (await child.exited !== 0) throw new Error(`${command.join(" ")} failed: ${stderr.trim()}`);
+	const code = await child.exited;
+	signal.throwIfAborted();
+	if (code !== 0) throw new Error(`${command.join(" ")} failed: ${stderr.trim()}`);
 	return stdout;
 }
 
 /** LLVM_COV or LLVM_PROFDATA, else the rustup `llvm-tools` component, else PATH. */
-async function llvmTool(name: "llvm-cov" | "llvm-profdata", workspace: string): Promise<string> {
-	const override = process.env[name === "llvm-cov" ? "LLVM_COV" : "LLVM_PROFDATA"];
-	if (override) return override;
-	const sysroot = (await output(["rustc", "--print", "sysroot"], workspace)).trim();
-	const host = /^host: (.+)$/m.exec(await output(["rustc", "-vV"], workspace))?.[1];
-	const bundled = join(sysroot, "lib", "rustlib", host ?? "", "bin", name);
-	return existsSync(bundled) ? bundled : name;
+async function llvmTools(signal: AbortSignal): Promise<CoverageTools> {
+	const { LLVM_COV, LLVM_PROFDATA } = process.env;
+	const invoke = (command: string[], abort: AbortSignal) => output(command, abort);
+	if (LLVM_COV && LLVM_PROFDATA) return { cov: LLVM_COV, profdata: LLVM_PROFDATA, invoke };
+	const workspace = resolve("src-tauri/gpui");
+	const rustc = process.env.RUSTC ?? process.env.CARGO_BUILD_RUSTC ?? "rustc";
+	const [sysroot, version] = await Promise.all([
+		output([rustc, "--print", "sysroot"], signal, workspace),
+		output([rustc, "-vV"], signal, workspace),
+	]);
+	const host = /^host: (\S+)$/m.exec(version)?.[1];
+	const locate = (name: string) => {
+		const bundled = join(sysroot.trim(), "lib", "rustlib", host ?? "", "bin", process.platform === "win32" ? `${name}.exe` : name);
+		return existsSync(bundled) ? bundled : name;
+	};
+	return { cov: LLVM_COV || locate("llvm-cov"), profdata: LLVM_PROFDATA || locate("llvm-profdata"), invoke };
 }
-
-/** The GPUI crate root. A recording whose dep-info misses it has misread cargo's layout. */
-const GPUI_CRATE_ROOT = "src-tauri/gpui/src/lib.rs";
 
 /**
  * Repository files listed in cargo dep-info (`*.d`) anywhere under `buildDir`, including
@@ -36,7 +49,7 @@ const GPUI_CRATE_ROOT = "src-tauri/gpui/src/lib.rs";
  * names workspace members' files relative to the workspace and path dependencies' files
  * absolutely. Units left from earlier builds can add files, which only selects more.
  */
-async function compiledFiles(buildDir: string, workspace: string, root: string): Promise<string[]> {
+export async function compiledFiles(buildDir: string, workspace: string, root: string): Promise<string[]> {
 	const files = new Set<string>();
 	const names = existsSync(buildDir) ? await readdir(buildDir, { recursive: true }) : [];
 	for (const name of names.filter((entry) => entry.endsWith(".d"))) {
@@ -77,13 +90,19 @@ function parseLcov(text: string, root: string, spans: Map<string, Span>) {
 			path = local(root, line.slice(3));
 			executed = []; coverable = [];
 		} else if (line.startsWith("DA:") && path) {
-			const [number, count] = line.slice(3).split(",").map(Number);
-			coverable.push(number ?? 0);
-			if ((count ?? 0) > 0) executed.push(number ?? 0);
+			const comma = line.indexOf(",", 3);
+			const number = Number(line.slice(3, comma));
+			coverable.push(number);
+			const checksum = line.indexOf(",", comma + 1);
+			if (Number(line.slice(comma + 1, checksum < 0 ? undefined : checksum)) > 0) executed.push(number);
 		} else if (line.startsWith("FNDA:") && path) {
 			const comma = line.indexOf(",");
+			if (Number(line.slice(5, comma)) <= 0) continue;
 			const span = spans.get(line.slice(comma + 1));
-			if (Number(line.slice(5, comma)) > 0 && span) ran.set(span.path, [...(ran.get(span.path) ?? []), span.range]);
+			if (!span) continue;
+			const ranges = ran.get(span.path);
+			if (ranges) ranges.push(span.range);
+			else ran.set(span.path, [span.range]);
 		} else if (line === "end_of_record" && path) {
 			code[path] = toRanges(coverable);
 			if (executed.length) files[path] = { lines: toRanges(executed), active: true };
@@ -102,10 +121,10 @@ function parseLcov(text: string, root: string, spans: Map<string, Span>) {
  * without a count of its own inside a function, such as a closing brace or a match pattern, runs
  * whenever the innermost function around it runs.
  */
-async function functionSpans(cov: string, profile: string, executable: string, root: string): Promise<Map<string, Span>> {
+async function functionSpans({ cov, invoke }: CoverageTools, profile: string, executable: string, root: string, signal: AbortSignal): Promise<Map<string, Span>> {
 	type Export = { data: { functions: { name: string; filenames: string[]; regions: number[][] }[] }[] };
 	// SAFETY: `llvm-cov export -format=text` writes the export schema that Export describes, with `data[].functions[]` entries that carry name, filenames and regions.
-	const exported = JSON.parse(await output([cov, "export", "-format=text", "-skip-expansions", `-instr-profile=${profile}`, executable, IGNORED])) as Export;
+	const exported = JSON.parse(await invoke([cov, "export", "-format=text", "-skip-expansions", `-instr-profile=${profile}`, executable, IGNORED, "-num-threads=1"], signal)) as Export;
 	const spans = new Map<string, Span>();
 	for (const fn of exported.data[0]?.functions ?? []) {
 		const path = local(root, fn.filenames[0] ?? "");
@@ -119,39 +138,56 @@ async function functionSpans(cov: string, profile: string, executable: string, r
 
 const IGNORED = "-ignore-filename-regex=/(\\.cargo|\\.rustup|rustc)/";
 
+type CoverageTools = { cov: string; profdata: string; invoke: (command: string[], signal: AbortSignal) => Promise<string> };
+
 /**
  * Converts each `coverage/gpui-<index>.profraw` the parity processes wrote and deletes it.
- * `ids` lists the selected scenario IDs by position, as in `scenarios.txt`. `buildDir` is the
- * coverage build's cargo build directory.
+ * `ids` lists the selected scenario IDs by position, as in `scenarios.txt`.
  */
-export async function recordGpuiCoverage(artifacts: string, executable: string, buildDir: string, ids: string[], jobs: number, signal: AbortSignal): Promise<void> {
+export async function recordGpuiCoverage(artifacts: string, executable: string, compiled: string[], ids: string[], jobs: number, signal: AbortSignal, tools?: CoverageTools): Promise<void> {
 	const root = resolve(".");
-	const workspace = resolve("src-tauri/gpui");
-	const [cov, profdata] = await Promise.all([llvmTool("llvm-cov", workspace), llvmTool("llvm-profdata", workspace)]);
 	const directory = join(artifacts, "coverage");
 	const names = await readdir(directory);
-	const pending = names.flatMap((name) => {
-		const index = /^gpui-(\d+)\.profraw$/.exec(name)?.[1];
-		return index === undefined ? [] : [Number(index)];
-	});
-	const info: CodeInfo = { code: {}, compiled: await compiledFiles(buildDir, workspace, root) };
+	const pending = new Map<number, string>();
+	for (const name of names) {
+		const digits = /^gpui-(\d+)\.profraw$/.exec(name)?.[1];
+		if (digits === undefined) continue;
+		const index = Number(digits);
+		if (!ids[index] || pending.has(index)) throw new Error(`Unexpected or duplicate GPUI scenario profile: ${name}`);
+		pending.set(index, name);
+	}
+	const queue = pending.entries();
+	const code = new Map<string, { index: number; ranges: Range[] }>();
+	const info: CodeInfo = { code: {}, compiled };
+	const controller = new AbortController();
+	const abort = AbortSignal.any([signal, controller.signal]);
+	const conversion = tools ?? await llvmTools(abort);
+	const { cov, profdata, invoke } = conversion;
 	let spans: Promise<Map<string, Span>> | undefined;
 	const worker = async () => {
-		for (let index = pending.shift(); index !== undefined; index = pending.shift()) {
-			signal.throwIfAborted();
-			const raw = join(directory, `gpui-${index}.profraw`);
+		for (const [index, name] of queue) {
+			abort.throwIfAborted();
+			const raw = join(directory, name);
 			const merged = join(directory, `gpui-${index}.profdata`);
-			await output([profdata, "merge", "-sparse", raw, "-o", merged]);
-			const lcov = await output([cov, "export", "-format=lcov", `-instr-profile=${merged}`, executable, IGNORED]);
-			// Spans depend only on the binary, so the first profile gives them; one export at a time.
-			spans ??= functionSpans(cov, merged, executable, root);
-			const parsed = parseLcov(lcov, root, await spans);
-			await rm(raw); await rm(merged);
-			Object.assign(info.code, parsed.code);
-			await writeFile(join(directory, `gpui-${index}.json`), JSON.stringify({ id: ids[index] ?? "", files: parsed.files } satisfies ScenarioCoverage));
+			await invoke([profdata, "merge", "-sparse", "--num-threads=1", raw, "-o", merged], abort);
+			// Spans depend only on the binary. Keep a single metadata export for all workers.
+			spans ??= functionSpans(conversion, merged, executable, root, abort);
+			const functions = await spans;
+			const lcov = await invoke([cov, "export", "-format=lcov", `-instr-profile=${merged}`, executable, IGNORED, "-num-threads=1"], abort);
+			const parsed = parseLcov(lcov, root, functions);
+			for (const [path, ranges] of Object.entries(parsed.code)) {
+				const previous = code.get(path);
+				if (!previous || previous.index < index) code.set(path, { index, ranges });
+			}
+			await writeFile(join(directory, `gpui-${index}.json`), JSON.stringify({ id: ids[index], files: parsed.files } satisfies ScenarioCoverage));
+			await Promise.all([rm(raw), rm(merged)]);
 		}
 	};
-	await Promise.all(Array.from({ length: Math.max(1, jobs) }, worker));
+	await Promise.allSettled(Array.from({ length: Math.min(jobs, pending.size) }, () =>
+		worker().catch((error) => { controller.abort(error); throw error; }),
+	));
+	abort.throwIfAborted();
+	info.code = Object.fromEntries([...code].map(([path, { ranges }]) => [path, ranges]));
 	// Every span, including functions no scenario ran, so selection knows a line is inside one.
 	const all = new Map<string, Map<string, Range>>();
 	for (const span of (await spans)?.values() ?? []) all.set(span.path, (all.get(span.path) ?? new Map()).set(span.range.join(":"), span.range));

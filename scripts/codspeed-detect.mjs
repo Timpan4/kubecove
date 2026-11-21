@@ -15,10 +15,6 @@ try {
   result = await selectBenchmarks([], { fullReason: `selection failed: ${error.message}` });
   matrix = { include: [{ group: 0, selection: "" }] };
 }
-if (process.env.RELEASE_PR === "true") {
-  result = { selected: [], decisions: result.decisions.map(({ file }) => ({ file, run: false, reason: "labeled same-repository release PR" })), rust: false, rustReason: "labeled same-repository release PR" };
-  matrix = { include: [] };
-}
 appendFileSync(process.env.GITHUB_OUTPUT,
   `frontend=${result.selected.length > 0}\nrust=${result.rust}\nfrontend_matrix=${JSON.stringify(matrix)}\n`);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, selectionSummary(result, matrix));

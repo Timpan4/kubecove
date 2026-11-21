@@ -1,17 +1,22 @@
 name: Parity suite
 
-# One shard of `bun run e2e:parity`, called by parity.yml. Pull requests pass exact selected
-# IDs; main runs the full suite and records coverage. See e2e/parity/README.md.
+# Builds the GPUI parity binary or runs one shard of `bun run e2e:parity`.
+# Pull requests pass exact selected IDs. Main runs the full suite and records coverage.
 on:
   workflow_call:
+    outputs:
+      gpui-artifact:
+        value: ${{ jobs.suite.outputs.gpui-artifact }}
+      rust-version:
+        value: ${{ jobs.suite.outputs.rust-version }}
     inputs:
       shard:
         description: This job's PARITY_SUITE_SHARD index.
-        required: true
+        default: 0
         type: number
       shards:
         description: The PARITY_SUITE_SHARD count.
-        required: true
+        default: 1
         type: number
       driver:
         description: PARITY_DRIVER, web or gpui. Empty runs both drivers for local parity and main coverage.
@@ -23,11 +28,15 @@ on:
         required: false
         type: boolean
         default: false
-      build-only:
-        description: Only build the uninstrumented parity test, to seed the pull request build cache.
-        required: false
-        type: boolean
-        default: false
+      build:
+        description: Use artifact to export the binary, cache to seed uninstrumented objects, or leave empty to run a shard.
+        type: string
+      gpui-artifact:
+        description: Same-run artifact ID of the prebuilt GPUI binary.
+        type: string
+      rust-version:
+        description: Exact Rust release used to build the GPUI binary.
+        type: string
       prefix:
         description: PARITY_PREFIX, for a job that runs only the scenarios with these ID prefixes.
         required: false
@@ -49,13 +58,16 @@ permissions:
 
 jobs:
   suite:
-    name: ${{ inputs.build-only && 'Build cache' || format('{0} shard {1} of {2} {3}', inputs.driver || 'Both', inputs.shard, inputs.shards, inputs.prefix) }}
+    name: ${{ inputs.build && format('GPUI build ({0})', inputs.build) || format('{0} shard {1} of {2} {3}', inputs.driver || 'Both', inputs.shard, inputs.shards, inputs.prefix) }}
     runs-on: ubuntu-latest
     # The same limit as the real Kubernetes suites in e2e.yml.
     timeout-minutes: 60
     env:
       # As in ci.yml: line tables keep backtraces readable, and nothing here reads the rest.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
+    outputs:
+      gpui-artifact: ${{ steps.binary.outputs.artifact-id }}
+      rust-version: ${{ steps.export.outputs.rust-version }}
 
     steps:
       - name: Checkout
@@ -63,29 +75,53 @@ jobs:
         with:
           persist-credentials: false
 
-      # yeslogic-fontconfig-sys finds fontconfig through pkg-config at build time.
-      # The linker needs libxcb and both xkbcommon libraries for GPUI's X11 backend.
-      # GPUI loads Wayland at run time, and its test platform needs no display.
-      - name: Install GPUI build dependencies
+      - name: Install GPUI Linux dependencies
         if: ${{ inputs.driver != 'web' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
+        uses: ./.github/actions/setup-linux-native-deps
+
+      - name: Set up the GPUI CI profile
+        if: ${{ inputs.build != '' }}
+        uses: ./.github/actions/setup-gpui-ci-profile
 
       - name: Setup Bun
-        if: ${{ !inputs.build-only }}
+        if: ${{ inputs.build != 'cache' }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
-      - name: Setup Rust
-        if: ${{ inputs.driver != 'web' }}
+      - name: Setup Rust for the GPUI build
+        if: ${{ inputs.build != '' }}
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      # llvm-profdata and llvm-cov matching the toolchain's LLVM read the GPUI profiles.
-      - name: Install LLVM tools
-        if: ${{ inputs.coverage }}
-        run: rustup component add llvm-tools
+      - name: Require inputs for GPUI replay
+        if: ${{ inputs.build == '' && inputs.driver != 'web' }}
+        env:
+          GPUI_ARTIFACT: ${{ inputs.gpui-artifact }}
+          RUSTUP_TOOLCHAIN: ${{ inputs.rust-version }}
+        run: |
+          test -n "$GPUI_ARTIFACT"
+          test -n "$RUSTUP_TOOLCHAIN"
+
+      - name: Setup the GPUI build's Rust release
+        if: ${{ inputs.build == '' && inputs.driver != 'web' }}
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: ${{ inputs.rust-version }}
+          components: ${{ inputs.coverage && 'llvm-tools' || '' }}
+
+      - name: Download the GPUI binary
+        if: ${{ inputs.build == '' && inputs.driver != 'web' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ inputs.gpui-artifact }}
+          path: ${{ runner.temp }}/gpui-parity
+
+      - name: Download the run's shard timings
+        if: ${{ inputs.build == '' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: parity-timing-snapshot
+          path: ${{ runner.temp }}/parity-timings
 
       # The GPUI crate is its own workspace. The object cache reuses compiler output by
       # content, so the workspace crates are not recompiled after a fresh checkout as they
@@ -96,15 +132,12 @@ jobs:
       # (scripts/ci-rust-cache-key.mjs).
       - name: Key the Rust cache by its inputs
         id: rust-cache
-        if: ${{ inputs.driver != 'web' }}
-        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json'
+        if: ${{ inputs.build != '' }}
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json' .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile
 
-      # Jobs with the same cache key must not all save: GitHub reserves the key for one and
-      # the action fails the others (three of four main shards in run 43397675113). The
-      # caller decides with `cache-mode` on its job: parity.yml gives every job read-only
-      # cache access except the two that save. The "Set up job" log prints it as "Cache mode".
+      # Only one main build per key saves objects. Shards use the binary artifact.
       - name: Cache Rust builds
-        if: ${{ inputs.driver != 'web' }}
+        if: ${{ inputs.build != '' }}
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
           version: "1.30.0"
@@ -116,39 +149,77 @@ jobs:
           clean-target-before-export: true
 
       - name: Activate Cargo caching
-        if: ${{ inputs.driver != 'web' }}
+        if: ${{ inputs.build != '' }}
         run: node scripts/ci-mbx-cargo.mjs
 
-      - name: Cache Bun dependencies
-        if: ${{ !inputs.build-only }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: Install dependencies
-        if: ${{ !inputs.build-only }}
+        if: ${{ inputs.build == '' }}
         run: bun install --frozen-lockfile
 
       # The web driver launches the full Chromium build that playwright-core pins.
       - name: Install Chromium
-        if: ${{ !inputs.build-only && inputs.driver != 'gpui' }}
-        run: bunx playwright-core install --with-deps --no-shell chromium
+        if: ${{ inputs.build == '' && inputs.driver != 'gpui' }}
+        shell: bash
+        run: |
+          bunx playwright-core install --no-shell chromium
+          # The chromium channel selects the full browser and runs Playwright's
+          # Linux host dependency checks, including ldd, before launching it.
+          probe_chromium() {
+            node --input-type=module -e '
+              import { chromium } from "playwright-core";
+              const browser = await chromium.launch({ channel: "chromium", headless: true });
+              await browser.close();
+            '
+          }
+          if ! probe_chromium; then
+            bunx playwright-core install-deps chromium
+            probe_chromium
+          fi
 
-      - name: Build parity test
-        if: ${{ inputs.build-only }}
+      - name: Seed the uninstrumented GPUI cache
+        if: ${{ inputs.build == 'cache' }}
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-        run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run
+        run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run --message-format=json-render-diagnostics
 
-      # Build intermediates stay in the cached target directory. CI uses every CPU.
-      # A single driver owns every CPU. Combined coverage jobs retain one GPUI process and
-      # web pages on the other CPUs, based on the 2026-11-12 scenario timings.
+      # Keep the default checkout path in build and replay jobs: LLVM reports absolute paths.
+      - name: Export the GPUI parity binary
+        id: export
+        if: ${{ inputs.build == 'artifact' }}
+        env:
+          KUBECOVE_PARITY_BUILD_DIR: ${{ runner.temp }}/gpui-parity
+          PARITY_COVERAGE: ${{ inputs.coverage && '1' || '0' }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+        run: |
+          CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
+          release=$(jq -er '.rustcVersion | split("\n")[] | select(startswith("release: ")) | ltrimstr("release: ")' "$KUBECOVE_PARITY_BUILD_DIR/manifest.json")
+          echo "rust-version=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the GPUI binary
+        id: binary
+        if: ${{ inputs.build == 'artifact' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity-gpui-binary-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/gpui-parity/manifest.json
+            ${{ runner.temp }}/gpui-parity/parity
+          if-no-files-found: error
+
+      - name: Upload the GPUI build log
+        if: ${{ failure() && inputs.build == 'artifact' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity-gpui-build-log-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gpui-parity/gpui-build.log
+          if-no-files-found: ignore
+
+      # For combined coverage, the harness defaults to half the CPUs for each driver and
+      # half for LLVM conversion, which starts after the GPUI scenario workers have exited.
       - name: Run parity suite
-        if: ${{ !inputs.build-only }}
+        if: ${{ inputs.build == '' }}
         env:
           PARITY_SUITE_SHARD: ${{ inputs.shard }}/${{ inputs.shards }}
           PARITY_DRIVER: ${{ inputs.driver }}
@@ -156,20 +227,20 @@ jobs:
           PARITY_PREFIX: ${{ inputs.prefix }}
           PARITY_EXCLUDE: ${{ inputs.exclude }}
           PARITY_SCENARIOS: ${{ inputs.scenarios }}
+          KUBECOVE_PARITY_TIMINGS_PATH: ${{ runner.temp }}/parity-timings/${{ inputs.driver || 'web' }}.json
+          KUBECOVE_PARITY_MANIFEST: ${{ inputs.driver != 'web' && format('{0}/gpui-parity/manifest.json', runner.temp) || '' }}
+          RUSTUP_TOOLCHAIN: ${{ inputs.rust-version }}
           # Failure screenshots only; step screenshots cost about ten captures per scenario.
           PARITY_STEP_SCREENSHOTS: "0"
-          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
         run: |
+          test -s "$KUBECOVE_PARITY_TIMINGS_PATH"
           if [[ -n "${PARITY_DRIVER}" ]]; then
             export PARITY_JOBS="$(nproc)" PARITY_WEB_JOBS="$(nproc)"
-          else
-            export PARITY_JOBS=1 PARITY_WEB_JOBS="$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))"
           fi
-          CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
+          bun run e2e:parity
 
       - name: Upload parity artifacts
-        if: ${{ always() && !inputs.build-only }}
+        if: ${{ always() && inputs.build == '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: parity-${{ github.event_name }}-${{ inputs.driver || 'both' }}-shard-${{ inputs.shard }}-of-${{ inputs.shards }}${{ inputs.driver && inputs.prefix && '-spike' || '' }}-attempt-${{ github.run_attempt }}
@@ -178,7 +249,7 @@ jobs:
 
       # Failed scenarios stay out of the shard's map, so it is kept whatever the suite result.
       - name: Upload shard coverage map
-        if: ${{ !cancelled() && inputs.coverage }}
+        if: ${{ !cancelled() && inputs.build == '' && inputs.coverage }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: parity-coverage-shard-${{ inputs.shard }}-of-${{ inputs.shards }}-attempt-${{ github.run_attempt }}

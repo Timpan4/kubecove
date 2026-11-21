@@ -4,10 +4,11 @@ import { join, resolve } from "node:path";
 import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
 import { type Contract, loadContract, requireActionCoverage, requireViewCoverage } from "../e2e/parity/contract";
 import { writeRunMap } from "../e2e/parity/coverage-map";
-import { runGpui } from "../e2e/parity/gpui-run";
+import { exportGpuiParity, runGpui } from "../e2e/parity/gpui-run";
 import { type Driver, inspectDriverResults, parseDriver } from "../e2e/parity/merge-reports";
 import { type CoverageMapFailure, DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
+import { assignSuiteShards, loadTimings } from "../e2e/parity/suite-sharding";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { holdFrameIsolation } from "./gpui-frame-process";
 
@@ -27,8 +28,8 @@ type Scenario = Contract["scenarios"][number];
  *   CI runs in a job of its own.
  * - PARITY_CHANGED=<base ref>: the scenarios the changes since the merge base with that ref can
  *   affect, from the coverage map at PARITY_COVERAGE_MAP (e2e/parity/changed-scenarios.ts).
- * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
- *   separate CI jobs split one suite.
+ * - PARITY_SUITE_SHARD=<index>/<count>: duration-balanced assignment across CI jobs.
+ *   Every shard in the suite must receive the same optional KUBECOVE_PARITY_TIMINGS_PATH.
  */
 async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 	const list = (name: string) => (process.env[name] ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
@@ -49,16 +50,30 @@ async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 	if (shard) {
 		const match = /^(\d+)\/(\d+)$/.exec(shard);
 		const [index, count] = [Number(match?.[1]), Number(match?.[2])];
-		if (!match || index >= count) throw new Error(`PARITY_SUITE_SHARD must be <index>/<count>: ${shard}`);
-		selected = selected.filter((_, position) => position % count === index);
+		if (!match || !Number.isSafeInteger(index) || !Number.isSafeInteger(count) || index >= count) throw new Error(`PARITY_SUITE_SHARD must be <index>/<count>: ${shard}`);
+		const timings = await loadTimings(process.env.KUBECOVE_PARITY_TIMINGS_PATH);
+		const assignments = assignSuiteShards(selected.map(({ id }) => id), count, timings);
+		const ids = new Set(assignments[index]);
+		selected = selected.filter(({ id }) => ids.has(id));
 	}
 	return selected;
 }
 
-const driver = process.env.PARITY_DRIVER ? parseDriver(process.env.PARITY_DRIVER) : undefined;
-const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts"), driver) : process.env.PARITY_RERUN;
 // PARITY_COVERAGE=1 records the coverage map (e2e/parity/README.md); normal runs leave it off.
 const coverage = process.env.PARITY_COVERAGE === "1";
+const buildDir = process.env.KUBECOVE_PARITY_BUILD_DIR;
+const controller = new AbortController();
+const interrupt = () => controller.abort(new Error("Interrupted"));
+process.once("SIGINT", interrupt);
+process.once("SIGTERM", interrupt);
+if (buildDir) {
+	if (process.env.KUBECOVE_PARITY_MANIFEST) throw new Error("KUBECOVE_PARITY_BUILD_DIR and KUBECOVE_PARITY_MANIFEST are mutually exclusive");
+	console.log(`GPUI parity manifest: ${await exportGpuiParity(resolve(buildDir), coverage, controller.signal)}`);
+	process.exit(0);
+}
+const driver = process.env.PARITY_DRIVER ? parseDriver(process.env.PARITY_DRIVER) : undefined;
+const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts"), driver) : process.env.PARITY_RERUN;
+if (driver === "web" && process.env.KUBECOVE_PARITY_MANIFEST) throw new Error("KUBECOVE_PARITY_MANIFEST requires the GPUI driver");
 if (coverage && driver) throw new Error("PARITY_COVERAGE requires both drivers");
 const artifacts = resolve("e2e/artifacts", `parity-${crypto.randomUUID()}`);
 await mkdir(artifacts, { recursive: true });
@@ -68,10 +83,6 @@ await writeFile(join(artifacts, "gpui.log"), "Native driver did not start.\n");
 const started = performance.now();
 const phases: Record<string, number> = {};
 const mark = (phase: string) => { phases[phase] = Math.round(performance.now() - started) / 1000; };
-const controller = new AbortController();
-const interrupt = () => controller.abort(new Error("Interrupted"));
-process.once("SIGINT", interrupt);
-process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 let runLevelFailed = false;
 let resultDriver: Driver | "both" = driver ?? "both";
@@ -107,8 +118,10 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer: ${process.env[name]}`);
 		return value;
 	};
-	const jobs = positive("PARITY_JOBS", Math.max(1, Math.floor(availableParallelism() / 2)));
+	const halfCpus = Math.max(1, Math.floor(availableParallelism() / 2));
+	const jobs = positive("PARITY_JOBS", halfCpus);
 	const webJobs = executed.includes("web") ? positive("PARITY_WEB_JOBS", jobs) : jobs;
+	const coverageJobs = coverage ? positive("PARITY_GPUI_COVERAGE_JOBS", halfCpus) : jobs;
 	// The GPUI test processes render the same browser-mock responses the web driver reads.
 	// Only they read the fixture, so the web driver and the GPUI build start during the export.
 	const fixture = join(artifacts, "fixture.json");
@@ -118,7 +131,7 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 		const cancelExport = () => exported.kill();
 		controller.signal.addEventListener("abort", cancelExport, { once: true });
-		runs.push(runGpui(selection.gpui, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage)
+		runs.push(runGpui(selection.gpui, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage, coverageJobs)
 			.then((problem) => { if (problem) driverFailed("gpui", problem); }, (error) => driverFailed("gpui", `GPUI driver: ${String(error)}`))
 			.finally(async () => { await exportExit; controller.signal.removeEventListener("abort", cancelExport); }));
 	}

@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { assertDesktopProfileIdle, stopOwnedProfileProcess } from "../e2e/harness/desktop-profile";
+import { assertDesktopProfileIdle, signalOwnedProcess } from "../e2e/harness/desktop-profile";
 import { startMemoryFixture } from "../e2e/harness/memory-fixture";
 
 export async function observeReleaseStartup(binary: string, artifacts: string, fonts: string[]) {
@@ -16,7 +16,7 @@ export async function observeReleaseStartup(binary: string, artifacts: string, f
 	function interrupt(signal: "SIGINT" | "SIGTERM") {
 		if (interrupted) return;
 		interrupted = signal;
-		if (driver) interruptCleanup = stopOwnedProfileProcess(driver, "SIGTERM").catch((error) => { interruptError = error; });
+		if (driver) interruptCleanup = signalOwnedProcess(driver, "SIGTERM").catch((error) => { interruptError = error; });
 	}
 	const onInterrupt = () => interrupt("SIGINT");
 	const onTerminate = () => interrupt("SIGTERM");
@@ -49,7 +49,7 @@ export async function observeReleaseStartup(binary: string, artifacts: string, f
 	} finally {
 		try {
 			await interruptCleanup;
-			if (driver) { await stopOwnedProfileProcess(driver, "SIGTERM"); await driver.exited; }
+			if (driver) { await signalOwnedProcess(driver, "SIGTERM"); await driver.exited; }
 		} finally {
 			try {
 				fixture?.stop();

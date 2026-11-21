@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   # The Nix lock refresh workflow dispatches CI on its pull request branch.
   workflow_dispatch:
 
@@ -95,7 +95,7 @@ jobs:
             // These tasks share one matrix; frontend checks keep their own job.
             const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
             // The GPUI tests compile in the workspace fixtures the web client uses.
-            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json';
+            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile';
             // The server also embeds the browser build. The frontend tree is left out on
             // purpose: with it, every frontend push to main would upload the server cache
             // again (896 MB after run 43325597142). Without it, a build recompiles the
@@ -104,7 +104,7 @@ jobs:
             const server = 'src-tauri :!src-tauri/gpui';
             // Pass reuse covers verification inputs separately from compiler bundles.
             // Root .c* trees cover .cargo/.config, without unrelated .github workflows.
-            // ci.yml is explicit in both key steps; CI uses no local actions/workflows.
+            // CI workflow and the local native setup it calls are explicit key inputs.
             const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
             const desktopPass = `${desktop} ${common}`;
             const gpuiPass = `${gpui} ${common}`;
@@ -137,7 +137,7 @@ jobs:
     name: Frontend checks
     needs:
       - changes
-    if: ${{ needs.changes.outputs.frontend == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -154,14 +154,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -211,7 +203,7 @@ jobs:
       actions: read
     needs:
       - changes
-    if: ${{ (needs.changes.outputs.docs == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || !startsWith(github.head_ref, 'release/app-v') || !contains(github.event.pull_request.labels.*.name, 'release')) }}
+    if: ${{ needs.changes.outputs.docs == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     # Retain the existing Rust cold-cache allowance; this is not a timing target.
     timeout-minutes: 30
@@ -296,15 +288,6 @@ jobs:
         with:
           bun-version: "1.4.4"
 
-      - name: Cache Bun dependencies
-        if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: Install frontend dependencies
         if: ${{ (matrix.task == 'frontend-e2e' || matrix.task == 'server' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         run: bun install --frozen-lockfile
@@ -342,12 +325,14 @@ jobs:
           fi
 
       - name: Install GPUI build dependencies
+        id: setup-gpui-native
         if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
-        run: |
-          if ! pkg-config --exists fontconfig xcb xkbcommon xkbcommon-x11; then
-            sudo apt-get update
-            sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
-          fi
+        uses: ./.github/actions/setup-linux-native-deps
+
+      - name: Set up the GPUI CI profile
+        id: setup-gpui-profile
+        if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
+        uses: ./.github/actions/setup-gpui-ci-profile
 
       # Cargo 1.100 puts unit state under build/, which the pinned action's target
       # scanner skips. Objects transport exports completed mbx commands instead.
@@ -417,20 +402,41 @@ jobs:
           # The E2E flavor with the agent automation endpoint (ADR 0035).
           mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --all-targets -- -D warnings
 
+      - name: Export the GPUI text-fit fixture
+        id: export-gpui-fixture
+        if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
+        run: |
+          mkdir -p e2e/artifacts/text-fit
+          bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
+
       - name: Test GPUI
         id: test-gpui
         if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
+        shell: bash
+        env:
+          # Keep all three phases in the same target and mbx action store. The action
+          # exports their shared group after this job and clears the managed target.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
         run: |
-          mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
-          # Text fit against the bundled fonts, on the browser-mock fixture. Without the
-          # fixture the test prints a skip and passes, so a skip fails the step.
-          mkdir -p e2e/artifacts/text-fit
-          bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
-          set -o pipefail
-          KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --test text_fit | tee e2e/artifacts/text-fit/report.txt
+          set -euo pipefail
+          printf '## GPUI tests\n\n' >> "$GITHUB_STEP_SUMMARY"
+          run_phase() {
+            local label=$1 log=$2 started=$SECONDS status=0
+            shift 2
+            mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked "$@" 2>&1 | tee "$log" || status=$?
+            {
+              printf '\n**%s** (%ss, exit %s)\n\n' "$label" "$((SECONDS - started))" "$status"
+              grep -F 'mbx[cache]: object cache:' "$log" || echo "No mbx object cache summary."
+            } >> "$GITHUB_STEP_SUMMARY"
+            return "$status"
+          }
+          run_phase "Library and native" "$RUNNER_TEMP/gpui-native.log" --lib --test native
+          # Without the fixture the text-fit test prints a skip and passes.
+          KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" \
+            run_phase "Text fit" e2e/artifacts/text-fit/report.txt --test text_fit
           if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi
-          # The E2E flavor's automation and startup checks (ADR 0035).
-          mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --test native -- automation:: e2e_interlock::
+          run_phase "E2E automation and startup" "$RUNNER_TEMP/gpui-e2e.log" --features e2e --test native -- automation:: e2e_interlock::
 
       # Runs before the browser UI is built: the API-only server must build without it.
       - name: Verify API-only server
@@ -588,7 +594,6 @@ jobs:
           CHECKS_RESULT: ${{ needs.checks.result }}
           NIX_REQUIRED: ${{ github.event_name != 'pull_request' && needs.changes.outputs.nix == 'true' }}
           NIX_RESULT: ${{ needs.nix.result }}
-          RELEASE_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/app-v') && contains(github.event.pull_request.labels.*.name, 'release') }}
         run: |
           set -euo pipefail
           echo "Change detection: ${CHANGES_RESULT}"
@@ -599,26 +604,19 @@ jobs:
           for required in "${DOCS_REQUIRED}" "${FRONTEND_REQUIRED}" "${RUST_REQUIRED}" "${NIX_REQUIRED}"; do
             [[ "${required}" == "true" || "${required}" == "false" ]]
           done
-          if [[ "${RELEASE_PR}" == "true" ]]; then
-            test "${FRONTEND_RESULT}" = "skipped"
-            test "${CHECKS_RESULT}" = "skipped"
-            test "${NIX_RESULT}" = "skipped"
-          else
-            verify_result() {
-              local required="$1"
-              local result="$2"
-              if [[ "${required}" == "true" ]]; then
-                test "${result}" = "success"
-              else
-                test "${required}" = "false"
-                test "${result}" = "skipped"
-              fi
-            }
-            checks_required=false
-            if [[ "${DOCS_REQUIRED}" == "true" || "${FRONTEND_REQUIRED}" == "true" || "${RUST_REQUIRED}" == "true" ]]; then
-              checks_required=true
+          verify_result() {
+            local required="$1"
+            local result="$2"
+            if [[ "${required}" == "true" ]]; then
+              test "${result}" = "success"
+            else
+              test "${result}" = "skipped"
             fi
-            verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
-            verify_result "${checks_required}" "${CHECKS_RESULT}"
-            verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"
+          }
+          checks_required=false
+          if [[ "${DOCS_REQUIRED}" == "true" || "${FRONTEND_REQUIRED}" == "true" || "${RUST_REQUIRED}" == "true" ]]; then
+            checks_required=true
           fi
+          verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
+          verify_result "${checks_required}" "${CHECKS_RESULT}"
+          verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"

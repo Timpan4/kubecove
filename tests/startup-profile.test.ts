@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build as viteBuild } from "vite";
-import { assertPortAvailable, hasRunningApp, stopOwnedProfileProcess } from "../e2e/harness/desktop-profile";
+import { assertPortAvailable, hasRunningApp, signalOwnedProcess } from "../e2e/harness/desktop-profile";
 import { startupReport } from "../e2e/harness/startup-report";
 import { frontendBundleReport } from "../scripts/frontend-bundle-report";
 import { IPC_PREFIX, markProfileIpc, markStartup, STARTUP_PREFIX } from "../src/lib/startup-marks";
@@ -89,11 +89,11 @@ test("interrupt cleanup stops only a process owned by the profile", async () => 
 	const owned = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], options);
 	const unrelated = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], options);
 	try {
-		await stopOwnedProfileProcess(owned, "SIGTERM");
+		await signalOwnedProcess(owned, "SIGTERM");
 		await owned.exited;
 		expect(unrelated.exitCode).toBeNull();
 		process.kill(unrelated.pid, 0);
-		await stopOwnedProfileProcess(owned, "SIGTERM");
+		await signalOwnedProcess(owned, "SIGTERM");
 	} finally {
 		owned.kill();
 		unrelated.kill();

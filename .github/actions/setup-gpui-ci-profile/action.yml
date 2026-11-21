@@ -1,0 +1,14 @@
+name: Set up the GPUI CI profile
+description: Keep line tables for the shared KubeCove crate in GPUI builds on hosted CI.
+
+runs:
+  using: composite
+  steps:
+    - name: Configure the package profile for this checkout
+      shell: bash
+      run: |
+        # Cargo does not support environment variables for package profile overrides.
+        mkdir -p .cargo
+        test ! -e .cargo/config
+        set -o noclobber
+        cat "$GITHUB_ACTION_PATH/config.toml" > .cargo/config.toml

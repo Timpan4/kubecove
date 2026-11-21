@@ -21,6 +21,76 @@ test("reports the fingerprint read cause as Cargo logged it", () => {
 	expect(parityRebuildReason(failed)).toBeUndefined();
 });
 
+// Export must reject cross-target config even when Cargo emits a usable host artifact first.
+test.skipIf(process.platform === "win32")("GPUI export only publishes host artifacts without passing --target", async () => {
+	await mkdir("e2e/artifacts", { recursive: true });
+	const directory = await mkdtemp(resolve("e2e/artifacts/gpui-export-test-"));
+	const host = "x86_64-unknown-linux-gnu";
+	const cross = "aarch64-unknown-linux-gnu";
+	try {
+		await mkdir(join(directory, "src-tauri", "gpui"), { recursive: true });
+		await Promise.all([
+			writeFile(join(directory, "git"), `#!/bin/sh
+if [ "$1" = rev-parse ]; then echo ${"a".repeat(40)}; fi
+`, { mode: 0o755 }),
+			writeFile(join(directory, "rustc"), `#!/bin/sh
+echo "host: ${host}"
+`, { mode: 0o755 }),
+			writeFile(join(directory, "cargo"), `#!/usr/bin/env bun
+import { join } from "node:path";
+if (process.argv.includes("--target")) throw new Error("Explicit target passed to Cargo");
+for (const target of process.env.TEST_TARGETS.split(",")) {
+	const intermediate = process.env.TEST_LAYOUT === "build";
+	const root = intermediate ? process.env.CARGO_BUILD_BUILD_DIR : process.env.CARGO_TARGET_DIR;
+	const executable = join(root, target, process.env.TEST_PROFILE, ...(intermediate ? ["build", "kubecove-gpui", "hash", "out"] : ["deps"]), "parity-test");
+	await Bun.write(executable, "parity binary");
+	console.log(JSON.stringify({ reason: "compiler-artifact", target: { name: "parity" }, executable, features: [] }));
+}
+`, { mode: 0o755 }),
+		]);
+		const module = JSON.stringify(join(import.meta.dir, "gpui-run.ts"));
+		for (const [mode, layout, targets, envTarget, profile, error] of [
+			["native", "deps", "", "", "debug", ""],
+			["host-config", "deps", host, host, "debug", ""],
+			["env-cross", "deps", "", cross, "debug", "CARGO_BUILD_TARGET"],
+			["cross-artifact", "deps", `,${cross}`, "", "debug", "artifact path"],
+			["build-native", "build", "", "", "debug", ""],
+			["build-host-config", "build", host, host, "debug", ""],
+			["build-cross-artifact", "build", `,${cross}`, "", "debug", "artifact path"],
+			["build-outside-root", "build", "../other", "", "debug", "artifact path"],
+			["build-wrong-profile", "build", "", "", "release", "artifact path"],
+		]) {
+			const output = join(directory, mode);
+			const child = Bun.spawn([process.execPath, "-e", `
+import { exportGpuiParity } from ${module};
+await exportGpuiParity(process.env.TEST_OUTPUT, false, new AbortController().signal);
+`], {
+				cwd: directory,
+				env: {
+					...process.env, PATH: [directory, process.env.PATH].join(delimiter), RUSTC: join(directory, "rustc"),
+					CARGO_BUILD_TARGET: envTarget || undefined, CARGO_TARGET_DIR: join(directory, "target"),
+					CARGO_BUILD_BUILD_DIR: join(directory, "build"), TEST_LAYOUT: layout, TEST_PROFILE: profile,
+					TEST_TARGETS: targets, TEST_OUTPUT: output,
+				},
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+			const manifest = Bun.file(join(output, "manifest.json"));
+			if (error) {
+				expect(code).not.toBe(0);
+				expect(stderr).toContain(error);
+				expect(await manifest.exists()).toBe(false);
+			} else {
+				if (code !== 0) throw new Error(`GPUI export failed: ${stderr}`);
+				expect((await manifest.json()).target).toBe(host);
+			}
+		}
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
+
 test.skipIf(process.platform === "win32")("GPUI shard exits determine which scenarios are retried", async () => {
 	const directory = await mkdtemp(join(import.meta.dir, ".gpui-exit-test-"));
 	const executable = join(directory, "parity");

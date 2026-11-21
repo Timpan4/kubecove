@@ -1,0 +1,30 @@
+name: Set up GPUI Linux dependencies
+description: Verify the fontconfig and X11 development libraries and install missing packages.
+
+runs:
+  using: composite
+  steps:
+    - name: Check GPUI headers and linker inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        probe=$(mktemp)
+        trap 'rm -f "$probe"' EXIT
+        check_link() {
+          local flags
+          local -a args
+          flags=$(pkg-config --cflags --libs fontconfig xcb xkbcommon xkbcommon-x11) || return
+          read -r -a args <<< "$flags"
+          printf '%s\n' \
+            '#include <fontconfig/fontconfig.h>' \
+            '#include <xcb/xcb.h>' \
+            '#include <xkbcommon/xkbcommon.h>' \
+            '#include <xkbcommon/xkbcommon-x11.h>' \
+            'int main(void) { return 0; }' |
+            cc -x c - -o "$probe" -Wl,--no-as-needed "${args[@]}"
+        }
+        if ! check_link; then
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
+          check_link
+        fi

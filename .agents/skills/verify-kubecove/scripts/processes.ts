@@ -75,7 +75,7 @@ export async function waitFor(description: string, check: (signal: AbortSignal) 
 // Signals only the detached process group this run created, as `e2e/harness/desktop-profile.ts` does. `startedAt` is
 // the leader's startIdentity at spawn. Returns true once none of the run's processes remain. Returns false when they
 // still run, or when ownership cannot be established, so the caller keeps its record for a retry.
-export async function stopGroup(pid: number, startedAt: string | undefined) {
+export async function stopGroup(pid: number, startedAt: string | undefined, signal: "SIGTERM" | "SIGKILL" = "SIGTERM") {
 	// On Windows a PID names one process, not a group, and `taskkill /T` finds children only through a live parent. A
 	// leader that exited before this stop may have left children running, so there its absence does not prove the
 	// run stopped.
@@ -96,7 +96,7 @@ export async function stopGroup(pid: number, startedAt: string | undefined) {
 	if (process.platform === "win32") await Bun.spawn(["taskkill", "/PID", String(pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
 	else {
 		try {
-			process.kill(-pid, "SIGTERM");
+			process.kill(-pid, signal);
 		} catch {}
 	}
 	return waitFor(`process group ${pid} to exit`, async () => !groupAlive(pid)).then(

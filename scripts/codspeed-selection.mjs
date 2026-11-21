@@ -15,7 +15,7 @@ export function rustAffected(path) {
   if (sharedWorkflow(path) || sharedSelector(path) || fixture(path)) return true;
   if (/^src-tauri\/(gpui|server)\//.test(path) || /^(e2e|tests)\//.test(path)) return false;
   return path.startsWith("src-tauri/") ||
-    ["scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs"].includes(path) ||
+    ["scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs", "scripts/codspeed-rust-artifact.mjs"].includes(path) ||
     /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\//.test(path);
 }
 
