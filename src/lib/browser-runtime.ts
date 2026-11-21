@@ -1,4 +1,6 @@
 import "./browser-token-bootstrap";
+import { isDiagnosticsEnabled } from "./diagnostics";
+import { markProfileIpc, markStartup } from "./startup-marks";
 import { writable } from "svelte/store";
 import { messageFromError } from "./error-redaction";
 import { createChannel, type StreamChannel } from "./stream-channel";
@@ -477,30 +479,39 @@ export function createBrowserTauriClient(): TauriClient {
 			command: string,
 			args?: Args,
 		): Promise<T> => {
-			if (sessionSnapshot.status !== "ready" || !resumeToken) {
-				throw new Error("Open a KubeCove server session before invoking commands.");
-			}
-			const response = await fetch(apiUrl(`/api/v1/invoke/${encodeURIComponent(command)}`), {
-				method: "POST",
-				credentials: "same-origin",
-				cache: "no-store",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Kubecove-Session": resumeToken,
-				},
-				body: JSON.stringify(args ?? {}),
-			});
-			const result: unknown = await response.json().catch(() => null);
-			if (!response.ok) {
-				if (response.status === 401 && sessionSnapshot.authenticationMode === "oidc") {
-					returnToOidcSignIn();
+			const measured = isDiagnosticsEnabled() || process.env.KUBECOVE_PUBLIC_PROFILE === "true";
+			const started = measured ? performance.now() : 0;
+			let succeeded = false;
+			try {
+				if (sessionSnapshot.status !== "ready" || !resumeToken) {
+					throw new Error("Open a KubeCove server session before invoking commands.");
 				}
-				const error = new Error(parseSessionErrorMessage(result, `Command ${command} failed (${response.status}).`));
-				if (result && Object(result) === result) Object.assign(error, result);
-				throw error;
+				const response = await fetch(apiUrl(`/api/v1/invoke/${encodeURIComponent(command)}`), {
+					method: "POST",
+					credentials: "same-origin",
+					cache: "no-store",
+					headers: {
+						"Content-Type": "application/json",
+						"X-Kubecove-Session": resumeToken,
+					},
+					body: JSON.stringify(args ?? {}),
+				});
+				const result: unknown = await response.json().catch(() => null);
+				if (!response.ok) {
+					if (response.status === 401 && sessionSnapshot.authenticationMode === "oidc") {
+						returnToOidcSignIn();
+					}
+					const error = new Error(parseSessionErrorMessage(result, `Command ${command} failed (${response.status}).`));
+					if (result && Object(result) === result) Object.assign(error, result);
+					throw error;
+				}
+				succeeded = true;
+				if (measured && command === "get_kubeconfig_sources") markStartup("kubeconfig-ready");
+				// SAFETY: typed command wrappers select T from the matching Rust serde result contract.
+				return result as T;
+			} finally {
+				if (measured) markProfileIpc(command, started, succeeded, measured);
 			}
-			// SAFETY: typed command wrappers select T from the matching Rust serde result contract.
-			return result as T;
 		},
 	};
 	return browserClient;

@@ -325,6 +325,8 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
     assert.ok(build.steps.indexOf(activation) < build.steps.indexOf(consumer));
   }
   for (const check of [job("e2e"), e2e.jobs["real-primary"], e2e.jobs["real-matrix"]]) {
+    assert.match(step(check, "Run real suite").run, /^bun run e2e:real -- --kubernetes /);
+    assert.doesNotMatch(JSON.stringify(check.steps), /webkit2gtk|gnome-keyring|xvfb-run/);
     const key = check.steps.find(({ id }) => id === "rust-cache");
     assert.equal(key?.run, "node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'");
     const setups = check.steps.filter(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));

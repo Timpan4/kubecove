@@ -1,7 +1,7 @@
 import { expect, it } from "bun:test";
 import { existsSync, readFileSync, watch } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // Failure modes: a parent interrupt must reap its detached driver and remove
 // the owned fixture certificate, private key, kubeconfig, and data directory.
@@ -14,23 +14,27 @@ it.skipIf(process.platform !== "linux").each(["SIGINT", "SIGTERM"] as const)("cl
 	const nativeArtifacts = join(directory, "native");
 	await mkdir(nativeArtifacts);
 	const fakeNode = join(directory, "node");
-	await writeFile(fakeNode, `#!${process.execPath}\nconst server = Bun.serve({hostname: "127.0.0.1", port: 0, fetch: () => new Response("owned test driver")});\nawait Bun.write(process.env.PROFILE_READY + ".tmp", JSON.stringify({pid:process.pid}));\nawait import("node:fs/promises").then(fs => fs.rename(process.env.PROFILE_READY + ".tmp", process.env.PROFILE_READY));\n`);
+	await writeFile(fakeNode, `#!${process.execPath}\nconst server = Bun.serve({hostname: "127.0.0.1", port: 0, fetch: () => new Response("owned test driver")});\nawait Bun.write(process.env.PROFILE_READY + ".tmp", JSON.stringify({pid:process.pid,kubeconfig:process.env.KUBECONFIG}));\nawait import("node:fs/promises").then(fs => fs.rename(process.env.PROFILE_READY + ".tmp", process.env.PROFILE_READY));\n`);
 	await chmod(fakeNode, 0o700);
 	let resolveReady!: () => void;
 	const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
 	const watcher = watch(directory, (_event, name) => { if (name === "driver-ready.json" && existsSync(marker)) resolveReady(); });
+	const fakeServer = join(directory, "fixture-server");
+	await writeFile(fakeServer, `#!${process.execPath}\nconst server = Bun.serve({hostname:"127.0.0.1",port:0,fetch:()=>new Response("owned")});console.log("KubeCove login: " + server.url.origin + "/#token=synthetic");\n`);
+	await chmod(fakeServer, 0o700);
 	const helper = join(root, "scripts", "perf-release-native.ts");
-	const child = Bun.spawn([process.execPath, "-e", `import {observeReleaseStartup} from ${JSON.stringify(helper)}; await observeReleaseStartup("unused-owned-test-binary", ${JSON.stringify(nativeArtifacts)}, []);`], {
+	const child = Bun.spawn([process.execPath, "-e", `import {observeReleaseStartup} from ${JSON.stringify(helper)}; await observeReleaseStartup(${JSON.stringify(fakeServer)}, ${JSON.stringify(nativeArtifacts)}, []);`], {
 		cwd: root, env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, PROFILE_READY: marker }, stdout: "pipe", stderr: "pipe",
 	});
 	let driverPid: number | undefined;
 	let cleanupError: unknown;
 	try {
 		await Promise.race([ready, child.exited.then((code) => { throw new Error(`Helper exited before its owned driver was ready (${code})`); })]);
-		const readyDriverPid: number = JSON.parse(readFileSync(marker, "utf8")).pid;
+		const { pid: readyDriverPid, kubeconfig }: { pid: number; kubeconfig: string } = JSON.parse(readFileSync(marker, "utf8"));
 		driverPid = readyDriverPid;
-		const fixture = join(nativeArtifacts, "fixture");
-		expect(existsSync(join(fixture, "kubeconfig"))).toBe(true);
+		const fixture = dirname(kubeconfig);
+		expect(fixture.startsWith(artifacts)).toBe(false);
+		expect(existsSync(kubeconfig)).toBe(true);
 		child.kill(signal);
 		const code = await child.exited;
 		let driverAlive = true;
@@ -50,6 +54,7 @@ it.skipIf(process.platform !== "linux").each(["SIGINT", "SIGTERM"] as const)("cl
 		}
 		await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
 		await rm(nativeArtifacts, { recursive: true, force: true });
+		await rm(fakeServer, { force: true });
 		await rm(fakeNode, { force: true });
 		await rm(marker, { force: true });
 	}

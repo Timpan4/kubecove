@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { arch, release } from "node:os";
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
+import { pageInvoke } from "../../harness/browser-session";
 import { describe, it } from "mocha";
 import type { AppUsageMetrics } from "../../../src/lib/types";
 import { startupReport } from "../../harness/startup-report";
@@ -24,17 +25,16 @@ describe("release-shaped startup profile", () => {
 				viewport: { width: innerWidth, height: innerHeight, scale: devicePixelRatio },
 			};
 		});
-		const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", { measureWorkingSet: false }))
-			.catch(() => null);
+		const usage = await pageInvoke<AppUsageMetrics>("get_app_usage_metrics", { measureWorkingSet: false });
 		const report = {
 			schemaVersion: 1,
 			scenario: "launcher-fresh-profile",
-			build: "release-with-e2e-feature",
+			build: "release-server-with-profiled-web-ui",
 			frontendCollectedAtMs: frontend.collectedAtMs,
-			limitations: ["E2E automation overhead is included", "OS filesystem caches are not flushed", "No live cluster; workspace and resource milestones are not exercised", "Process-launch-to-WebView-navigation time is unavailable"],
+			limitations: ["E2E automation overhead is included", "OS filesystem caches are not flushed", "No live cluster; workspace and resource milestones are not exercised", "Server-launch-to-browser-navigation time is unavailable"],
 			environment: {
 				platform: process.platform, architecture: arch(), osRelease: release(),
-				webview: process.platform === "win32" ? "WebView2" : process.platform === "darwin" ? "WKWebView" : "WebKitGTK",
+				browser: browser.capabilities.browserName,
 				sourceSha: process.env.KUBECOVE_PROFILE_SHA ?? null,
 				sourceDirty: process.env.KUBECOVE_PROFILE_DIRTY === "true",
 				...frontend.viewport,

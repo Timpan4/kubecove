@@ -1,10 +1,11 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
+import { pageInvoke } from "../../harness/browser-session";
 import { describe, it } from "mocha";
 import type { BackendCacheDiagnosticSnapshot } from "../../../src/lib/diagnostics-types";
 
-describe("native cache diagnostics", () => {
+describe("server cache diagnostics", () => {
 	it("keeps opt-in snapshots separate from timing history and displays the cache report", async () => {
 		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
 		if (!artifacts) throw new Error("Profile artifact directory is required");
@@ -12,8 +13,8 @@ describe("native cache diagnostics", () => {
 		await browser.waitUntil(async () => browser.execute(() =>
 			performance.getEntriesByName("kubecove:startup:launcher-ready").length > 0),
 			{ timeout: 30_000, timeoutMsg: "Launcher did not become ready" });
-		const observations = await browser.execute(async () => {
-			const invoke = window.__TAURI__.core.invoke;
+		const observations = await (async () => {
+			const invoke = pageInvoke;
 			await invoke("set_backend_diagnostics_enabled", { enabled: false });
 			const disabled = await invoke<BackendCacheDiagnosticSnapshot[]>("get_backend_cache_diagnostics");
 			await invoke("set_backend_diagnostics_enabled", { enabled: true });
@@ -24,7 +25,7 @@ describe("native cache diagnostics", () => {
 			await invoke("clear_backend_diagnostics");
 			const cleared = await invoke<BackendCacheDiagnosticSnapshot[]>("get_backend_cache_diagnostics");
 			return { disabled, caches, cleared, historyUnchanged: JSON.stringify(historyBefore) === JSON.stringify(historyAfter) };
-		});
+		})();
 		expect(observations.disabled).toEqual([]);
 		expect(observations.historyUnchanged).toBe(true);
 		expect(observations.caches.map((cache) => cache.label)).toEqual([
@@ -38,9 +39,7 @@ describe("native cache diagnostics", () => {
 			expect([cache.hits, cache.misses, cache.joins, cache.evictions, cache.restoredReloadFailures]).toEqual([0, 0, 0, 0, 0]);
 		}
 		const recordStage = async (stage: string) => writeFile(join(artifacts, "backend-cache-diagnostics.json"), `${JSON.stringify({ passed: false, stage, ...observations }, null, 2)}\n`);
-		await recordStage("native-command-checks-passed");
-		// Native driver element commands stall on this headless Wayland host.
-		// DOM events exercise the app handlers; physical pointer input is not measured.
+		await recordStage("server-command-checks-passed");
 		await browser.execute(() => {
 			const settings = document.querySelector<HTMLButtonElement>('button[aria-label="Open settings"]');
 			if (!settings) throw new Error("Settings button is missing");
@@ -67,6 +66,6 @@ describe("native cache diagnostics", () => {
 				.find((element) => element.textContent === "Backend caches")?.scrollIntoView({ block: "center" });
 		});
 		await browser.saveScreenshot(join(artifacts, "backend-cache-diagnostics.png"));
-		await writeFile(join(artifacts, "backend-cache-diagnostics.json"), `${JSON.stringify({ passed: true, scenario: "launcher-native-cache-contract", ...observations }, null, 2)}\n`);
+		await writeFile(join(artifacts, "backend-cache-diagnostics.json"), `${JSON.stringify({ passed: true, scenario: "launcher-server-cache-contract", ...observations }, null, 2)}\n`);
 	});
 });

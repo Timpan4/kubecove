@@ -21,7 +21,7 @@ function payloadItems(query: Query): number {
 	let items = 0;
 	let collection = false;
 	for (const [key, value] of Object.entries(data)) {
-		if (["nodes", "edges", "pods", "workloads", "warnings"].includes(key) && Array.isArray(value)) {
+		if (["resources", "nodes", "edges", "pods", "workloads", "warnings"].includes(key) && Array.isArray(value)) {
 			collection = true;
 			items += value.length;
 		}

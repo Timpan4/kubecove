@@ -1,3 +1,5 @@
+#[path = "native/desktop_runtime.rs"]
+mod desktop_runtime;
 #[path = "native/argo.rs"]
 mod argo;
 #[path = "native/argo_gaps.rs"]

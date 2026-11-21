@@ -13,16 +13,16 @@ test.skipIf(process.platform === "win32")("interrupted E2E escalates a stuck bui
 const spawn = Bun.spawn;
 Bun.spawn = (command, options) => {
 	const child = spawn(command, options);
-	if (command.slice(0, 4).join(" ") === "bun run tauri build") {
+	if (command[0] === "cargo" && command[1] === "build") {
 		const stdout = child.stdout.pipeThrough(new TransformStream({ flush: () => new Promise(() => {}) }));
 		Object.defineProperty(child, "stdout", { value: stdout });
 	}
 	return child;
 };
 `);
-		await writeFile(join(root, "cargo"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-		await writeFile(join(root, "bun"), `#!/bin/sh
-[ "$1 $2 $3" = "run tauri build" ] || exit 0
+		await writeFile(join(root, "bun"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+		await writeFile(join(root, "cargo"), `#!/bin/sh
+[ "$1" = "build" ] || exit 0
 exec "$TEST_BUN" -e '
 process.on("SIGTERM", () => {
 	console.log("ignored SIGTERM");

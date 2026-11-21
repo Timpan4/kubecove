@@ -22,8 +22,8 @@ export function markStartup(milestone: StartupMilestone): void {
 	performance.mark(`${STARTUP_PREFIX}${milestone}`);
 }
 
-export function markProfileIpc(command: string, start: number, succeeded: boolean): void {
-	if (process.env.KUBECOVE_PUBLIC_PROFILE !== "true") return;
+export function markProfileIpc(command: string, start: number, succeeded: boolean, enabled = process.env.KUBECOVE_PUBLIC_PROFILE === "true"): void {
+	if (!enabled) return;
 	if (ipcEntries >= MAX_PROFILE_IPC_ENTRIES) return;
 	// Only command names cross into the profiler; never arguments, results, or errors.
 	if (!/^[a-z][a-z0-9_]{0,100}$/.test(command)) return;

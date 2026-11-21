@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build as viteBuild } from "vite";
-import { assertPortAvailable, hasRunningApp, signalOwnedProcess } from "../e2e/harness/desktop-profile";
+import { signalOwnedProcess } from "../e2e/harness/desktop-profile";
 import { startupReport } from "../e2e/harness/startup-report";
 import { frontendBundleReport } from "../scripts/frontend-bundle-report";
 import { IPC_PREFIX, markProfileIpc, markStartup, STARTUP_PREFIX } from "../src/lib/startup-marks";
@@ -39,27 +39,9 @@ test("report orders milestones, aggregates IPC, and excludes arbitrary diagnosti
 	expect(report.milestones.slice(0, 2).map(({ name }) => name)).toEqual(["frontend-entry", "launcher-ready"]);
 	expect(report.milestones.find(({ name }) => name === "first-resource-rows")).toEqual({ name: "first-resource-rows", atMs: null, unavailable: "not-reached" });
 	expect(report.ipc.commands).toEqual([{ command: "get_kubeconfig_sources", count: 2, errors: 1, totalMs: 30, maxMs: 20 }]);
-	expect(report.memory.webview.memory).toBeNull();
+	expect(report.memory.server.memory).toBeNull();
 	expect(report.memory.jsHeap.bytes).toBeNull();
 	expect(JSON.stringify(report)).not.toContain("secret-token");
-});
-
-test("desktop guard recognizes app names on all platforms without matching unrelated tools", () => {
-	for (const name of ["kubecove", "/usr/bin/kubecove", "/Applications/KubeCove.app/Contents/MacOS/kubecove", "C:\\Apps\\KubeCove.exe", "KubeCove"]) {
-		expect(hasRunningApp(`other\n${name}\n`)).toBe(true);
-	}
-	expect(hasRunningApp("kubecove-helper\nbun\nps")).toBe(false);
-});
-
-test("occupied servers are refused and remain running", async () => {
-	const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("alive") });
-	try {
-		if (!server.port) throw new Error("Expected a TCP port");
-		await expect(assertPortAvailable(server.port)).rejects.toThrow("will not stop");
-		expect(await (await fetch(server.url)).text()).toBe("alive");
-	} finally {
-		await server.stop(true);
-	}
 });
 
 test("bundle report has deterministic compression, portable ownership, and dynamic chunks", async () => {

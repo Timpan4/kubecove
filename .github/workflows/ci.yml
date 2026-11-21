@@ -109,7 +109,7 @@ jobs:
             const desktopPass = `${desktop} ${common}`;
             const gpuiPass = `${gpui} ${common}`;
             // text_fit also reads the browser-mock fixture that e2e/parity/visual exports from src.
-            const gpuiTestPass = `${gpuiPass} src e2e/parity/visual`;
+            const gpuiTestPass = `${gpuiPass} src e2e/parity/visual e2e/fixtures/exec-credential-plugin.mjs`;
             // cargo tree reads the separate server manifest and lockfile.
             const backendPass = `${server} ${common}`;
             // The server embeds dist/, builds and typechecks the browser, runs the
@@ -487,6 +487,7 @@ jobs:
         background: true
         env:
           KUBECOVE_VERIFY_CHROME: /usr/bin/google-chrome
+          KUBECOVE_NATIVE_REMOTE_PROBE: "1"
         run: bun e2e/headless-smoke.ts --browser
 
       - name: Test headless server

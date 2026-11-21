@@ -443,9 +443,9 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
     rust: shared,
     "gpui-clippy": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
     // text_fit reads the fonts under src-tauri/gpui and the fixture exported from the browser mocks.
-    "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "src-tauri/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
+    "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "src-tauri/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "e2e/fixtures/exec-credential-plugin.mjs", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
     "server-backend": [...shared, "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock"],
-    server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
+    server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", "e2e/harness/server-process.ts", "e2e/harness/server-session.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
   };
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     // Exercise the exact shell pathspec arguments supplied to the key writer.

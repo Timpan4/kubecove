@@ -10,11 +10,11 @@ export const MEMORY_FIXTURE_ROWS = {
 export type MemoryFixture = keyof typeof MEMORY_FIXTURE_ROWS;
 
 /** Measurement options. `latencyMs` delays every response, as a cluster round trip would. */
-export type MemoryFixtureOptions = { latencyMs?: number };
+export type MemoryFixtureOptions = { latencyMs?: number; remoteDesktop?: boolean };
 /** One served request, for counting the reads a client action makes. */
 export type FixtureRequest = { epochMs: number; method: string; path: string; watch: boolean };
 
-export async function startMemoryFixture(size: MemoryFixture, directory: string, { latencyMs = 0 }: MemoryFixtureOptions = {}) {
+export async function startMemoryFixture(size: MemoryFixture, directory: string, { latencyMs = 0, remoteDesktop = false }: MemoryFixtureOptions = {}) {
 	const key = join(directory, "key.pem");
 	const cert = join(directory, "cert.pem");
 	const certificate = Bun.spawn(["openssl", "req", "-x509", "-newkey", "rsa", "-nodes", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE"], { stdout: "ignore", stderr: "pipe" });
@@ -74,6 +74,7 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 		tls: { key: Bun.file(key), cert: Bun.file(cert) },
 		async fetch(request) {
 			const url = new URL(request.url);
+			if (remoteDesktop && url.pathname.endsWith("/log")) return new Response("kubecove-remote-log-marker\n");
 			requests.push({ epochMs: Date.now(), method: request.method, path: `${url.pathname}${url.search}`, watch: url.searchParams.get("watch") === "true" });
 			if (latencyMs > 0) await Bun.sleep(latencyMs);
 			if (request.method !== "GET") return Response.json({ kind: "Status", status: "Failure", reason: "MethodNotAllowed", code: 405 }, { status: 405 });

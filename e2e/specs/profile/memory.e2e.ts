@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
+import { pageInvoke } from "../../harness/browser-session";
 import { describe, it } from "mocha";
 import { LARGE_QUERY_GC_TIME_MS, LARGE_QUERY_ROOTS } from "../../../src/lib/queryKeys";
 import type { AppUsageMetrics } from "../../../src/lib/types";
@@ -14,7 +15,7 @@ profile("release-shaped frontend memory", () => {
 		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
 		if (!artifacts) throw new Error("Profile artifact directory is required");
 		const stages: unknown[] = [];
-		const report = { passed: false, fixture: process.env.KUBECOVE_MEMORY_FIXTURE, fixturePodRows: Number(process.env.KUBECOVE_MEMORY_FIXTURE_ROWS), sourceSha: process.env.KUBECOVE_PROFILE_SHA, sourceDirty: process.env.KUBECOVE_PROFILE_DIRTY === "true", stages, limitations: ["Isolated loopback Kubernetes fixture, no live cluster", "DOM events exercise UI handlers; physical pointer input is unverified", "JSON payload estimates are not heap allocation sizes", "WebView garbage collection is not forced", "Driver and observer overhead are included"] };
+		const report = { passed: false, fixture: process.env.KUBECOVE_MEMORY_FIXTURE, fixturePodRows: Number(process.env.KUBECOVE_MEMORY_FIXTURE_ROWS), sourceSha: process.env.KUBECOVE_PROFILE_SHA, sourceDirty: process.env.KUBECOVE_PROFILE_DIRTY === "true", stages, limitations: ["Isolated loopback Kubernetes fixture, no live cluster", "DOM events exercise UI handlers; physical pointer input is unverified", "JSON payload estimates are not heap allocation sizes", "Browser garbage collection is not forced", "Driver and observer overhead are included"] };
 		const save = () => writeFile(join(artifacts, "frontend-memory.json"), `${JSON.stringify(report, null, 2)}\n`);
 		await save();
 		async function capture(stage: string, started = performance.now()) {
@@ -31,7 +32,7 @@ profile("release-shaped frontend memory", () => {
 					yamlUtf8Bytes: new TextEncoder().encode(document.querySelector(".cm-content")?.textContent ?? "").byteLength,
 				};
 			});
-			const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", { measureWorkingSet: false })).catch(() => null);
+			const usage = await pageInvoke<AppUsageMetrics>("get_app_usage_metrics", { measureWorkingSet: false });
 			stages.push({ stage, durationMs: performance.now() - started, ...frontend, memory: startupReport([], frontend.heapBytes, usage).memory });
 			await save();
 			if (artifacts && ["first-resource-rows", "yaml", "topology-open"].includes(stage)) await browser.saveScreenshot(join(artifacts, `${stage}.png`));
@@ -88,7 +89,6 @@ profile("release-shaped frontend memory", () => {
 		// Reopen the same workspace to measure the existing warm back-navigation contract.
 		started = performance.now();
 		await clickText("Open");
-		await clickText("Resources");
 		await browser.waitUntil(async () => browser.execute(() => Boolean(document.querySelector('[aria-label^="Open resource profile-pod-"]'))));
 		await capture("warm-back-navigation", started);
 		await clickLabel("Open workspaces");
@@ -109,7 +109,6 @@ profile("release-shaped frontend memory", () => {
 		refetchAfterCollection = async () => {
 			const started = performance.now();
 			await clickText("Open");
-			await clickText("Resources");
 			await browser.waitUntil(async () => browser.execute(() => Boolean(document.querySelector('[aria-label^="Open resource profile-pod-"]'))), { timeout: 30_000 });
 			await capture("post-collection-refetch", started);
 			report.passed = true;

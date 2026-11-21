@@ -210,27 +210,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # See the note on the same step in the rust job.
-      - name: Refresh apt package lists
-        run: sudo apt-get update
-
-      - name: Install Tauri Linux dependencies
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: >-
-            build-essential
-            dbus
-            dbus-x11
-            gnome-keyring
-            libayatana-appindicator3-dev
-            libsecret-1-0
-            libwebkit2gtk-4.1-dev
-            librsvg2-dev
-            libssl-dev
-            patchelf
-            xvfb
-          version: release-e2e-tauri-linux-v2
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -266,22 +245,7 @@ jobs:
         run: bun run e2e:fast
 
       - name: Run real suite
-        run: |
-          dbus-run-session -- bash -euc '
-            set -o pipefail
-            if ! keyring_env="$(gnome-keyring-daemon --start --components=secrets)"; then
-              echo "Failed to start gnome-keyring-daemon"
-              exit 1
-            fi
-            eval "$keyring_env"
-            dbus-send --session --print-reply \
-              --dest=org.freedesktop.secrets \
-              /org/freedesktop/secrets \
-              org.freedesktop.Secret.Service.SetAlias \
-              string:default \
-              objpath:/org/freedesktop/secrets/collection/session
-            exec xvfb-run -a bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
-          '
+        run: bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
 
       - name: Upload failure artifacts
         if: failure()

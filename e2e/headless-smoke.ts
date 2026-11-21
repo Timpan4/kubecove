@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { JsonValue } from "../src/lib/types";
+import { serverBinary, startServer } from "./harness/server-process";
+import { channelMarker, serverClient } from "./harness/server-session";
 import { startPortForwardFixture } from "./harness/port-forward-fixture";
 
 // This check exercises the packaged HTTP/WS boundary without a Kubernetes cluster.
@@ -14,7 +15,6 @@ const dataDir = join(temporary, "data");
 await mkdir(dataDir, { mode: 0o700 });
 await chmod(temporary, 0o700);
 const checks: string[] = [];
-const sockets = new Set<WebSocket>();
 const kubeFixture = startPortForwardFixture();
 const fixtureConfig = join(temporary, "fixture-kubeconfig");
 await writeFile(fixtureConfig, JSON.stringify({
@@ -25,144 +25,20 @@ await writeFile(fixtureConfig, JSON.stringify({
 }));
 // The operator selects the fixture through a configured variable; requests may name only it (ADR 0026).
 await writeFile(join(dataDir, "kubeconfig-sources.json"), JSON.stringify({ kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG", paths: [], showSourceLabels: true }));
-// SAFETY: DOM types hide Bun's documented constructor overload for authenticated sockets.
-const BunWebSocket = WebSocket as typeof WebSocket & {
-	new (url: URL, options: Bun.WebSocketOptions): WebSocket;
-};
-const child = Bun.spawn([
-	process.env.KUBECOVE_SERVER_BINARY ?? join(root, "src-tauri/server/target/debug/kubecove-server"),
-	"--data-dir", dataDir,
-], {
-	cwd: root,
-	env: { ...process.env, HOME: temporary, XDG_CONFIG_HOME: temporary, KUBECONFIG: join(temporary, "missing-kubeconfig"), KUBECOVE_SMOKE_CONFIG: fixtureConfig, KUBECOVE_SMOKE_MISSING_CONFIG: join(temporary, "missing-kubeconfig"), DBUS_SESSION_BUS_ADDRESS: undefined },
-	stdout: "pipe",
-	stderr: "pipe",
-});
-// Drain stderr so the server can always complete; never persist startup credentials.
-const stderr = new Response(child.stderr).text();
+const interrupt = new AbortController();
+const stop = () => interrupt.abort();
+process.once("SIGTERM", stop);
+process.once("SIGINT", stop);
+const server = startServer(process.env.KUBECOVE_SERVER_BINARY ?? serverBinary(), dataDir, {
+	HOME: temporary, XDG_CONFIG_HOME: temporary, KUBECONFIG: join(temporary, "missing-kubeconfig"),
+	KUBECOVE_SMOKE_CONFIG: fixtureConfig, KUBECOVE_SMOKE_MISSING_CONFIG: join(temporary, "missing-kubeconfig"), DBUS_SESSION_BUS_ADDRESS: undefined,
+}, interrupt.signal);
+let client: ReturnType<typeof serverClient> | undefined;
 let failure: string | null = null;
-let origin = "";
-let token = "";
-process.once("SIGINT", () => child.kill("SIGTERM"));
-process.once("SIGTERM", () => child.kill("SIGTERM"));
-
-async function startup(): Promise<void> {
-	const reader = child.stdout.getReader();
-	const decoder = new TextDecoder();
-	let output = "";
-	try {
-		while (true) {
-			const { value, done } = await reader.read();
-			if (done) throw new Error("Server exited before announcing readiness.");
-			output += decoder.decode(value, { stream: true });
-			const match = /KubeCove login: (http:\/\/[^\s]+)\/#token=([^\s]+)/.exec(output);
-			if (match) {
-				origin = match[1];
-				token = match[2];
-				return;
-			}
-		}
-	} finally {
-		reader.releaseLock();
-	}
-}
-
-async function post(path: string, body: JsonValue, headers: Record<string, string> = {}): Promise<Response> {
-	return fetch(`${origin}${path}`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json", Origin: origin, ...headers },
-		body: JSON.stringify(body),
-	});
-}
-
-interface Session {
-	resumeToken: string;
-	sessionGraceSeconds: number;
-	serverVersion: string;
-	credentialStore: string;
-}
-
-async function login(resumeToken?: string): Promise<{ session: Session; cookie: string }> {
-	const response = await post("/api/v1/session", { token, resumeToken });
-	assert.equal(response.status, 200, "Valid login must succeed.");
-	const cookie = response.headers.get("set-cookie") ?? "";
-	assert.match(cookie, /HttpOnly/);
-	assert.match(cookie, /SameSite=Strict/);
-	const session: Session = await response.json();
-	assert.equal(session.sessionGraceSeconds, 5 * 60);
-	assert.ok(session.serverVersion);
-	assert.ok(["native", "encryptedFile"].includes(session.credentialStore));
-	return { session, cookie: cookie.split(";")[0] };
-}
-
-async function invoke(session: Session, command: string, args: JsonValue, cookie?: string): Promise<Response> {
-	return post(`/api/v1/invoke/${command}`, args, {
-		"X-Kubecove-Session": session.resumeToken,
-		...(cookie ? { Cookie: cookie } : { Authorization: `Bearer ${token}` }),
-	});
-}
-
-type Frame = { type: string; channelId?: number; message?: { type: string }; error?: { kind: string }; resolvedPodName?: string; resolvedPodPort?: number };
-
-async function connect(session: Session) {
-	const url = new URL("/api/v1/channels", origin);
-	url.protocol = "ws:";
-	url.searchParams.set("resumeToken", session.resumeToken);
-	const socket = new BunWebSocket(url, { headers: { Authorization: `Bearer ${token}` } });
-	socket.binaryType = "arraybuffer";
-	sockets.add(socket);
-	const queued: Frame[] = [];
-	const binary: Uint8Array[] = [];
-	let receiver: { resolve: (frame: Frame) => void; reject: (error: Error) => void } | null = null;
-	let binaryReceiver: { resolve: (frame: Uint8Array) => void; reject: (error: Error) => void } | null = null;
-	socket.addEventListener("message", (event) => {
-		if (event.data instanceof ArrayBuffer) {
-			const frame = new Uint8Array(event.data);
-			if (binaryReceiver) { binaryReceiver.resolve(frame); binaryReceiver = null; }
-			else binary.push(frame);
-			return;
-		}
-		const frame: Frame = JSON.parse(event.data);
-		if (receiver) { receiver.resolve(frame); receiver = null; }
-		else queued.push(frame);
-	});
-	socket.addEventListener("close", () => {
-		sockets.delete(socket);
-		receiver?.reject(new Error("Channel socket closed before the expected frame."));
-		receiver = null;
-		binaryReceiver?.reject(new Error("Tunnel socket closed before the expected bytes."));
-		binaryReceiver = null;
-	});
-	await new Promise<void>((resolveOpen, reject) => {
-		socket.addEventListener("open", () => resolveOpen(), { once: true });
-		socket.addEventListener("error", () => reject(new Error("Channel socket could not connect.")), { once: true });
-	});
-	return {
-		socket,
-		nextBinary: (): Promise<Uint8Array> => {
-			const frame = binary.shift();
-			if (frame) return Promise.resolve(frame);
-			if (socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Tunnel socket is closed."));
-			return new Promise((resolveFrame, reject) => { binaryReceiver = { resolve: resolveFrame, reject }; });
-		},
-		next: (): Promise<Frame> => {
-			const frame = queued.shift();
-			if (frame) return Promise.resolve(frame);
-			if (socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Channel socket is closed."));
-			return new Promise((resolveFrame, reject) => { receiver = { resolve: resolveFrame, reject }; });
-		},
-		close: async () => {
-			if (socket.readyState === WebSocket.CLOSED) return;
-			await new Promise<void>((resolveClose) => {
-				socket.addEventListener("close", () => resolveClose(), { once: true });
-				socket.close();
-			});
-		},
-	};
-}
-
 try {
-	await startup();
+	const { origin, token } = await server.ready;
+	client = serverClient(origin, token);
+	const { login, post, invoke, connect } = client;
 	assert.equal((await stat(dataDir)).mode & 0o777, 0o700);
 	assert.equal((await stat(join(dataDir, "server-token"))).mode & 0o777, 0o600);
 	assert.ok((await readFile(join(dataDir, "server-token"), "utf8")).trim() === token, "Private token file must match the startup credential.");
@@ -199,7 +75,7 @@ try {
 	}
 	checks.push("Cookie/native commands preserve typed results and errors");
 	const sourcesBefore = await (await invoke(first.session, "get_kubeconfig_sources", {})).json();
-	const sourceMutations: Array<[string, JsonValue]> = [
+	const sourceMutations: Array<[string, object]> = [
 		["set_kubeconfig_env_var", { envVar: "KUBECOVE_SMOKE_CONFIG" }],
 		["add_kubeconfig_paths", { paths: [fixtureConfig] }],
 		["remove_kubeconfig_path", { path: fixtureConfig }],
@@ -238,7 +114,7 @@ try {
 	checks.push("Denied resource types and namespaces retain readable rows without false coverage; authentication still fails");
 	const response = await invoke(first.session, "start_pod_log_stream", {
 		request: { clusterContext: "missing", namespace: "default", podName: "missing", kubeconfigEnvVar: "KUBECOVE_SMOKE_CONFIG" },
-		channel: "__KUBECOVE_CHANNEL__:1",
+		channel: channelMarker(1),
 	});
 	assert.equal(response.status, 200);
 	let streamedError = false;
@@ -337,7 +213,7 @@ try {
 	}
 	checks.push("Pod-side EOF and errors terminate tunnels without waiting for client upload EOF");
 	const second = await login();
-	assert.notEqual(second.session.resumeToken, first.session.resumeToken);
+	assert.ok(second.session.resumeToken !== first.session.resumeToken, "New login must create a distinct session");
 	assert.equal((await invoke(first.session, "get_backend_diagnostics", {})).status, 200);
 	assert.equal((await invoke(second.session, "get_backend_diagnostics", {})).status, 200);
 	checks.push("Another login opens a second session and leaves the first one working");
@@ -376,22 +252,24 @@ try {
 	if (process.env.KUBECOVE_NATIVE_REMOTE_PROBE) {
 		const probe = Bun.spawn([
 			process.env.CARGO ?? "cargo", "test", "--locked", "--manifest-path", "src-tauri/Cargo.toml",
-			"native_tunnel_delivers_bytes_and_closes_after_upload_eof", "--", "--ignored",
+			"-p", "kubecove-host", "--features", "remote-client", "native_tunnel_delivers_bytes_and_closes_after_upload_eof", "--", "--ignored",
 		], {
 			cwd: root,
 			env: { ...process.env, KUBECOVE_REMOTE_TEST_URL: origin, KUBECOVE_REMOTE_TEST_TOKEN: token },
-			stdout: "inherit", stderr: "inherit",
+			stdout: "pipe", stderr: "inherit",
 		});
-		assert.equal(await probe.exited, 0, "Production native Rust tunnel probe must pass.");
+		const [status, output] = await Promise.all([probe.exited, new Response(probe.stdout).text()]);
+		assert.equal(status, 0, "Production native Rust tunnel probe must pass.");
+		assert.ok(output.includes("native_tunnel_delivers_bytes_and_closes_after_upload_eof ... ok"), "The tunnel probe must actually run.");
 		checks.push("Native Rust desktop client preserves bytes and closes on upload EOF, pod EOF and pod errors without a GUI");
 	}
 } catch (error) {
 	failure = error instanceof Error ? error.message : "Headless smoke failed.";
 } finally {
-	for (const socket of sockets) socket.close();
-	child.kill("SIGTERM");
-	await child.exited;
-	await stderr;
+	client?.closeSockets();
+	await server.stop();
+	process.off("SIGTERM", stop);
+	process.off("SIGINT", stop);
 	kubeFixture.stop(true);
 	await rm(temporary, { recursive: true, force: true });
 	await mkdir(artifactDir, { recursive: true });
