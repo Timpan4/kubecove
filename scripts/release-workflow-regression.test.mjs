@@ -623,7 +623,13 @@ test("prepare and stage-release-assets reject an already-published release", () 
   const stagePublished = runGuard(stageCheck.run, "false");
   assert.notEqual(stagePublished.status, 0);
   assert.match(stagePublished.stderr, /already published; refusing to overwrite live release assets/);
+  assert.equal(stagePublished.output, "");
 
   const stageDraft = runGuard(stageCheck.run, "true");
   assert.equal(stageDraft.status, 0);
+  assert.equal(stageDraft.output, "");
+
+  const stageMissing = runGuard(stageCheck.run, "404");
+  assert.notEqual(stageMissing.status, 0);
+  assert.equal(stageMissing.output, "");
 });
