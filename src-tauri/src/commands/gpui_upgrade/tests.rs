@@ -132,7 +132,29 @@ fn publishes_one_gpui_bundle_and_refuses_unsafe_archive_entries() {
         assert!(!root.path().join(BUNDLE).exists());
     }
     let data = bundle(&[(binary, Regular)]);
-    publish_bundle(&data[..], root.path()).unwrap();
+    let folder = root.path().canonicalize().unwrap();
+    let digest = publish_bundle(&data[..], &folder).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let installed = super::Installed {
+            platform: Platform::Mac,
+            version: VERSION.into(),
+            path: folder.join(BUNDLE),
+            launch_digest: digest,
+            _installer_lease: None,
+        };
+        assert_eq!(installed.verify_launch().unwrap(), folder.join(binary));
+        fs::write(folder.join(binary), b"replacement").unwrap();
+        assert!(installed.verify_launch().is_err());
+        let shared = folder.join("shared");
+        fs::create_dir(&shared).unwrap();
+        fs::set_permissions(&shared, fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(publish_bundle(&data[..], &shared).unwrap().is_none());
+        assert!(shared.join(binary).is_file());
+    }
+    #[cfg(not(unix))]
+    let _ = digest;
     assert!(root.path().join(binary).is_file());
     assert!(publish_bundle(&data[..], root.path()).is_err());
     assert!(tauri.is_dir());
@@ -148,9 +170,18 @@ fn executable_publication_requires_correct_magic_and_a_new_destination() {
         staged.write_all(payload).unwrap();
         publish_executable(staged, platform, target)
     };
+    let mut pe = [0; 0x44];
+    pe[..2].copy_from_slice(b"MZ");
+    pe[0x3c..0x40].copy_from_slice(&0x40_u32.to_le_bytes());
+    pe[0x40..].copy_from_slice(b"PE\0\0");
+    let exe = root.path().join("invalid.exe");
+    for invalid in [&b"MZ"[..], &pe[..0x40], &pe[..0x43]] {
+        assert!(install(Platform::Windows, invalid, &exe).is_err());
+        assert!(!exe.exists());
+    }
     for (platform, good, bad) in [
         (Platform::Linux, &b"\x7fELF"[..], &b"MZ"[..]),
-        (Platform::Windows, &b"MZ"[..], &b"\x7fELF"[..]),
+        (Platform::Windows, &pe[..], &b"\x7fELF"[..]),
     ] {
         let path = root.path().join(platform.asset(VERSION));
         assert!(install(platform, bad, &path).is_err());
@@ -160,6 +191,51 @@ fn executable_publication_requires_correct_magic_and_a_new_destination() {
         assert_eq!(fs::read(path).unwrap(), good);
     }
     assert_eq!(fs::read(existing).unwrap(), b"Tauri");
+}
+
+#[cfg(unix)]
+#[test]
+fn gpui_upgrade_installed_info_serializes_a_non_utf8_path() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+    let path = Path::new(OsStr::from_bytes(b"/tmp/\xff/GPUI")).to_owned();
+    let installed = super::Installed {
+        platform: Platform::Linux,
+        version: VERSION.into(),
+        path: path.clone(),
+        launch_digest: None,
+        _installer_lease: None,
+    };
+    let json = serde_json::to_value(installed.info()).unwrap();
+    assert_eq!(json["path"], path.to_string_lossy().as_ref());
+    assert_eq!(json["canLaunch"], false);
+    assert_eq!(installed.path, path);
+}
+
+#[test]
+fn windows_staging_reclaims_only_inactive_installers() {
+    let root = tempfile::tempdir().unwrap();
+    let temp = root.path().canonicalize().unwrap();
+    let (stale, lease) = stage_installer(&temp).unwrap();
+    let stale = stale.keep();
+    fs::write(stale.join("old.exe"), b"old").unwrap();
+    let unrelated = stale.parent().unwrap().join("other");
+    fs::create_dir(&unrelated).unwrap();
+    let (active, _active_lease) = stage_installer(&temp).unwrap();
+    assert!(stale.exists());
+    drop(lease);
+    let (_next, _lease) = stage_installer(&temp).unwrap();
+    assert!(!stale.exists());
+    assert!(active.path().exists());
+    assert!(unrelated.exists());
+}
+
+#[tokio::test]
+async fn manifest_without_content_length_is_bounded() {
+    let json = format!("{{}}{}", " ".repeat(MANIFEST_BYTES));
+    let response = reqwest::Response::from(http::Response::new(json));
+    assert!(response.headers().get("Content-Length").is_none());
+    let error = read_manifest(response).await.unwrap_err();
+    assert!(error.message.contains("too large"));
 }
 
 #[tokio::test]
@@ -183,7 +259,7 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
             .unwrap()
             .unwrap();
         build.artifact.url = format!("http://{}/asset", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move {
+        let server = async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = [0; 1024];
             assert!(stream.read(&mut request).await.unwrap() > 0);
@@ -192,27 +268,39 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
             stream.write_all(headers.as_bytes()).await.unwrap();
             stream.write_all(PAYLOAD).await.unwrap();
             stream.shutdown().await.unwrap();
-        });
-        let result = super::install_release(
+        };
+        let install = super::install_release(
             build,
             PUBLIC_KEY.to_owned(),
             &apps,
             &cache,
             reqwest::Client::new(),
-        )
-        .await;
-        server.await.unwrap();
+        );
+        tokio::pin!(install);
+        // Dropping the server future cancels accept if installation fails before connecting.
+        let result = tokio::select! {
+            result = &mut install => result,
+            () = server => install.await,
+        };
         let appimage = apps.join(Platform::Linux.asset(VERSION));
         if length == PAYLOAD.len() {
-            assert_eq!(result.unwrap().path, appimage.canonicalize().unwrap());
+            let installed = result.unwrap();
+            assert_eq!(installed.path, appimage.canonicalize().unwrap());
             assert_eq!(fs::read(&appimage).unwrap(), PAYLOAD);
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 assert_ne!(
-                    fs::metadata(appimage).unwrap().permissions().mode() & 0o100,
+                    fs::metadata(&appimage).unwrap().permissions().mode() & 0o100,
                     0
                 );
+                installed.verify_launch().unwrap();
+                let original = fs::metadata(&apps).unwrap().permissions();
+                fs::set_permissions(&apps, fs::Permissions::from_mode(0o777)).unwrap();
+                assert!(installed.verify_launch().is_err());
+                fs::set_permissions(&apps, original).unwrap();
+                fs::write(&appimage, b"changed").unwrap();
+                assert!(installed.verify_launch().is_err());
             }
         } else {
             assert!(result.is_err());

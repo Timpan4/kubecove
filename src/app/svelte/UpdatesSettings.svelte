@@ -119,5 +119,5 @@
 </FieldGroup>
 
 {#if !isBrowserRuntime() && isTauriRuntime()}
-	<GpuiUpgrade />
+	<GpuiUpgrade {updatesEnabled} />
 {/if}

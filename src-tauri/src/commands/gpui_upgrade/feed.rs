@@ -158,6 +158,13 @@ impl Feed {
     }
 
     pub(super) async fn latest(&self, platform: Platform) -> Result<Option<Release>, AppError> {
+        #[cfg(feature = "e2e")]
+        if std::env::var("KUBECOVE_E2E_SMOKE").as_deref() == Ok("1") {
+            // The isolated desktop smoke exercises real IPC and manifest selection offline.
+            let manifest =
+                serde_json::json!({"version": env!("CARGO_PKG_VERSION"), "platforms": {}});
+            return release(manifest, platform, env!("CARGO_PKG_VERSION"));
+        }
         let response = client()?
             .get(&self.endpoint)
             .send()
@@ -167,12 +174,29 @@ impl Feed {
         if response.status() == reqwest::StatusCode::NO_CONTENT {
             return Ok(None);
         }
-        let value = response
-            .json()
-            .await
-            .map_err(|_| invalid("Could not read the GPUI release manifest"))?;
+        let value = read_manifest(response).await?;
         release(value, platform, env!("CARGO_PKG_VERSION"))
     }
+}
+
+// Match the existing 2 MiB remote JSON budget in gitops/commands/argo/transport.rs.
+pub(super) const MANIFEST_BYTES: usize = 2 * 1024 * 1024;
+
+pub(super) async fn read_manifest(
+    mut response: reqwest::Response,
+) -> Result<serde_json::Value, AppError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| network("Could not read the GPUI release manifest"))?
+    {
+        if chunk.len() > MANIFEST_BYTES - bytes.len() {
+            return Err(invalid("The GPUI release manifest is too large"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&bytes).map_err(|_| invalid("Invalid GPUI release manifest"))
 }
 
 pub(super) fn client() -> Result<reqwest::Client, AppError> {
@@ -193,7 +217,7 @@ pub(super) fn verify(
     key: &str,
     version: &str,
     name: &str,
-) -> Result<(), AppError> {
+) -> Result<ring::digest::Digest, AppError> {
     let bad = || invalid("Invalid GPUI update signature");
     let decode = |s: &str| {
         base64::engine::general_purpose::STANDARD
@@ -206,6 +230,7 @@ pub(super) fn verify(
     let sig = Signature::decode(&decode(sig)?).map_err(|_| bad())?;
     // The streaming verifier requires a prehashed signature.
     let mut verifier = key.verify_stream(&sig).map_err(|_| bad())?;
+    let mut digest = ring::digest::Context::new(&ring::digest::SHA256);
     file.rewind().map_err(super::io_error)?;
     let mut reader = BufReader::new(file);
     loop {
@@ -214,6 +239,7 @@ pub(super) fn verify(
             break;
         }
         verifier.update(bytes);
+        digest.update(bytes);
         let count = bytes.len();
         reader.consume(count);
     }
@@ -230,5 +256,5 @@ pub(super) fn verify(
             ));
         }
     }
-    Ok(())
+    Ok(digest.finish())
 }

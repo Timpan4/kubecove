@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +31,8 @@ pub enum GpuiUpgradeInfo {
         install_kind: GpuiInstallKind,
     },
     Installed {
-        path: PathBuf,
+        path: String,
+        can_launch: bool,
         version: String,
         install_kind: GpuiInstallKind,
     },

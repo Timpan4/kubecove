@@ -1,8 +1,13 @@
 //! Local Tauri-to-GPUI installation (ADR 0036). The webview never supplies a path or URL.
 mod feed;
 mod install;
+mod integrity;
+#[cfg(target_os = "macos")]
+mod macos_acl;
 #[cfg(test)]
 mod tests;
+#[cfg(windows)]
+mod windows_acl;
 
 use crate::models::{AppError, AppErrorKind, GpuiUpgradeInfo};
 use feed::{Feed, Platform, Release};
@@ -10,6 +15,7 @@ use std::{
     io::{self, Seek},
     path::{Path, PathBuf},
     process::Command,
+    sync::Arc,
 };
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
@@ -17,20 +23,57 @@ use tauri_plugin_opener::OpenerExt;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 
 #[derive(Default)]
-pub struct GpuiUpgrade(Mutex<Option<Installed>>);
+pub struct GpuiUpgrade {
+    installed: Mutex<Option<Arc<Installed>>>,
+    action: Mutex<()>,
+}
+
+impl GpuiUpgrade {
+    async fn installed_info(&self) -> Result<Option<GpuiUpgradeInfo>, AppError> {
+        let snapshot = self.installed.lock().await.clone();
+        let Some(installed) = snapshot else {
+            return Ok(None);
+        };
+        // Permission checks may touch a removable or network volume.
+        blocking(move || Ok(Some(installed.info()))).await
+    }
+}
 
 struct Installed {
-    release: Release,
+    platform: Platform,
+    version: String,
     path: PathBuf,
+    launch_digest: Option<ring::digest::Digest>,
+    _installer_lease: Option<std::fs::File>,
 }
 
 impl Installed {
     fn info(&self) -> GpuiUpgradeInfo {
         GpuiUpgradeInfo::Installed {
-            path: self.path.clone(),
-            version: self.release.version.clone(),
-            install_kind: self.release.platform.kind(),
+            path: self.path.to_string_lossy().into_owned(),
+            can_launch: self.launch_digest.is_some()
+                && integrity::protected_install(self.platform, &self.path),
+            version: self.version.clone(),
+            install_kind: self.platform.kind(),
         }
+    }
+
+    fn verify_launch(&self) -> Result<PathBuf, AppError> {
+        let binary = integrity::executable(self.platform, &self.path);
+        let expected = self
+            .launch_digest
+            .as_ref()
+            .filter(|_| integrity::protected_install(self.platform, &self.path))
+            .ok_or_else(|| {
+                invalid("Cannot launch GPUI from this location. Open its folder to inspect it.")
+            })?;
+        let actual = integrity::sha256(std::fs::File::open(&binary).map_err(io_error)?)?;
+        if actual.as_ref() != expected.as_ref() {
+            return Err(invalid(
+                "The installed GPUI executable has changed since verification",
+            ));
+        }
+        Ok(binary)
     }
 }
 
@@ -50,9 +93,8 @@ fn busy() -> AppError {
 pub async fn check_gpui_upgrade(
     state: State<'_, GpuiUpgrade>,
 ) -> Result<GpuiUpgradeInfo, AppError> {
-    let installed = state.0.lock().await;
-    if let Some(installed) = installed.as_ref() {
-        return Ok(installed.info());
+    if let Some(info) = state.installed_info().await? {
+        return Ok(info);
     }
     let platform = match Platform::current() {
         Ok(platform) => platform,
@@ -68,7 +110,11 @@ pub async fn check_gpui_upgrade(
             });
         }
     };
-    Ok(Feed::configured()?.latest(platform).await?.map_or_else(
+    let latest = Feed::configured()?.latest(platform).await;
+    if let Some(info) = state.installed_info().await? {
+        return Ok(info);
+    }
+    Ok(latest?.map_or_else(
         || GpuiUpgradeInfo::Unavailable {
             target: platform.key().into(),
         },
@@ -109,9 +155,9 @@ pub async fn install_gpui_upgrade<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, GpuiUpgrade>,
 ) -> Result<Option<GpuiUpgradeInfo>, AppError> {
-    let mut installed = state.0.try_lock().map_err(|_| busy())?;
-    if let Some(previous) = installed.as_ref() {
-        return Ok(Some(previous.info()));
+    let _action = state.action.try_lock().map_err(|_| busy())?;
+    if let Some(info) = state.installed_info().await? {
+        return Ok(Some(info));
     }
     let platform =
         Platform::current().map_err(|_| invalid("This platform cannot install KubeCove GPUI"))?;
@@ -130,9 +176,8 @@ pub async fn install_gpui_upgrade<R: Runtime>(
     };
     let result =
         install_release(release, feed.public_key, &folder, &cache, feed::client()?).await?;
-    let info = result.info();
-    *installed = Some(result);
-    Ok(Some(info))
+    *state.installed.lock().await = Some(Arc::new(result));
+    state.installed_info().await
 }
 
 async fn install_release(
@@ -147,15 +192,11 @@ async fn install_release(
     let lock = install::lock_install(cache)?;
     let folder = folder.canonicalize().map_err(io_error)?;
     // A previous installer may still be running or waiting for the user after Tauri quits.
-    let installer_dir = if platform == Platform::Windows {
-        Some(
-            tempfile::Builder::new()
-                .prefix("KubeCove-GPUI-")
-                .tempdir_in(&folder)
-                .map_err(io_error)?,
-        )
+    let (installer_dir, lease) = if platform == Platform::Windows {
+        let (dir, lease) = install::stage_installer(&folder)?;
+        (Some(dir), Some(lease))
     } else {
-        None
+        (None, None)
     };
     let folder = installer_dir
         .as_ref()
@@ -185,23 +226,31 @@ async fn install_release(
     drop(output);
     blocking(move || {
         let _lock = lock;
-        feed::verify(
+        let artifact_digest = feed::verify(
             staged.as_file_mut(),
             &release.artifact.signature,
             &public_key,
             &version,
             &platform.asset(&version),
         )?;
-        if platform == Platform::Mac {
+        let digest = if platform == Platform::Mac {
             staged.rewind().map_err(io_error)?;
-            install::publish_bundle(staged, &folder)?;
+            install::publish_bundle(staged, &folder)?
         } else {
             install::publish_executable(staged, platform, &path)?;
-        }
+            Some(artifact_digest)
+        };
+        let launch_digest = digest.filter(|_| integrity::protected_install(platform, &path));
         if let Some(directory) = installer_dir {
             let _ = directory.keep();
         }
-        Ok(Installed { release, path })
+        Ok(Installed {
+            platform,
+            version,
+            path,
+            launch_digest,
+            _installer_lease: lease,
+        })
     })
     .await
 }
@@ -218,9 +267,11 @@ pub async fn reveal_gpui_upgrade<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, GpuiUpgrade>,
 ) -> Result<(), AppError> {
-    let guard = state.0.try_lock().map_err(|_| busy())?;
-    let installed = guard
-        .as_ref()
+    let installed = state
+        .installed
+        .lock()
+        .await
+        .clone()
         .ok_or_else(|| invalid("Install GPUI before revealing it"))?;
     app.opener()
         .reveal_item_in_dir(&installed.path)
@@ -231,17 +282,21 @@ pub async fn launch_gpui_upgrade<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, GpuiUpgrade>,
 ) -> Result<(), AppError> {
-    let guard = state.0.try_lock().map_err(|_| busy())?;
-    let installed = guard
-        .as_ref()
+    let _action = state.action.try_lock().map_err(|_| busy())?;
+    let installed = state
+        .installed
+        .lock()
+        .await
+        .clone()
         .ok_or_else(|| invalid("Install GPUI before launching it"))?;
-    let release = &installed.release;
-    let platform = release.platform;
-    let path = installed.path.clone();
-    let version = release.version.clone();
-    let signature = release.artifact.signature.clone();
     blocking(move || {
-        if platform == Platform::Windows
+        if installed.launch_digest.is_none() {
+            return Err(invalid(
+                "Cannot launch GPUI from this location. Open its folder to inspect it.",
+            ));
+        }
+        let version = &installed.version;
+        if installed.platform == Platform::Windows
             && !app
                 .dialog()
                 .message(format!(
@@ -253,22 +308,11 @@ pub async fn launch_gpui_upgrade<R: Runtime>(
         {
             return Ok(());
         }
-        let mut command = if platform == Platform::Mac {
-            let mut cmd = Command::new(Path::new("/usr/bin/open"));
-            cmd.arg("-n").arg(path);
-            cmd
-        } else {
-            // Refuse an executable replaced between installation and the separate launch action.
-            feed::verify(
-                &mut std::fs::File::open(&path).map_err(io_error)?,
-                &signature,
-                &Feed::configured()?.public_key,
-                &version,
-                &platform.asset(&version),
-            )?;
-            Command::new(path)
-        };
-        command.spawn().map(drop).map_err(io_error)
+        // Start the exact executable just hashed, including inside the macOS bundle.
+        Command::new(installed.verify_launch()?)
+            .spawn()
+            .map(drop)
+            .map_err(io_error)
     })
     .await
 }

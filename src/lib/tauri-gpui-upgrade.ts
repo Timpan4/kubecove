@@ -14,7 +14,7 @@ export type GpuiUpgradeInfo =
 			assetName: string;
 			installKind: InstallKind;
 	  }
-	| { status: "installed"; path: string; version: string; installKind: InstallKind };
+	| { status: "installed"; path: string; version: string; installKind: InstallKind; canLaunch: boolean };
 
 // A selected remote server cannot install or launch software on the desktop.
 const local = createNativeTauriClient();

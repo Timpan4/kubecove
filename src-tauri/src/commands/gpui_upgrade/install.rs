@@ -1,13 +1,64 @@
-use super::{feed::Platform, invalid, io_error};
+use super::{feed::Platform, integrity, invalid, io_error};
 use crate::models::AppError;
 use std::{
     fs,
-    io::{self, Read, Seek},
+    io::{self, Read, Seek, SeekFrom},
     path::{Component, Path, PathBuf},
 };
 use tempfile::NamedTempFile;
 
 pub(super) const BUNDLE: &str = "KubeCove GPUI.app";
+
+/// The installation lock serializes cleanup across processes. A session keeps
+/// its directory leased while its installer is still available in Settings.
+pub(super) fn stage_installer(temp: &Path) -> Result<(tempfile::TempDir, fs::File), AppError> {
+    const PREFIX: &str = "installer-";
+    const LEASE: &str = ".session";
+    let parent = temp.join("kubecove-gpui-upgrade");
+    match fs::create_dir(&parent) {
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        result => result.map_err(io_error)?,
+    }
+    if !integrity::protected_path(&parent) {
+        return Err(invalid(
+            "Cannot stage the GPUI installer in a shared temporary folder",
+        ));
+    }
+    for entry in fs::read_dir(&parent).map_err(io_error)?.flatten() {
+        if !entry
+            .file_name()
+            .as_encoded_bytes()
+            .starts_with(PREFIX.as_bytes())
+            || !entry.file_type().is_ok_and(|t| t.is_dir())
+        {
+            continue;
+        }
+        let path = entry.path();
+        if !integrity::protected_path(&path) {
+            continue;
+        }
+        match fs::File::options()
+            .read(true)
+            .write(true)
+            .open(path.join(LEASE))
+        {
+            Ok(file) if file.try_lock().is_err() => continue,
+            Err(e) if e.kind() != io::ErrorKind::NotFound => continue,
+            _ => {}
+        }
+        // Windows refuses removal while setup still has its executable open.
+        let _ = fs::remove_dir_all(path);
+    }
+    let dir = tempfile::Builder::new()
+        .prefix(PREFIX)
+        .tempdir_in(parent)
+        .map_err(io_error)?;
+    let lease = fs::File::create_new(dir.path().join(LEASE)).map_err(io_error)?;
+    lease
+        .try_lock()
+        .map_err(|_| invalid("Cannot reserve the GPUI installer directory"))?;
+    Ok((dir, lease))
+}
 
 /// All instances use the same per-user lock while reclaiming the previous download and
 /// publishing the result. A crash releases the lock without marking a partial file verified.
@@ -98,6 +149,21 @@ pub(super) fn publish_executable(
     if &header[..magic.len()] != magic {
         return Err(invalid("The GPUI file header does not match the platform"));
     }
+    if platform == Platform::Windows {
+        // A DOS header alone is not a PE image. Both fixed-width reads must fit.
+        file.seek(SeekFrom::Start(0x3c)).map_err(io_error)?;
+        file.read_exact(&mut header)
+            .map_err(|_| invalid("Missing PE header offset"))?;
+        let offset = u64::from(u32::from_le_bytes(header));
+        if offset < 0x40 || offset + 4 > file.as_file().metadata().map_err(io_error)?.len() {
+            return Err(invalid("Invalid PE header offset"));
+        }
+        file.seek(SeekFrom::Start(offset)).map_err(io_error)?;
+        file.read_exact(&mut header).map_err(io_error)?;
+        if &header != b"PE\0\0" {
+            return Err(invalid("Missing PE signature"));
+        }
+    }
     #[cfg(unix)]
     if platform == Platform::Linux {
         use std::os::unix::fs::PermissionsExt;
@@ -114,10 +180,7 @@ pub(super) fn publish_executable(
             let folder = target
                 .parent()
                 .ok_or_else(|| invalid("Missing installation folder"))?;
-            let staging = tempfile::Builder::new()
-                .prefix(".kubecove-gpui-")
-                .tempdir_in(folder)
-                .map_err(io_error)?;
+            let staging = private_staging(folder, ".kubecove-gpui-")?;
             let mut copy = NamedTempFile::new_in(staging.path()).map_err(io_error)?;
             let mut source = error.file;
             source.rewind().map_err(io_error)?;
@@ -136,11 +199,12 @@ pub(super) fn publish_executable(
 
 /// Release bundles contain regular files and directories. Refuse links and special entries
 /// before extraction so an earlier member cannot redirect a subsequent write.
-pub(super) fn publish_bundle(archive: impl Read, folder: &Path) -> Result<(), AppError> {
-    let staging = tempfile::Builder::new()
-        .prefix(".kubecove-gpui-bundle-")
-        .tempdir_in(folder)
-        .map_err(io_error)?;
+pub(super) fn publish_bundle(
+    archive: impl Read,
+    folder: &Path,
+) -> Result<Option<ring::digest::Digest>, AppError> {
+    let protected = integrity::protected_path(folder);
+    let staging = private_staging(folder, ".kubecove-gpui-bundle-")?;
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive));
     for entry in tar.entries().map_err(io_error)? {
         let mut entry = entry.map_err(io_error)?;
@@ -162,9 +226,17 @@ pub(super) fn publish_bundle(archive: impl Read, folder: &Path) -> Result<(), Ap
         }
     }
     let bundle = staging.path().join(BUNDLE);
-    if !bundle.join("Contents/MacOS/kubecove-gpui").is_file() {
+    let binary = integrity::executable(Platform::Mac, &bundle);
+    if !binary.is_file() {
         return Err(invalid("The GPUI bundle is missing its executable"));
     }
+    let digest = if protected && integrity::protected_path(&binary) {
+        Some(integrity::sha256(
+            fs::File::open(binary).map_err(io_error)?,
+        )?)
+    } else {
+        None
+    };
     let target = folder.join(BUNDLE);
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
@@ -179,5 +251,15 @@ pub(super) fn publish_bundle(archive: impl Read, folder: &Path) -> Result<(), Ap
         }
         fs::rename(bundle, target).map_err(io_error)?;
     }
-    Ok(())
+    Ok(digest)
+}
+
+fn private_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir, AppError> {
+    let mut builder = tempfile::Builder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(fs::Permissions::from_mode(0o700));
+    }
+    builder.prefix(prefix).tempdir_in(folder).map_err(io_error)
 }

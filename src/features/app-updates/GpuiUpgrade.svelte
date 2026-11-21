@@ -10,6 +10,7 @@
 		revealGpuiUpgrade,
 	} from "@/lib/tauri";
 
+	let { updatesEnabled }: { updatesEnabled: boolean } = $props();
 	let info = $state<GpuiUpgradeInfo | null>(null);
 	let working = $state("");
 	let error = $state("");
@@ -40,7 +41,9 @@
 		});
 	}
 
-	onMount(() => { void check(); });
+	onMount(() => {
+		if (updatesEnabled) void check();
+	});
 </script>
 
 <section aria-labelledby="gpui-upgrade-title" class="space-y-3 rounded-md border bg-card p-3 text-sm">
@@ -62,6 +65,9 @@
 			<p>KubeCove GPUI {info.version} is available for {info.target}.</p>
 		{:else if info?.status === "installed"}
 			<p class="break-all">{info.installKind === "windowsInstaller" ? "Verified installer" : "Installed GPUI"} {info.version} at {info.path}</p>
+			{#if !info.canLaunch}
+				<p>KubeCove could not verify that only you or an administrator can change this installation. Open its folder to inspect it.</p>
+			{/if}
 		{/if}
 	</div>
 	{#if error}<p role="alert" class="text-destructive">{error}</p>{/if}
@@ -75,14 +81,18 @@
 				{info.installKind === "windowsInstaller" ? "Download GPUI installer" : "Choose GPUI install folder"}
 			</Button>
 		{:else if info?.status === "installed"}
-			<Button size="sm" disabled={!!working} onclick={() => void run("Opening GPUI…", launchGpuiUpgrade)}>
-				{info.installKind === "windowsInstaller" ? "Run GPUI installer" : "Launch GPUI"}
-			</Button>
+			{#if info.canLaunch}
+				<Button size="sm" disabled={!!working} onclick={() => void run("Opening GPUI…", launchGpuiUpgrade)}>
+					{info.installKind === "windowsInstaller" ? "Run GPUI installer" : "Launch GPUI"}
+				</Button>
+			{/if}
 			<Button size="sm" variant="outline" disabled={!!working} onclick={() => void run("Opening installation folder…", revealGpuiUpgrade)}>
 				Open installation folder
 			</Button>
 		{/if}
-		{#if !working && (error || info?.status === "unavailable") && info?.status !== "installed"}
+		{#if !working && !info && !error && !updatesEnabled}
+			<Button size="sm" variant="outline" onclick={() => void check()}>Check for GPUI release</Button>
+		{:else if !working && (error || info?.status === "unavailable") && info?.status !== "installed"}
 			<Button size="sm" variant="outline" onclick={() => void check()}>Check GPUI release again</Button>
 		{/if}
 	</div>
