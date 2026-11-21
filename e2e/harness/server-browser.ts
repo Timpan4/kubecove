@@ -5,6 +5,7 @@ import { chromeExecutable, readinessTimeoutMs } from "../../.agents/skills/verif
 /** Drive the Svelte assets embedded in the smoke server, using its private fixture context. */
 export async function verifyServerBrowser(origin: string, token: string) {
 	const browser = await chromium.launch({ executablePath: chromeExecutable() });
+	const credentials = [token];
 	try {
 		const page = await browser.newPage();
 		page.setDefaultTimeout(readinessTimeoutMs);
@@ -18,8 +19,21 @@ export async function verifyServerBrowser(origin: string, token: string) {
 		]);
 		assert.equal(login.status(), 200);
 		const session = await login.json();
+		credentials.push(session.resumeToken);
 		assert.equal(contexts.status(), 200);
 		await page.getByText("fixture", { exact: true }).first().waitFor();
+		await page.locator("#workspace-name").fill("Server smoke");
+		await page.getByRole("checkbox", { name: "readable", exact: true }).check();
+		await Promise.all([
+			socket.waitForEvent("framereceived", ({ payload }) => {
+				const frame = JSON.parse(String(payload));
+				return frame.type === "channel" && frame.message.type === "started" && frame.message.label === "resources";
+			}),
+			(async () => {
+				await page.getByRole("button", { name: "Create workspace", exact: true }).click();
+				await page.getByRole("button", { name: "Open resources", exact: true }).click();
+			})(),
+		]);
 		await page.getByRole("button", { name: "Open settings", exact: true }).click();
 		await page.getByText("Server information", { exact: true }).waitFor();
 		await page.getByText(`Server ${session.serverVersion}`, { exact: true }).waitFor();
@@ -37,6 +51,10 @@ export async function verifyServerBrowser(origin: string, token: string) {
 		]);
 		assert.equal(closed.status(), 200);
 		await page.getByText("This browser's server session closed or expired.", { exact: true }).waitFor();
+	} catch (cause) {
+		// Playwright's failure log can include input values and authenticated URLs.
+		const message = cause instanceof Error ? cause.message : String(cause);
+		throw new Error(credentials.reduce((safe, secret) => safe.replaceAll(secret, "[redacted]"), message));
 	} finally {
 		await browser.close();
 	}

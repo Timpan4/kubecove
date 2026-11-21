@@ -371,7 +371,7 @@ try {
 	if (Bun.argv.includes("--browser")) {
 		const { verifyServerBrowser } = await import("./harness/server-browser");
 		await verifyServerBrowser(origin, token);
-		checks.push("Embedded Svelte sign-in, context invoke, server settings and WebSocket session revocation in Chromium");
+		checks.push("Embedded Svelte sign-in, context invoke, resource watch delivery, server settings and WebSocket session revocation in Chromium");
 	}
 	if (process.env.KUBECOVE_NATIVE_REMOTE_PROBE) {
 		const probe = Bun.spawn([

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { parseSync, Visitor } from "vite";
 
 test("every server command has an exported Svelte invoke wrapper", () => {
@@ -13,25 +14,28 @@ test("every server command has an exported Svelte invoke wrapper", () => {
 		if (entry[1] !== "desktop_only") required.add(entry[2]);
 	}
 
-	const wired = new Set<string>();
-	const visitor = new Visitor({
-		CallExpression({ callee, arguments: [command] }) {
-			if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && callee.property.name === "invoke"
-				&& callee.object.type === "Identifier" && callee.object.name === "client"
-				&& command?.type === "Literal" && typeof command.value === "string") wired.add(command.value);
-		},
-	});
+	const wired = new Set<unknown>();
 	// Follow the public wrapper barrel. Mock dispatch tables, comments and private functions cannot satisfy the check.
 	const modules = new Set([new URL("../src/lib/tauri.ts", import.meta.url).href]);
 	for (const url of modules) {
 		const file = new URL(url);
-		const parsed = parseSync(file.pathname, readFileSync(file, "utf8"));
+		const parsed = parseSync(fileURLToPath(file), readFileSync(file, "utf8"));
 		expect(parsed.errors).toEqual([]);
 		for (const node of parsed.program.body) {
 			if (node.type === "ExportAllDeclaration") modules.add(new URL(`${node.source.value}.ts`, file).href);
+			if (node.type !== "ExportNamedDeclaration" || node.declaration?.type !== "FunctionDeclaration") continue;
+			const client = node.declaration.params[0];
+			if (client?.type !== "Identifier") continue;
+			const type = client.typeAnnotation?.typeAnnotation;
+			if (type?.type !== "TSTypeReference" || type.typeName.type !== "Identifier" || type.typeName.name !== "TauriClient") continue;
+			new Visitor({
+				CallExpression({ callee, arguments: [command] }) {
+					if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier"
+						&& callee.property.name === "invoke" && callee.object.type === "Identifier"
+						&& callee.object.name === client.name && command?.type === "Literal") wired.add(command.value);
+				},
+			}).visit({ ...parsed.program, body: [node] });
 		}
-		visitor.visit({ ...parsed.program, body: parsed.program.body.filter((node) =>
-			node.type === "ExportNamedDeclaration" && node.declaration?.type === "FunctionDeclaration") });
 	}
 	expect([...required].filter((command) => !wired.has(command))).toEqual([]);
 });

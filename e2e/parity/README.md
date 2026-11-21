@@ -9,7 +9,7 @@ The Svelte web frontend and the GPUI native client share one set of UI acceptanc
 
 Every GPUI UI change that applies to a `kubecove-server` deployment must ship its Svelte equivalent and a shared scenario in the same PR. Only `desktop_only` behavior is exempt. For styling or layout changes, run `bun scripts/gpui-visual.ts` for the affected views and compare both renders.
 
-The server CI job also checks the exported Svelte wrappers against every `both` and `remote_intercepted` Rust command. It builds the web runtime into the server and runs `bun e2e/headless-smoke.ts --browser` against that binary. Chromium signs in, loads the fixture context, inspects server settings, and displays the session closure delivered over the channel socket. The shared remote-settings scenarios exercise both clients with mock data. The real server owns its kubeconfig sources and refuses client edits.
+The server CI job also checks the exported Svelte wrappers against every `both` and `remote_intercepted` Rust command. It builds the web runtime into the server and runs `bun e2e/headless-smoke.ts --browser` against that binary. Chromium signs in, opens a workspace on the fixture context, receives its resource watch over WebSocket, inspects server settings, and displays the session closure delivered on that socket. The shared remote-settings scenarios exercise both clients with mock data. The real server owns its kubeconfig sources and refuses client edits.
 
 ## Focused checks
 

@@ -5,11 +5,16 @@ export function startPortForwardFixture() {
 		hostname: "127.0.0.1", port: 0,
 		fetch(request, server) {
 			const url = new URL(request.url);
+			if (url.pathname === "/api/v1/namespaces") {
+				return Response.json({ apiVersion: "v1", kind: "NamespaceList", metadata: {}, items: [
+					{ metadata: { name: "readable" }, status: { phase: "Active" } },
+				] });
+			}
 			if (url.pathname === "/api/v1/secrets" || url.pathname === "/api/v1/namespaces/denied/pods") {
 				return Response.json({ apiVersion: "v1", kind: "Status", status: "Failure", reason: "Forbidden", message: "Fixture account cannot list this resource", code: 403 }, { status: 403 });
 			}
 			if (url.pathname === "/api/v1/pods" || url.pathname === "/api/v1/namespaces/readable/pods") {
-				return Response.json({ apiVersion: "v1", kind: "PodList", metadata: {}, items: [{ metadata: { name: "readable-pod", namespace: "readable" }, spec: { containers: [] }, status: { phase: "Running" } }] });
+				return Response.json({ apiVersion: "v1", kind: "PodList", metadata: { resourceVersion: "1" }, items: [{ metadata: { name: "readable-pod", namespace: "readable" }, spec: { containers: [] }, status: { phase: "Running" } }] });
 			}
 			if (url.pathname === "/api/v1/namespaces/unauthorized/pods") {
 				return Response.json({ apiVersion: "v1", kind: "Status", status: "Failure", reason: "Unauthorized", message: "Fixture authentication failed", code: 401 }, { status: 401 });
