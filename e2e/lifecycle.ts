@@ -14,7 +14,7 @@ import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
-import { cleanEnvironment, type InterruptSignal, processOutput, trackChild } from "./harness/lifecycle-processes";
+import { captureProcessOutput, cleanEnvironment, type InterruptSignal, processOutput, trackChild } from "./harness/lifecycle-processes";
 import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, type Ownership, ownershipFromDisk, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
@@ -104,19 +104,18 @@ async function execute(cmd: string, commandArgs: string[], extra: Record<string,
 }
 async function runCommand(cmd: string, commandArgs: string[], extra: Record<string, string | undefined>, capture: boolean, logFile?: string, track = false) {
 	const child = Bun.spawn([cmd, ...commandArgs], { cwd: root, detached: os !== "windows", env: cleanEnvironment(extra), stdout: capture || logFile ? "pipe" : "inherit", stderr: capture || logFile ? "pipe" : "inherit" });
-	const complete = (signal?: AbortSignal) => Promise.all([
-		child.exited,
-		child.stdout ? new Response(processOutput(child.stdout, signal)).text() : "",
-		child.stderr ? new Response(processOutput(child.stderr, signal)).text() : "",
-	]);
+	const stdout = captureProcessOutput(child.stdout);
+	const stderr = captureProcessOutput(child.stderr);
+	const complete = (signal?: AbortSignal) => Promise.all([child.exited, stdout.drain(signal), stderr.drain(signal)]);
 	const tracked = track ? trackChild(child, complete) : undefined;
 	if (tracked) children.add(tracked.stop);
 	try {
-		const [code, stdout, stderr] = await (tracked?.done ?? complete());
-		if (logFile) { await mkdir(dirname(logFile), { recursive: true }); await writeFile(logFile, `${stdout}${stderr}`); }
+		const [code] = await (tracked?.done ?? complete()).finally(async () => {
+			if (logFile) { await mkdir(dirname(logFile), { recursive: true }); await writeFile(logFile, `${stdout.text()}${stderr.text()}`); }
+		});
 		if (track) cancellation.signal.throwIfAborted();
 		if (code !== 0) throw new Error(`${basename(cmd)} failed (${code})`);
-		return { stdout, stderr };
+		return { stdout: stdout.text(), stderr: stderr.text() };
 	} finally { if (tracked) children.delete(tracked.stop); }
 }
 async function attempt(cmd: string, commandArgs: string[], extra: Record<string, string | undefined> = {}) {
@@ -196,14 +195,21 @@ async function runObscuraFast(env: Record<string, string>, profile: string) {
 	});
 	children.add(tracked.stop);
 	void tracked.done.catch(failed);
+	let failure: { error: unknown } | undefined;
 	try {
 		const endpoint = await readiness;
 		clearTimeout(startupTimer);
 		await execute("bun", ["scripts/obscura-smoke.ts"], { ...env, OBSCURA_CDP_URL: endpoint });
-	} finally {
-		clearTimeout(startupTimer);
-		try { await tracked.stop("SIGTERM"); } finally { children.delete(tracked.stop); }
-	}
+	} catch (error) {
+		failure = { error };
+	} finally { clearTimeout(startupTimer); }
+	try {
+		await tracked.stop("SIGTERM");
+	} catch (error) {
+		if (!failure) throw error;
+		console.error("Could not stop Obscura", error);
+	} finally { children.delete(tracked.stop); }
+	if (failure) throw failure.error;
 }
 let toolPromise: Promise<{ kind: string; kubectl: string; helm: string }> | undefined;
 function tools() {

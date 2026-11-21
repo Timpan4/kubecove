@@ -40,18 +40,25 @@ echo "host: ${host}"
 import { join } from "node:path";
 if (process.argv.includes("--target")) throw new Error("Explicit target passed to Cargo");
 for (const target of process.env.TEST_TARGETS.split(",")) {
-	const executable = join(process.env.CARGO_TARGET_DIR, target, "debug", "deps", "parity-test");
+	const intermediate = process.env.TEST_LAYOUT === "build";
+	const root = intermediate ? process.env.CARGO_BUILD_BUILD_DIR : process.env.CARGO_TARGET_DIR;
+	const executable = join(root, target, process.env.TEST_PROFILE, ...(intermediate ? ["build", "kubecove-gpui", "hash", "out"] : ["deps"]), "parity-test");
 	await Bun.write(executable, "parity binary");
 	console.log(JSON.stringify({ reason: "compiler-artifact", target: { name: "parity" }, executable, features: [] }));
 }
 `, { mode: 0o755 }),
 		]);
 		const module = JSON.stringify(join(import.meta.dir, "gpui-run.ts"));
-		for (const [mode, targets, envTarget, error] of [
-			["native", "", "", ""],
-			["host-config", host, host, ""],
-			["env-cross", "", cross, "CARGO_BUILD_TARGET"],
-			["cross-artifact", `,${cross}`, "", "artifact path"],
+		for (const [mode, layout, targets, envTarget, profile, error] of [
+			["native", "deps", "", "", "debug", ""],
+			["host-config", "deps", host, host, "debug", ""],
+			["env-cross", "deps", "", cross, "debug", "CARGO_BUILD_TARGET"],
+			["cross-artifact", "deps", `,${cross}`, "", "debug", "artifact path"],
+			["build-native", "build", "", "", "debug", ""],
+			["build-host-config", "build", host, host, "debug", ""],
+			["build-cross-artifact", "build", `,${cross}`, "", "debug", "artifact path"],
+			["build-outside-root", "build", "../other", "", "debug", "artifact path"],
+			["build-wrong-profile", "build", "", "", "release", "artifact path"],
 		]) {
 			const output = join(directory, mode);
 			const child = Bun.spawn([process.execPath, "-e", `
@@ -62,6 +69,7 @@ await exportGpuiParity(process.env.TEST_OUTPUT, false, new AbortController().sig
 				env: {
 					...process.env, PATH: [directory, process.env.PATH].join(delimiter), RUSTC: join(directory, "rustc"),
 					CARGO_BUILD_TARGET: envTarget || undefined, CARGO_TARGET_DIR: join(directory, "target"),
+					CARGO_BUILD_BUILD_DIR: join(directory, "build"), TEST_LAYOUT: layout, TEST_PROFILE: profile,
 					TEST_TARGETS: targets, TEST_OUTPUT: output,
 				},
 				stdout: "pipe",

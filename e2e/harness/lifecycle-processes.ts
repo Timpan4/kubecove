@@ -17,6 +17,21 @@ export function processOutput(stream: ReadableStream<Uint8Array>, signal?: Abort
 	return signal ? stream.pipeThrough(new TransformStream(), { signal }) : stream;
 }
 
+export function captureProcessOutput(stream: ReadableStream<Uint8Array> | undefined) {
+	const decoder = new TextDecoder();
+	let text = "";
+	return {
+		async drain(signal?: AbortSignal) {
+			if (!stream) return;
+			for await (const chunk of processOutput(stream, signal)) text += decoder.decode(chunk, { stream: true });
+		},
+		text() {
+			text += decoder.decode();
+			return text;
+		},
+	};
+}
+
 export function trackChild<Result>(child: Bun.Subprocess, complete: (signal: AbortSignal) => Promise<Result>) {
 	const identity = process.platform === "win32" ? undefined : startIdentity(child.pid);
 	const output = new AbortController();

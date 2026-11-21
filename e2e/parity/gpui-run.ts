@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
 import { object, string } from "./contract-values";
@@ -18,6 +18,12 @@ export function parityRebuildReason(output: string): string | undefined {
 	if (dirty) return dirty.trim();
 	const cause = output.match(/target="parity"[^\n]*cargo::compiler::fingerprint:\s+err: failed to read [^\n]+\n\s*Caused by:[ \t]*\r?\n[ \t]*([^\r\n]+)/)?.[1];
 	return cause ? `Cargo could not read the parity fingerprint: ${cause.trim()}` : undefined;
+}
+
+function cargoProfileDir(profile: string): string {
+	if (profile === "test" || profile === "dev") return "debug";
+	if (profile === "bench") return "release";
+	return profile;
 }
 
 /** Runs a child in its own process group and stops the group when `signal` aborts. */
@@ -62,13 +68,19 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 		const message = JSON.parse(line) as { reason?: string; executable?: string | null; target?: { name?: string }; features?: string[]; fresh?: boolean };
 		if (message.reason !== "compiler-artifact" || message.target?.name !== "parity" || !message.executable) continue;
 		if (expected && JSON.stringify(message.features?.toSorted()) !== JSON.stringify(expected.features)) throw new Error("Cargo built the parity executable with unexpected features");
+		const artifact = resolve(message.executable);
 		if (expected) {
 			// Cargo uses a target subdirectory when build.target is configured, including arrays
 			// that can emit more than one executable. Check every parity artifact before export.
-			const profile = expected.profile === "test" || expected.profile === "dev" ? "debug" : expected.profile === "bench" ? "release" : expected.profile;
-			const targetDir = resolve(env.CARGO_TARGET_DIR ?? join(workspace, "target"));
-			const artifactDir = dirname(dirname(resolve(message.executable)));
-			if (artifactDir !== join(targetDir, expected.target, profile) && !(targetingHost && artifactDir === join(targetDir, profile))) {
+			const profileDir = cargoProfileDir(expected.profile);
+			const roots = [env.CARGO_BUILD_BUILD_DIR, env.CARGO_TARGET_DIR, join(workspace, "target")];
+			const matchesTarget = roots.some((root) => {
+				if (!root) return false;
+				const parts = relative(root, artifact).split(sep);
+				return (parts.length > 2 && parts[0] === expected.target && parts[1] === profileDir)
+					|| (targetingHost && parts.length > 1 && parts[0] === profileDir);
+			});
+			if (!matchesTarget) {
 				throw new Error(`Cargo parity artifact path does not match export target ${expected.target}; check build.target in Cargo configuration`);
 			}
 		}
@@ -79,7 +91,7 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 			console.log(reason ? `GPUI parity executable rebuilt: ${reason}` : "GPUI parity executable rebuilt. See gpui-build.log for Cargo diagnostics.");
 		}
 		if (!expected) return message.executable;
-		executable = message.executable;
+		executable = artifact;
 	}
 	if (executable) return executable;
 	throw new Error("cargo did not report the parity test executable");
