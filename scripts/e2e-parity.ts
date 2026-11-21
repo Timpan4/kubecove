@@ -8,6 +8,7 @@ import { runGpui } from "../e2e/parity/gpui-run";
 import { type Driver, inspectDriverResults, parseDriver } from "../e2e/parity/merge-reports";
 import { type CoverageMapFailure, DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
+import { assignSuiteShards, loadTimings } from "../e2e/parity/suite-sharding";
 import { VIEWS } from "../e2e/parity/visual/views";
 import { holdFrameIsolation } from "./gpui-frame-process";
 
@@ -27,8 +28,8 @@ type Scenario = Contract["scenarios"][number];
  *   CI runs in a job of its own.
  * - PARITY_CHANGED=<base ref>: the scenarios the changes since the merge base with that ref can
  *   affect, from the coverage map at PARITY_COVERAGE_MAP (e2e/parity/changed-scenarios.ts).
- * - PARITY_SUITE_SHARD=<index>/<count>: every `count`-th scenario from position `index`, so
- *   separate CI jobs split one suite.
+ * - PARITY_SUITE_SHARD=<index>/<count>: duration-balanced assignment across CI jobs.
+ *   Every shard in the suite must receive the same optional KUBECOVE_PARITY_TIMINGS_PATH.
  */
 async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 	const list = (name: string) => (process.env[name] ?? "").split(",").map((prefix) => prefix.trim()).filter(Boolean);
@@ -49,8 +50,11 @@ async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 	if (shard) {
 		const match = /^(\d+)\/(\d+)$/.exec(shard);
 		const [index, count] = [Number(match?.[1]), Number(match?.[2])];
-		if (!match || index >= count) throw new Error(`PARITY_SUITE_SHARD must be <index>/<count>: ${shard}`);
-		selected = selected.filter((_, position) => position % count === index);
+		if (!match || !Number.isSafeInteger(index) || !Number.isSafeInteger(count) || index >= count) throw new Error(`PARITY_SUITE_SHARD must be <index>/<count>: ${shard}`);
+		const timings = await loadTimings(process.env.KUBECOVE_PARITY_TIMINGS_PATH);
+		const assignments = assignSuiteShards(selected.map(({ id }) => id), count, timings);
+		const ids = new Set(assignments[index]);
+		selected = selected.filter(({ id }) => ids.has(id));
 	}
 	return selected;
 }
