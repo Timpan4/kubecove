@@ -215,7 +215,7 @@ pub(super) fn publish_executable(
                 .map_err(io_error)?;
             copy.as_file().sync_all().map_err(io_error)?;
             copy.persist_noclobber(target)
-                .map_err(|e| io_error(e.error))?;
+                .map_err(|e| publication_rename_error(e.error))?;
         }
         Err(error) => return Err(io_error(error.error)),
     }
@@ -267,14 +267,14 @@ pub(super) fn publish_bundle(
     {
         use rustix::fs::{CWD, RenameFlags, renameat_with};
         renameat_with(CWD, bundle, CWD, target, RenameFlags::NOREPLACE)
-            .map_err(|e| io_error(e.into()))?;
+            .map_err(|e| publication_rename_error(e.into()))?;
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         if target.try_exists().map_err(io_error)? {
             return Err(invalid("GPUI is already installed here"));
         }
-        fs::rename(bundle, target).map_err(io_error)?;
+        fs::rename(bundle, target).map_err(publication_rename_error)?;
     }
     Ok(digest)
 }
@@ -306,10 +306,22 @@ fn publication_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir,
             Err(error) => return Err(io_error(error)),
         }
     }
-    Err(invalid(
+    Err(no_publication_staging())
+}
+
+fn publication_rename_error(error: io::Error) -> AppError {
+    // A bind mount can share the ancestor's device ID while still rejecting the rename.
+    if error.kind() == io::ErrorKind::CrossesDevices {
+        return no_publication_staging();
+    }
+    io_error(error)
+}
+
+fn no_publication_staging() -> AppError {
+    invalid(
         "KubeCove could not create a private staging directory on the destination volume. \
          Choose a writable installation folder protected from changes by other users.",
-    ))
+    )
 }
 
 fn create_staging(folder: &Path, prefix: &str) -> io::Result<tempfile::TempDir> {

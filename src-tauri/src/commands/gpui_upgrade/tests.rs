@@ -171,6 +171,50 @@ fn publishes_bundle_past_a_read_only_protected_parent() {
     assert!(destination.join(binary).is_file());
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires KUBECOVE_TEST_BIND_DESTINATION to point to an empty shared bind mount"]
+fn bind_mount_rejects_publication_and_cleans_up_staging() {
+    use std::{io, os::unix::fs::MetadataExt};
+
+    let folder = Path::new(&std::env::var_os("KUBECOVE_TEST_BIND_DESTINATION").unwrap())
+        .canonicalize()
+        .unwrap();
+    let parent = folder.parent().unwrap();
+    assert_eq!(
+        folder.metadata().unwrap().dev(),
+        parent.metadata().unwrap().dev()
+    );
+    assert!(!super::integrity::protected_staging_parent(&folder));
+    assert!(super::integrity::protected_staging_parent(parent));
+
+    let entries = fs::read_dir(parent).unwrap().count();
+    let mut source = stage(parent).unwrap();
+    assert_eq!(
+        fs::rename(source.path(), folder.join("rename-probe"))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::CrossesDevices
+    );
+    source.write_all(PAYLOAD).unwrap();
+    let target = folder.join(Platform::Linux.asset(VERSION));
+    let executable_error = publish_executable(source, Platform::Linux, &target).unwrap_err();
+    assert_eq!(fs::read_dir(parent).unwrap().count(), entries);
+
+    let binary = "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui";
+    let data = bundle(&[(binary, tar::EntryType::Regular)]);
+    let bundle_error = publish_bundle(&data[..], &folder).unwrap_err();
+    assert_eq!(fs::read_dir(parent).unwrap().count(), entries);
+    assert!(fs::read_dir(folder).unwrap().next().is_none());
+
+    let guidance = "Choose a writable installation folder protected from changes by other users.";
+    assert!(
+        executable_error.message.ends_with(guidance),
+        "{executable_error}"
+    );
+    assert!(bundle_error.message.ends_with(guidance), "{bundle_error}");
+}
+
 #[test]
 fn executable_publication_requires_correct_magic_and_a_new_destination() {
     let root = tempfile::tempdir().unwrap();
