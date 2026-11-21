@@ -79,7 +79,7 @@ try {
 	await waitFor("disabled product listener to close", (signal) => listenerRefused(port, AbortSignal.any([cancelled.signal, signal])), readinessTimeoutMs, { retryErrors: false });
 	checks.push("Enabled product MCP in Settings, read both contexts and closed listener");
 	if (process.platform === "win32") {
-		skipped.push({ check: "Remote server sign-in and Pod log stream", reason: "Windows does not support the private token file required by token-mode server startup." });
+		skipped.push({ check: "Remote server sign-in, Pod log stream, and disconnect", reason: "Windows does not support the private token file required by token-mode server startup." });
 	} else {
 		const remoteDir = join(data, "remote-fixture");
 		await mkdir(remoteDir, { mode: 0o700 });

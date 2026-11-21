@@ -568,7 +568,7 @@ async function dev() {
 	try {
 		const record = await create("dev");
 		const binary = await buildBrowserServer(root, join(root, "e2e/artifacts", `dev-${runId}`), profiling, execute);
-		await runDevBrowser(binary, join(stateDir, "dev-sessions"), record.kubeconfig, cancellation.signal);
+		await runDevBrowser(binary, join(devDir, "dev-sessions"), record.kubeconfig, cancellation.signal);
 	} finally {
 		await stoppingChildren;
 		current = undefined;
