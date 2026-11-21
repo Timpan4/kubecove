@@ -903,7 +903,7 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const parity = read("parity.yml");
   const suite = read("parity-suite.yml");
-  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["timings", "pull-request-selection", "pull-request-web", "pull-request-gpui-build", "pull-request-web-spike", "pull-request-gpui-spike", "pull-request-gpui", "pull-request-result", "main-gpui-build", "main", "main-spike", "main-build-cache", "coverage-map"]);
+  assert.deepEqual([...parity.slice(parity.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["timings", "pull-request-selection", "pull-request-web", "pull-request-gpui-build", "pull-request-web-spike", "pull-request-gpui-spike", "pull-request-gpui", "pull-request-result", "main-gpui-build", "main", "main-spike", "main-build-cache", "publish-timings", "coverage-map"]);
   const selection = job("pull-request-selection", parity);
   assert.match(selection, /^ {6}contents: read\n {6}actions: read$/m);
   assert.match(selection, /^ {10}fetch-depth: 0$/m);
@@ -938,27 +938,62 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
     }
   }
   assert.notEqual(verify({ WEB_RESULT: "skipped", GPUI_RESULT: "skipped", WEB_SPIKE_RESULT: "skipped", GPUI_SPIKE_RESULT: "skipped", RELEASE_PR: "true" }), 0);
-  // Evaluate the actual job if expressions, including failed planning and empty output fallback.
-  const enabled = (name, outputs, result = "success", event = "pull_request", build = "success", timings = "success") => {
-    const expression = /if: \$\{\{ (.+) \}\}/.exec(job(name, parity))[1].replaceAll(/needs\.([\w-]+)/g, 'needs["$1"]');
-    const needs = { "pull-request-selection": { result, outputs }, "pull-request-gpui-build": { result: build }, timings: { result: timings } };
-    return new Function("needs", "github", "cancelled", `return (${expression});`)(needs, { event_name: event }, () => false);
+  // Match the supported Actions condition forms, then exercise their string/status semantics.
+  const drivers = {
+    "pull-request-web": { selections: ["regular"], needsTimings: true },
+    "pull-request-gpui": { selections: ["regular"], needsTimings: true, needsBuild: true },
+    "pull-request-web-spike": { selections: ["spike"], needsTimings: true },
+    "pull-request-gpui-spike": { selections: ["spike"], needsTimings: true, needsBuild: true },
+    "pull-request-gpui-build": { selections: ["regular", "spike"] },
   };
-  for (const [regular, spike] of [["true", "false"], ["false", "true"], ["false", "false"], ["true", "true"]]) {
-    const outputs = { regular, spike };
-    assert.equal(enabled("pull-request-web", outputs), regular === "true");
-    assert.equal(enabled("pull-request-gpui", outputs), regular === "true");
-    assert.equal(enabled("pull-request-web-spike", outputs), spike === "true");
-    assert.equal(enabled("pull-request-gpui-spike", outputs), spike === "true");
-    assert.equal(enabled("pull-request-gpui-build", outputs), regular === "true" || spike === "true");
-  }
-  for (const name of ["pull-request-gpui", "pull-request-gpui-spike"]) assert.equal(enabled(name, {}, "success", "pull_request", "failure"), false);
-  for (const name of ["pull-request-web", "pull-request-web-spike"]) assert.equal(enabled(name, {}, "success", "pull_request", "failure"), true);
-  assert.equal(enabled("pull-request-gpui-build", {}, "failure"), true);
-  // The value a job reads for `key`, evaluated from the workflow's own expression.
+  const selectionJob = "needs.pull-request-selection";
+  const enabled = (name, outputs, result = "success", event = "pull_request", build = "success", timings = "success", cancelled = false) => {
+    const { selections, needsTimings, needsBuild } = drivers[name];
+    const expected = [
+      "!cancelled()", "github.event_name == 'pull_request'",
+      ...(needsTimings ? ["needs.timings.result == 'success'"] : []),
+      ...(needsBuild ? ["needs.pull-request-gpui-build.result == 'success'"] : []),
+      `${selectionJob}.result != 'skipped'`,
+      `(${[`${selectionJob}.result != 'success'`, ...selections.map((key) => `${selectionJob}.outputs.${key} != 'false'`)].join(" || ")})`,
+    ].join(" && ");
+    assert.equal(/^ {4}if: \$\{\{ (.+) \}\}$/m.exec(job(name, parity))?.[1], expected);
+    return !cancelled && event === "pull_request" && (!needsTimings || timings === "success") &&
+      (!needsBuild || build === "success") && result !== "skipped" &&
+      (result !== "success" || selections.some((key) => (outputs[key] ?? "") !== "false"));
+  };
+  for (const [regular, spike, expected] of [
+    ["true", "false", [true, true, false, false, true]],
+    ["false", "true", [false, false, true, true, true]],
+    ["false", "false", [false, false, false, false, false]],
+    ["true", "true", [true, true, true, true, true]],
+    ["", "", [true, true, true, true, true]],
+  ]) assert.deepEqual(Object.keys(drivers).map((name) => enabled(name, { regular, spike })), expected);
+  for (const [result, event, build, timings, cancelled, expected] of [
+    ["success", "pull_request", "failure", "success", false, [true, false, true, false, true]],
+    ["success", "pull_request", "success", "failure", false, [false, false, false, false, true]],
+    ["failure", "pull_request", "success", "success", false, [true, true, true, true, true]],
+    ["skipped", "pull_request", "success", "success", false, [false, false, false, false, false]],
+    ["success", "pull_request", "success", "success", true, [false, false, false, false, false]],
+    ["success", "push", "success", "success", false, [false, false, false, false, false]],
+  ]) assert.deepEqual(Object.keys(drivers).map((name) => enabled(name, {}, result, event, build, timings, cancelled)), expected);
+
   const value = (text, key, outputs, result = "success") => {
-    const expression = new RegExp(`^ +${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(text)[1].replaceAll("needs.pull-request-selection", "needs.selection").replaceAll(/outputs\.([\w-]+)/g, 'outputs["$1"]');
-    return new Function("needs", "fromJSON", `return (${expression});`)({ selection: { result, outputs } }, JSON.parse);
+    const driver = /^ {6}driver: (web|gpui)$/m.exec(text)?.[1];
+    const full = driver === "web" ? [0, 1, 2, 3] : [0, 1, 2];
+    const readers = {
+      scenarios: ["ids", ""], PARITY_SCENARIOS: ["ids", ""],
+      REGULAR_SELECTED: ["regular", ""], SPIKE_SELECTED: ["spike", ""],
+      PARITY_SELECTION_REASON: ["reason", '"Selection planner failed; full suite"'],
+      matrix: [`${driver}-matrix`, JSON.stringify({ shard: full })],
+      shards: [`${driver}-shards`, String(full.length)],
+    };
+    assert.ok(Object.hasOwn(readers, key), `Unsupported parity reader: ${key}`);
+    const [output, fallback] = readers[key];
+    const json = key === "matrix" || key === "shards";
+    const guarded = `${selectionJob}.result == 'success' && ${selectionJob}.outputs.${output} || '${fallback}'`;
+    assert.equal(new RegExp(`^ +${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(text)?.[1], json ? `fromJSON(${guarded})` : guarded);
+    const selected = (result === "success" ? outputs[output] : "") || fallback;
+    return json ? JSON.parse(selected) : selected;
   };
   // Failure mode: a planner job that fails after writing its outputs, such as an empty
   // selection, must not decide anything. Every reader falls back to the full suite.
@@ -966,8 +1001,9 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   // Failure mode: the selection step fails after it wrote its outputs, and continue-on-error
   // keeps the job successful. The job must publish nothing, which every reader takes as full suite.
   const published = (key, outcome) => {
-    const expression = new RegExp(`^ {6}${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(selection)[1].replaceAll(/outputs\.([\w-]+)/g, 'outputs["$1"]');
-    return new Function("steps", `return (${expression});`)({ select: { outcome, outputs: empty } });
+    const expression = new RegExp(`^ {6}${key}: \\$\\{\\{ (.+) \\}\\}$`, "m").exec(selection)?.[1];
+    assert.equal(expression, `steps.select.outcome == 'success' && steps.select.outputs.${key} || ''`);
+    return outcome === "success" ? empty[key] : "";
   };
   const unpublished = Object.fromEntries(Object.keys(empty).map((key) => [key, published(key, "failure")]));
   for (const key of Object.keys(empty)) {
@@ -1048,7 +1084,18 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.match(upload, /^ {10}name: .*\$\{\{ inputs.shard \}\}.*\$\{\{ inputs.shards \}\}.*\$\{\{ github.run_attempt \}\}$/m);
   // A partial suite and the spike both use shard 0 of 1. Their uploads must not collide.
   const artifactTemplate = /^ {10}name: (.+)$/m.exec(upload)[1];
-  const artifactName = (inputs, event = "pull_request") => artifactTemplate.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) => new Function("inputs", "github", `return (${expression});`)(inputs, { event_name: event, run_attempt: 1 }));
+  const artifactName = (inputs, event = "pull_request") => {
+    const fields = {
+      "github.event_name": event, "github.run_attempt": 1,
+      "inputs.shard": inputs.shard, "inputs.shards": inputs.shards,
+      "inputs.driver || 'both'": inputs.driver || "both",
+      "inputs.driver && inputs.prefix && '-spike' || ''": inputs.driver && inputs.prefix ? "-spike" : "",
+    };
+    return artifactTemplate.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) => {
+      assert.ok(Object.hasOwn(fields, expression), `Unsupported parity artifact expression: ${expression}`);
+      return fields[expression];
+    });
+  };
   const partialArtifacts = ["web", "gpui"].flatMap((driver) => ["", "settings-diagnostics.topology-spike-harness"].map((prefix) => artifactName({ driver, prefix, shard: 0, shards: 1 })));
   assert.equal(new Set(partialArtifacts).size, 4);
   assert.equal(artifactName({ driver: "", prefix: "", shard: 0, shards: 4 }, "push"), "parity-push-both-shard-0-of-4-attempt-1");
@@ -1138,7 +1185,8 @@ test("parity builds each GPUI binary once and runs shards from the matching arti
   const mapPath = /^export const DEFAULT_MAP = "(.+)";$/m.exec(read("e2e/parity/changed-scenarios.ts"))?.[1];
   assert.equal(mapPath, "e2e/artifacts/parity-coverage-map.json");
   assert.match(merge, /^ {4}needs:\n {6}- main\n {6}- main-spike$/m);
-  assert.ok(merge.includes(`if: \${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}`));
+  assert.ok(merge.includes(`if: \${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}`));
+  assert.doesNotMatch(merge, /main(-spike)?\.result|merge-reports\.ts|parity-scenario-timings/);
   const map = step("Upload shard coverage map");
   assert.match(map, /path: e2e\/artifacts\/parity-\*\/coverage-map\.json/);
   const shardArtifact = /name: (parity-coverage-shard-)\$\{\{/.exec(map)?.[1];
@@ -1162,10 +1210,14 @@ test("parity shares one immutable timing snapshot across shard families and reru
   assert.match(suite, /name: parity-timing-snapshot\n/);
   assert.ok(suite.includes(`KUBECOVE_PARITY_TIMINGS_PATH: \${{ runner.temp }}/parity-timings/\${{ inputs.driver || 'web' }}.json`));
   assert.match(suite, /test -s "\$KUBECOVE_PARITY_TIMINGS_PATH"/);
-  const merge = job("coverage-map", parity);
-  assert.match(merge, /pattern: parity-push-\*/);
-  assert.match(merge, /bun e2e\/parity\/merge-reports\.ts parity-reports/);
-  assert.match(merge, /name: parity-scenario-timings\n/);
+  const publish = job("publish-timings", parity);
+  assert.match(publish, /^ {4}needs:\n {6}- main\n {6}- main-spike$/m);
+  // The default success() guard requires both dependencies and the validation step to pass.
+  assert.ok(publish.includes(`if: \${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}`));
+  assert.match(publish, /pattern: parity-push-\*/);
+  assert.match(publish, /run: \|\n {10}bun e2e\/parity\/merge-reports\.ts parity-reports\n/);
+  assert.doesNotMatch(publish, /continue-on-error:/);
+  assert.match(publish, /^ {6}- name: Upload scenario timings for future runs\n {8}uses:.*\n {8}with:\n {10}name: parity-scenario-timings$/m);
 
   const command = block(timings, "run", 8);
   const stub = [
