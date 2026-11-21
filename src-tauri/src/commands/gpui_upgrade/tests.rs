@@ -146,6 +146,31 @@ fn publishes_one_gpui_bundle_and_refuses_unsafe_archive_entries() {
     assert!(tauri.is_dir());
 }
 
+#[cfg(unix)]
+#[test]
+fn publishes_bundle_past_a_read_only_protected_parent() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::Builder::new()
+        .permissions(fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
+    let parent = root.path().canonicalize().unwrap().join("protected");
+    let destination = parent.join("shared");
+    fs::create_dir_all(&destination).unwrap();
+    fs::set_permissions(&destination, fs::Permissions::from_mode(0o777)).unwrap();
+    let original = fs::metadata(&parent).unwrap().permissions();
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o555)).unwrap();
+
+    let binary = "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui";
+    let data = bundle(&[(binary, tar::EntryType::Regular)]);
+    let result = publish_bundle(&data[..], &destination);
+    fs::set_permissions(&parent, original).unwrap();
+
+    assert!(result.unwrap().is_none());
+    assert!(destination.join(binary).is_file());
+}
+
 #[test]
 fn executable_publication_requires_correct_magic_and_a_new_destination() {
     let root = tempfile::tempdir().unwrap();

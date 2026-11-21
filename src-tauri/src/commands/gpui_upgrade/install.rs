@@ -19,12 +19,14 @@ pub(super) fn stage_installer(temp: &Path) -> Result<(tempfile::TempDir, fs::Fil
         return Err(invalid("Cannot stage GPUI in a shared folder"));
     }
     let parent = temp.join("kubecove-gpui-upgrade");
-    let mut builder = fs::DirBuilder::new();
+    let builder = fs::DirBuilder::new();
     #[cfg(unix)]
-    {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt;
+        let mut builder = builder;
         builder.mode(0o700);
-    }
+        builder
+    };
     match builder.create(&parent) {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
         result => result.map_err(io_error)?,
@@ -35,7 +37,8 @@ pub(super) fn stage_installer(temp: &Path) -> Result<(tempfile::TempDir, fs::Fil
         ));
     }
     cleanup_stale_installer_dirs(&parent).map_err(io_error)?;
-    let dir = private_staging(&parent, INSTALLER_PREFIX)?;
+    let dir = create_staging(&parent, INSTALLER_PREFIX).map_err(io_error)?;
+    let dir = verify_private_staging(dir)?;
     let lease = fs::File::create_new(dir.path().join(SESSION_MARKER)).map_err(io_error)?;
     lease
         .try_lock()
@@ -277,26 +280,49 @@ pub(super) fn publish_bundle(
 }
 
 fn publication_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir, AppError> {
+    #[cfg(unix)]
+    use std::os::unix::fs::MetadataExt;
+
+    #[cfg(unix)]
+    let dest_dev = folder.metadata().map_err(io_error)?.dev();
+
     // A shared destination can still accept a rename from a protected ancestor
     // on the same volume. Keep the source outside directories other users can replace.
-    let parent = folder
-        .ancestors()
-        .find(|p| integrity::protected_staging_parent(p))
-        .ok_or_else(|| invalid("Cannot find a protected GPUI publication folder"))?;
-    private_staging(parent, prefix)
+    for ancestor in folder.ancestors() {
+        #[cfg(unix)]
+        if ancestor.metadata().map_err(io_error)?.dev() != dest_dev {
+            break;
+        }
+        if !integrity::protected_staging_parent(ancestor) {
+            continue;
+        }
+        match create_staging(ancestor, prefix) {
+            Ok(dir) => return verify_private_staging(dir),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem
+                ) => {}
+            Err(error) => return Err(io_error(error)),
+        }
+    }
+    Err(invalid(
+        "KubeCove could not create a private staging directory on the destination volume. \
+         Choose a writable installation folder protected from changes by other users.",
+    ))
 }
 
-fn private_staging(folder: &Path, prefix: &str) -> Result<tempfile::TempDir, AppError> {
+fn create_staging(folder: &Path, prefix: &str) -> io::Result<tempfile::TempDir> {
     let mut builder = tempfile::Builder::new();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         builder.permissions(fs::Permissions::from_mode(0o700));
     }
-    let dir = builder
-        .prefix(prefix)
-        .tempdir_in(folder)
-        .map_err(io_error)?;
+    builder.prefix(prefix).tempdir_in(folder)
+}
+
+fn verify_private_staging(dir: tempfile::TempDir) -> Result<tempfile::TempDir, AppError> {
     if !integrity::protected_path(dir.path()) {
         return Err(invalid("Cannot protect the GPUI staging directory"));
     }

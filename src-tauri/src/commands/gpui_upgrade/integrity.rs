@@ -71,6 +71,7 @@ pub(super) fn protected_path(path: &Path) -> bool {
     protected_path_at_depth(path, 0)
 }
 
+/// Check protection against replacement. The caller still has to create the child.
 pub(super) fn protected_staging_parent(path: &Path) -> bool {
     // A sticky parent permits creating a private child without letting peers replace it.
     protected_path_at_depth(path, 1)
