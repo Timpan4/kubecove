@@ -10,7 +10,7 @@ const contract: Contract = { scenarios: [
 	{ id: "one", title: "One", steps: [] },
 	{ id: "two", title: "Two", steps: [] },
 ] };
-const report = (driver: string, ...ids: string[]) => ({ driver, scenarios: ids.map((id) => ({ id, status: "passed" })) });
+const report = <Name extends string>(driver: Name, ...ids: string[]) => ({ driver, scenarios: ids.map((id) => ({ id, status: "passed" })) });
 
 test("merges different shard layouts and preserves the full contract check", () => {
 	const reports = [report("web", "one"), report("web", "two"), report("gpui", "one", "two")];
@@ -64,6 +64,23 @@ test("collection fails when a selected run has no report or never passed", async
 		expect(await collectReports(root)).toEqual([report("web", "one", "two")]);
 		await writeFile(join(run, "result.json"), JSON.stringify({ driver: "web", status: "failed" }));
 		await expect(collectReports(root)).rejects.toThrow();
+	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a combined main shard must report passing results for both drivers", async () => {
+	await mkdir("e2e/artifacts", { recursive: true });
+	const root = await mkdtemp("e2e/artifacts/parity-merge-test-");
+	try {
+		const run = join(root, "parity-push-both-shard-0-of-1-attempt-1", "parity-run");
+		await mkdir(run, { recursive: true });
+		const web = report("web", "one", "two");
+		const gpui = report("gpui", "one", "two");
+		await writeFile(join(run, "scenarios.txt"), "one\ntwo");
+		await writeFile(join(run, "result.json"), JSON.stringify({ driver: "both", status: "passed" }));
+		await writeFile(join(run, "web.json"), JSON.stringify(web));
+		await expect(collectReports(root)).rejects.toThrow();
+		await writeFile(join(run, "gpui.json"), JSON.stringify(gpui));
+		expect(mergeReports(contract, await collectReports(root))).toEqual([web, gpui]);
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
 

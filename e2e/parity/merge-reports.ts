@@ -99,11 +99,14 @@ export async function collectReports(root: string, selectionAttempt = 0): Promis
 		if (entries.some((entry) => entry.name === "scenarios.txt")) {
 			const result = object(JSON.parse(await readFile(join(directory, "result.json"), "utf8")));
 			if (result.status !== "passed") throw new Error(`Parity run did not pass: ${directory}`);
-			const driver = parseDriver(result.driver);
+			const drivers = result.driver === "both" ? (["web", "gpui"] as const) : [parseDriver(result.driver)];
 			const ids = (await readFile(join(directory, "scenarios.txt"), "utf8")).split("\n").filter(Boolean);
-			const report: unknown = JSON.parse(await readFile(join(directory, `${driver}.json`), "utf8"));
-			validateDriverReport({ scenarios: ids.map((id) => ({ id, title: id, steps: [] })) }, driver, report);
-			reports.push(report);
+			const selection = { scenarios: ids.map((id) => ({ id, title: id, steps: [] })) };
+			for (const driver of drivers) {
+				const report: unknown = JSON.parse(await readFile(join(directory, `${driver}.json`), "utf8"));
+				validateDriverReport(selection, driver, report);
+				reports.push(report);
+			}
 			return;
 		}
 		for (const entry of entries) if (entry.isDirectory()) await visit(join(directory, entry.name));

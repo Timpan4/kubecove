@@ -22,6 +22,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  timings:
+    name: Snapshot parity timings
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      # Failed-job reruns keep reports from earlier attempts. Reuse the same snapshot
+      # so a new main run cannot repartition the shards midway through this run.
+      - name: Select timing snapshot
+        id: timings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_RUN_ATTEMPT" != 1 ]]; then
+            artifacts_url="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"
+            existing=$(gh api "$artifacts_url?name=parity-timing-snapshot" --jq '.artifacts[].id')
+            if [[ -n "$existing" ]]; then
+              echo "Reusing this run's timing snapshot"
+              exit 0
+            fi
+            reports=$(gh api --paginate "$artifacts_url" --jq '.artifacts[] | select(.name | startswith("parity-pull_request-") or startswith("parity-push-")) | .id')
+            if [[ -n "$reports" ]]; then
+              echo "Cannot replace a missing timing snapshot after shards have run" >&2
+              exit 1
+            fi
+          fi
+          mkdir parity-timings
+          if main_run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow parity.yml --branch main --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty') &&
+            [[ -n "$main_run" ]] &&
+            gh run download "$main_run" --repo "$GITHUB_REPOSITORY" --name parity-scenario-timings --dir parity-timings &&
+            jq -se 'length == 2 and all(.[]; type == "object" and all(.[]; type == "number" and . >= 0))' parity-timings/web.json parity-timings/gpui.json >/dev/null; then
+            echo "Using scenario timings from main run $main_run"
+          else
+            echo "Main timings unavailable; using equal weights"
+            printf '{}\n' > parity-timings/web.json
+            printf '{}\n' > parity-timings/gpui.json
+          fi
+          echo "upload=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload timing snapshot
+        if: ${{ steps.timings.outputs.upload == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity-timing-snapshot
+          path: |
+            parity-timings/web.json
+            parity-timings/gpui.json
+          if-no-files-found: error
+
   pull-request-selection:
     name: Parity selection (pull request)
     if: ${{ github.event_name == 'pull_request' }}
@@ -79,14 +129,12 @@ jobs:
 
   pull-request-web:
     name: Parity web (pull request)
-    needs: pull-request-selection
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false') }}
+    needs: [pull-request-selection, timings]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.timings.result == 'success' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false') }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.web-matrix || '{"shard":[0,1,2,3]}') }}
     uses: ./.github/workflows/parity-suite.yml
-    # Pull request jobs restore main's caches and save none, so every pull request also
-    # exercises the read-only cache access that the main shards below depend on.
     cache-mode: read
     with:
       shard: ${{ matrix.shard }}
@@ -95,29 +143,43 @@ jobs:
       exclude: settings-diagnostics.topology-spike-harness
       scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
 
-  pull-request-spike:
-    name: Parity (pull request)
+  pull-request-gpui-build:
+    name: Build parity GPUI (pull request)
     needs: pull-request-selection
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.spike != 'false') }}
-    strategy:
-      fail-fast: false
-      matrix:
-        driver: [web, gpui]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false' || needs.pull-request-selection.outputs.spike != 'false') }}
     uses: ./.github/workflows/parity-suite.yml
     cache-mode: read
     with:
-      shard: 0
-      shards: 1
-      driver: ${{ matrix.driver }}
+      build: artifact
+
+  pull-request-web-spike:
+    name: Parity web spike (pull request)
+    needs: [pull-request-selection, timings]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.timings.result == 'success' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.spike != 'false') }}
+    uses: ./.github/workflows/parity-suite.yml
+    cache-mode: read
+    with:
+      driver: web
       prefix: settings-diagnostics.topology-spike-harness
       scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
 
-  # With two shards a warm GPUI job took 326 to 359 s: about 100 s to build the test and
-  # 150 s of scenarios (run 43322953853). A third shard shortens the scenario share.
+  pull-request-gpui-spike:
+    name: Parity GPUI spike (pull request)
+    needs: [pull-request-selection, pull-request-gpui-build, timings]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.timings.result == 'success' && needs.pull-request-gpui-build.result == 'success' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.spike != 'false') }}
+    uses: ./.github/workflows/parity-suite.yml
+    cache-mode: read
+    with:
+      driver: gpui
+      prefix: settings-diagnostics.topology-spike-harness
+      scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
+      gpui-artifact: ${{ needs.pull-request-gpui-build.outputs.gpui-artifact }}
+      rust-version: ${{ needs.pull-request-gpui-build.outputs.rust-version }}
+
   pull-request-gpui:
     name: Parity GPUI (pull request)
-    needs: pull-request-selection
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false') }}
+    needs: [pull-request-selection, pull-request-gpui-build, timings]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.timings.result == 'success' && needs.pull-request-gpui-build.result == 'success' && needs.pull-request-selection.result != 'skipped' && (needs.pull-request-selection.result != 'success' || needs.pull-request-selection.outputs.regular != 'false') }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.gpui-matrix || '{"shard":[0,1,2]}') }}
@@ -129,15 +191,20 @@ jobs:
       driver: gpui
       exclude: settings-diagnostics.topology-spike-harness
       scenarios: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.ids || '' }}
+      gpui-artifact: ${{ needs.pull-request-gpui-build.outputs.gpui-artifact }}
+      rust-version: ${{ needs.pull-request-gpui-build.outputs.rust-version }}
 
   # Advisory check with a stable name; validates only the declared selection.
   pull-request-result:
     name: Parity result
     needs:
       - pull-request-selection
+      - timings
+      - pull-request-gpui-build
       - pull-request-web
       - pull-request-gpui
-      - pull-request-spike
+      - pull-request-web-spike
+      - pull-request-gpui-spike
     if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -146,19 +213,27 @@ jobs:
         env:
           WEB_RESULT: ${{ needs.pull-request-web.result }}
           GPUI_RESULT: ${{ needs.pull-request-gpui.result }}
-          SPIKE_RESULT: ${{ needs.pull-request-spike.result }}
+          WEB_SPIKE_RESULT: ${{ needs.pull-request-web-spike.result }}
+          GPUI_SPIKE_RESULT: ${{ needs.pull-request-gpui-spike.result }}
+          GPUI_BUILD_RESULT: ${{ needs.pull-request-gpui-build.result }}
+          TIMINGS_RESULT: ${{ needs.timings.result }}
           REGULAR_SELECTED: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.regular || '' }}
           SPIKE_SELECTED: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.spike || '' }}
         run: |
           set -euo pipefail
-          echo "Web: ${WEB_RESULT}; GPUI: ${GPUI_RESULT}; topology spike: ${SPIKE_RESULT}"
+          echo "Web: ${WEB_RESULT}; GPUI: ${GPUI_RESULT}; web spike: ${WEB_SPIKE_RESULT}; GPUI spike: ${GPUI_SPIKE_RESULT}; GPUI build: ${GPUI_BUILD_RESULT}; timings: ${TIMINGS_RESULT}"
           regular=success
           spike=success
+          build=success
           if [[ "${REGULAR_SELECTED}" == "false" ]]; then regular=skipped; fi
           if [[ "${SPIKE_SELECTED}" == "false" ]]; then spike=skipped; fi
+          if [[ "$regular" == skipped && "$spike" == skipped ]]; then build=skipped; fi
+          if [[ "$build" == success ]]; then test "$TIMINGS_RESULT" = success; fi
+          test "$GPUI_BUILD_RESULT" = "$build"
           test "${WEB_RESULT}" = "${regular}"
           test "${GPUI_RESULT}" = "${regular}"
-          test "${SPIKE_RESULT}" = "${spike}"
+          test "${WEB_SPIKE_RESULT}" = "${spike}"
+          test "${GPUI_SPIKE_RESULT}" = "${spike}"
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -174,7 +249,7 @@ jobs:
       # their reports stay in the earlier attempt. merge-reports.ts judges each shard by its
       # newest attempt.
       - name: Download driver reports
-        if: ${{ needs.pull-request-web.result == 'success' || needs.pull-request-spike.result == 'success' }}
+        if: ${{ needs.pull-request-web.result == 'success' || needs.pull-request-web-spike.result == 'success' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: parity-pull_request-*
@@ -187,26 +262,34 @@ jobs:
           PARITY_SELECTION_REASON: ${{ needs.pull-request-selection.result == 'success' && needs.pull-request-selection.outputs.reason || '"Selection planner failed; full suite"' }}
         run: bun e2e/parity/merge-reports.ts parity-reports
 
+  main-gpui-build:
+    name: Build instrumented parity GPUI (main)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    uses: ./.github/workflows/parity-suite.yml
+    with:
+      build: artifact
+      coverage: true
+
   main:
     name: Parity (main)
+    needs: [main-gpui-build, timings]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     strategy:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3]
     uses: ./.github/workflows/parity-suite.yml
-    # The four shards and the spike job build the same instrumented binary under one cache
-    # key. The spike job saves it and these restore only.
-    cache-mode: read
     with:
       shard: ${{ matrix.shard }}
       shards: 4
       coverage: true
       exclude: settings-diagnostics.topology-spike-harness
+      gpui-artifact: ${{ needs.main-gpui-build.outputs.gpui-artifact }}
+      rust-version: ${{ needs.main-gpui-build.outputs.rust-version }}
 
-  # Saves the instrumented build cache that the four shards above restore.
   main-spike:
     name: Parity (main)
+    needs: [main-gpui-build, timings]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/parity-suite.yml
     with:
@@ -214,24 +297,23 @@ jobs:
       shards: 1
       coverage: true
       prefix: settings-diagnostics.topology-spike-harness
+      gpui-artifact: ${{ needs.main-gpui-build.outputs.gpui-artifact }}
+      rust-version: ${{ needs.main-gpui-build.outputs.rust-version }}
 
-  # The main shards build an instrumented binary, so this seeds the uninstrumented build
-  # cache that pull requests restore.
+  # Seed the uninstrumented object cache used by the pull request build job.
   main-build-cache:
     name: Parity build cache (main)
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     uses: ./.github/workflows/parity-suite.yml
     with:
-      shard: 0
-      shards: 1
-      build-only: true
+      build: cache
 
   coverage-map:
     name: Parity coverage map (main)
     needs:
       - main
       - main-spike
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -244,6 +326,28 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
+
+      - name: Download main driver reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: parity-push-*
+          path: parity-reports
+
+      - name: Validate main driver reports and extract timings
+        run: |
+          bun e2e/parity/merge-reports.ts parity-reports
+          mkdir parity-timings
+          for driver in web gpui; do
+            jq --arg driver "$driver" '[.[] | select(.driver == $driver) | .scenarios[] | select(.durationMs != null) | {key: .id, value: .durationMs}] | from_entries' parity-reports/merged-reports.json > "parity-timings/$driver.json"
+          done
+
+      - name: Upload scenario timings for future runs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity-scenario-timings
+          path: parity-timings/*.json
+          if-no-files-found: error
+          overwrite: true
 
       - name: Download shard coverage maps
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
