@@ -281,6 +281,23 @@ example = "9.9.9"
 		);
 	});
 
+	test("rejects non-object JSON config without modifying package.json", () => {
+		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
+		mkdirSync(join(root, "src-tauri"), { recursive: true });
+		const originalPackage = '{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n';
+		writeFileSync(join(root, "package.json"), originalPackage);
+		writeFileSync(join(root, "src-tauri", "tauri.conf.json"), "[]\n");
+		writeFileSync(
+			join(root, "src-tauri", "Cargo.toml"),
+			'[package]\nname = "kubecove"\nversion = "0.1.0"\n',
+		);
+
+		expect(() => updateWorkspaceReleaseVersions("0.2.0", root)).toThrow(
+			"must contain a JSON object.",
+		);
+		expect(readFileSync(join(root, "package.json"), "utf8")).toBe(originalPackage);
+	});
+
 	test("classifies release notes from existing commit prefixes", () => {
 		const sections = classifyReleaseSubjects([
 			"✨ feat kubeconfig env var selection (#291)",

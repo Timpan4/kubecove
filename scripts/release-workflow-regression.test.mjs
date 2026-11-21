@@ -570,3 +570,9 @@ test("final verification rejects every missing archive, checksum, installer or u
   const final = step(job("publish"), "Publish completed release");
   assert.equal(final.if, "needs.prepare.outputs.release-draft == 'true'");
 });
+
+test("prepare rejects an already-published release before any upload job runs", () => {
+  const detect = step(job("prepare"), "Detect existing release state");
+  assert.match(detect.run, /if \[\[ "\$release_draft" != "true" \]\]; then/);
+  assert.match(detect.run, /already published; refusing to overwrite live release assets/);
+});

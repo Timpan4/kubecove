@@ -43,7 +43,11 @@ jobs:
         run: |
           set -euo pipefail
           if release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft' 2>release-error.txt)"; then
-            echo "release-draft=$release_draft" >> "$GITHUB_OUTPUT"
+            if [[ "$release_draft" != "true" ]]; then
+              echo "::error::Release $TAG_NAME is already published; refusing to overwrite live release assets." >&2
+              exit 1
+            fi
+            echo "release-draft=true" >> "$GITHUB_OUTPUT"
             echo "release-exists=true" >> "$GITHUB_OUTPUT"
           elif grep -qiE "not found|404" release-error.txt; then
             echo "release-draft=true" >> "$GITHUB_OUTPUT"
