@@ -10,6 +10,8 @@ use minisign_verify::{PublicKey, Signature, StreamVerifier};
 use std::{ffi::OsString, io, path::PathBuf, time::Duration};
 use tokio::sync::{mpsc, watch};
 
+#[cfg(test)]
+mod feed_tests;
 mod install;
 
 pub use install::{InstallTarget, Staged, bundle_of};
@@ -19,8 +21,21 @@ pub enum UpdateStatus {
     #[default]
     Idle,
     UpToDate,
+    Unpublished,
     Available(AvailableUpdate),
     Consolidated(String),
+}
+
+impl UpdateStatus {
+    pub(crate) fn release_page_message(&self) -> Option<String> {
+        match self {
+            Self::Consolidated(version) => Some(format!(
+                "KubeCove {version} requires a separate installation."
+            )),
+            Self::Unpublished => Some("No desktop update has been published yet.".into()),
+            _ => None,
+        }
+    }
 }
 
 /// A newer release from the update manifest. `notes` is the manifest's `notes`
@@ -126,12 +141,50 @@ pub(super) async fn check() -> Result<UpdateStatus, AppError> {
     let failed = || AppError::new("Could not check for updates", AppErrorKind::Network);
     let endpoint = Feed::release()?.endpoint;
     let client = client().map_err(|_| failed())?;
-    if let Some(version) =
-        kubecove_lib::desktop_release::consolidated(&client, &endpoint, &platform()).await?
-    {
-        return Ok(UpdateStatus::Consolidated(version));
+    let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("valid package version");
+    check_feeds(&client, &endpoint, &platform(), &current).await
+}
+
+async fn check_feeds(
+    client: &reqwest::Client,
+    endpoint: &str,
+    target: &str,
+    current: &semver::Version,
+) -> Result<UpdateStatus, AppError> {
+    let consolidated_error =
+        match kubecove_lib::desktop_release::consolidated(client, endpoint, target).await {
+            Ok(Some(version)) => {
+                return Ok(if version.cmp_precedence(current).is_gt() {
+                    UpdateStatus::Consolidated(version.to_string())
+                } else {
+                    UpdateStatus::UpToDate
+                });
+            }
+            result => result.err(),
+        };
+    match check_legacy(client, endpoint, target, current).await {
+        Ok(UpdateStatus::Unpublished) => {
+            consolidated_error.map_or(Ok(UpdateStatus::Unpublished), Err)
+        }
+        Ok(status) => Ok(status),
+        Err(error) => Err(consolidated_error.unwrap_or(error)),
     }
-    let response = client.get(endpoint).send().await.map_err(|_| failed())?;
+}
+
+async fn check_legacy(
+    client: &reqwest::Client,
+    endpoint: &str,
+    target: &str,
+    current: &semver::Version,
+) -> Result<UpdateStatus, AppError> {
+    let response = client
+        .get(endpoint)
+        .send()
+        .await
+        .map_err(|_| AppError::new("Could not check for updates", AppErrorKind::Network))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(UpdateStatus::Unpublished);
+    }
     if response.status() == reqwest::StatusCode::NO_CONTENT {
         return Ok(UpdateStatus::UpToDate);
     }
@@ -139,7 +192,7 @@ pub(super) async fn check() -> Result<UpdateStatus, AppError> {
         .error_for_status()
         .map_err(|_| AppError::new("Update check failed", AppErrorKind::Network))?;
     let manifest = kubecove_lib::desktop_release::read_manifest(manifest).await?;
-    release(&manifest, &platform())
+    release_for_version(&manifest, target, current)
 }
 
 /// Reads the manifest. A newer version is offered only with a build for `platform`.

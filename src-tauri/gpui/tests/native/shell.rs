@@ -10,6 +10,7 @@ pub(super) struct ShellControls {
     pub sources_pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub fail_save: AtomicBool,
     pub consolidated_release: AtomicBool,
+    pub checked_updates: AtomicBool,
     pub preferences: Store,
 }
 
@@ -73,8 +74,19 @@ fn consolidated_release_offers_download_in_settings_and_header(cx: &mut TestAppC
         .consolidated_release
         .store(true, Ordering::SeqCst);
     let handle = open(cx, backend);
+    click(cx, handle, "header-update");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("header-update-install").is_some());
+    })
+    .unwrap();
     click(cx, handle, "open-settings");
     click(cx, handle, "settings-section:Updates");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("settings-button:Install").is_some());
+    })
+    .unwrap();
     click(cx, handle, "settings-button:Check");
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
@@ -86,7 +98,6 @@ fn consolidated_release_offers_download_in_settings_and_header(cx: &mut TestAppC
         assert!(window.try_find("settings-button:Install").is_none());
     })
     .unwrap();
-    // The startup check offered this version already. Opening Settings dismissed its popover.
     click(cx, handle, "settings-back");
     click(cx, handle, "header-update");
     cx.update_window(handle, |_, window, cx| {

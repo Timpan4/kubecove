@@ -11,9 +11,6 @@
       "allow": [
         {
           "url": "https://github.com/Timpan4/kubecove/wiki"
-        },
-        {
-          "url": "https://github.com/Timpan4/kubecove/releases"
         }
       ]
     },

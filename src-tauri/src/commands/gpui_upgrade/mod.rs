@@ -127,9 +127,6 @@ fn busy() -> AppError {
 pub async fn check_gpui_upgrade(
     state: State<'_, GpuiUpgrade>,
 ) -> Result<GpuiUpgradeInfo, AppError> {
-    if let Some(info) = state.installed_info().await? {
-        return Ok(info);
-    }
     let platform = match Platform::current() {
         Ok(platform) => platform,
         Err(message) => {
@@ -145,19 +142,33 @@ pub async fn check_gpui_upgrade(
         }
     };
     let feed = Feed::configured()?;
-    if let Some(version) = feed.consolidated(platform).await? {
-        return Ok(GpuiUpgradeInfo::Consolidated { version });
+    let consolidated_error = match feed.consolidated(platform).await {
+        Ok(Some(version)) => {
+            return Ok(GpuiUpgradeInfo::Consolidated {
+                version: version.to_string(),
+            });
+        }
+        result => result.err(),
+    };
+    if let Some(info) = state.installed_info().await? {
+        return Ok(info);
     }
     let latest = feed.latest(platform).await;
     if let Some(info) = state.installed_info().await? {
         return Ok(info);
     }
-    Ok(latest?.map_or_else(
-        || GpuiUpgradeInfo::Unavailable {
-            target: platform.key().into(),
-        },
-        |release| release.info(),
-    ))
+    match latest {
+        Ok(Some(release)) => Ok(release.info()),
+        Ok(None) => consolidated_error.map_or_else(
+            || {
+                Ok(GpuiUpgradeInfo::Unavailable {
+                    target: platform.key().into(),
+                })
+            },
+            Err,
+        ),
+        Err(error) => Err(consolidated_error.unwrap_or(error)),
+    }
 }
 
 fn choose_folder<R: Runtime>(
@@ -305,6 +316,17 @@ async fn blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(f)
         .await
         .map_err(|_| AppError::new("GPUI installation task stopped", AppErrorKind::Internal))?
+}
+
+pub async fn open_desktop_releases_page<R: Runtime>(app: AppHandle<R>) -> Result<(), AppError> {
+    app.opener()
+        .open_url(crate::desktop_release::RELEASES_URL, None::<&str>)
+        .map_err(|e| {
+            AppError::new(
+                format!("Could not open GitHub Releases: {e}"),
+                AppErrorKind::Io,
+            )
+        })
 }
 
 pub async fn reveal_gpui_upgrade<R: Runtime>(

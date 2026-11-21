@@ -27,7 +27,12 @@ describe("native desktop smoke", () => {
 		const directory = process.env.KUBECOVE_DATA_DIR;
 		if (!directory) throw new Error("Missing isolated data directory");
 		const snapshot = join(directory, "tauri-migration.json");
-		await browser.waitUntil(() => existsSync(snapshot));
+		await browser.execute(() => {
+			localStorage.setItem("kubecove-settings", JSON.stringify({ version: 0, state: { timestampTimezone: "utc" } }));
+		});
+		await browser.refresh();
+		await browser.waitUntil(() => existsSync(snapshot) &&
+			JSON.parse(readFileSync(snapshot, "utf8")).entries["kubecove-settings"]?.state?.timestampTimezone === "utc");
 		expect(JSON.parse(readFileSync(snapshot, "utf8"))).toMatchObject({ schemaVersion: 1 });
 		const contexts = await listKubeContexts();
 		expect(contexts).toHaveLength(2);

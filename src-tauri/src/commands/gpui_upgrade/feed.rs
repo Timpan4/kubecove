@@ -175,7 +175,7 @@ impl Feed {
     pub(super) async fn consolidated(
         &self,
         platform: Platform,
-    ) -> Result<Option<String>, AppError> {
+    ) -> Result<Option<semver::Version>, AppError> {
         #[cfg(feature = "e2e")]
         if std::env::var("KUBECOVE_E2E_SMOKE").as_deref() == Ok("1") {
             let manifest = serde_json::json!({

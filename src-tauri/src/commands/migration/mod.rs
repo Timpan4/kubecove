@@ -29,8 +29,8 @@ fn invalid() -> AppError {
         AppErrorKind::Validation,
     )
 }
-fn io_error(_: io::Error) -> AppError {
-    AppError::new("Could not save the migration snapshot", AppErrorKind::Io)
+fn io_error(error: io::Error) -> AppError {
+    AppError::new("Could not save the migration snapshot", AppErrorKind::Io).with_source(error)
 }
 
 fn write(directory: &Path, input: MigrationInput) -> Result<bool, AppError> {
@@ -84,7 +84,17 @@ fn write(directory: &Path, input: MigrationInput) -> Result<bool, AppError> {
         entries,
     };
     let mut file = tempfile::NamedTempFile::new_in(directory).map_err(io_error)?;
-    serde_json::to_writer(&mut file, &snapshot).map_err(|_| invalid())?;
+    serde_json::to_writer(&mut file, &snapshot).map_err(|error| {
+        if error.is_io() {
+            io_error(error.into())
+        } else {
+            AppError::new(
+                "Could not serialize the migration snapshot",
+                AppErrorKind::Validation,
+            )
+            .with_source(error)
+        }
+    })?;
     file.as_file().sync_all().map_err(io_error)?;
     file.persist(path).map_err(|e| io_error(e.error))?;
     Ok(true)

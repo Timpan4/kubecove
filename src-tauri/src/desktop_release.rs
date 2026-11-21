@@ -88,7 +88,7 @@ pub async fn consolidated(
     client: &Client,
     legacy_endpoint: &str,
     platform: &str,
-) -> Result<Option<String>, AppError> {
+) -> Result<Option<Version>, AppError> {
     let base = legacy_endpoint
         .strip_suffix("latest-gpui.json")
         .ok_or_else(|| invalid("Invalid compiled GPUI feed"))?;
@@ -114,13 +114,16 @@ pub async fn consolidated(
     consolidated_version(&read_manifest(response).await?, platform)
 }
 
-pub fn consolidated_version(manifest: &Value, platform: &str) -> Result<Option<String>, AppError> {
+pub fn consolidated_version(manifest: &Value, platform: &str) -> Result<Option<Version>, AppError> {
     validate_product(manifest, platform, "KubeCove", "com.timpan.kubecove")?;
     let version = version(manifest)?;
     if version < Version::new(0, 16, 0) {
         return Err(invalid("Unexpected version on the consolidated feed"));
     }
-    let Some(build) = manifest["platforms"].get(platform) else {
+    let platforms = manifest["platforms"]
+        .as_object()
+        .ok_or_else(|| invalid("Invalid release platforms"))?;
+    let Some(build) = platforms.get(platform) else {
         return Ok(None);
     };
     let name = asset_name("kubecove", &version, platform)
@@ -132,5 +135,5 @@ pub fn consolidated_version(manifest: &Value, platform: &str) -> Result<Option<S
     {
         return Err(invalid("Unexpected consolidated desktop asset"));
     }
-    Ok(Some(version.to_string()))
+    Ok(Some(version))
 }

@@ -349,7 +349,10 @@ fn a_tampered_failed_or_cut_short_download_changes_nothing_and_leaves_no_staged_
             ),
         ] {
             let (result, _) = install_from(url, target.clone());
-            assert!(result.is_err(), "installed {case} into {target:?}");
+            let error = result.expect_err(&format!("installed {case} into {target:?}"));
+            if case == "a body cut short" {
+                assert_eq!(error.message, "Could not download the update");
+            }
             assert_eq!(
                 std::fs::read(&appimage).unwrap(),
                 b"\x7fELF installed version"

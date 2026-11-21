@@ -124,11 +124,16 @@ impl Backend for Controlled {
     }
 
     fn check_updates(&self) -> Read<kubecove_gpui::backend::UpdateStatus> {
-        Box::pin(async {
-            Ok(kubecove_gpui::backend::UpdateStatus::Consolidated(
-                "0.16.0".into(),
-            ))
-        })
+        use kubecove_gpui::backend::updates::{AvailableUpdate, UpdateStatus};
+        let status = if self.shell.checked_updates.swap(true, Ordering::SeqCst) {
+            UpdateStatus::Consolidated("0.16.0".into())
+        } else {
+            UpdateStatus::Available(AvailableUpdate {
+                version: "0.15.1".into(),
+                ..Default::default()
+            })
+        };
+        Box::pin(async move { Ok(status) })
     }
 
     fn load_preferences(&self) -> Result<kubecove_gpui::preferences::Document, AppError> {

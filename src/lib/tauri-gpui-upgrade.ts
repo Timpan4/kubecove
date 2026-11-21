@@ -25,22 +25,30 @@ export function checkGpuiUpgrade(): Promise<GpuiUpgradeInfo> {
 	return local.invoke("check_gpui_upgrade");
 }
 
-export function installGpuiUpgrade(version: string): Promise<GpuiUpgradeInfo | null> {
+async function saveBeforeHandoff(): Promise<void> {
+	try {
+		await exportTauriMigrationSnapshot();
+	} catch {
+		console.warn("Could not save the migration snapshot.");
+	}
+}
+
+export async function installGpuiUpgrade(version: string): Promise<GpuiUpgradeInfo | null> {
+	await saveBeforeHandoff();
 	return local.invoke("install_gpui_upgrade", { version });
 }
 
 export async function launchGpuiUpgrade(): Promise<void> {
-	await exportTauriMigrationSnapshot();
+	await saveBeforeHandoff();
 	return local.invoke("launch_gpui_upgrade");
 }
 
 export async function openDesktopReleases(): Promise<void> {
-	await exportTauriMigrationSnapshot();
-	const { openUrl } = await import("@tauri-apps/plugin-opener");
-	await openUrl("https://github.com/Timpan4/kubecove/releases");
+	await saveBeforeHandoff();
+	return local.invoke("open_desktop_releases_page");
 }
 
 export async function revealGpuiUpgrade(): Promise<void> {
-	await exportTauriMigrationSnapshot();
+	await saveBeforeHandoff();
 	return local.invoke("reveal_gpui_upgrade");
 }

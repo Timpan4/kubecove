@@ -208,11 +208,11 @@ impl Inspector {
         if !enabled {
             return section;
         }
-        if let UpdateStatus::Consolidated(version) = &state.status {
+        if let Some(message) = state.status.release_page_message() {
             section = section.child(
                 settings_row(
                     "Download KubeCove",
-                    format!("KubeCove {version} requires a separate installation."),
+                    message,
                     action("Open GitHub Releases", false)
                         .on_click(|_, _, cx| {
                             cx.open_url(kubecove_lib::desktop_release::RELEASES_URL)

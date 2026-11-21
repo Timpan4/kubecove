@@ -384,8 +384,8 @@ impl Inspector {
                         ),
                 )
             }
-            UpdateStatus::Consolidated(version) => {
-                let title = format!("KubeCove {version} requires a separate installation.");
+            status @ (UpdateStatus::Consolidated(_) | UpdateStatus::Unpublished) => {
+                let title = status.release_page_message().expect("release page status");
                 body.child(labelled(ui::sm(title.clone()), &title)).child(
                     button(Variant::Default, 28., false)
                         .id("header-open-releases")

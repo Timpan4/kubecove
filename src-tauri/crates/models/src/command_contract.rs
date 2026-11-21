@@ -323,6 +323,7 @@ macro_rules! command_contract {
             desktop_only async fn check_gpui_upgrade() with State<GpuiUpgrade>;
             desktop_only async fn install_gpui_upgrade(version: String) with App, State<GpuiUpgrade>;
             desktop_only async fn launch_gpui_upgrade() with App, State<GpuiUpgrade>;
+            desktop_only async fn open_desktop_releases_page() with App;
             desktop_only async fn reveal_gpui_upgrade() with App, State<GpuiUpgrade>;
             desktop_only async fn remote_connect(serverUrl: String, token: String)
                 with State<RemoteConnectionStore>;

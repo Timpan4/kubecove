@@ -78,7 +78,7 @@
 		<details><summary>GPUI release notes</summary><p class="mt-2 whitespace-pre-wrap">{info.notes}</p></details>
 	{/if}
 	<div class="flex flex-wrap gap-2">
-		{#if info?.status === "consolidated" || info?.status === "unavailable"}
+		{#if info?.status === "consolidated" || info?.status === "unavailable" || (!info && error)}
 			<Button size="sm" disabled={!!working} onclick={() => void run("Opening GitHub Releases…", openDesktopReleases)}>Open GitHub Releases</Button>
 		{/if}
 		{#if info?.status === "available"}

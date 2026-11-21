@@ -2,6 +2,21 @@ use super::*;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
 
+#[test]
+fn reads_published_windows_and_apple_silicon_assets() {
+    for (platform, name) in [
+        ("windows-x86_64", "kubecove_0.16.0_x64-setup.exe"),
+        ("darwin-aarch64", "kubecove_0.16.0_aarch64.app.tar.gz"),
+    ] {
+        let manifest = json!({"version":"0.16.0","platforms":{platform:{
+            "url":format!("https://example.test/{name}"),"signature":"signed"}}});
+        assert_eq!(
+            consolidated_version(&manifest, platform).unwrap(),
+            Some(Version::new(0, 16, 0))
+        );
+    }
+}
+
 #[tokio::test]
 async fn both_transition_clients_offer_the_desktop_page_only_for_the_new_product() {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -20,7 +35,13 @@ async fn both_transition_clients_offer_the_desktop_page_only_for_the_new_product
             json!({"version":"0.16.0","platforms":{}}),
             Ok(None),
         ),
-        ("200 OK", manifest, Ok(Some("0.16.0".into()))),
+        ("200 OK", json!({"version":"0.16.0"}), Err(())),
+        (
+            "200 OK",
+            json!({"version":"0.16.0","platforms":[]}),
+            Err(()),
+        ),
+        ("200 OK", manifest, Ok(Some(Version::new(0, 16, 0)))),
         ("200 OK", wrong_id, Err(())),
         ("200 OK", wrong_asset, Err(())),
         ("503 Service Unavailable", Value::Null, Err(())),

@@ -1,4 +1,5 @@
 import { persist } from "zustand/middleware";
+import { SETTINGS_STORAGE_KEY } from "./storage-keys";
 import { createStore } from "zustand/vanilla";
 import {
 	type ArgoConnectionPreference,
@@ -404,7 +405,7 @@ export const useSettingsState = createStore<SettingsState>()(
 				}),
 		}),
 		{
-			name: "kubecove-settings",
+			name: SETTINGS_STORAGE_KEY,
 			merge: mergePersistedSettings,
 			partialize: partializeSettings,
 		},
