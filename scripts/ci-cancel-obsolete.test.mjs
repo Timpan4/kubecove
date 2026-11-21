@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parse } from "yaml";
 import { cancelObsoleteRuns } from "./ci-cancel-obsolete.mjs";
 
 // Failure modes: stale main reruns displace current checks, closed PR runs retain
@@ -123,11 +122,16 @@ test("verifies old commits of closed fork PRs with missing associations without 
 });
 
 test("E2E primary and matrix runs cannot cancel each other's complementary jobs", () => {
-  const workflow = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
-  assert.equal(workflow.concurrency.group, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ inputs.compatibility-only && 'release-compatibility' || github.event_name == 'push' && 'primary' || 'matrix' }}");
-  assert.equal(workflow.jobs["real-primary"].if, "${{ !inputs.compatibility-only && github.event_name == 'push' }}");
-  assert.equal(workflow.jobs["real-matrix"].if, "${{ inputs.compatibility-only || github.event_name != 'push' }}");
-  assert.equal(workflow.jobs["desktop-smoke"].if, "${{ !inputs.compatibility-only && github.event_name != 'push' }}");
+  const workflow = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
+  const template = workflow.match(/^ {2}group: (.+)$/m)?.[1];
+  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ inputs.compatibility-only && 'release-compatibility' || github.event_name == 'push' && 'primary' || 'matrix' }}");
+  const jobIf = (name) => {
+    const block = workflow.match(new RegExp(`(?:^|\\n) {2}${name}:\\n([\\s\\S]*?)(?=\\n {2}[a-z0-9_-]+:|\\n[a-z0-9_-]+:|$)`))?.[1] ?? "";
+    return block.match(/^ {4}if: (.+)$/m)?.[1];
+  };
+  assert.equal(jobIf("real-primary"), "${{ !inputs.compatibility-only && github.event_name == 'push' }}");
+  assert.equal(jobIf("real-matrix"), "${{ inputs.compatibility-only || github.event_name != 'push' }}");
+  assert.equal(jobIf("desktop-smoke"), "${{ !inputs.compatibility-only && github.event_name != 'push' }}");
 });
 
 test("selective main pushes cannot cancel full manual CI at the same SHA", () => {
