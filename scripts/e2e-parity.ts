@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { changedScenarios, DEFAULT_MAP } from "../e2e/parity/changed-scenarios";
 import { type Contract, loadContract, requireActionCoverage, requireViewCoverage } from "../e2e/parity/contract";
 import { writeRunMap } from "../e2e/parity/coverage-map";
-import { runGpui } from "../e2e/parity/gpui-run";
+import { exportGpuiParity, runGpui } from "../e2e/parity/gpui-run";
 import { type Driver, inspectDriverResults, parseDriver } from "../e2e/parity/merge-reports";
 import { type CoverageMapFailure, DRIVER_SELECTION_FORMAT, driverSelectionFile, lastRerunSource, rerunSelections, selectionHash } from "../e2e/parity/rerun";
 import { selectedContract } from "../e2e/parity/selected-contract";
@@ -59,10 +59,21 @@ async function selectScenarios(scenarios: Scenario[]): Promise<Scenario[]> {
 	return selected;
 }
 
-const driver = process.env.PARITY_DRIVER ? parseDriver(process.env.PARITY_DRIVER) : undefined;
-const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts"), driver) : process.env.PARITY_RERUN;
 // PARITY_COVERAGE=1 records the coverage map (e2e/parity/README.md); normal runs leave it off.
 const coverage = process.env.PARITY_COVERAGE === "1";
+const buildDir = process.env.KUBECOVE_PARITY_BUILD_DIR;
+const controller = new AbortController();
+const interrupt = () => controller.abort(new Error("Interrupted"));
+process.once("SIGINT", interrupt);
+process.once("SIGTERM", interrupt);
+if (buildDir) {
+	if (process.env.KUBECOVE_PARITY_MANIFEST) throw new Error("KUBECOVE_PARITY_BUILD_DIR and KUBECOVE_PARITY_MANIFEST are mutually exclusive");
+	console.log(`GPUI parity manifest: ${await exportGpuiParity(resolve(buildDir), coverage, controller.signal)}`);
+	process.exit(0);
+}
+const driver = process.env.PARITY_DRIVER ? parseDriver(process.env.PARITY_DRIVER) : undefined;
+const rerun = process.env.PARITY_RERUN === "last" ? await lastRerunSource(resolve("e2e/artifacts"), driver) : process.env.PARITY_RERUN;
+if (driver === "web" && process.env.KUBECOVE_PARITY_MANIFEST) throw new Error("KUBECOVE_PARITY_MANIFEST requires the GPUI driver");
 if (coverage && driver) throw new Error("PARITY_COVERAGE requires both drivers");
 const artifacts = resolve("e2e/artifacts", `parity-${crypto.randomUUID()}`);
 await mkdir(artifacts, { recursive: true });
@@ -72,10 +83,6 @@ await writeFile(join(artifacts, "gpui.log"), "Native driver did not start.\n");
 const started = performance.now();
 const phases: Record<string, number> = {};
 const mark = (phase: string) => { phases[phase] = Math.round(performance.now() - started) / 1000; };
-const controller = new AbortController();
-const interrupt = () => controller.abort(new Error("Interrupted"));
-process.once("SIGINT", interrupt);
-process.once("SIGTERM", interrupt);
 let failure: string | undefined;
 let runLevelFailed = false;
 let resultDriver: Driver | "both" = driver ?? "both";

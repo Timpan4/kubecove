@@ -5,6 +5,7 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import type { CodeInfo, Range, ScenarioCoverage } from "./coverage-map";
 import { toRanges } from "./coverage-map";
+import { GPUI_CRATE_ROOT } from "./gpui-prebuilt";
 
 /** Flags the coverage build adds; `code_coverage.rs` in the GPUI parity tests reads the cfg. */
 export const COVERAGE_RUSTFLAGS = "-C instrument-coverage --cfg kubecove_coverage";
@@ -26,9 +27,6 @@ async function llvmTool(name: "llvm-cov" | "llvm-profdata", workspace: string): 
 	return existsSync(bundled) ? bundled : name;
 }
 
-/** The GPUI crate root. A recording whose dep-info misses it has misread cargo's layout. */
-const GPUI_CRATE_ROOT = "src-tauri/gpui/src/lib.rs";
-
 /**
  * Repository files listed in cargo dep-info (`*.d`) anywhere under `buildDir`, including
  * `include_*!` inputs. Cargo's build-dir layout keeps each unit's dep-info in
@@ -36,7 +34,7 @@ const GPUI_CRATE_ROOT = "src-tauri/gpui/src/lib.rs";
  * names workspace members' files relative to the workspace and path dependencies' files
  * absolutely. Units left from earlier builds can add files, which only selects more.
  */
-async function compiledFiles(buildDir: string, workspace: string, root: string): Promise<string[]> {
+export async function compiledFiles(buildDir: string, workspace: string, root: string): Promise<string[]> {
 	const files = new Set<string>();
 	const names = existsSync(buildDir) ? await readdir(buildDir, { recursive: true }) : [];
 	for (const name of names.filter((entry) => entry.endsWith(".d"))) {
@@ -121,10 +119,9 @@ const IGNORED = "-ignore-filename-regex=/(\\.cargo|\\.rustup|rustc)/";
 
 /**
  * Converts each `coverage/gpui-<index>.profraw` the parity processes wrote and deletes it.
- * `ids` lists the selected scenario IDs by position, as in `scenarios.txt`. `buildDir` is the
- * coverage build's cargo build directory.
+ * `ids` lists the selected scenario IDs by position, as in `scenarios.txt`.
  */
-export async function recordGpuiCoverage(artifacts: string, executable: string, buildDir: string, ids: string[], jobs: number, signal: AbortSignal): Promise<void> {
+export async function recordGpuiCoverage(artifacts: string, executable: string, compiled: string[], ids: string[], jobs: number, signal: AbortSignal): Promise<void> {
 	const root = resolve(".");
 	const workspace = resolve("src-tauri/gpui");
 	const [cov, profdata] = await Promise.all([llvmTool("llvm-cov", workspace), llvmTool("llvm-profdata", workspace)]);
@@ -134,7 +131,7 @@ export async function recordGpuiCoverage(artifacts: string, executable: string, 
 		const index = /^gpui-(\d+)\.profraw$/.exec(name)?.[1];
 		return index === undefined ? [] : [Number(index)];
 	});
-	const info: CodeInfo = { code: {}, compiled: await compiledFiles(buildDir, workspace, root) };
+	const info: CodeInfo = { code: {}, compiled };
 	let spans: Promise<Map<string, Span>> | undefined;
 	const worker = async () => {
 		for (let index = pending.shift(); index !== undefined; index = pending.shift()) {
