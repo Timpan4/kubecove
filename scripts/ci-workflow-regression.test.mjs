@@ -1109,7 +1109,7 @@ test("parity builds each GPUI binary once and runs shards from the matching arti
   assert.doesNotMatch(suite, /swatinem\/rust-cache|^ *cache-mode:|ACTIONS_CACHE_MODE: /im);
   const seedStep = step("Seed the uninstrumented GPUI cache");
   assert.ok(seedStep.includes(`if: \${{ inputs.build == 'cache' }}`));
-  assert.match(seedStep, /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run --target "\$host" --profile test/);
+  assert.match(seedStep, /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run --message-format=json-render-diagnostics$/m);
 
   const build = step("Export the GPUI parity binary");
   const run = step("Run parity suite");

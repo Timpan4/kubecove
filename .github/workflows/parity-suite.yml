@@ -181,9 +181,7 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
           CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-        run: |
-          host=$(rustc -vV | jq -Rr 'select(startswith("host: ")) | ltrimstr("host: ")')
-          CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run --target "$host" --profile test
+        run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run --message-format=json-render-diagnostics
 
       # Keep the default checkout path in build and replay jobs: LLVM reports absolute paths.
       - name: Export the GPUI parity binary

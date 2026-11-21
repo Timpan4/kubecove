@@ -4,7 +4,7 @@ import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/s
 import type { Contract } from "./contract";
 import { object, string } from "./contract-values";
 import { compiledFiles, COVERAGE_RUSTFLAGS, exitProfileDirectory, gpuiProfilePattern, recordGpuiCoverage } from "./gpui-coverage-map";
-import { type ParityBuild, parityBuild, verifyPrebuiltParity, writePrebuiltParity } from "./gpui-prebuilt";
+import { type ParityBuild, parityBuild, rustcHost, verifyPrebuiltParity, writePrebuiltParity } from "./gpui-prebuilt";
 import { driverReportRows } from "./merge-reports";
 import { driverSelectionFile } from "./rerun";
 
@@ -39,7 +39,10 @@ async function spawnGroup(command: string[], env: Record<string, string | undefi
 /** Builds the parity test binary once and returns its path from cargo's JSON messages. */
 async function buildParity(workspace: string, env: Record<string, string | undefined>, artifacts: string, signal: AbortSignal, expected?: ParityBuild): Promise<string> {
 	console.log("Checking the GPUI parity executable with Cargo.");
-	const buildArgs = expected ? ["--target", expected.target, "--profile", expected.profile] : [];
+	const buildArgs: string[] = [];
+	// An explicit host target changes rustc's arguments and misses the host-native object cache.
+	if (expected && expected.target !== rustcHost(expected.rustcVersion)) buildArgs.push("--target", expected.target);
+	if (expected && expected.profile !== "test") buildArgs.push("--profile", expected.profile);
 	const build = await spawnGroup(
 		["cargo", "test", "--manifest-path", join(workspace, "Cargo.toml"), "--test", "parity", "--no-run", "--message-format=json-render-diagnostics", ...buildArgs],
 		{ ...env, CARGO_LOG: env.CARGO_LOG ?? "cargo::compiler::fingerprint=info" },
