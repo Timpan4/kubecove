@@ -1,4 +1,4 @@
-import type { Channel } from "@tauri-apps/api/core";
+import type { StreamChannel } from "./stream-channel";
 import { mockExecSessions, mockPortForwards, now, source } from "./tauri-dev-mock-data";
 import type { LiveSessionCleanupRequest, PodExecSessionMessage, PodExecSessionRequest, PodExecSessionSummary, PortForwardRequest, PortForwardSessionSummary } from "./types";
 
@@ -6,7 +6,7 @@ let serial = 0;
 let workspaceOpened = false;
 const forwards = new Map(mockPortForwards.map((s) => [s.id, s]));
 const execs = new Map(mockExecSessions.map((s) => [s.id, s]));
-const channels = new Map<string, Pick<Channel<PodExecSessionMessage>, "onmessage">>();
+const channels = new Map<string, Pick<StreamChannel<PodExecSessionMessage>, "onmessage">>();
 export type ExecEndScript = "exec-exited" | "exec-failed" | "exec-stopped";
 export type SessionScript = "reconnecting" | "failed" | "foreign-output" | "exec-output" | ExecEndScript;
 export function forwardReplayState(script: "reconnecting" | "failed"): Pick<PortForwardSessionSummary, "status" | "lastError"> {
@@ -48,7 +48,7 @@ export function startMockForward(request: PortForwardRequest): PortForwardSessio
     forwards.set(session.id, session);
     return session;
 }
-export function startMockExec(request: PodExecSessionRequest, channel: Pick<Channel<PodExecSessionMessage>, "onmessage">): PodExecSessionSummary {
+export function startMockExec(request: PodExecSessionRequest, channel: Pick<StreamChannel<PodExecSessionMessage>, "onmessage">): PodExecSessionSummary {
     const target = `${request.clusterContext}/${request.namespace}/Pod/${request.podName}/container/${request.container || "<default>"}`;
     if (!request.confirmation.acknowledged || request.confirmation.command !== JSON.stringify(request.command) || request.confirmation.target !== target) throw new Error("Exec confirmation required");
     if (!request.namespace || !request.podName || request.command.length === 0) throw new Error("Exact Pod and argv required");

@@ -1,7 +1,7 @@
 import "./browser-token-bootstrap";
-import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
 import { messageFromError } from "./error-redaction";
+import { createChannel, type StreamChannel } from "./stream-channel";
 import type { TauriClient } from "./tauri-runtime";
 import type { JsonObject, JsonValue } from "./types";
 
@@ -60,7 +60,7 @@ let link: SocketLink = { kind: "none" };
 const channelIdSeed = new Uint32Array(1);
 globalThis.crypto.getRandomValues(channelIdSeed);
 let nextChannelId = channelIdSeed[0] * 2 ** 20;
-const channels = new Map<number, BrowserChannel<unknown>>();
+const channels = new Map<number, StreamChannel<unknown>>();
 
 function publish(patch: Partial<BrowserSessionState>): void {
 	sessionState.update((current) => ({ ...current, ...patch }));
@@ -321,9 +321,8 @@ export async function signOutBrowserSession(): Promise<void> {
 
 function returnToOidcSignIn(): void {
 	closeLink();
-	for (const channel of channels.values()) channel.cleanupCallback();
-	channels.clear();
 	clearResumeToken();
+	for (const channel of channels.values()) channel.close();
 	publish({ status: "login", error: null, channelGap: 0 });
 }
 
@@ -448,48 +447,24 @@ function scheduleReconnect(): void {
 	};
 }
 
-interface BrowserChannel<T> {
-	id: number;
-	onmessage: (message: T) => void;
-	cleanupCallback: () => void;
-	unregister: () => Promise<void>;
-	toJSON: () => string;
-}
-
-function createBrowserChannel<T>(onMessage: (message: T) => void): Channel<T> {
-	let active = true;
+function createBrowserChannel<T>(onMessage: (message: T) => void): StreamChannel<T> {
 	const id = nextChannelId++;
-	const channel: BrowserChannel<T> = {
-		id,
-		onmessage: (message) => {
-			if (active) onMessage(message);
-		},
-		cleanupCallback: () => {
-			active = false;
-			channels.delete(id);
-		},
-		unregister: async () => {
-			active = false;
-			channels.delete(id);
-			if (!resumeToken || !window.navigator.onLine) return;
-			try {
-				await fetch(apiUrl(`/api/v1/channels/${id}/close`), {
-					method: "POST",
-					credentials: "same-origin",
-					keepalive: true,
-					headers: { "X-Kubecove-Session": resumeToken },
-				});
-			} catch {
+	const channel = createChannel(id, onMessage, () => {
+		channels.delete(id);
+		if (resumeToken && window.navigator.onLine) {
+			void fetch(apiUrl(`/api/v1/channels/${id}/close`), {
+				method: "POST",
+				credentials: "same-origin",
+				keepalive: true,
+				headers: { "X-Kubecove-Session": resumeToken },
+			}).catch(() => {
 				// The server removes channels when their owner grace window expires.
-			}
-		},
-		toJSON: () => `${CHANNEL_MARKER}${id}`,
-	};
+			});
+		}
+	});
 	// SAFETY: typed command wrappers choose T to match the Rust channel's serialized payload.
-	channels.set(id, channel as BrowserChannel<unknown>);
-	// SAFETY: the browser adapter implements the Channel members consumed by typed wrappers and cleanup.
-	// @ts-expect-error: Tauri Channel's private native runtime members are replaced by the browser adapter.
-	return channel as Channel<T>;
+	channels.set(id, channel as StreamChannel<unknown>);
+	return Object.assign(channel, { toJSON: () => `${CHANNEL_MARKER}${id}` });
 }
 
 let browserClient: TauriClient | null = null;
@@ -501,7 +476,6 @@ export function createBrowserTauriClient(): TauriClient {
 		invoke: async <T, Args extends object = object>(
 			command: string,
 			args?: Args,
-			_options?: InvokeOptions,
 		): Promise<T> => {
 			if (sessionSnapshot.status !== "ready" || !resumeToken) {
 				throw new Error("Open a KubeCove server session before invoking commands.");

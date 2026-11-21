@@ -1,4 +1,4 @@
-import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
+import type { StreamChannel } from "./stream-channel";
 import { stringify } from "yaml";
 import { cancelSignInRemoteMock, connectRemoteMock, disconnectRemoteMock, remoteMockStatus, saveWorkspaceMock, selectedDialogPath, selectedWorkspaceFile, signInLinkRemoteMock, signInRemoteMock, signOutRemoteMock, startNewSessionRemoteMock } from "./settings-integration-mocks";
 import { argoApplicationSummary, argoApplicationYaml, argoMockHandlers, customResourceKinds, inventoryApplication, presentCustomResourceKinds } from "./tauri-dev-mock-argo";
@@ -76,7 +76,7 @@ interface LiveSessionArgs {
 	sessionId: string;
 	data: string;
 	size: PodExecTerminalSize;
-	channel: Pick<Channel<PodExecSessionMessage>, "onmessage">;
+	channel: Pick<StreamChannel<PodExecSessionMessage>, "onmessage">;
 }
 
 const liveSessionHandlers = new Map<string, (live: LiveSessionArgs) => MockResult | Promise<MockResult>>([
@@ -97,11 +97,10 @@ declare global { var __kubecoveParityNoLatency: boolean | undefined; }
  */
 export function createDevMockTauriClient({ latencyMs = globalThis.__kubecoveParityNoLatency ? 0 : 35 }: { latencyMs?: number } = {}): TauriClient {
 	return {
-		createChannel: (onMessage) => createMockChannel(onMessage),
+		createChannel: createMockChannel,
 		invoke: async <T, Args extends object = object>(
 			cmd: string,
 			args?: Args,
-			options?: InvokeOptions,
 		): Promise<T> => {
 			if (latencyMs > 0) await delay(latencyMs);
 			await beforeCoverageRead(cmd);
@@ -115,7 +114,7 @@ export function createDevMockTauriClient({ latencyMs = globalThis.__kubecovePari
 			const handler = findMockHandler(cmd);
 			if (!handler) throw new Error(`No browser dev mock for command: ${cmd}`);
 			// SAFETY: caller's typed wrapper owns result T; each mock handler mirrors that command.
-			return await mockTiming.read(cmd, readMockArgs(args), async () => pageReadResult(cmd, await handler(readMockArgs(args), options))) as T;
+			return await mockTiming.read(cmd, readMockArgs(args), async () => pageReadResult(cmd, await handler(readMockArgs(args)))) as T;
 		},
 	};
 }
@@ -412,7 +411,7 @@ function incidents(cluster = "mock-dev"): IncidentCockpitSummary {
 }
 
 function startLogStream(
-	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
+	channel: Pick<StreamChannel<StreamMessage>, "onmessage"> | undefined,
 	aggregate = false,
 	batchLines = false,
 	request = {},
@@ -438,7 +437,7 @@ function startLogStream(
 }
 
 function send(
-	channel: Pick<Channel<StreamMessage>, "onmessage"> | undefined,
+	channel: Pick<StreamChannel<StreamMessage>, "onmessage"> | undefined,
 	message: StreamMessage,
 ): void {
 	setTimeout(() => channel?.onmessage?.(message), 10);

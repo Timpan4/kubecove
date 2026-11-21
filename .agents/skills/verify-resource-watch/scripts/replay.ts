@@ -1,7 +1,7 @@
 // Replays TLC's state graph of ResourceWatch.tla (Variant = "current") against the real
 // observeResourceScope. Every edge is replayed from the initial state, one model action per
 // real callback, and the code's observable state must match the model after each step.
-import type { Channel } from "@tauri-apps/api/core";
+import { createChannel } from "../../../../src/lib/stream-channel";
 import { readFileSync } from "node:fs";
 import { observeResourceScope, type ResourceWatchState } from "../../../../src/lib/resource-watch";
 import { createMockTauriClient } from "../../../../src/lib/tauri-runtime";
@@ -169,15 +169,15 @@ async function startHarness() {
 		}),
 		clusterContext: "verify",
 		keys: [{ resourceKind: { kind: "Pod" } }],
-		// Same shape as createMockChannel, but the replay can see when the code closes it.
+		// Track channel close alongside the messages delivered by the model.
 		openChannel: (handler) => {
-			const channel = { closed: false, handler: handler as (event: StreamMessage) => void };
-			channels.push(channel);
-			const unregister = async () => {
-				channel.closed = true;
-			};
-			// SAFETY: closeStreamChannel only calls unregister; the handler is called directly by Deliver.
-			return { id: channels.length, onmessage: handler, unregister } as unknown as Channel<StreamMessage>;
+			const tracked = { closed: false, handler };
+			const channel = createChannel(channels.length + 1, handler, () => {
+				tracked.closed = true;
+			});
+			tracked.handler = channel.onmessage;
+			channels.push(tracked);
+			return channel;
 		},
 	});
 	await flush();

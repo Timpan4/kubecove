@@ -21,10 +21,8 @@
 		SegmentedControl,
 		Switch,
 	} from "@/components/ui/svelte";
-	import FriendlyError from "@/components/FriendlyError.svelte";
 	import type { LogLayout, TimestampTimezone, YamlDiffStyle } from "@/lib/settings";
-	import { IS_DEV_BUILD } from "@/lib/build-env";
-	import { isBrowserRuntime, isTauriRuntime, isBrowserDevMockMode } from "@/lib/tauri-runtime";
+	import { IS_DEV_BUILD, USE_BROWSER_DEV_MOCKS } from "@/lib/build-env";
 	import {
 		getBrowserSessionState,
 		subscribeBrowserSession,
@@ -244,11 +242,9 @@
 		DIAGNOSTICS_ROWS.push(topologySpike);
 	}
 
-	const browserRuntime = isBrowserRuntime();
 	let browserSession = $state<BrowserSessionState>(getBrowserSessionState());
-	// The browser runtime always talks to a server. A desktop does while it is connected to a remote.
 	const serverInformation = $derived(
-		browserRuntime
+		!USE_BROWSER_DEV_MOCKS
 			? { version: browserSession.serverVersion, credentialStore: browserSession.credentialStore }
 			: $desktopRemoteConnection?.connected
 				? {
@@ -267,13 +263,13 @@
 		sessions: Object.values(SESSION_ROWS),
 		yaml: Object.values(YAML_ROWS),
 		kubeconfig: Object.values(KUBECONFIG_ROWS),
-		updates: !isBrowserRuntime() ? Object.values(UPDATES_ROWS) : [],
+		updates: USE_BROWSER_DEV_MOCKS ? Object.values(UPDATES_ROWS) : [],
 		diagnostics: DIAGNOSTICS_ROWS,
 		advanced: Object.values(ADVANCED_ROWS),
-		remote: !isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode())
+		remote: USE_BROWSER_DEV_MOCKS
 			? [{ title: "Remote KubeCove server", description: "Connect this desktop to a headless KubeCove host." }]
 			: [],
-		agents: !isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? Object.values(MCP_ROWS) : [],
+		agents: USE_BROWSER_DEV_MOCKS ? Object.values(MCP_ROWS) : [],
 	} satisfies Record<SettingsCategoryId, SettingsRowMeta[]>);
 
 	const categories: Array<{ id: SettingsCategoryId; label: string }> = [
@@ -282,21 +278,22 @@
 		{ id: "sessions", label: "Live sessions" },
 		{ id: "yaml", label: "YAML" },
 		{ id: "kubeconfig", label: "Kubeconfig" },
-		...(!isBrowserRuntime() ? [{ id: "updates" as const, label: "Updates" }] : []),
+		...(USE_BROWSER_DEV_MOCKS ? [{ id: "updates" as const, label: "Updates" }] : []),
 		{ id: "diagnostics", label: "Diagnostics" },
 		{ id: "advanced", label: "Advanced" },
-		...(!isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? [{ id: "remote" as const, label: "Remote server" }] : []),
-		...(!isBrowserRuntime() && (isTauriRuntime() || isBrowserDevMockMode()) ? [{ id: "agents" as const, label: "AI agents" }] : []),
+		...(USE_BROWSER_DEV_MOCKS ? [
+			{ id: "remote" as const, label: "Remote server" },
+			{ id: "agents" as const, label: "AI agents" },
+		] : []),
 	];
 
 	let activeCategory = $state<SettingsCategoryId>("general");
 	let query = $state("");
-	let documentationError = $state<unknown>(null);
 	let { onBack }: { onBack?: () => void } = $props();
 	const settings = $derived($settingsStore);
 
 	onMount(() =>
-		browserRuntime
+		!USE_BROWSER_DEV_MOCKS
 			? subscribeBrowserSession((state) => {
 					browserSession = state;
 				})
@@ -343,17 +340,6 @@
 		return categoryRows[id].some((row) => matchesSettingsQuery(query, row));
 	}
 
-	async function openDocumentation(event: MouseEvent): Promise<void> {
-		if (isBrowserRuntime() || !isTauriRuntime()) return;
-		event.preventDefault();
-		try {
-			const { openUrl } = await import("@tauri-apps/plugin-opener");
-			await openUrl(WIKI_URL);
-			documentationError = null;
-		} catch (error) {
-			documentationError = error;
-		}
-	}
 
 </script>
 
@@ -428,18 +414,10 @@
 					target="_blank"
 					rel="noreferrer"
 					class={buttonClass({ variant: "outline", size: "sm" })}
-					onclick={openDocumentation}
 				>
 					Open Wiki
 				</a>
 			</SettingsRow>
-			{#if documentationError}
-				<FriendlyError
-					error={documentationError}
-					mode="compact"
-					context={{ fallbackTitle: "KubeCove could not open the documentation" }}
-				/>
-			{/if}
 			{#if serverInformation}
 				<SettingsRow {...SERVER_INFO_ROW}>
 					<Badge variant="outline">Server {serverInformation.version ?? "Unknown"}</Badge>
@@ -612,7 +590,7 @@
 			<KubeconfigSettings />
 		{/if}
 
-		{#if showCategory("updates")}
+		{#if USE_BROWSER_DEV_MOCKS && showCategory("updates")}
 			<UpdatesSettings />
 		{/if}
 
@@ -624,7 +602,7 @@
 			<AdvancedActionsSettings />
 		{/if}
 
-		{#if showCategory("remote") && (isTauriRuntime() || isBrowserDevMockMode())}
+		{#if USE_BROWSER_DEV_MOCKS && showCategory("remote")}
 			<FieldGroup>
 				<SettingsRow {...categoryRows.remote[0]}>
 					<RemoteConnectionSettings />
@@ -632,7 +610,7 @@
 			</FieldGroup>
 		{/if}
 
-		{#if showCategory("agents") && (isTauriRuntime() || isBrowserDevMockMode())}
+		{#if USE_BROWSER_DEV_MOCKS && showCategory("agents")}
 			<McpServerSettings rows={MCP_ROWS} />
 		{/if}
 

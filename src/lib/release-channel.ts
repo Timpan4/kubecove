@@ -1,16 +1,16 @@
-import { IS_WEB_RUNTIME, RELEASE_CHANNEL } from "./build-env";
+import { RELEASE_CHANNEL } from "./build-env";
 
 export type AppReleaseChannel = "dev" | "stable";
 
 export const APP_RELEASE_CHANNEL: AppReleaseChannel =
 	RELEASE_CHANNEL;
 
-let appUpdatesEnabledForTests: boolean | null = null;
+let appUpdatesEnabledForTests = false;
 
 export function isAppUpdatesEnabled(): boolean {
-	return !IS_WEB_RUNTIME && (appUpdatesEnabledForTests ?? APP_RELEASE_CHANNEL === "stable");
+	return appUpdatesEnabledForTests;
 }
 
-export function setAppUpdatesEnabledForTests(enabled: boolean | null): void {
+export function setAppUpdatesEnabledForTests(enabled: boolean): void {
 	appUpdatesEnabledForTests = enabled;
 }

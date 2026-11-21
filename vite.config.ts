@@ -6,31 +6,20 @@ import { devInteractionsPlugin } from "./scripts/dev-interactions-plugin.ts";
 import { frontendBundleReportPlugin } from "./scripts/frontend-bundle-report.ts";
 
 export default defineConfig(({ command }) => {
-	const host = process.env.TAURI_DEV_HOST?.trim();
 	const releaseChannel = process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL === "stable" ? "stable" : "dev";
 	const profiling = process.env.KUBECOVE_PUBLIC_PROFILE === "true";
-	const runtime = process.env.KUBECOVE_PUBLIC_RUNTIME === "web" ? "web" : "native";
+	const devMocks = command === "serve" && process.env.KUBECOVE_PUBLIC_RUNTIME !== "web";
 	// Settings -> Diagnostics interaction recordings mirror to e2e/artifacts while serving.
 	const devInteractionsEndpoint = command === "serve" ? "/__kubecove/dev-interactions" : "";
 	return {
 		plugins: [
 			svelte(), tailwindcss(), frontendBundleReportPlugin(releaseChannel, profiling),
 			devInteractionsEndpoint ? devInteractionsPlugin(devInteractionsEndpoint) : null,
-			{
-				name: "native-e2e-bridge",
-				transformIndexHtml: {
-					order: "pre",
-						handler: () => runtime !== "web" && process.env.KUBECOVE_E2E === "1"
-						? [{ tag: "script", attrs: { type: "module" }, children: 'import "@wdio/tauri-plugin";', injectTo: "head" }]
-						: [],
-				},
-			},
 		],
 		resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
 		// First opening a deferred screen must not trigger optimizer reloads.
 		optimizeDeps: {
 			include: [
-				...(runtime === "web" ? [] : ["@tauri-apps/plugin-opener"]),
 				"@codemirror/commands",
 				"@codemirror/lang-yaml",
 				"@codemirror/language",
@@ -39,7 +28,6 @@ export default defineConfig(({ command }) => {
 				"@codemirror/view",
 				"@lezer/highlight",
 				"@tanstack/svelte-virtual",
-				"@tauri-apps/api/window",
 				"@xterm/addon-fit",
 				"@xterm/xterm",
 				"diff",
@@ -48,7 +36,7 @@ export default defineConfig(({ command }) => {
 		},
 		define: {
 			"process.env.KUBECOVE_PUBLIC_DEV": JSON.stringify(String(command === "serve")),
-			"process.env.KUBECOVE_PUBLIC_RUNTIME": JSON.stringify(runtime),
+			"process.env.KUBECOVE_PUBLIC_DEV_MOCKS": JSON.stringify(String(devMocks)),
 			"process.env.KUBECOVE_PUBLIC_PROFILE": JSON.stringify(String(profiling)),
 			"process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL": JSON.stringify(releaseChannel),
 			"process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS": JSON.stringify(devInteractionsEndpoint),
@@ -73,8 +61,7 @@ export default defineConfig(({ command }) => {
 		server: {
 			port: 1430,
 			strictPort: true,
-			host: host || "localhost",
-			hmr: host ? { host } : undefined,
+			host: "localhost",
 			watch: { ignored: ["**/src-tauri/**", "**/.e2e/**", "**/.t/**", "**/e2e/artifacts/**"] },
 		},
 		preview: { host: "127.0.0.1", port: Number(process.env.PORT ?? 4173), strictPort: true },

@@ -23,7 +23,7 @@
 	import {
 		DEFAULT_KUBECONFIG_ENV_VAR,
 	} from "@/lib/settings";
-	import { isBrowserRuntime } from "@/lib/tauri-runtime";
+	import { USE_BROWSER_DEV_MOCKS } from "@/lib/build-env";
 	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import {
 		addKubeconfigPaths,
@@ -42,7 +42,7 @@
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
 
 	const client = createTauriClient();
-	const remoteFilesystem = $derived(isBrowserRuntime() || $desktopRemoteConnection !== null);
+	const remoteFilesystem = $derived(!USE_BROWSER_DEV_MOCKS || $desktopRemoteConnection !== null);
 	const queryClient = useQueryClient();
 	let envDraft = $state(getSettingsSnapshot().kubeconfigEnvVar);
 	let pathDraft = $state("");

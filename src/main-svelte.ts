@@ -2,7 +2,7 @@ import "./App.css";
 import { markStartup } from "./lib/startup-marks";
 import { mount } from "svelte";
 import Root from "./app/svelte/Root.svelte";
-import { IS_DEV_BUILD } from "./lib/build-env";
+import { USE_BROWSER_DEV_MOCKS } from "./lib/build-env";
 import { initializeBrowserDevMocks } from "./lib/tauri";
 
 document.documentElement.classList.add("dark");
@@ -17,7 +17,7 @@ function mountApp(target: HTMLElement): void {
 	markStartup("svelte-mount");
 }
 
-if (IS_DEV_BUILD) {
+if (USE_BROWSER_DEV_MOCKS) {
 	void initializeBrowserDevMocks()
 		.then(() => mountApp(target))
 		.catch((error) => {

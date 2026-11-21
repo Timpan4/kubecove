@@ -1,4 +1,4 @@
-import type { Channel } from "@tauri-apps/api/core";
+import type { StreamChannel } from "./stream-channel";
 import { mockTiming } from "./tauri-dev-mock-timing";
 import { OVERFLOW_EVENTS } from "./tauri-dev-mock-scroll";
 import type { ResourceEventSummary, ResourceSummary, ResourceWatchStart, StreamMessage } from "./types";
@@ -9,7 +9,7 @@ export const LIVE_EVENTS: ResourceEventSummary[] = [
 ];
 export const LIVE_SCRIPTS = ["update", "rollout", "delete", "delete-mock-dev", "add", "ownership", "annotation-ownership", "reconnecting", "connected", "events", "events-overflow", "events-failed", "events-list-failed", "events-list-recovered", "events-watch-opening", "events-watch-refused", "events-watch-ready", "events-watch-stopped", "forbidden", "failed", "missed-delete"] as const;
 export type LiveScript = typeof LIVE_SCRIPTS[number];
-type Watch = { id: string; opening: boolean; channel: Pick<Channel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
+type Watch = { id: string; opening: boolean; channel: Pick<StreamChannel<StreamMessage>, "onmessage">; context: string; unavailable?: boolean; keys?: ResourceWatchStart[]; kind?: string; name?: string; namespace?: string | null };
 const watches = new Map<string, Watch>();
 const watchStarts: ResourceWatchStart[] = [];
 let serial = 0;
@@ -45,7 +45,7 @@ export function lastWatchStart(kind: string): { resourceVersion?: string } | nul
     return watchStarts.findLast((start) => start.resourceKind.kind === kind) ?? null;
 }
 
-export function registerMockWatch(args: Omit<Watch, "id" | "opening" | "channel"> & { channel?: Pick<Channel<StreamMessage>, "onmessage"> }): string {
+export function registerMockWatch(args: Omit<Watch, "id" | "opening" | "channel"> & { channel?: Pick<StreamChannel<StreamMessage>, "onmessage"> }): string {
     if (!args.channel) throw new Error("Mock watch requires a channel");
     if (args.name && eventWatchStart === "refused") throw new Error("Scripted Events watch start refused");
     const channel = args.channel;

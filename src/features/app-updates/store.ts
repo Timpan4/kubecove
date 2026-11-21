@@ -11,7 +11,7 @@ import {
 	isAppUpdatesEnabled,
 	setAppUpdatesEnabledForTests,
 } from "@/lib/release-channel";
-import { tauriAppUpdateApi } from "./api";
+import { browserAppUpdateApi } from "./api";
 import type {
 	AppUpdate,
 	AppUpdateApi,
@@ -48,7 +48,7 @@ export function canCheckForUpdates(status: AppUpdateStatus): boolean {
 	return CHECKABLE_STATUSES.has(status);
 }
 
-let updateApi: AppUpdateApi = tauriAppUpdateApi;
+let updateApi: AppUpdateApi = browserAppUpdateApi;
 let pendingUpdate: AppUpdate | null = null;
 
 const initialState = {
@@ -261,7 +261,7 @@ export function setAppUpdateApiForTests(api: AppUpdateApi): void {
 }
 
 export function resetAppUpdateStateForTests(): void {
-	updateApi = tauriAppUpdateApi;
+	updateApi = browserAppUpdateApi;
 	pendingUpdate = null;
 	setAppUpdatesEnabledForTests(true);
 	useAppUpdateStore.setState(initialState);
