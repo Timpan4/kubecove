@@ -1,4 +1,12 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Local storage envelopes from the Tauri webview, projected before writing.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MigrationInput {
+    pub settings: Option<String>,
+    pub workspaces: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +23,9 @@ pub enum GpuiInstallKind {
     rename_all_fields = "camelCase"
 )]
 pub enum GpuiUpgradeInfo {
+    Consolidated {
+        version: String,
+    },
     Unsupported {
         target: String,
         message: String,

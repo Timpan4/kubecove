@@ -35,8 +35,8 @@ fn installation_lock_is_exclusive_and_releases_on_drop() {
 
 #[test]
 fn only_same_or_newer_releases_are_available() {
-    let manifest = serde_json::json!({"version":"2.0.0","platforms":{"linux-x86_64":{"url":"https://example.org/download","signature":"sig"}}});
-    for (current, available) in [("1.0.0", true), ("2.0.0", true), ("3.0.0", false)] {
+    let manifest = serde_json::json!({"version":"0.15.1","platforms":{"linux-x86_64":{"url":"https://example.org/kubecove-gpui_0.15.1_x86_64.AppImage","signature":"sig"}}});
+    for (current, available) in [("0.15.0", true), ("0.15.1", true), ("0.16.0", false)] {
         assert_eq!(
             release(manifest.clone(), Platform::Linux, current)
                 .unwrap()
@@ -377,8 +377,9 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
     fs::create_dir(&apps).unwrap();
     let tauri = apps.join("KubeCove.AppImage");
     fs::write(&tauri, b"Tauri").unwrap();
-    let manifest = serde_json::json!({"version":VERSION, "platforms":{"linux-x86_64":{
-        "signature":SIGNATURE, "url":"https://example.org/asset"
+    let version = "0.15.1";
+    let manifest = serde_json::json!({"version":version, "platforms":{"linux-x86_64":{
+        "signature":include_str!("../../../test-fixtures/transition-appimage.sig").trim(), "url":"https://example.org/kubecove-gpui_0.15.1_x86_64.AppImage"
     }}});
     let state = super::GpuiUpgrade::default();
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -386,7 +387,7 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
             .await
             .unwrap();
-        let mut build = release(manifest.clone(), Platform::Linux, VERSION)
+        let mut build = release(manifest.clone(), Platform::Linux, version)
             .unwrap()
             .unwrap();
         build.artifact.url = format!("http://{}/asset", listener.local_addr().unwrap());
@@ -418,7 +419,9 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
         };
         let install = super::install_release(
             build,
-            PUBLIC_KEY.to_owned(),
+            include_str!("../../../test-fixtures/transition-appimage.pub")
+                .trim()
+                .to_owned(),
             &apps,
             &cache,
             reqwest::Client::new(),
@@ -430,7 +433,7 @@ async fn download_publishes_only_a_complete_verified_appimage_beside_tauri() {
             result = &mut install => result,
             () = server => install.await,
         };
-        let appimage = apps.join(Platform::Linux.asset(VERSION));
+        let appimage = apps.join(Platform::Linux.asset(version));
         if length == PAYLOAD.len() {
             result.unwrap();
             let installed = state.installed.lock().await.clone().unwrap();

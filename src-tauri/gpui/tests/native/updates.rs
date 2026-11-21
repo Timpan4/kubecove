@@ -113,11 +113,13 @@ fn install_from(
     let _ = rustls::crypto::ring::default_provider().install_default();
     let (sender, receiver) = tokio::sync::watch::channel(DownloadProgress::default());
     let update = AvailableUpdate {
-        version: VERSION.into(),
+        version: "0.15.1".into(),
         notes: None,
         artifact: Artifact {
             url,
-            signature: SIGNATURE.into(),
+            signature: include_str!("../../../test-fixtures/transition-appimage.sig")
+                .trim()
+                .into(),
         },
     };
     // An outer deadline, so a lost stall timeout fails the stall test instead of hanging it.
@@ -127,7 +129,14 @@ fn install_from(
         .block_on(async {
             tokio::time::timeout(
                 2 * updates::STALL_TIMEOUT,
-                updates::install(update, PUBLIC_KEY.into(), target, sender),
+                updates::install(
+                    update,
+                    include_str!("../../../test-fixtures/transition-appimage.pub")
+                        .trim()
+                        .into(),
+                    target,
+                    sender,
+                ),
             )
             .await
         })
@@ -169,7 +178,8 @@ fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
 
 #[test]
 fn a_release_is_offered_only_when_newer_and_built_for_this_platform() {
-    let build = serde_json::json!({"url": "https://example.test/build", "signature": "c2ln"});
+    let url = "https://example.test/kubecove-gpui_0.15.1_x86_64.AppImage";
+    let build = serde_json::json!({"url": url, "signature": "c2ln"});
     for version in [env!("CARGO_PKG_VERSION"), "0.0.1"] {
         let manifest =
             serde_json::json!({"version": version, "platforms": {"linux-x86_64": build}});
@@ -178,27 +188,29 @@ fn a_release_is_offered_only_when_newer_and_built_for_this_platform() {
             UpdateStatus::UpToDate
         ));
     }
+    let check = |manifest: &serde_json::Value| {
+        updates::release_for_version(manifest, "linux-x86_64", &semver::Version::new(0, 15, 0))
+    };
     for manifest in [
         serde_json::json!({}),
         serde_json::json!({"version": "invalid"}),
-        serde_json::json!({"version": "99.0.0"}),
-        serde_json::json!({"version": "99.0.0", "platforms": {"darwin-aarch64": build}}),
-        serde_json::json!({"version": "99.0.0", "platforms": {"linux-x86_64": {"url": "https://example.test/build"}}}),
-        serde_json::json!({"version": "99.0.0", "platforms": {"linux-x86_64": {"url": "", "signature": "c2ln"}}}),
+        serde_json::json!({"version": "0.15.1"}),
+        serde_json::json!({"version": "0.15.1", "platforms": {"darwin-aarch64": build}}),
+        serde_json::json!({"version": "0.15.1", "platforms": {"linux-x86_64": {"url": url}}}),
+        serde_json::json!({"version": "0.15.1", "platforms": {"linux-x86_64": {"url": "", "signature": "c2ln"}}}),
+        serde_json::json!({"version": "0.15.1", "bundleId":"com.timpan.kubecove", "platforms":{"linux-x86_64":build}}),
     ] {
-        assert!(
-            updates::release(&manifest, "linux-x86_64").is_err(),
-            "offered {manifest}"
-        );
+        assert!(check(&manifest).is_err(), "offered {manifest}");
     }
-    let manifest = serde_json::json!({"version": "v99.0.0", "notes": " Fixes. ", "platforms": {"linux-x86_64": build}});
-    let UpdateStatus::Available(update) = updates::release(&manifest, "linux-x86_64").unwrap()
-    else {
+    let consolidated = serde_json::json!({"version":"0.16.0", "platforms":{"linux-x86_64":build}});
+    assert!(updates::release(&consolidated, "linux-x86_64").is_err());
+    let manifest = serde_json::json!({"version": "v0.15.1", "notes": " Fixes. ", "platforms": {"linux-x86_64": build}});
+    let UpdateStatus::Available(update) = check(&manifest).unwrap() else {
         panic!("a newer release with a build was not offered");
     };
-    assert_eq!(update.version, "99.0.0");
+    assert_eq!(update.version, "0.15.1");
     assert_eq!(update.notes.as_deref(), Some("Fixes."));
-    assert_eq!(update.artifact.url, "https://example.test/build");
+    assert_eq!(update.artifact.url, url);
     assert_eq!(update.artifact.signature, "c2ln");
 }
 
@@ -214,7 +226,8 @@ fn the_release_feed_points_to_the_published_gpui_manifest() {
 
 #[test]
 fn only_the_release_key_and_the_announced_version_verify() {
-    updates::verify(PAYLOAD, SIGNATURE, PUBLIC_KEY, VERSION).unwrap();
+    updates::verify(PAYLOAD, SIGNATURE, PUBLIC_KEY, VERSION, "linux-x86_64").unwrap();
+    assert!(updates::verify(PAYLOAD, SIGNATURE, PUBLIC_KEY, VERSION, "darwin-aarch64").is_err());
     let mut changed = PAYLOAD.to_vec();
     changed[10] ^= 1;
     for (case, bytes, signature, key, version) in [
@@ -272,7 +285,7 @@ fn only_the_release_key_and_the_announced_version_verify() {
         ),
     ] {
         assert!(
-            updates::verify(bytes, signature, key, version).is_err(),
+            updates::verify(bytes, signature, key, version, "linux-x86_64").is_err(),
             "accepted {case}"
         );
     }
@@ -398,6 +411,8 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
     let binary = bundle.join("Contents/MacOS/kubecove-gpui");
     std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
     std::fs::write(&binary, b"installed version").unwrap();
+    let info = include_bytes!("../../../test-fixtures/side-by-side-info.plist");
+    std::fs::write(bundle.join("Contents/Info.plist"), info).unwrap();
     std::fs::write(bundle.join("Contents/removed-in-update"), b"").unwrap();
     assert_eq!(updates::bundle_of(&binary), Some(bundle.clone()));
     assert_eq!(
@@ -409,11 +424,24 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
     for (case, payload) in [
         ("no bundle", archive(&[("README", b"no app here")])),
         (
+            "consolidated bundle",
+            archive(&[("KubeCove.app/Contents/MacOS/kubecove", b"another product")]),
+        ),
+        (
             "two bundles",
             archive(&[
                 ("One.app/Contents/MacOS/one", b"one"),
                 ("Two.app/Contents/MacOS/two", b"two"),
             ]),
+        ),
+        (
+            "wrong identifier",
+            archive(&[(
+                "KubeCove GPUI.app/Contents/Info.plist",
+                include_str!("../../../test-fixtures/side-by-side-info.plist")
+                    .replace("com.timpan.kubecove.gpui", "com.timpan.kubecove")
+                    .as_bytes(),
+            )]),
         ),
         ("not an archive", b"not gzip".to_vec()),
     ] {
@@ -425,10 +453,13 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         assert_eq!(names(&directory), ["KubeCove GPUI.app"]);
     }
 
-    let update = archive(&[(
-        "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui",
-        b"new version",
-    )]);
+    let update = archive(&[
+        (
+            "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui",
+            b"new version",
+        ),
+        ("KubeCove GPUI.app/Contents/Info.plist", info),
+    ]);
     let relaunch = install_unsigned(&target, &update).unwrap();
     assert_eq!(std::fs::read(&binary).unwrap(), b"new version");
     assert!(!bundle.join("Contents/removed-in-update").exists());

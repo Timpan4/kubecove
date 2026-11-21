@@ -1,8 +1,10 @@
+import { exportTauriMigrationSnapshot } from "./tauri-migration";
 import { createNativeTauriClient } from "./tauri-runtime";
 
 type InstallKind = "appImage" | "appBundle" | "windowsInstaller";
 
 export type GpuiUpgradeInfo =
+	| { status: "consolidated"; version: string }
 	| { status: "unsupported"; target: string; message: string }
 	| { status: "unavailable"; target: string }
 	| {
@@ -27,10 +29,18 @@ export function installGpuiUpgrade(version: string): Promise<GpuiUpgradeInfo | n
 	return local.invoke("install_gpui_upgrade", { version });
 }
 
-export function launchGpuiUpgrade(): Promise<void> {
+export async function launchGpuiUpgrade(): Promise<void> {
+	await exportTauriMigrationSnapshot();
 	return local.invoke("launch_gpui_upgrade");
 }
 
-export function revealGpuiUpgrade(): Promise<void> {
+export async function openDesktopReleases(): Promise<void> {
+	await exportTauriMigrationSnapshot();
+	const { openUrl } = await import("@tauri-apps/plugin-opener");
+	await openUrl("https://github.com/Timpan4/kubecove/releases");
+}
+
+export async function revealGpuiUpgrade(): Promise<void> {
+	await exportTauriMigrationSnapshot();
 	return local.invoke("reveal_gpui_upgrade");
 }

@@ -21,6 +21,8 @@
 
 mod appimage_webkit;
 pub mod commands;
+#[cfg(feature = "desktop-release")]
+pub mod desktop_release;
 #[cfg(feature = "desktop")]
 mod ipc;
 #[cfg(feature = "mcp-host")]
@@ -76,7 +78,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .default_version_comparator(|current, release| {
+                    release.version.cmp_precedence(&current).is_gt()
+                        && !release
+                            .version
+                            .cmp_precedence(&desktop_release::LEGACY_MAX)
+                            .is_gt()
+                })
+                .build(),
+        );
     #[cfg(feature = "e2e")]
     let builder = builder
         .plugin(tauri_plugin_wdio::init())
@@ -86,6 +98,7 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(feature = "e2e")]
             {
+                app.manage(commands::MigrationDirectory(e2e_config.data_dir.clone()));
                 init_kubeconfig_settings_path(e2e_config.data_dir.clone());
                 start_mcp(app, e2e_config.data_dir);
             }
@@ -107,6 +120,7 @@ pub fn run() {
                 };
                 #[cfg(not(debug_assertions))]
                 let app_config_dir = app.path().app_config_dir()?;
+                app.manage(commands::MigrationDirectory(app_config_dir.clone()));
                 init_kubeconfig_settings_path(app_config_dir.clone());
                 start_mcp(app, app_config_dir);
             }

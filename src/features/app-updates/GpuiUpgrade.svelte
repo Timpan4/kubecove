@@ -7,6 +7,7 @@
 		installGpuiUpgrade,
 		isAppError,
 		launchGpuiUpgrade,
+		openDesktopReleases,
 		revealGpuiUpgrade,
 	} from "@/lib/tauri";
 
@@ -48,10 +49,10 @@
 
 <section aria-labelledby="gpui-upgrade-title" class="space-y-3 rounded-md border bg-card p-3 text-sm">
 	<h3 id="gpui-upgrade-title" class="font-semibold">Switch to KubeCove GPUI</h3>
-	<p>Install the native desktop app alongside this version of KubeCove.</p>
+	<p>Check for the native desktop version of KubeCove.</p>
 	<ul class="list-disc space-y-1 pl-5 text-muted-foreground">
 		<li>GPUI uses your existing kubeconfig sources, MCP settings and token, and saved remote server credentials.</li>
-		<li>To move a workspace, export it as JSON in Tauri, then import the file in GPUI. Display preferences and Argo CD profiles start fresh.</li>
+		<li>KubeCove saves your workspaces, preferences, and Argo CD profile metadata for migration. For the side-by-side GPUI app, use workspace JSON export and import.</li>
 		<li>If MCP is enabled, open the installation folder and quit Tauri before starting GPUI so the MCP port is free.</li>
 	</ul>
 	<div aria-live="polite">
@@ -59,10 +60,12 @@
 			<p>{working}</p>
 		{:else if info?.status === "unsupported"}
 			<p>{info.message}</p>
+		{:else if info?.status === "consolidated"}
+			<p>KubeCove {info.version} is available as a separate download.</p>
 		{:else if info?.status === "unavailable"}
-			<p>No compatible GPUI release is available for {info.target}.</p>
+			<p>No compatible GPUI release is available for {info.target}. Check GitHub Releases for KubeCove 0.16 or later.</p>
 		{:else if info?.status === "available"}
-			<p>KubeCove GPUI {info.version} is available for {info.target}.</p>
+			<p>KubeCove GPUI {info.version} is available for {info.target}. A compatible consolidated release has not been published yet.</p>
 		{:else if info?.status === "installed"}
 			<p class="break-all">{info.installKind === "windowsInstaller" ? "Verified installer" : "Installed GPUI"} {info.version} at {info.path}</p>
 			{#if !info.canLaunch}
@@ -75,6 +78,9 @@
 		<details><summary>GPUI release notes</summary><p class="mt-2 whitespace-pre-wrap">{info.notes}</p></details>
 	{/if}
 	<div class="flex flex-wrap gap-2">
+		{#if info?.status === "consolidated" || info?.status === "unavailable"}
+			<Button size="sm" disabled={!!working} onclick={() => void run("Opening GitHub Releases…", openDesktopReleases)}>Open GitHub Releases</Button>
+		{/if}
 		{#if info?.status === "available"}
 			{@const version = info.version}
 			<Button size="sm" disabled={!!working} onclick={() => void install(version)}>

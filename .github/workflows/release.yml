@@ -64,6 +64,8 @@ jobs:
     timeout-minutes: 10
     outputs:
       tauri: ${{ steps.legacy.outputs.enabled }}
+      manifest: ${{ steps.legacy.outputs.manifest }}
+      prefix: ${{ steps.legacy.outputs.prefix }}
       release-body: ${{ steps.release_body.outputs.body }}
 
     steps:
@@ -80,6 +82,18 @@ jobs:
       - name: Detect legacy Tauri packages
         id: legacy
         run: |
+          version="$(node -p 'require("./package.json").version')"
+          manifest="$(node scripts/desktop-release-channel.mjs "$version" manifest)"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+          echo "prefix=$(node scripts/desktop-release-channel.mjs "$version" prefix)" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == 0.15.1 && ! -f src-tauri/tauri.conf.json ]]; then
+            echo "::error::The transition release must publish both legacy feeds."
+            exit 1
+          fi
+          if [[ "$manifest" == latest-desktop.json && -f src-tauri/tauri.conf.json ]]; then
+            echo "::error::Consolidated releases cannot publish a new Tauri updater manifest."
+            exit 1
+          fi
           if [[ -f src-tauri/tauri.conf.json ]]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; fi
 
       - name: Validate release tag and versions
@@ -642,8 +656,25 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: gh release upload "$TAG_NAME" run-assets/kubecove-gpui-release/* --clobber
 
+      - name: Carry forward frozen legacy feeds
+        if: needs.metadata.outputs.manifest == 'latest-desktop.json'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download app-v0.15.1 --pattern latest.json --pattern latest-gpui.json --dir frozen
+          gh api "repos/$GH_REPO/releases/tags/app-v0.15.1" --jq '[.assets[] | .url, .browser_download_url]' > frozen-urls.json
+          for feed in latest.json latest-gpui.json; do
+            jq -e --slurpfile urls frozen-urls.json '.version == "0.15.1" and (.platforms | length > 0) and all(.platforms[]; (.url as $u | $urls[0] | index($u) != null) and (.signature | length > 0))' "frozen/$feed" > /dev/null
+          done
+          gh release upload "$TAG_NAME" frozen/latest.json frozen/latest-gpui.json --clobber
+
       - name: Verify final updater platform coverage
         env:
+          MANIFEST: ${{ needs.metadata.outputs.manifest }}
+          PREFIX: ${{ needs.metadata.outputs.prefix }}
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
@@ -652,7 +683,12 @@ jobs:
           version="${TAG_NAME#app-v}"
           tmp="$(mktemp -d)"
           gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > "$tmp/assets.txt"
-          gh release download "$TAG_NAME" --pattern latest-gpui.json --clobber --dir "$tmp"
+          gh release download "$TAG_NAME" --pattern "$MANIFEST" --clobber --dir "$tmp"
+          if [[ "$MANIFEST" == latest-desktop.json ]]; then
+            gh release download "$TAG_NAME" --pattern latest.json --pattern latest-gpui.json --dir "$tmp"
+            cmp frozen/latest.json "$tmp/latest.json"
+            cmp frozen/latest-gpui.json "$tmp/latest-gpui.json"
+          fi
           UPDATER_CHECK_DIR="$tmp" RELEASE_VERSION="$version" node <<'EOF'
           const { readFileSync } = require("node:fs");
 
@@ -661,7 +697,8 @@ jobs:
           const assets = new Set(readFileSync(`${dir}/assets.txt`, "utf8")
             .split(/\r?\n/)
             .filter(Boolean));
-          const gpui = JSON.parse(readFileSync(`${dir}/latest-gpui.json`, "utf8"));
+          const { MANIFEST, PREFIX } = process.env;
+          const gpui = JSON.parse(readFileSync(`${dir}/${MANIFEST}`, "utf8"));
           const gpuiPlatforms = gpui.platforms ?? {};
 
           const requiredAssets = [
@@ -670,10 +707,10 @@ jobs:
                 const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
                 return [archive, `${archive}.sha256`];
               })),
-            ...[`kubecove-gpui_${version}_aarch64.app.tar.gz`, `kubecove-gpui_${version}_x86_64.AppImage`,
-              `kubecove-gpui_${version}_x64-setup.exe`].flatMap((bundle) => [bundle, `${bundle}.sig`]),
-            `kubecove-gpui_${version}_aarch64.dmg`,
-            "latest-gpui.json",
+            ...[`${PREFIX}_${version}_aarch64.app.tar.gz`, `${PREFIX}_${version}_x86_64.AppImage`,
+              `${PREFIX}_${version}_x64-setup.exe`].flatMap((bundle) => [bundle, `${bundle}.sig`]),
+            `${PREFIX}_${version}_aarch64.dmg`,
+            MANIFEST,
           ];
           // The GPUI client ships no Intel macOS build.
           const requiredGpuiPlatforms = ["darwin-aarch64", "linux-x86_64", "windows-x86_64"];

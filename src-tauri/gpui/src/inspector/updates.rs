@@ -208,6 +208,20 @@ impl Inspector {
         if !enabled {
             return section;
         }
+        if let UpdateStatus::Consolidated(version) = &state.status {
+            section = section.child(
+                settings_row(
+                    "Download KubeCove",
+                    format!("KubeCove {version} requires a separate installation."),
+                    action("Open GitHub Releases", false)
+                        .on_click(|_, _, cx| {
+                            cx.open_url(kubecove_lib::desktop_release::RELEASES_URL)
+                        })
+                        .into_any_element(),
+                )
+                .aria_label("Download KubeCove"),
+            );
+        }
         if let Some(update) = state.offered() {
             section = section.child(
                 settings_row(

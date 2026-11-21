@@ -129,20 +129,30 @@ jobs:
         # appimagetool from another directory and it cannot find the AppDir.
         run: |
           set -euo pipefail
+          # Verify the declared installer identity before signing artifacts for this feed.
+          version="$(node -p 'require("./package.json").version')"
+          export EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product)"
+          export EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier)"
+          cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/gpui/Cargo.toml |
+            node -e 'const packages = JSON.parse(require("node:fs").readFileSync(0)).packages;
+              const bundle = packages.find(p => p.name === "kubecove-gpui").metadata.packager;
+              if (bundle.identifier !== process.env.EXPECTED_ID || bundle.productName !== process.env.EXPECTED_PRODUCT)
+                throw Error("Package identity does not match the release channel");'
           # cargo-packager resolves an existing --out-dir before it changes to the crate directory.
           out=src-tauri/gpui/target/gpui-bundle
           mkdir -p "$out" gpui-updater
           cargo packager --manifest-path src-tauri/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
             --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
-          version="$(node -p 'require("./package.json").version')"
+          prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix)"
+          product="$EXPECTED_PRODUCT"
           case "$FORMAT" in
-            appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" gpui-updater/ ;;
-            nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" gpui-updater/ ;;
+            appimage) cp "$out/${prefix}_${version}_x86_64.AppImage" gpui-updater/ ;;
+            nsis) cp "$out/${prefix}_${version}_x64-setup.exe" gpui-updater/ ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
             # cargo-packager names the DMG after the product; rename it to match the other GPUI assets.
             app,dmg)
-              tar -czf "gpui-updater/kubecove-gpui_${version}_aarch64.app.tar.gz" -C "$out" "KubeCove GPUI.app"
-              cp "$out/KubeCove GPUI_${version}_aarch64.dmg" "gpui-updater/kubecove-gpui_${version}_aarch64.dmg"
+              tar -czf "gpui-updater/${prefix}_${version}_aarch64.app.tar.gz" -C "$out" "$product.app"
+              cp "$out/${product}_${version}_aarch64.dmg" "gpui-updater/${prefix}_${version}_aarch64.dmg"
               ;;
           esac
           ls -l gpui-updater

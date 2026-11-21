@@ -144,7 +144,11 @@ pub async fn check_gpui_upgrade(
             });
         }
     };
-    let latest = Feed::configured()?.latest(platform).await;
+    let feed = Feed::configured()?;
+    if let Some(version) = feed.consolidated(platform).await? {
+        return Ok(GpuiUpgradeInfo::Consolidated { version });
+    }
+    let latest = feed.latest(platform).await;
     if let Some(info) = state.installed_info().await? {
         return Ok(info);
     }

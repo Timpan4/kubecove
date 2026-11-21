@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { describe, it } from "mocha";
@@ -23,6 +24,11 @@ async function listKubeContexts(): Promise<ClusterContext[]> {
 describe("native desktop smoke", () => {
 	it("launches the isolated app and opens settings", async () => {
 		await expect(browser).toHaveTitle(expect.stringContaining("KubeCove"));
+		const directory = process.env.KUBECOVE_DATA_DIR;
+		if (!directory) throw new Error("Missing isolated data directory");
+		const snapshot = join(directory, "tauri-migration.json");
+		await browser.waitUntil(() => existsSync(snapshot));
+		expect(JSON.parse(readFileSync(snapshot, "utf8"))).toMatchObject({ schemaVersion: 1 });
 		const contexts = await listKubeContexts();
 		expect(contexts).toHaveLength(2);
 		const settings = await $('button[aria-label="Open settings"]');
@@ -38,8 +44,13 @@ describe("native desktop smoke", () => {
 		}
 		const status = $('section[aria-labelledby="gpui-upgrade-title"] [aria-live] p');
 		await expect(status).toHaveText(
-			expect.stringMatching(/^(No compatible GPUI release is available|KubeCove GPUI (requires Apple silicon|has no release))/),
+			expect.stringMatching(/^(KubeCove 0\.16\.0 is available as a separate download|KubeCove GPUI (requires Apple silicon|has no release))/),
 		);
+		if ((await status.getText()).includes("separate download")) {
+			await expect($("button=Open GitHub Releases")).toBeClickable();
+			await expect($("button=Download GPUI installer")).not.toExist();
+			await expect($("button=Choose GPUI install folder")).not.toExist();
+		}
 		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
 		if (artifacts) await browser.saveScreenshot(join(artifacts, "gpui-migration.png"));
 	});

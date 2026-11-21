@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { buildGpuiManifest, gpuiUpdaterAssets } from "./gpui-release-manifest.mjs";
 
 const dir = mkdtempSync(join(tmpdir(), "kubecove-signing-"));
-const version = "1.2.3";
+const version = "0.15.1";
 const key = join(dir, "test.key");
 const pub = join(dir, "test.pub");
 const read = (name) => readFileSync(join(dir, name));

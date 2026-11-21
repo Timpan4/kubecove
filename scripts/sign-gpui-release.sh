@@ -4,12 +4,13 @@
 set -euo pipefail
 dir=$1
 version=$2
+prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix)"
 umask 077
 scratch="$(mktemp -d)"
 trap 'rm -rf -- "$scratch"' EXIT
 printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | base64 --decode > "$scratch/key"
 for suffix in x86_64.AppImage aarch64.app.tar.gz x64-setup.exe; do
-  name="kubecove-gpui_${version}_${suffix}"
+  name="${prefix}_${version}_${suffix}"
   comment="$(printf 'timestamp:%s\tfile:%s\tversion:%s' "$(date +%s)" "$name" "$version")"
   printf '%s\n' "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" |
     minisign -S -s "$scratch/key" -m "$dir/$name" -t "$comment" -x "$scratch/signature"

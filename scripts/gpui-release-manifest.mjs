@@ -1,4 +1,4 @@
-// Verifies the signed GPUI updater artifacts and writes `latest-gpui.json` beside them.
+// Verify the signed desktop artifacts and write their release channel's manifest.
 //
 // Each .sig contains base64-encoded minisign text with a prehashed signature.
 // The GPUI client and this verifier read the same release public key.
@@ -11,14 +11,15 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const MANIFEST_NAME = "latest-gpui.json";
+import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 // macOS ships for Apple silicon only, so there is no darwin-x86_64 entry.
 export function gpuiUpdaterAssets(version) {
+  const { prefix } = desktopReleaseChannel(version);
   return {
-    "linux-x86_64": `kubecove-gpui_${version}_x86_64.AppImage`,
-    "darwin-aarch64": `kubecove-gpui_${version}_aarch64.app.tar.gz`,
-    "windows-x86_64": `kubecove-gpui_${version}_x64-setup.exe`,
+    "linux-x86_64": `${prefix}_${version}_x86_64.AppImage`,
+    "darwin-aarch64": `${prefix}_${version}_aarch64.app.tar.gz`,
+    "windows-x86_64": `${prefix}_${version}_x64-setup.exe`,
   };
 }
 
@@ -59,8 +60,7 @@ export function verifyUpdaterSignature({ publicKey, signature, data, version, na
   // that does not name the manifest version.
   const fields = trusted.split("\t");
   if (!fields.includes(`version:${version}`)) fail(label, `the trusted comment does not carry version:${version}`);
-  // The Tauri app is signed with the same key, so the GPUI client also requires a signed file
-  // name that starts with `kubecove-gpui_`. An asset renamed after signing would be refused.
+  // Both desktop products use the same key. The signed file name binds the product and platform.
   if (!fields.includes(`file:${name}`)) fail(label, `the trusted comment does not carry file:${name}`);
 }
 
@@ -97,6 +97,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     names: readdirSync(dir),
     read: (name) => readFileSync(join(dir, name)),
   });
-  writeFileSync(join(dir, MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${MANIFEST_NAME}.`);
+  const filename = desktopReleaseChannel(version).manifest;
+  writeFileSync(join(dir, filename), `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${filename}.`);
 }
