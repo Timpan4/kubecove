@@ -38,11 +38,12 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     '  return controller.signal;',
     '};',
     'globalThis.fetch = async (url, options) => {',
-    '  assert.equal(url, `https://api.github.com/repos/Timpan4/kubecove/actions/runs/123/attempts/${process.env.SOURCE_ATTEMPT ?? 1}/jobs`);',
+    '  assert.equal(url, `https://api.github.com/repos/Timpan4/kubecove/actions/runs/123/attempts/${process.env.SOURCE_ATTEMPT ?? 1}/jobs?per_page=100`);',
     '  assert.equal(options.headers.Authorization, "Bearer fixture-token");',
     '  if (process.env.SOURCE_RESULT === "error") throw new Error("unavailable");',
     '  const job = { name: process.env.SOURCE_NAME ?? "CI gpui-test", status: process.env.SOURCE_STATUS ?? "completed", conclusion: process.env.SOURCE_RESULT ?? "success" };',
-    '  const jobs = process.env.SOURCE_DUPLICATE ? [job, job] : [job];',
+    '  const unrelated = Array.from({ length: Number(process.env.SOURCE_OTHER_JOBS ?? 0) }, (_, i) => ({ name: "Other job " + i }));',
+    '  const jobs = [...unrelated, job, ...(process.env.SOURCE_DUPLICATE ? [job] : [])];',
     '  const total = Number(process.env.SOURCE_TOTAL ?? jobs.length);',
     '  const aborted = () => new Promise((resolve, reject) => {',
     '    if (options.signal.aborted) reject(options.signal.reason);',
@@ -52,7 +53,8 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     '  return { ok: !process.env.SOURCE_DENIED, json: process.env.SOURCE_ABORT === "body" && options.signal ? aborted : async () => ({ total_count: total, jobs: process.env.SOURCE_MALFORMED ? null : jobs }) };',
     '};',
   ].join("\n"));
-  const steps = Object.fromEntries(["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass", "setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
+  const gpuiSteps = ["setup-gpui-native", "setup-gpui-profile", "export-gpui-fixture", "test-gpui"];
+  const steps = Object.fromEntries(["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass", "setup-mbx", "activate-cargo", ...gpuiSteps].map((id) => [id, { outcome: "success", conclusion: "success" }]));
   steps["decide-pass"].outputs = { skip: "false" };
   const run = (mode, overrides = {}) => spawnSync(process.execPath, ["--import", preload, fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), mode], {
     cwd: root, env: { ...env, ...overrides }, encoding: "utf8",
@@ -81,6 +83,7 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     const record = readFileSync(path, "utf8");
     const hit = decide();
     assert.equal(hit.skip, true);
+    assert.equal(decide({ SOURCE_OTHER_JOBS: "30" }).skip, true, "a complete page can prove a job past the default first 30");
     assert.equal(hit.log, `gpui-test: ${first.key} records https://github.com/Timpan4/kubecove/actions/runs/123/attempts/1; skipping build and test work.\n`);
     for (const phase of ["headers", "body"]) {
       const probe = join(root, "timeout-probe");
@@ -95,7 +98,7 @@ test("Rust pass records require exact inputs, runner identity and a pull request
       { ImageVersion: "new-image" }, { ImageVersion: "" }, { RUNNER_ARCH: "ARM64" },
       ...["failure", "cancelled", "skipped", "", "error"].map((SOURCE_RESULT) => ({ SOURCE_RESULT })),
       // A refused request can still carry a body, and a second page can hold a failed job of the same name.
-      { SOURCE_DENIED: "true" }, { SOURCE_TOTAL: "2" }, { SOURCE_TOTAL: "31" },
+      { SOURCE_DENIED: "true" }, { SOURCE_TOTAL: "2" }, { SOURCE_TOTAL: "101" },
       { SOURCE_NAME: "another job" },
       { SOURCE_STATUS: "in_progress" }, { SOURCE_DUPLICATE: "true" }, { SOURCE_MALFORMED: "true" }, { GITHUB_TOKEN: "" },
     ]) assert.equal(decide(overrides).skip, false, JSON.stringify(overrides));
@@ -115,7 +118,7 @@ test("Rust pass records require exact inputs, runner identity and a pull request
       assert.equal(decide().skip, false, content);
     }
     writeFileSync(path, record);
-    const skipped = { ...steps, "decide-pass": { ...steps["decide-pass"], outputs: { skip: "true" } }, ...Object.fromEntries(["setup-mbx", "activate-cargo", "test-gpui"].map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
+    const skipped = { ...steps, "decide-pass": { ...steps["decide-pass"], outputs: { skip: "true" } }, ...Object.fromEntries(["setup-mbx", "activate-cargo", ...gpuiSteps].map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
     assert.equal(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify(skipped) }).status, 0);
     assert.equal(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify(skipped), SOURCE_RESULT: "error" }).status, 0, "completion consumes the successful decision without another API request");
     assert.notEqual(run("verify", { PASS_SKIP: "true", PASS_STEPS: JSON.stringify({ ...skipped, "decide-pass": steps["decide-pass"] }) }).status, 0, "the decision output must justify the skip");
@@ -374,7 +377,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
     return rustCondition(expression, task, skip === undefined ? "" : String(skip), event, successful);
   };
-  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
+  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     assert.equal(condition("Restore Rust task pass", task, false), true);
     for (const event of ["push", "workflow_dispatch"]) assert.equal(condition("Restore Rust task pass", task, false, event), false);
@@ -476,7 +479,7 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
 test("compiler bundles keep the original inputs while pass keys use the full audit", async () => {
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const desktop = "src-tauri :!src-tauri/gpui :!src-tauri/server";
-  const gpui = "src-tauri :!src-tauri/server src/lib/*-workspace.json";
+  const gpui = "src-tauri :!src-tauri/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile";
   const server = "src-tauri :!src-tauri/gpui";
   assert.deepEqual(Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, inputs }) => [task, inputs])), {
     rust: desktop, "gpui-clippy": gpui, "gpui-test": gpui, "server-backend": desktop, server,
@@ -491,7 +494,7 @@ test("pass inputs retain CI and local actions without unrelated workflows", asyn
   const { matrix } = await detect([".github/workflows/ci.yml"]);
   const uses = [...workflow.matchAll(/uses: (\.\/\.github\/\S+)/g)].map(([, path]) => path.slice(2));
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
-    const taskActions = uses.filter((path) => path !== ".github/actions/setup-linux-native-deps" || task.task.startsWith("gpui-"));
+    const taskActions = uses.filter((path) => ![".github/actions/setup-linux-native-deps", ".github/actions/setup-gpui-ci-profile"].includes(path) || task.task.startsWith("gpui-"));
     const result = spawnSync("bash", ["-c", `git ls-files -z -- .github/workflows/ci.yml ${task.passInputs ?? task.inputs}`], { cwd: new URL("../", import.meta.url), encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     const githubFiles = result.stdout.split("\0").filter((path) => path.startsWith(".github/"));
@@ -542,9 +545,7 @@ test("each existing check remains in its selected task", () => {
     rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
     "gpui-test": [
-      "mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native",
       "bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json",
-      'KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --test text_fit | tee e2e/artifacts/text-fit/report.txt',
       "if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi",
     ],
     "server-backend": ["cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml"],
@@ -624,6 +625,63 @@ test("native dependencies are installed only if GPUI cannot link or Playwright c
       ...(phase === "ready" ? [] : ["playwright-core install-deps chromium", "launch"]),
     ].join("\n"));
   }
+});
+test("GPUI tests keep all three phases in one mbx export and reject a skipped text-fit test", () => {
+  const gpui = step("Test GPUI");
+  const outputDir = "e2e/artifacts/text-fit";
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-gpui-"));
+  const summary = join(root, "summary");
+  const mock = [
+    'mbx() {',
+    '  printf "mbx %s, export group %s, fixture %s\n" "$*" "$MBX_CACHE_EXPORT_GROUP" "${KUBECOVE_PARITY_FIXTURE:-none}";',
+    '  echo "mbx[cache]: object cache: 2 hits, 1 misses";',
+    '  if [[ "$*" == *text_fit && "$MODE" == skipped ]]; then echo "text_fit: skipped"; fi;',
+    '  if [[ "$*" == *text_fit && "$MODE" == failed ]]; then return 7; fi;',
+    '}',
+    '',
+  ].join("\n");
+  try {
+    mkdirSync(join(root, outputDir), { recursive: true });
+    assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
+    assert.match(gpui, /CARGO_TARGET_DIR: .+\/src-tauri\/gpui\/target/);
+    assert.match(gpui, /CARGO_BUILD_BUILD_DIR: .+\/src-tauri\/gpui\/target/);
+    for (const mode of ["ready", "skipped", "failed"]) {
+      writeFileSync(summary, "");
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", mock + block(gpui, "run", 8)], {
+        cwd: root, encoding: "utf8",
+        env: { ...process.env, GITHUB_STEP_SUMMARY: summary, RUNNER_TEMP: root, MBX_CACHE_EXPORT_GROUP: "shared", MODE: mode },
+      });
+      assert.equal(result.status, { ready: 0, skipped: 1, failed: 7 }[mode], result.stderr);
+      const common = "mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked";
+      assert.ok(result.stdout.includes(`${common} --lib --test native, export group shared, fixture none`));
+      assert.match(result.stdout, /--test text_fit, export group shared, fixture .+\/e2e\/artifacts\/text-fit\/fixture\.json/);
+      assert.equal(result.stdout.includes(`${common} --features e2e --test native -- automation:: e2e_interlock::, export group shared, fixture none`), mode === "ready");
+      const report = readFileSync(summary, "utf8");
+      assert.equal((report.match(/2 hits, 1 misses/g) ?? []).length, mode === "ready" ? 3 : 2);
+      assert.match(report, /\*\*Text fit\*\* \(\d+s, exit [07]\)/);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("CI installs the per-package GPUI profile in the checkout without replacing Cargo settings", () => {
+  const actionPath = new URL("../.github/actions/setup-gpui-ci-profile/", import.meta.url);
+  const action = readFileSync(new URL("action.yml", actionPath), "utf8").replaceAll("\r\n", "\n");
+  const config = readFileSync(new URL("config.toml", actionPath), "utf8").replaceAll("\r\n", "\n");
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-gpui-profile-"));
+  const run = () => spawnSync("bash", ["-e", "-c", block(action, "run", 6)], {
+    cwd: root, env: { ...process.env, GITHUB_ACTION_PATH: fileURLToPath(actionPath) }, encoding: "utf8",
+  });
+  try {
+    assert.match(step("Set up the GPUI CI profile"), /matrix.task == 'gpui-clippy' \|\| matrix.task == 'gpui-test'/);
+    assert.match(config, /^\[profile\.dev\.package\.kubecove\]\ndebug = "line-tables-only"\n$/);
+    const result = run();
+    assert.equal(result.status, 0, result.stderr);
+    const path = join(root, ".cargo", "config.toml");
+    assert.equal(readFileSync(path, "utf8"), config);
+    writeFileSync(path, "[build]\n");
+    assert.notEqual(run().status, 0);
+    assert.equal(readFileSync(path, "utf8"), "[build]\n");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 function gate(overrides = {}) {
   const env = { ...process.env, CHANGES_RESULT: "success", CHECKS_RESULT: "success", FRONTEND_RESULT: "success" };
@@ -964,7 +1022,7 @@ test("parity jobs select pull request scenarios and preserve full main coverage"
   assert.match(result, /PARITY_SELECTION_ATTEMPT: \$\{\{ needs.pull-request-selection.outputs.attempt \}\}/);
   assert.match(result, /run: bun e2e\/parity\/merge-reports\.ts parity-reports/);
   assert.ok(result.includes("if: ${{ needs.pull-request-web.result == 'success' || needs.pull-request-spike.result == 'success' }}"));
-  for (const name of ["Install GPUI build dependencies", "Setup Rust", "Key the Rust cache by its inputs", "Cache Rust builds", "Activate Cargo caching"]) {
+  for (const name of ["Install GPUI build dependencies", "Set up the GPUI CI profile", "Setup Rust", "Key the Rust cache by its inputs", "Cache Rust builds", "Activate Cargo caching"]) {
     const start = suite.indexOf(`- name: ${name}\n`);
     const end = suite.indexOf("\n      - name: ", start + 1);
     assert.match(suite.slice(start, end), /if: \$\{\{ inputs.driver != 'web' \}\}/);
@@ -1019,7 +1077,7 @@ test("main records the parity coverage map from every parity job", () => {
   const run = step("Run parity suite");
   const results = Object.fromEntries(Object.entries(modes).map(([mode, [inputs, event]]) => [mode, {
     coverage: evaluate(expression(run, "PARITY_COVERAGE"), inputs, event),
-    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server' 'src\/lib\/\*-workspace\.json'$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
+    cacheKey: `parity${evaluate(/run: node scripts\/ci-rust-cache-key\.mjs parity\$\{\{ (.+) \}\} \.github\/workflows\/parity-suite\.yml src-tauri ':!src-tauri\/server' 'src\/lib\/\*-workspace\.json' \.github\/actions\/setup-linux-native-deps \.github\/actions\/setup-gpui-ci-profile$/m.exec(step("Key the Rust cache by its inputs"))?.[1] ?? "'missing'", inputs, event)}`,
     runs: evaluate(expression(run, "if"), inputs, event),
   }]));
   assert.deepEqual(results.pullRequest, { coverage: "0", cacheKey: "parity", runs: true });

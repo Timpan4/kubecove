@@ -67,6 +67,10 @@ jobs:
         if: ${{ inputs.driver != 'web' }}
         uses: ./.github/actions/setup-linux-native-deps
 
+      - name: Set up the GPUI CI profile
+        if: ${{ inputs.driver != 'web' }}
+        uses: ./.github/actions/setup-gpui-ci-profile
+
       - name: Setup Bun
         if: ${{ !inputs.build-only }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -92,7 +96,7 @@ jobs:
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ inputs.driver != 'web' }}
-        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json'
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json' .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile
 
       # Jobs with the same cache key must not all save: GitHub reserves the key for one and
       # the action fails the others (three of four main shards in run 43397675113). The

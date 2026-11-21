@@ -95,7 +95,7 @@ jobs:
             // These tasks share one matrix; frontend checks keep their own job.
             const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
             // The GPUI tests compile in the workspace fixtures the web client uses.
-            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json';
+            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile';
             // The server also embeds the browser build. The frontend tree is left out on
             // purpose: with it, every frontend push to main would upload the server cache
             // again (896 MB after run 43325597142). Without it, a build recompiles the
@@ -107,7 +107,7 @@ jobs:
             // CI workflow and the local native setup it calls are explicit key inputs.
             const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
             const desktopPass = `${desktop} ${common}`;
-            const gpuiPass = `${gpui} ${common} .github/actions/setup-linux-native-deps`;
+            const gpuiPass = `${gpui} ${common}`;
             // text_fit also reads the browser-mock fixture that e2e/parity/visual exports from src.
             const gpuiTestPass = `${gpuiPass} src e2e/parity/visual`;
             // cargo tree reads the separate server manifest and lockfile.
@@ -325,8 +325,14 @@ jobs:
           fi
 
       - name: Install GPUI build dependencies
+        id: setup-gpui-native
         if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
         uses: ./.github/actions/setup-linux-native-deps
+
+      - name: Set up the GPUI CI profile
+        id: setup-gpui-profile
+        if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
+        uses: ./.github/actions/setup-gpui-ci-profile
 
       # Cargo 1.100 puts unit state under build/, which the pinned action's target
       # scanner skips. Objects transport exports completed mbx commands instead.
@@ -396,20 +402,41 @@ jobs:
           # The E2E flavor with the agent automation endpoint (ADR 0035).
           mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --all-targets -- -D warnings
 
+      - name: Export the GPUI text-fit fixture
+        id: export-gpui-fixture
+        if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
+        run: |
+          mkdir -p e2e/artifacts/text-fit
+          bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
+
       - name: Test GPUI
         id: test-gpui
         if: ${{ (matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
+        shell: bash
+        env:
+          # Keep all three phases in the same target and mbx action store. The action
+          # exports their shared group after this job and clears the managed target.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
         run: |
-          mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --lib --test native
-          # Text fit against the bundled fonts, on the browser-mock fixture. Without the
-          # fixture the test prints a skip and passes, so a skip fails the step.
-          mkdir -p e2e/artifacts/text-fit
-          bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
-          set -o pipefail
-          KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --test text_fit | tee e2e/artifacts/text-fit/report.txt
+          set -euo pipefail
+          printf '## GPUI tests\n\n' >> "$GITHUB_STEP_SUMMARY"
+          run_phase() {
+            local label=$1 log=$2 started=$SECONDS status=0
+            shift 2
+            mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked "$@" 2>&1 | tee "$log" || status=$?
+            {
+              printf '\n**%s** (%ss, exit %s)\n\n' "$label" "$((SECONDS - started))" "$status"
+              grep -F 'mbx[cache]: object cache:' "$log" || echo "No mbx object cache summary."
+            } >> "$GITHUB_STEP_SUMMARY"
+            return "$status"
+          }
+          run_phase "Library and native" "$RUNNER_TEMP/gpui-native.log" --lib --test native
+          # Without the fixture the text-fit test prints a skip and passes.
+          KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" \
+            run_phase "Text fit" e2e/artifacts/text-fit/report.txt --test text_fit
           if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi
-          # The E2E flavor's automation and startup checks (ADR 0035).
-          mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --test native -- automation:: e2e_interlock::
+          run_phase "E2E automation and startup" "$RUNNER_TEMP/gpui-e2e.log" --features e2e --test native -- automation:: e2e_interlock::
 
       # Runs before the browser UI is built: the API-only server must build without it.
       - name: Verify API-only server

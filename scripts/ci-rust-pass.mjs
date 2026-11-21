@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 
 const taskSteps = {
   rust: ["test-rust", "lint-rust"],
-  "gpui-clippy": ["lint-gpui"],
-  "gpui-test": ["test-gpui"],
+  "gpui-clippy": ["setup-gpui-native", "setup-gpui-profile", "lint-gpui"],
+  "gpui-test": ["setup-gpui-native", "setup-gpui-profile", "export-gpui-fixture", "test-gpui"],
   "server-backend": ["dependency-tree", "test-backend"],
   server: ["api-only", "browser-build", "test-server", "lint-server", "build-server", "http-lifecycle", "headless-report"],
 };
@@ -49,16 +49,16 @@ async function sourceJobPassed(record) {
     // its source job finished successfully, including compiler-cache cleanup.
     if (!process.env.GITHUB_TOKEN) return false;
     const [run, , attempt] = record.run.slice(runPrefix.length).split("/");
-    const url = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${run}/attempts/${attempt}/jobs`;
+    const url = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${run}/attempts/${attempt}/jobs?per_page=100`;
     // The owner selected ten seconds for this optional lookup on 2026-11-14.
     const response = await fetch(url, { signal: AbortSignal.timeout(10_000), headers: {
       Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
     } });
     if (!response.ok) return false;
     const { jobs, total_count: total } = await response.json();
-    // Only a complete first page proves one job has this name. A run attempt
-    // with more jobs than the API's default page runs the task again.
-    if (total !== jobs.length) return false;
+    // The API allows up to 100 jobs per page. Only a complete page can prove
+    // there is exactly one job with this name.
+    if (!Array.isArray(jobs) || total !== jobs.length) return false;
     const matches = jobs.filter((job) => job.name === `CI ${task}`);
     return matches.length === 1 && matches[0].status === "completed" && matches[0].conclusion === "success";
   } catch {
