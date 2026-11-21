@@ -590,6 +590,28 @@
         { "action": "searchSettings", "value": "credential storage" },
         { "action": "expectSettingsEmpty", "value": "credential storage" }
       ]
+    },
+    {
+      "id": "settings-kubeconfig.disconnect-restores-local-picker",
+      "title": "Switching away from the server restores local file selection",
+      "steps": [
+        { "action": "openSettings" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "fillSettingsField", "field": "Server URL", "value": "http://127.0.0.1:43117" },
+        { "action": "fillSettingsField", "field": "Server token", "value": "parity-controlled-credential" },
+        { "action": "clickSettingsButton", "label": "Connect" },
+        { "action": "expectRemoteHost", "url": "http://127.0.0.1:43117" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectSettingsText", "value": "Add server path" },
+        { "action": "expectNoSettingsText", "value": "Choose files" },
+        { "action": "showSettingsSection", "section": "Remote server" },
+        { "action": "clickSettingsButton", "label": "Disconnect" },
+        { "action": "expectRuntimeEndpoint", "value": "local" },
+        { "action": "showSettingsSection", "section": "Kubeconfig" },
+        { "action": "expectAccessibleName", "name": "Paste kubeconfig paths" },
+        { "action": "expectSettingsText", "value": "Choose files" },
+        { "action": "expectNoSettingsText", "value": "Add server path" }
+      ]
     }
   ]
 }

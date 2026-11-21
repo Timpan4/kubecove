@@ -355,14 +355,14 @@
           "command": "get_resource_yaml"
         },
         {
+          "action": "toggleSetting",
+          "setting": "Enable diagnostics"
+        },
+        {
           "action": "clearLatencyReport"
         },
         {
           "action": "expectLatencyEmpty"
-        },
-        {
-          "action": "toggleSetting",
-          "setting": "Enable diagnostics"
         },
         {
           "action": "closeSettings"

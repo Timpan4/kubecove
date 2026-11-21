@@ -114,7 +114,7 @@ jobs:
             const backendPass = `${server} ${common}`;
             // The server embeds dist/, builds and typechecks the browser, runs the
             // local HTTP/WS harness, and checks the Grafana dashboard's queries.
-            const serverPass = `${backendPass} src public e2e scripts deploy`;
+            const serverPass = `${backendPass} src public e2e scripts deploy .agents/skills/verify-kubecove/scripts/processes.ts`;
             const tasks = [
               { task: 'docs', scope: 'docs' },
               { task: 'frontend-e2e', scope: 'frontend' },
@@ -468,6 +468,27 @@ jobs:
         if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml
 
+      - name: Build headless server
+        id: build-server
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        run: mbx build --manifest-path src-tauri/server/Cargo.toml --locked
+
+      # Use the runner's installed Chrome and the same embedded dist/ as the protocol smoke.
+      # Both checks overlap the existing server tests and Clippy, including on Rust-only PRs.
+      - name: Verify server command wrappers
+        id: server-command-contract
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        background: true
+        run: bun test tests/server-command-contract.test.ts
+
+      - name: Verify HTTP and WebSocket lifecycle
+        id: http-lifecycle
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        background: true
+        env:
+          KUBECOVE_VERIFY_CHROME: /usr/bin/google-chrome
+        run: bun e2e/headless-smoke.ts --browser
+
       - name: Test headless server
         id: test-server
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
@@ -478,15 +499,7 @@ jobs:
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings
 
-      - name: Build headless server
-        id: build-server
-        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx build --manifest-path src-tauri/server/Cargo.toml --locked
-
-      - name: Verify HTTP and WebSocket lifecycle
-        id: http-lifecycle
-        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
-        run: bun e2e/headless-smoke.ts
+      - wait-all:
 
       - name: Upload headless verification report
         id: headless-report

@@ -89,6 +89,8 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Delete unit tests that would not catch a real bug the E2E suite misses.
 - Equal tests: the Svelte and GPUI clients share their UI acceptance tests in `e2e/parity/scenarios/`, so neither UI drifts from the other. A UI change in either client lands with a shared scenario that both drivers pass in `bun run e2e:parity`. Every view in `e2e/parity/visual/views.ts` needs a scenario whose ID starts with `<view>.`, and a new action needs a handler in both drivers, written in the area files described under GPUI work. `e2e/parity/contract.test.ts` enforces both. Native-only tests in `src-tauri/gpui/tests/native.rs` cover what the browser mocks cannot express, such as read errors, cancellation and stale reads. See `e2e/parity/README.md`.
 
+- For every GPUI UI change outside `desktop_only` behavior, ship Svelte parity for `kubecove-server` and a shared acceptance scenario in the same PR. For styling and layout changes, run `bun scripts/gpui-visual.ts` for the affected views and compare the web and GPUI renders.
+
 ## GPUI work
 
 The native client lives in `src-tauri/gpui`. These rules come from parallel agent work on it.
@@ -179,7 +181,7 @@ Run the smallest tier that covers the change, from the checkout root with the bu
 1. Agent patch from a parallel child agent: no compilation. The child runs no cargo command (check, clippy, test or build), no parity and no frames run. It edits, runs `bun run typecheck` and `bun run lint` for TypeScript changes, commits, and lists in its report what was never compiled or run. The parent merges the batch and runs tier 2 once for all of it. Never give a child `PARITY_CHANGED`: without the coverage map at `e2e/artifacts/parity-coverage-map.json` it runs the full suite. `e2e/parity/README.md` ("Change-based selection") shows how to download the map from CI or record it.
 2. Merge of a batch into the working branch, run by the parent once per batch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_CHANGED=<working branch> bun run e2e:parity`.
 3. After a fix: `PARITY_RERUN=last bun run e2e:parity` runs only the scenarios either driver did not pass in the newest run. Give an artifacts directory instead of `last` to use another run.
-4. Full suite: CI runs every scenario on both drivers on the PR and after each merge to main (`.github/workflows/parity.yml`). PRs split web and GPUI onto separate runners; `Parity result` requires all jobs to pass and validates their merged reports against the full contract. Main keeps combined runs for coverage recording. Developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
+4. PR CI runs the change-based scenario selection on separate web and GPUI runners. If selection fails, it runs the full suite. `Parity result` requires passing reports from both drivers for every selected scenario. Main runs the full suite and records coverage (`.github/workflows/parity.yml`). Developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
 
 `PARITY_PREFIX` (comma-separated scenario ID prefixes) still narrows any run, such as one failing scenario or one area.
 

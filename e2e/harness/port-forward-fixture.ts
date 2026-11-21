@@ -1,15 +1,34 @@
 // kube-rs port-forward protocol fixture shared by server and native desktop E2E.
 // It echoes bytes and never creates Kubernetes resources.
 export function startPortForwardFixture() {
+	const fixturePod = (name: string, resourceVersion: string) => ({
+		apiVersion: "v1", kind: "Pod", metadata: { name, namespace: "readable", resourceVersion },
+		spec: { containers: [] }, status: { phase: "Running" },
+	});
+	const initialPod = fixturePod("readable-pod", "1");
+	const addedPod = fixturePod("watch-only-pod", "2");
+	let podAdded = false;
 	return Bun.serve<{ port: number; mode: string }>({
 		hostname: "127.0.0.1", port: 0,
 		fetch(request, server) {
 			const url = new URL(request.url);
+			if (url.pathname === "/api/v1/namespaces") {
+				return Response.json({ apiVersion: "v1", kind: "NamespaceList", metadata: {}, items: [
+					{ metadata: { name: "readable" }, status: { phase: "Active" } },
+				] });
+			}
 			if (url.pathname === "/api/v1/secrets" || url.pathname === "/api/v1/namespaces/denied/pods") {
 				return Response.json({ apiVersion: "v1", kind: "Status", status: "Failure", reason: "Forbidden", message: "Fixture account cannot list this resource", code: 403 }, { status: 403 });
 			}
 			if (url.pathname === "/api/v1/pods" || url.pathname === "/api/v1/namespaces/readable/pods") {
-				return Response.json({ apiVersion: "v1", kind: "PodList", metadata: {}, items: [{ metadata: { name: "readable-pod", namespace: "readable" }, spec: { containers: [] }, status: { phase: "Running" } }] });
+				if (url.searchParams.get("watch") === "true") {
+					podAdded = true;
+					// Kubernetes may end a watch after delivering events. A resume at version 2 has no new events.
+					const event = url.searchParams.get("resourceVersion") === "2" ? "" : `${JSON.stringify({ type: "ADDED", object: addedPod })}\n`;
+					return new Response(event, { headers: { "Content-Type": "application/json" } });
+				}
+				return Response.json({ apiVersion: "v1", kind: "PodList", metadata: { resourceVersion: podAdded ? "2" : "1" },
+					items: podAdded ? [initialPod, addedPod] : [initialPod] });
 			}
 			if (url.pathname === "/api/v1/namespaces/unauthorized/pods") {
 				return Response.json({ apiVersion: "v1", kind: "Status", status: "Failure", reason: "Unauthorized", message: "Fixture authentication failed", code: 401 }, { status: 401 });
