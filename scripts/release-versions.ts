@@ -171,12 +171,10 @@ export function updateWorkspaceReleaseVersions(
 
 	const hasTauriConfig = existsSync(tauriPath);
 	for (const path of hasTauriConfig ? [packagePath, tauriPath] : [packagePath]) {
-		const config: unknown = JSON.parse(readFileSync(path, "utf8"));
-		if (typeof config !== "object" || config === null || Array.isArray(config)) {
-			throw new Error(`${path} must contain a JSON object.`);
-		}
-		const updated = { ...config, version: targetVersion } satisfies { version: string };
-		writeFileSync(path, `${JSON.stringify(updated, null, 2)}\n`);
+		// SAFETY: release writer changes only optional `version` in JSON it owns.
+		const config = JSON.parse(readFileSync(path, "utf8")) as { version?: string };
+		config.version = targetVersion;
+		writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 	}
 
 	const cargoToml = readFileSync(cargoPath, "utf8");
