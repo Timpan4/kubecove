@@ -7,14 +7,14 @@ import { arch, platform, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 import type { ViteDevServer } from "vite";
-import { startIdentity, stopGroup } from "../.agents/skills/verify-kubecove/scripts/processes";
-import { assertDesktopProfileIdle, signalOwnedProcess } from "./harness/desktop-profile";
+import { assertDesktopProfileIdle } from "./harness/desktop-profile";
 import { startMemoryFixture } from "./harness/memory-fixture";
 import { downloadAsset, sha256, verifyAsset } from "./harness/assets";
 import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
+import { cleanEnvironment, type InterruptSignal, processOutput, trackChild } from "./harness/lifecycle-processes";
 import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, type Ownership, ownershipFromDisk, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
@@ -94,33 +94,30 @@ const pinKeys = {
 } as const;
 const key = () => pinKeys[os][cpu];
 
-const children = new Map<ReturnType<typeof Bun.spawn>, string | undefined>();
+const children = new Set<(signal: InterruptSignal) => Promise<void>>();
 const cancellation = new AbortController();
-let interruptedBy: "SIGINT" | "SIGTERM" | undefined;
+let interruptedBy: InterruptSignal | undefined;
 let stoppingChildren: Promise<void> | undefined;
-function cleanEnvironment(extra: Record<string, string | undefined> = {}) {
-	const env = { ...process.env };
-	delete env.KUBECONFIG;
-	for (const [name, value] of Object.entries(extra)) {
-		if (value === undefined) delete env[name];
-		else env[name] = value;
-	}
-	return env;
-}
 async function execute(cmd: string, commandArgs: string[], extra: Record<string, string | undefined> = {}, capture = false, logFile?: string) {
 	cancellation.signal.throwIfAborted();
 	return runCommand(cmd, commandArgs, extra, capture, logFile, true);
 }
 async function runCommand(cmd: string, commandArgs: string[], extra: Record<string, string | undefined>, capture: boolean, logFile?: string, track = false) {
 	const child = Bun.spawn([cmd, ...commandArgs], { cwd: root, detached: os !== "windows", env: cleanEnvironment(extra), stdout: capture || logFile ? "pipe" : "inherit", stderr: capture || logFile ? "pipe" : "inherit" });
-	if (track) children.set(child, os === "windows" ? undefined : startIdentity(child.pid));
+	const complete = (signal?: AbortSignal) => Promise.all([
+		child.exited,
+		child.stdout ? new Response(processOutput(child.stdout, signal)).text() : "",
+		child.stderr ? new Response(processOutput(child.stderr, signal)).text() : "",
+	]);
+	const tracked = track ? trackChild(child, complete) : undefined;
+	if (tracked) children.add(tracked.stop);
 	try {
-		const [code, stdout, stderr] = await Promise.all([child.exited, child.stdout ? new Response(child.stdout).text() : "", child.stderr ? new Response(child.stderr).text() : ""]);
+		const [code, stdout, stderr] = await (tracked?.done ?? complete());
 		if (logFile) { await mkdir(dirname(logFile), { recursive: true }); await writeFile(logFile, `${stdout}${stderr}`); }
 		if (track) cancellation.signal.throwIfAborted();
 		if (code !== 0) throw new Error(`${basename(cmd)} failed (${code})`);
 		return { stdout, stderr };
-	} finally { children.delete(child); }
+	} finally { if (tracked) children.delete(tracked.stop); }
 }
 async function attempt(cmd: string, commandArgs: string[], extra: Record<string, string | undefined> = {}) {
 	try { return await execute(cmd, commandArgs, extra, true); } catch { cancellation.signal.throwIfAborted(); return undefined; }
@@ -175,16 +172,15 @@ async function runObscuraFast(env: Record<string, string>, profile: string) {
 	const child = Bun.spawn([binary, "serve", "--host", "127.0.0.1", "--port", "0", "--allow-private-network", "--storage-dir", profile], {
 		cwd: root, detached: os !== "windows", env: cleanEnvironment({ ...env, RUST_LOG: "obscura_cdp::server=info", OBSCURA_CDP_TOKEN: undefined }), stdout: "ignore", stderr: "pipe",
 	});
-	children.set(child, os === "windows" ? undefined : startIdentity(child.pid));
 	const log = Bun.file(join(env.KUBECOVE_E2E_ARTIFACTS, "obscura-server.log")).writer();
 	const { promise: readiness, resolve: ready, reject: failed } = Promise.withResolvers<string>();
 	// Match the existing fast suite's Mocha timeout, including a server that never binds.
 	const startupTimer = setTimeout(() => failed(new Error("Obscura did not start within the fast suite timeout")), 30_000);
-	const output = (async () => {
+	const tracked = trackChild(child, async (signal) => {
 		const decoder = new TextDecoder();
 		let tail = "";
 		try {
-			for await (const chunk of child.stderr) {
+			for await (const chunk of processOutput(child.stderr, signal)) {
 				log.write(chunk);
 				tail += decoder.decode(chunk, { stream: true });
 				const lastLine = tail.lastIndexOf("\n");
@@ -196,17 +192,17 @@ async function runObscuraFast(env: Record<string, string>, profile: string) {
 			failed(new Error("Obscura exited before its CDP server was ready; see obscura-server.log"));
 		} catch (error) { failed(new Error("Could not read Obscura startup logs", { cause: error })); }
 		finally { await log.end(); }
-	})();
+		await child.exited;
+	});
+	children.add(tracked.stop);
+	void tracked.done.catch(failed);
 	try {
 		const endpoint = await readiness;
 		clearTimeout(startupTimer);
 		await execute("bun", ["scripts/obscura-smoke.ts"], { ...env, OBSCURA_CDP_URL: endpoint });
 	} finally {
 		clearTimeout(startupTimer);
-		child.kill();
-		await child.exited;
-		await output;
-		children.delete(child);
+		try { await tracked.stop("SIGTERM"); } finally { children.delete(tracked.stop); }
 	}
 }
 let toolPromise: Promise<{ kind: string; kubectl: string; helm: string }> | undefined;
@@ -424,15 +420,11 @@ async function diagnostics(record: Ownership) {
 	await writeFile(join(artifacts, "verified-assets.json"), JSON.stringify({ ...Object.fromEntries(Object.entries(chartPins).map(([name, pin]) => [name, { version: pin.version, appVersion: "appVersion" in pin ? pin.appVersion : undefined, sha256: pin.sha256 }])), gitDaemon: { version: gitDaemonPins[cpu].version, architecture: cpu, sha256: gitDaemonPins[cpu].sha256 } }, null, 2));
 }
 
-function interrupt(signal: "SIGINT" | "SIGTERM") {
+function interrupt(signal: InterruptSignal) {
 	if (interruptedBy) return;
 	interruptedBy = signal;
 	cancellation.abort(new Error(`Interrupted by ${signal}`));
-	stoppingChildren = Promise.allSettled([...children].map(async ([child, identity]) => {
-		if (os === "windows") await signalOwnedProcess(child, signal);
-		else if (!(await stopGroup(child.pid, identity))) throw new Error(`E2E process group ${child.pid} did not stop`);
-		await child.exited;
-	})).then((results) => {
+	stoppingChildren = Promise.allSettled([...children].map((stop) => stop(signal))).then((results) => {
 		for (const result of results) if (result.status === "rejected") console.error("Could not stop E2E child", result.reason);
 	});
 }
@@ -567,8 +559,8 @@ async function real() {
 		}
 	}
 }
-async function desktopSmoke() { if (profiling) await assertDesktopProfileIdle(); const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); if (profiling && (existsSync(dir) || existsSync(artifacts))) throw new Error("Profile run already exists; use a new run ID"); let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined; try { await mkdir(dataDir, { recursive: true }); fixture = memoryFixture === "normal" || memoryFixture === "large" ? await startMemoryFixture(memoryFixture, dir) : undefined; const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: fixture ? { server: fixture.url, "certificate-authority-data": fixture.authority } : { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_MEMORY_FIXTURE: memoryFixture, KUBECOVE_MEMORY_FIXTURE_ROWS: fixture ? String(fixture.rows) : undefined }; await driveWdio(await buildForWdio(artifacts), env, artifacts, true); } finally { fixture?.stop(); await rm(dir, { recursive: true, force: true }); } }
-async function dev() { try { if ((await fetch("http://127.0.0.1:1430")).ok) throw new Error("an existing KubeCove dev server is running; dev:kind will not restart it"); } catch (error) { if (error instanceof Error && error.message.startsWith("an existing")) throw error; } const record = await create("dev"); await rm(record.dataDir, { recursive: true, force: true }); await mkdir(record.dataDir, { recursive: true }); try { await execute("bun", ["run", "tauri", "dev", "--config", "src-tauri/tauri.dev-kind.conf.json"], { KUBECONFIG: record.kubeconfig, KUBECOVE_DEV_KIND: "1", KUBECOVE_DATA_DIR: record.dataDir }); } finally { await rm(record.dataDir, { recursive: true, force: true }); current = undefined; } }
+async function desktopSmoke() { if (profiling) await assertDesktopProfileIdle(); const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); if (profiling && (existsSync(dir) || existsSync(artifacts))) throw new Error("Profile run already exists; use a new run ID"); let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined; try { await mkdir(dataDir, { recursive: true }); fixture = memoryFixture === "normal" || memoryFixture === "large" ? await startMemoryFixture(memoryFixture, dir) : undefined; const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: fixture ? { server: fixture.url, "certificate-authority-data": fixture.authority } : { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_MEMORY_FIXTURE: memoryFixture, KUBECOVE_MEMORY_FIXTURE_ROWS: fixture ? String(fixture.rows) : undefined }; await driveWdio(await buildForWdio(artifacts), env, artifacts, true); } finally { await stoppingChildren; fixture?.stop(); await rm(dir, { recursive: true, force: true }); } }
+async function dev() { try { if ((await fetch("http://127.0.0.1:1430")).ok) throw new Error("an existing KubeCove dev server is running; dev:kind will not restart it"); } catch (error) { if (error instanceof Error && error.message.startsWith("an existing")) throw error; } const record = await create("dev"); await rm(record.dataDir, { recursive: true, force: true }); await mkdir(record.dataDir, { recursive: true }); try { await execute("bun", ["run", "tauri", "dev", "--config", "src-tauri/tauri.dev-kind.conf.json"], { KUBECONFIG: record.kubeconfig, KUBECOVE_DEV_KIND: "1", KUBECOVE_DATA_DIR: record.dataDir }); } finally { await stoppingChildren; await rm(record.dataDir, { recursive: true, force: true }); current = undefined; } }
 
 const onInterrupt = () => interrupt("SIGINT");
 const onTerminate = () => interrupt("SIGTERM");
