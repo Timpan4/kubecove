@@ -1192,9 +1192,11 @@ test("parity builds each GPUI binary once and runs shards from the matching arti
   const shardArtifact = /name: (parity-coverage-shard-)\$\{\{/.exec(map)?.[1];
   assert.ok(shardArtifact && merge.includes(`pattern: ${shardArtifact}*`), "merge downloads the shard maps the suite uploads");
   assert.match(map, /\$\{\{ inputs\.shard \}\}-of-\$\{\{ inputs\.shards \}\}/);
+  assert.match(map, /-attempt-\$\{\{ github\.run_attempt \}\}/);
   assert.ok(merge.includes(`run: bun e2e/parity/coverage-map.ts merge ${mapPath} shard-maps/*/*/coverage-map.json`));
   const uploaded = merge.slice(merge.indexOf("- name: Upload coverage map"));
   assert.ok(uploaded.includes(`path: ${mapPath}`) && uploaded.includes("name: parity-coverage-map\n"));
+  assert.match(uploaded, /^ {10}overwrite: true$/m);
 });
 
 test("parity shares one immutable timing snapshot across shard families and reruns", () => {

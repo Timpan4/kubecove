@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { type Contract, loadContract, validateReports } from "./contract";
 import { count, object, string } from "./contract-values";
 import { selectedContract } from "./selected-contract";
+import { newestAttempts } from "./shard-attempts";
 
 export type Driver = "web" | "gpui";
 type Report = { driver: Driver; scenarios: unknown[] };
@@ -74,21 +75,6 @@ export function mergeReports(contract: Contract, values: unknown[]): Report[] {
 	}
 	validateReports(contract, merged);
 	return merged;
-}
-
-/**
- * A shard uploads its artifact as `<name>-attempt-<n>`. "Re-run failed jobs" keeps the passed
- * shards' artifacts from the earlier attempt and adds new ones for the shards it ran again, so
- * the newest attempt of each shard is its result, whether it passed or failed.
- */
-export function newestAttempts(names: string[]): string[] {
-	const newest = new Map<string, { name: string; attempt: number }>();
-	for (const name of names) {
-		const match = /^(.*)-attempt-(\d+)$/.exec(name);
-		const [shard, attempt] = match ? [string(match[1]), Number(match[2])] : [name, 0];
-		if (attempt >= (newest.get(shard)?.attempt ?? 0)) newest.set(shard, { name, attempt });
-	}
-	return [...newest.values()].map(({ name }) => name);
 }
 
 /** Reads downloaded artifacts. Each run must have finished and passed its declared driver. */

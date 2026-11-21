@@ -4,6 +4,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { count, object, string, strings } from "./contract-values";
+import { newestAttempts } from "./shard-attempts";
 
 /** Inclusive 1-based line range. */
 export type Range = [number, number];
@@ -235,9 +236,12 @@ export async function writeRunMap(artifacts: string, out: string, passedByBoth: 
 	return map;
 }
 
-/** Merges shard maps recorded at one commit into one map. */
+/** Merges the latest map per shard, all recorded at one commit, into one map. */
 export async function mergeMaps(out: string, inputs: string[]): Promise<CoverageMap> {
-	const maps = await Promise.all(inputs.map(readMap));
+	// Artifact downloads put coverage-map.json under <artifact>/<parity-run>/.
+	const artifact = (path: string) => dirname(dirname(path));
+	const selected = new Set(newestAttempts(inputs.map(artifact)));
+	const maps = await Promise.all(inputs.filter((path) => selected.has(artifact(path))).map(readMap));
 	const commits = new Set(maps.map((map) => map.commit));
 	if (commits.size !== 1) throw new Error(`Shard maps come from different commits: ${[...commits].join(", ")}`);
 	const records = new Map<string, ScenarioCoverage>();

@@ -385,3 +385,4 @@ jobs:
           name: parity-coverage-map
           path: e2e/artifacts/parity-coverage-map.json
           if-no-files-found: error
+          overwrite: true

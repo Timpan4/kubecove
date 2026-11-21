@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Contract } from "./contract";
-import { collectReports, inspectDriverResults, mergeReports, newestAttempts } from "./merge-reports";
+import { collectReports, inspectDriverResults, mergeReports } from "./merge-reports";
+import { newestAttempts } from "./shard-attempts";
 
 // Failure modes are recorded in the implementation report before these tests:
 // missing report, duplicate scenario, one-driver-only scenario, invalid or failed result.
