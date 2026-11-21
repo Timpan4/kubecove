@@ -40,8 +40,13 @@ async function spawnGroup(command: string[], env: Record<string, string | undefi
 async function buildParity(workspace: string, env: Record<string, string | undefined>, artifacts: string, signal: AbortSignal, expected?: ParityBuild): Promise<string> {
 	console.log("Checking the GPUI parity executable with Cargo.");
 	const buildArgs: string[] = [];
+	const targetingHost = expected && expected.target === rustcHost(expected.rustcVersion);
+	const configuredTarget = env.CARGO_BUILD_TARGET;
+	if (targetingHost && configuredTarget !== undefined && configuredTarget !== expected.target && configuredTarget !== "host-tuple") {
+		throw new Error(`CARGO_BUILD_TARGET conflicts with the GPUI parity export target ${expected.target}`);
+	}
 	// An explicit host target changes rustc's arguments and misses the host-native object cache.
-	if (expected && expected.target !== rustcHost(expected.rustcVersion)) buildArgs.push("--target", expected.target);
+	if (expected && !targetingHost) buildArgs.push("--target", expected.target);
 	if (expected && expected.profile !== "test") buildArgs.push("--profile", expected.profile);
 	const build = await spawnGroup(
 		["cargo", "test", "--manifest-path", join(workspace, "Cargo.toml"), "--test", "parity", "--no-run", "--message-format=json-render-diagnostics", ...buildArgs],
@@ -50,19 +55,33 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 	);
 	await writeFile(join(artifacts, "gpui-build.log"), build.output);
 	if (build.code !== 0) throw new Error(`GPUI parity build exited ${build.code}`);
+	let executable: string | undefined;
 	for (const line of build.output.split("\n")) {
 		if (!line.startsWith("{")) continue;
 		// SAFETY: cargo writes one JSON object per line under --message-format=json. Every field read here is optional in cargo's schema, and each read is a comparison.
 		const message = JSON.parse(line) as { reason?: string; executable?: string | null; target?: { name?: string }; features?: string[]; fresh?: boolean };
 		if (message.reason !== "compiler-artifact" || message.target?.name !== "parity" || !message.executable) continue;
 		if (expected && JSON.stringify(message.features?.toSorted()) !== JSON.stringify(expected.features)) throw new Error("Cargo built the parity executable with unexpected features");
+		if (expected) {
+			// Cargo uses a target subdirectory when build.target is configured, including arrays
+			// that can emit more than one executable. Check every parity artifact before export.
+			const profile = expected.profile === "test" || expected.profile === "dev" ? "debug" : expected.profile === "bench" ? "release" : expected.profile;
+			const targetDir = resolve(env.CARGO_TARGET_DIR ?? join(workspace, "target"));
+			const artifactDir = dirname(dirname(resolve(message.executable)));
+			if (artifactDir !== join(targetDir, expected.target, profile) && !(targetingHost && artifactDir === join(targetDir, profile))) {
+				throw new Error(`Cargo parity artifact path does not match export target ${expected.target}; check build.target in Cargo configuration`);
+			}
+		}
+		if (executable) continue;
 		if (message.fresh) console.log("Reusing the GPUI parity executable. Cargo found its inputs unchanged.");
 		else {
 			const reason = parityRebuildReason(build.output);
 			console.log(reason ? `GPUI parity executable rebuilt: ${reason}` : "GPUI parity executable rebuilt. See gpui-build.log for Cargo diagnostics.");
 		}
-		return message.executable;
+		if (!expected) return message.executable;
+		executable = message.executable;
 	}
+	if (executable) return executable;
 	throw new Error("cargo did not report the parity test executable");
 }
 
