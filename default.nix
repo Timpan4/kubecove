@@ -28,6 +28,7 @@ if pkgs == null || bun2nix == null then
           "result"
           "target"
         ]
+        && path != toString ./src-tauri/gpui/build
         && builtins.match "\\.nix-.*\\.log" name == null;
     };
     compat = import flakeCompatSrc {
@@ -41,9 +42,7 @@ else
     frontend = pkgs.callPackage ./nix/frontend.nix {
       inherit bun2nix;
     };
-    kubecove = pkgs.callPackage ./nix/kubecove.nix {
-      inherit frontend;
-    };
+    kubecove = pkgs.callPackage ./nix/kubecove.nix { };
     web-frontend = pkgs.callPackage ./nix/frontend.nix {
       inherit bun2nix;
       runtime = "web";

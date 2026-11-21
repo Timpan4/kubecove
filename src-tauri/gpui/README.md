@@ -42,7 +42,7 @@ disconnect returns to local access.
 
 Update checks read `latest-gpui.json` beside the desktop feed on the same release.
 Install downloads this platform's build, checks its signature and signed version
-against the key in `tauri.conf.json`, and replaces the AppImage or app bundle, or
+against the key in `updater.json`, and replaces the AppImage or app bundle, or
 saves the Windows installer and runs it on relaunch. See
 [ADR 0034](../../docs/decisions/0034-gpui-release-bundles-and-updates.md).
 Settings rows the native host cannot back stay visible, disabled, with the reason.

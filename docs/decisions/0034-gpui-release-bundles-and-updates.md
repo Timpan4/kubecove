@@ -12,7 +12,7 @@ The native client could check for a newer release but not install one. The relea
 
 ### What a release publishes
 
-The release workflow (`.github/workflows/gpui-release.yml`, called from `release.yml`) builds the native client on Linux x64, macOS and Windows x64 and bundles it with cargo-packager 0.11.8, a build-time tool that the binary does not link. Each release gets these assets beside the Tauri ones:
+The release workflow (`.github/workflows/gpui-release.yml`, called from `release.yml`) builds the native client on Linux x64, macOS and Windows x64 and bundles it with cargo-packager 0.11.8, a build-time tool that the binary does not link. Each release includes these native assets:
 
 | Platform | Asset | How the client installs it |
 | --- | --- | --- |
@@ -22,9 +22,11 @@ The release workflow (`.github/workflows/gpui-release.yml`, called from `release
 
 On Linux and Windows the updater asset is also the first-install download. On macOS the release also ships `kubecove-gpui_<version>_aarch64.dmg`, built by cargo-packager from the same bundle. It is outside the updater feed and has no `.sig`, as the Tauri DMG has none.
 
+The Linux release ships an AppImage. Debian and RPM installers are available only from the legacy Tauri build.
+
 The native client has no Intel macOS build; the owner dropped it after 0.14.1, which shipped a universal bundle. An Intel Mac running 0.14.1 finds no `darwin-x86_64` entry and reports that the newer release has no build for its platform.
 
-One Linux job signs all three assets, so the updater key reaches one runner. Each asset gets a `.sig` file made with `tauri signer sign --app-version <version>` and the existing updater key (`TAURI_SIGNING_PRIVATE_KEY`). `latest-gpui.json` lists the assets in the Tauri updater's static format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`. The Tauri feed `latest.json` is unchanged, so neither client can be offered the other's artifact by its own feed.
+One Linux job signs all three assets, so the updater key reaches one runner. The signing job decodes the existing base64-wrapped minisign key (`TAURI_SIGNING_PRIVATE_KEY`) and passes its optional password to standalone `minisign` on stdin. Each `.sig` contains the base64-encoded minisign signature text. Its trusted comment binds the timestamp, file name and version as tab-separated fields. `latest-gpui.json` lists the assets in the Tauri updater's static format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`. The Tauri feed `latest.json` is unchanged, so neither client can be offered the other's artifact by its own feed.
 
 The product is named KubeCove GPUI with the bundle identifier `com.timpan.kubecove.gpui`, so it installs beside the Tauri app. It keeps reading settings from the `com.timpan.kubecove` config directory (ADR 0030). The GPUI crate version follows the app version, because the client compares its own version with the manifest's.
 
@@ -32,13 +34,13 @@ A manual run of `release.yml` with the `gpui-dry-run` input builds, bundles, sig
 
 ### Trust
 
-The client trusts one thing: the public key in `src-tauri/tauri.conf.json`, compiled into the binary. The manifest and the download are untrusted. Until the download has ended and passed these checks, its bytes go only to a staged file that is never executed, renamed or unpacked, and every failure removes that file:
+The client trusts one thing: the public key in `src-tauri/gpui/updater.json`, compiled into the binary. The manifest and the download are untrusted. Until the download has ended and passed these checks, its bytes go only to a staged file that is never executed, renamed or unpacked, and every failure removes that file:
 
-1. The downloaded bytes must carry a valid signature from that key. Unhashed legacy signatures are refused, because the Tauri signer always prehashes.
+1. The downloaded bytes must carry a valid signature from that key. Unhashed legacy signatures are refused, because the signing job uses prehashed minisign signatures.
 2. The signature's trusted comment must hold `version:<version>` equal to the version the manifest announced. The trusted comment is covered by the signature. Without this check a tampered manifest could pair a new version number with an older signed build. The Tauri plugin calls the same rule `requireSignedVersion`; the native client always applies it, since it has no older unsigned-version releases to stay compatible with.
 3. The trusted comment's `file:` field, which the signer sets to the signed file's name, must start with `kubecove-gpui_`. Both clients are signed with one key and both sign their version, so without this check a tampered manifest could point the native client at the Tauri artifact of the same version.
 
-The manifest URL is derived from the Tauri endpoint in the same config, so the two clients share one release location and one key, and neither value is kept twice.
+`src-tauri/gpui/updater.json` also supplies the compiled `latest-gpui.json` URL. The release verifier reads its public key from the same file.
 
 ### Install and relaunch
 
@@ -74,5 +76,5 @@ The update check and the download fail when the server sends nothing for 30 seco
 
 - Native tests (`src-tauri/gpui/tests/native/updates.rs`) list the failure modes first and cover manifest reading, the signature, signed-version and signed-file-name checks with signatures made by the Tauri signer, a download from a local server through to the replaced AppImage, a download that stalls, and the bundle and installer paths. Library tests in `src-tauri/gpui/src/backend/updates/install.rs` inject a failure at the second bundle move and at the move back. The macOS and Windows file operations run on Linux in those tests; only the platform's own launch command is not exercised.
 - Shared scenarios `settings-updates.*` cover the install, progress, relaunch and failure states in both clients with scripted results.
-- The release dry run proves that each platform builds, bundles and signs, and that each signature verifies against the public key and names the version.
+- The signing job generates a disposable key and verifies newly signed artifacts before using the release key. The release dry run proves that each platform builds, bundles and signs, and that each signature verifies against the public key and names the version.
 - Not covered by any automated check: installing a real update on macOS and Windows, and the relaunch on all three platforms.

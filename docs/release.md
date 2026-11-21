@@ -45,9 +45,9 @@ GitHub puts pull-request workflows created by `GITHUB_TOKEN` into an approval-re
 
 If signature verification fails after commit creation, the branch may already contain that commit. Preparation preserves the branch and stops. Reruns check every commit introduced since the checked-out `main` and reject unverified history before appending. Verify the rejected signature or prepare a new signed release branch before rerunning.
 
-Trusted release PRs skip frontend, Rust, and CodSpeed checks. The exemption requires the same-repository `release/app-v*` branch and `release` label. The Nix build does not run on pull requests. After merge or on manual dispatch, it builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds still run every automated release gate below before publishing.
+Release PRs use the same change-based frontend, Rust, and CodSpeed checks as other PRs. The Nix build does not run on pull requests. After merge or on manual dispatch, it builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds run the release gates for each product described below.
 
-After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The workflow builds the desktop installers, server archives and container images, verifies the required assets and updater coverage, then publishes the release.
+After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The registry job publishes the container images after metadata, frontend checks and server packaging pass. The GitHub release publishes once the GPUI feed, native installers, server archives and registry job pass. While the Tauri config exists, a separate build uploads its installers to the same release and verifies its own feed.
 
 A manual dispatch of the release workflow only reruns an existing `app-v*` tag and preserves the release's visibility.
 
@@ -63,7 +63,7 @@ bun run release:dry-run
 
 In-app updates run only in release-workflow builds. Local development and ad hoc builds use the `dev` channel and do not check GitHub.
 
-Updater artifacts require the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. Its password is optional. The public key is committed in `src-tauri/tauri.conf.json`. Installer packages may remain unsigned beta builds, but updater artifacts and `latest.json` must be signed.
+Updater artifacts require the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. Its password is optional. Each client compiles its own copy of the public key. Both feeds carry minisign signatures for the updater artifacts.
 
 Release notes mirror the matching [CHANGELOG.md](../CHANGELOG.md) section.
 
@@ -77,7 +77,7 @@ The release also ships the native GPUI client (`src-tauri/gpui`) as `KubeCove GP
 | macOS Apple silicon | `kubecove-gpui_<version>_aarch64.dmg` to install, and `kubecove-gpui_<version>_aarch64.app.tar.gz`, with `KubeCove GPUI.app` at the archive root, for the updater. There is no Intel macOS build. |
 | Windows x64 | `kubecove-gpui_<version>_x64-setup.exe`, a per-user NSIS installer |
 
-The DMG is the first-install download. Like the Tauri DMG, it is not in the updater feed and gets no `.sig`. One Linux job signs each updater asset with `tauri signer sign --app-version <version>` and the same `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/tauri.conf.json` and checks that its trusted comment names `version:<version>`. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The publish job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
+The DMG is the first-install download. Like the Tauri DMG, it is not in the updater feed and gets no `.sig`. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The publish job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
 
 The NSIS installer accepts `/P` for a passive install, `/R` to start the app after a silent or passive install, and `/NS` to skip shortcuts. In passive mode it closes a running `kubecove-gpui.exe` without asking.
 
@@ -93,7 +93,7 @@ Every other release job skips a dry run, so nothing reads or writes a release or
 
 ## Automated Release Gates
 
-Release tags run type checks, unit tests, Rust tests and checks, deterministic fast E2E, and real E2E across the supported Kubernetes matrix before installers build. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. The workflow verifies installer assets, updater signatures, `latest.json`, and updater platform coverage before publishing. Nix users run the tagged source flake; releases do not attach a separate Nix archive.
+Release tags run the frontend checks and server packaging before publication. Legacy Tauri installers also require the desktop Rust checks and the Kubernetes E2E matrix. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. Nix users run the GPUI client from the tagged source flake; releases do not attach a separate Nix archive.
 
 Support window and matrix changes follow [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Real E2E uses [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 

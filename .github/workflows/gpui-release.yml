@@ -134,7 +134,7 @@ jobs:
           mkdir -p "$out" gpui-updater
           cargo packager --manifest-path src-tauri/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
             --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
-          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          version="$(node -p 'require("./package.json").version')"
           case "$FORMAT" in
             appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" gpui-updater/ ;;
             nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" gpui-updater/ ;;
@@ -178,17 +178,13 @@ jobs:
         with:
           bun-version: "1.4.4"
 
-      - name: Cache Bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+      - name: Install minisign
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
 
-      # Provides the lockfile-pinned Tauri CLI for `tauri signer sign`.
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+      - name: Test minisign and manifest verification with a disposable key
+        run: node scripts/check-gpui-signing.mjs
 
       - name: Download GPUI bundles
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -203,13 +199,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
-          for file in gpui-release/*; do
-            # The DMG is a manual download, not an updater asset, so it gets no `.sig`, as Tauri's DMG.
-            [[ "$file" == *.dmg ]] && continue
-            # The version in the trusted comment is what the GPUI client checks against the manifest.
-            bun x tauri signer sign --app-version "$version" "$file"
-          done
+          version="$(node -p 'require("./package.json").version')"
+          bash scripts/sign-gpui-release.sh gpui-release "$version"
 
       - name: Verify signatures and write latest-gpui.json
         env:
@@ -219,7 +210,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
           set -euo pipefail
-          bun scripts/release-body.ts > "$NOTES_FILE"
+          bun scripts/release-body.ts "$(node -p 'require("./package.json").version')" > "$NOTES_FILE"
           node scripts/gpui-release-manifest.mjs
           ls -l gpui-release
 

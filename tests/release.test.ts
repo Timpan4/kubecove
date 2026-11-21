@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -25,9 +25,6 @@ describe("release version helpers", () => {
 
 		expect(releaseWorkflow).toContain(
 			'expected-updater-assets: "KubeCove___VERSION___universal.app.tar.gz KubeCove___VERSION___universal.app.tar.gz.sig"',
-		);
-		expect(releaseWorkflow).toContain(
-			"`KubeCove_$" + "{version}_universal.app.tar.gz`",
 		);
 		expect(tagWorkflow).toContain("actions: write");
 		expect(tagWorkflow).toContain("types: [closed]");
@@ -212,14 +209,14 @@ example = "9.9.9"
 		).not.toThrow();
 	});
 
-	test("updates all local version files for a bump", () => {
+	test.each([true, false])("updates all release workspaces (Tauri config present: %p)", (withTauri) => {
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
 		mkdirSync(join(root, "src-tauri"), { recursive: true });
 		writeFileSync(
 			join(root, "package.json"),
 			'{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n',
 		);
-		writeFileSync(
+		if (withTauri) writeFileSync(
 			join(root, "src-tauri", "tauri.conf.json"),
 			'{\n  "productName": "KubeCove",\n  "version": "0.1.0"\n}\n',
 		);
@@ -239,10 +236,14 @@ example = "9.9.9"
 		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[workspace]\nresolver = "2"\n\n[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 
-		updateWorkspaceReleaseVersions("0.2.0", root);
+		const updated = updateWorkspaceReleaseVersions("0.2.0", root);
+		expect(updated).toEqual(readWorkspaceReleaseVersions(root));
+		assertMatchingReleaseVersions(updated);
 
 		expect(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version).toBe("0.2.0");
-		expect(JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")).version).toBe("0.2.0");
+		const tauriPath = join(root, "src-tauri", "tauri.conf.json");
+		expect(existsSync(tauriPath)).toBe(withTauri);
+		if (withTauri) expect(JSON.parse(readFileSync(tauriPath, "utf8")).version).toBe("0.2.0");
 		expect(readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
 		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain('version = "0.2.0"');
 		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');

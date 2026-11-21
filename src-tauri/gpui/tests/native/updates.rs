@@ -203,10 +203,12 @@ fn a_release_is_offered_only_when_newer_and_built_for_this_platform() {
 }
 
 #[test]
-fn the_feed_is_the_gpui_manifest_beside_the_desktop_feed() {
+fn the_release_feed_points_to_the_published_gpui_manifest() {
     let feed = Feed::release().unwrap();
-    assert!(feed.endpoint.starts_with("https://"));
-    assert!(feed.endpoint.ends_with("/latest-gpui.json"));
+    assert_eq!(
+        feed.endpoint,
+        "https://github.com/Timpan4/kubecove/releases/latest/download/latest-gpui.json"
+    );
     assert!(!feed.public_key.is_empty());
 }
 
