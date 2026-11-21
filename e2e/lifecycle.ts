@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { arch, platform } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
@@ -154,15 +154,16 @@ async function obscuraBinary() {
 	if (os !== "windows") await chmod(binary, 0o755);
 	return binary;
 }
-async function runObscuraFast(artifacts: string) {
+async function runObscuraFast(env: Record<string, string>, profile: string) {
 	const binary = await obscuraBinary();
-	const child = Bun.spawn([binary, "serve", "--port", "9223", "--allow-private-network"], { cwd: root, env: cleanEnvironment({ RUST_LOG: "obscura_cdp::server=info", OBSCURA_CDP_TOKEN: undefined }), stdout: "ignore", stderr: "pipe" });
+	if (shuttingDown) throw new Error("Interrupted before Obscura started");
+	// Port 0 asks the OS to reserve an unused loopback port for this browser.
+	const child = Bun.spawn([binary, "serve", "--host", "127.0.0.1", "--port", "0", "--allow-private-network", "--storage-dir", profile], {
+		cwd: root, env: cleanEnvironment({ ...env, RUST_LOG: "obscura_cdp::server=info", OBSCURA_CDP_TOKEN: undefined }), stdout: "ignore", stderr: "pipe",
+	});
 	children.add(child);
-	const log = Bun.file(join(artifacts, "obscura-server.log")).writer();
-	const listening = "Obscura CDP server listening on ws://127.0.0.1:9223";
-	let ready!: () => void;
-	let failed!: (error: Error) => void;
-	const readiness = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; });
+	const log = Bun.file(join(env.KUBECOVE_E2E_ARTIFACTS, "obscura-server.log")).writer();
+	const { promise: readiness, resolve: ready, reject: failed } = Promise.withResolvers<string>();
 	// Match the existing fast suite's Mocha timeout, including a server that never binds.
 	const startupTimer = setTimeout(() => failed(new Error("Obscura did not start within the fast suite timeout")), 30_000);
 	const output = (async () => {
@@ -172,17 +173,21 @@ async function runObscuraFast(artifacts: string) {
 			for await (const chunk of child.stderr) {
 				log.write(chunk);
 				tail += decoder.decode(chunk, { stream: true });
-				if (tail.includes(listening)) ready();
-				tail = tail.slice(-listening.length);
+				const lastLine = tail.lastIndexOf("\n");
+				if (lastLine === -1) continue;
+				const endpoint = /Obscura CDP server listening on (ws:\/\/127\.0\.0\.1:[1-9]\d*)\b/.exec(tail.slice(0, lastLine))?.[1];
+				if (endpoint) ready(`${endpoint}/devtools/browser`);
+				tail = tail.slice(lastLine + 1);
 			}
 			failed(new Error("Obscura exited before its CDP server was ready; see obscura-server.log"));
 		} catch (error) { failed(new Error("Could not read Obscura startup logs", { cause: error })); }
 		finally { await log.end(); }
 	})();
 	try {
-		await readiness;
+		const endpoint = await readiness;
 		clearTimeout(startupTimer);
-		await execute("bun", ["scripts/obscura-smoke.ts"], { OBSCURA_CDP_URL: "ws://127.0.0.1:9223/devtools/browser", E2E_FAST_URL: "http://127.0.0.1:1420", KUBECOVE_E2E_ARTIFACTS: artifacts });
+		if (shuttingDown) throw new Error("Interrupted before the Obscura smoke test");
+		await execute("bun", ["scripts/obscura-smoke.ts"], { ...env, OBSCURA_CDP_URL: endpoint });
 	} finally {
 		clearTimeout(startupTimer);
 		child.kill();
@@ -424,33 +429,66 @@ async function fast() {
 	await mkdir(dirname(artifacts), { recursive: true });
 	await mkdir(artifacts);
 	await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: false, status: "started" }, null, 2));
-	let frontend: ViteDevServer | undefined;
 	try {
 		if (!(await Array.fromAsync(new Bun.Glob("e2e/specs/fast/**/*.e2e.ts").scan({ cwd: root }))).length) throw new Error("fast suite has no specs");
-		const { createServer } = await import("vite");
-		frontend = await createServer({ root, server: { host: "127.0.0.1", port: 1420, strictPort: true } });
-		// Wait for Vite itself; HTTP polling can connect to its temporary port-check socket.
-		await frontend.listen();
-		await runObscuraFast(artifacts);
-		const wdioReport = join(artifacts, "wdio-report.txt");
-		try {
-			await runWdio("e2e/wdio.fast.conf.ts", { E2E_FAST_URL: "http://127.0.0.1:1420", KUBECOVE_E2E_ARTIFACTS: artifacts }, wdioReport);
-		} catch (error) {
-			const report = await readFile(wdioReport, "utf8").catch(() => null);
-			if (report) console.error(report);
-			throw error;
-		}
+		const { createServer, loadConfigFromFile } = await import("vite");
+		await mkdir(stateDir, { recursive: true });
+		const runDriver = async (name: "obscura" | "wdio") => {
+			const temporary = await mkdtemp(join(stateDir, `fast-${name}-`));
+			const output = join(artifacts, name);
+			const profile = join(temporary, "profile");
+			let frontend: ViteDevServer | undefined;
+			try {
+				await mkdir(output);
+				await mkdir(profile);
+				const loaded = await loadConfigFromFile({ command: "serve", mode: "development" }, undefined, root);
+				if (!loaded) throw new Error("Fast E2E needs the KubeCove Vite configuration");
+				const config = loaded.config;
+				frontend = await createServer({
+					...config, configFile: false, root, cacheDir: join(temporary, "vite"),
+					// The optional dev recorder writes to a shared artifacts directory.
+					plugins: config.plugins?.filter((plugin) => !(plugin && "name" in plugin && plugin.name === "kubecove-dev-interactions")),
+					define: { ...config.define, "process.env.KUBECOVE_PUBLIC_DEV_INTERACTIONS": JSON.stringify("") },
+					server: { ...config.server, host: "127.0.0.1", port: 0, strictPort: true, hmr: false, ws: false },
+				});
+				await frontend.listen();
+				const address = frontend.httpServer?.address();
+				if (!address || typeof address === "string") throw new Error("Vite did not bind a TCP port");
+				if (shuttingDown) throw new Error("Interrupted before the fast suite started");
+				const env = { E2E_FAST_URL: `http://127.0.0.1:${address.port}`, KUBECOVE_E2E_ARTIFACTS: output, TMPDIR: temporary, TMP: temporary, TEMP: temporary };
+				if (name === "obscura") await runObscuraFast(env, profile);
+				else {
+					const report = join(output, "wdio-report.txt");
+					await runWdio("e2e/wdio.fast.conf.ts", { ...env, E2E_FAST_CHROME_PROFILES: profile }, report).catch(async (error) => {
+						const log = await readFile(report, "utf8").catch(() => null);
+						if (log) console.error(log);
+						throw error;
+					});
+				}
+			} finally {
+				try { await frontend?.close(); }
+				finally { await rm(temporary, { recursive: true, force: true }); }
+			}
+		};
+		const results = await Promise.allSettled([runDriver("obscura"), runDriver("wdio")]);
+		rejectFailedPhases(results, ["Obscura", "WDIO"]);
 		await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: true }, null, 2));
 	} catch (error) {
 		await writeFile(join(artifacts, "result.json"), JSON.stringify({ passed: false, error: String(error) }, null, 2));
 		throw error;
-	} finally { await frontend?.close(); }
+	}
 }
-async function buildAndDrive(env: Record<string, string | undefined>, smoke = false) {
-	const artifacts = env.KUBECOVE_E2E_ARTIFACTS;
-	if (!artifacts) throw new Error("E2E artifacts directory is required");
+function rejectFailedPhases(results: readonly PromiseSettledResult<unknown>[], names: readonly string[]): void {
+	const failures = results.flatMap((result, index) => result.status === "rejected" ? [new Error(`${names[index]}: ${String(result.reason)}`, { cause: result.reason })] : []);
+	if (failures.length) throw new AggregateError(failures, failures.map(({ message }) => message).join("\n"));
+}
+async function buildForWdio(artifacts: string) {
 	const targetDir = profiling ? join(stateDir, "profile-target") : join(root, "src-tauri", "target");
-	const buildEnv = profiling ? { ...env, CARGO_TARGET_DIR: targetDir, KUBECOVE_PUBLIC_PROFILE: "true", KUBECOVE_PROFILE: "1" } : env;
+	const buildEnv: Record<string, string | undefined> = {
+		KUBECOVE_E2E: "1", KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_KUBECONFIG: undefined,
+		KUBECOVE_DATA_DIR: undefined, KUBECOVE_E2E_CLUSTER: undefined, KUBECOVE_E2E_KUBECTL: undefined,
+	};
+	if (profiling) Object.assign(buildEnv, { CARGO_TARGET_DIR: targetDir, KUBECOVE_PUBLIC_PROFILE: "true", KUBECOVE_PROFILE: "1" });
 	if (!profiling && os !== "windows") {
 		await execute("bun", ["--bun", "vite", "build"], { KUBECOVE_PUBLIC_RUNTIME: "web" });
 		await execute("cargo", ["build", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml"]);
@@ -465,10 +503,35 @@ async function buildAndDrive(env: Record<string, string | undefined>, smoke = fa
 		buildEnv.KUBECOVE_PROFILE_SHA = /^[a-f0-9]{40,64}$/.test(sha) ? sha : undefined;
 		buildEnv.KUBECOVE_PROFILE_DIRTY = (await execute("git", ["status", "--porcelain"], {}, true)).stdout.trim() ? "true" : "false";
 	}
-	await runWdio("e2e/wdio.real.conf.ts", { ...buildEnv, KUBECOVE_E2E_BINARY: join(targetDir, profiling ? "release" : "debug", `kubecove${suffix}`), KUBECOVE_E2E_SMOKE: smoke ? "1" : undefined }, profiling ? undefined : join(artifacts, "wdio.log"));
+	return { ...buildEnv, KUBECOVE_E2E_BINARY: join(targetDir, profiling ? "release" : "debug", `kubecove${suffix}`) };
 }
-async function real() { if (keep && process.env.CI) throw new Error("--keep is forbidden in CI"); const record = await create("run"); const artifacts = join(root, "e2e", "artifacts", record.runId); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: record.kubeconfig, KUBECOVE_DATA_DIR: record.dataDir, KUBECOVE_E2E_CLUSTER: record.cluster, KUBECOVE_E2E_KUBECTL: (await tools()).kubectl, KUBECOVE_E2E_ARTIFACTS: artifacts }; try { await buildAndDrive(env); } finally { await diagnostics(record).catch((failure) => console.error("diagnostics failed", failure)); if (!keep) await removeCluster(record); current = undefined; } }
-async function desktopSmoke() { if (profiling) await assertDesktopProfileIdle(); const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); if (profiling && (existsSync(dir) || existsSync(artifacts))) throw new Error("Profile run already exists; use a new run ID"); let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined; try { await mkdir(dataDir, { recursive: true }); fixture = memoryFixture === "normal" || memoryFixture === "large" ? await startMemoryFixture(memoryFixture, dir) : undefined; const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: fixture ? { server: fixture.url, "certificate-authority-data": fixture.authority } : { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_MEMORY_FIXTURE: memoryFixture, KUBECOVE_MEMORY_FIXTURE_ROWS: fixture ? String(fixture.rows) : undefined }; await buildAndDrive(env, true); } finally { fixture?.stop(); await rm(dir, { recursive: true, force: true }); } }
+async function driveWdio(build: Awaited<ReturnType<typeof buildForWdio>>, env: Record<string, string | undefined>, artifacts: string, smoke = false) {
+	if (shuttingDown) throw new Error("Interrupted before WDIO started");
+	await runWdio("e2e/wdio.real.conf.ts", { ...build, ...env, KUBECOVE_E2E_SMOKE: smoke ? "1" : undefined }, profiling ? undefined : join(artifacts, "wdio.log"));
+}
+async function real() {
+	if (keep && process.env.CI) throw new Error("--keep is forbidden in CI");
+	const artifacts = join(root, "e2e", "artifacts", runId);
+	// Both branches must finish before WDIO starts or teardown can touch the lab.
+	const [lab, build] = await Promise.allSettled([create("run"), buildForWdio(artifacts)]);
+	try {
+		rejectFailedPhases([lab, build], ["Kind lab", "Application build"]);
+		if (lab.status !== "fulfilled" || build.status !== "fulfilled") throw new Error("Real E2E prerequisites did not finish");
+		const record = lab.value;
+		const env = {
+			KUBECOVE_KUBECONFIG: record.kubeconfig, KUBECOVE_DATA_DIR: record.dataDir,
+			KUBECOVE_E2E_CLUSTER: record.cluster, KUBECOVE_E2E_KUBECTL: (await tools()).kubectl,
+		};
+		await driveWdio(build.value, env, artifacts);
+	} finally {
+		if (lab.status === "fulfilled") {
+			await diagnostics(lab.value).catch((failure) => console.error("diagnostics failed", failure));
+			if (!keep) await removeCluster(lab.value);
+			current = undefined;
+		}
+	}
+}
+async function desktopSmoke() { if (profiling) await assertDesktopProfileIdle(); const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); if (profiling && (existsSync(dir) || existsSync(artifacts))) throw new Error("Profile run already exists; use a new run ID"); let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined; try { await mkdir(dataDir, { recursive: true }); fixture = memoryFixture === "normal" || memoryFixture === "large" ? await startMemoryFixture(memoryFixture, dir) : undefined; const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: fixture ? { server: fixture.url, "certificate-authority-data": fixture.authority } : { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_MEMORY_FIXTURE: memoryFixture, KUBECOVE_MEMORY_FIXTURE_ROWS: fixture ? String(fixture.rows) : undefined }; await driveWdio(await buildForWdio(artifacts), env, artifacts, true); } finally { fixture?.stop(); await rm(dir, { recursive: true, force: true }); } }
 async function dev() { try { if ((await fetch("http://127.0.0.1:1430")).ok) throw new Error("an existing KubeCove dev server is running; dev:kind will not restart it"); } catch (error) { if (error instanceof Error && error.message.startsWith("an existing")) throw error; } const record = await create("dev"); await rm(record.dataDir, { recursive: true, force: true }); await mkdir(record.dataDir, { recursive: true }); try { await execute("bun", ["run", "tauri", "dev", "--config", "src-tauri/tauri.dev-kind.conf.json"], { KUBECONFIG: record.kubeconfig, KUBECOVE_DEV_KIND: "1", KUBECOVE_DATA_DIR: record.dataDir }); } finally { await rm(record.dataDir, { recursive: true, force: true }); current = undefined; } }
 
 if (action === "fast") await fast();
