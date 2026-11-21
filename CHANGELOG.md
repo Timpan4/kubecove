@@ -3,6 +3,47 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.15.0 - 2026-11-21
+### Added
+
+- Add in-app GPUI upgrade bridge (#800).
+- Fold sidebar branches open and closed by height (#735).
+
+### Improved
+
+- Shrink server and GPUI release binaries and speed up runtime hot paths (#797).
+- Keep GPUI CI test phases in one smaller object bundle.
+- Keep submit-only callbacks out of speed draw counts.
+
+### Fixed
+
+- Parity artifact validation and E2E failure reporting.
+- Keep late commands with recorded interactions (#786).
+- Parity resource lookup with an open detail (#789).
+- Key Forward controls by session ID.
+- GPUI Clear with origin mode and a blank pending wrap (#785).
+- Carry Helm targets through leave guards (#763).
+- Web interaction command attribution (#762).
+- Keep URL path case in new Argo CD profile ids (#760).
+- Keep the saved cursor across reflow and clear the exec terminal like xterm (#754).
+- Keep late commands and inert-input paints in interaction recordings (#758).
+- Keep the toolbar and kind picker above the no-scope state (#757).
+- Pair fixture rows with their version and drop abandoned held reads (#751).
+- Keep an unsaved YAML draft when relaunching after an update (#759).
+- Bound speed reads and control requests, and count draws inside actions (#756).
+- Size the launcher Retry and error panel buttons like the web (#755).
+- Give scaled replicas unique identities and lock out parity during frame commands (#752).
+- Read the whole YAML document in web YAML checks (#749).
+- Fail remote connection tests when an expected request never arrives (#753).
+- Collapse a kind group across every Helm release when not grouped by GitOps (#747).
+- Keep the verifier usable with no selection and on Roles (#742).
+- Reload the settings file after a failed load (#740).
+- Record compiled GPUI Rust files so their changes run the full suite (#748).
+- Name recorded targets by call site, not element id (#745).
+- Announce the hidden-selection hint on the focused row (#741).
+- Key live-session popover ids by session id (#743).
+- Number an empty hunk range from the line before it (#739).
+
 ## 0.14.6 - 2026-11-17
 ### Added
 
