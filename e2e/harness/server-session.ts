@@ -83,7 +83,10 @@ export function serverClient(origin: string, token: string) {
 		const frames = frameReader<Frame>(socket, "Channel");
 		const binary = frameReader<Uint8Array>(socket, "Tunnel");
 		socket.on("message", (data, isBinary) => {
-			const bytes = data instanceof ArrayBuffer ? Buffer.from(data) : Array.isArray(data) ? Buffer.concat(data) : data;
+			let bytes: Buffer;
+			if (data instanceof ArrayBuffer) bytes = Buffer.from(data);
+			else if (Array.isArray(data)) bytes = Buffer.concat(data);
+			else bytes = data;
 			if (isBinary) {
 				binary.push(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 				return;

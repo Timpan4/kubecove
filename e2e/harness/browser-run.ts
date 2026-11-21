@@ -26,10 +26,12 @@ export function createWdioRunner(root: string, spec: string | undefined, execute
 
 export async function buildBrowserServer(root: string, artifacts: string, profiling: boolean, execute: Execute) {
 	const target = join(root, "src-tauri/server/target");
-	await execute("bun", ["--bun", "vite", "build"], { KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profiling) });
+	await execute("bun", ["--bun", "vite", "build"], {
+		KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profiling),
+		KUBECOVE_FRONTEND_BUNDLE_REPORT: profiling ? join(artifacts, "frontend-bundle.json") : process.env.KUBECOVE_FRONTEND_BUNDLE_REPORT,
+	});
 	await execute("cargo", ["build", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml", "--target-dir", target, ...(profiling ? ["--release"] : [])], {}, false, join(artifacts, "build.log"));
 	await mkdir(artifacts, { recursive: true });
-	if (profiling) await writeFile(join(artifacts, "frontend-bundle.json"), await readFile(join(root, ".e2e", "reports", "frontend-bundle.json")));
 	return serverBinary(profiling, target);
 }
 
@@ -39,26 +41,30 @@ export async function runServerWdio(binary: string, dataDir: string, kubeconfig:
 	});
 }
 
-export async function runDevBrowser(binary: string, dataDir: string, kubeconfig: string, signal: AbortSignal) {
-	await withBrowserServer(binary, dataDir, kubeconfig, signal, async (env, exited) => {
-		const { chromium } = await import("playwright-core");
-		const { chromeExecutable } = await import("../../.agents/skills/verify-kubecove/scripts/processes");
-		const chrome = await chromium.launchPersistentContext(env.E2E_FAST_CHROME_PROFILES, { executablePath: chromeExecutable(), headless: true });
-		try {
-			const page = chrome.pages()[0] ?? await chrome.newPage();
-			const token = (await readFile(env.KUBECOVE_SERVER_TOKEN_FILE, "utf8")).trim();
-			await page.goto(`${env.KUBECOVE_SERVER_ORIGIN}/api/v1/auth`);
-			await page.evaluate(async (token) => {
-				const response = await fetch("/api/v1/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
-				if (!response.ok) throw new Error("Dev session login failed");
-				sessionStorage.setItem("kubecove-browser-resume", (await response.json()).resumeToken);
-			}, token);
-			await page.goto(env.KUBECOVE_SERVER_ORIGIN);
-			await page.locator("#workspace-name").waitFor();
-			console.log(`Kind workspace ready at ${env.KUBECOVE_SERVER_ORIGIN}. Login token file: ${env.KUBECOVE_SERVER_TOKEN_FILE}`);
-			if (await exited !== 0 && !signal.aborted) throw new Error("Kind server stopped unexpectedly");
-		} finally { await chrome.close(); }
-	});
+export async function runDevBrowser(binary: string, sessionsDir: string, kubeconfig: string, signal: AbortSignal) {
+	await mkdir(sessionsDir, { recursive: true });
+	const dataDir = await mkdtemp(join(sessionsDir, "session-"));
+	try {
+		await withBrowserServer(binary, dataDir, kubeconfig, signal, async (env, exited) => {
+			const { chromium } = await import("playwright-core");
+			const { chromeExecutable } = await import("../../.agents/skills/verify-kubecove/scripts/processes");
+			const chrome = await chromium.launchPersistentContext(env.E2E_FAST_CHROME_PROFILES, { executablePath: chromeExecutable(), headless: true });
+			try {
+				const page = chrome.pages()[0] ?? await chrome.newPage();
+				const token = (await readFile(env.KUBECOVE_SERVER_TOKEN_FILE, "utf8")).trim();
+				await page.goto(`${env.KUBECOVE_SERVER_ORIGIN}/api/v1/auth`);
+				await page.evaluate(async (token) => {
+					const response = await fetch("/api/v1/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+					if (!response.ok) throw new Error("Dev session login failed");
+					sessionStorage.setItem("kubecove-browser-resume", (await response.json()).resumeToken);
+				}, token);
+				await page.goto(env.KUBECOVE_SERVER_ORIGIN);
+				await page.locator("#workspace-name").waitFor();
+				console.log(`Kind workspace ready at ${env.KUBECOVE_SERVER_ORIGIN}. Login token file: ${env.KUBECOVE_SERVER_TOKEN_FILE}`);
+				if (await exited !== 0 && !signal.aborted) throw new Error("Kind server stopped unexpectedly");
+			} finally { await chrome.close(); }
+		});
+	} finally { await rm(dataDir, { recursive: true, force: true }); }
 }
 
 export async function writeSmokeConfig(directory: string, cluster: string, fixture?: Awaited<ReturnType<typeof startMemoryFixture>>) {

@@ -260,12 +260,13 @@ try {
 		], {
 			cwd: root,
 			env: { ...process.env, KUBECOVE_REMOTE_TEST_URL: origin, KUBECOVE_REMOTE_TEST_TOKEN: token },
-			stdout: "pipe", stderr: "inherit",
+			stdout: "pipe", stderr: "pipe",
 		});
-		const [status, output] = await Promise.all([probe.exited, new Response(probe.stdout).text()]);
-		const diagnostic = safeDiagnosticText(output).replaceAll(token, "[redacted]").replace(/([?#&](?:resumeToken|token)=)[^\s&"']+/g, "$1[redacted]");
+		const [status, stdout, stderr] = await Promise.all([probe.exited, new Response(probe.stdout).text(), new Response(probe.stderr).text()]);
+		const redact = (output: string) => safeDiagnosticText(output).replaceAll(token, "[redacted]").replace(/([?#&](?:resumeToken|token)=)[^\s&"']+/g, "$1[redacted]");
+		const diagnostic = [redact(stdout), redact(stderr)].filter(Boolean).join("\n");
 		assert.equal(status, 0, `Production native Rust tunnel probe must pass.\n${diagnostic}`);
-		assert.ok(output.includes("native_tunnel_delivers_bytes_and_closes_after_upload_eof ... ok"), "The tunnel probe must actually run.");
+		assert.ok(stdout.includes("native_tunnel_delivers_bytes_and_closes_after_upload_eof ... ok"), "The tunnel probe must actually run.");
 		checks.push("Native Rust desktop client preserves bytes and closes on upload EOF, pod EOF and pod errors without a GUI");
 	}
 } catch (error) {

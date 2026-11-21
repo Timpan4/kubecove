@@ -384,30 +384,23 @@ test("publishing can read build artifacts and waits for all release gates", () =
   assert.ok(signed.steps.indexOf(step(signed, "Verify signatures and write latest-gpui.json")) < signed.steps.indexOf(artifact));
 });
 
-// These conditions use the same boolean operators as JavaScript. Convert job IDs to property lookups.
-function evaluatesJobIf(name, needs, dryRun = false, cancelled = false) {
-  const expression = job(name).if.match(/^\$\{\{\s*([\s\S]+?)\s*\}\}$/)[1]
-    .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
-    .replaceAll("inputs.gpui-dry-run", 'inputs["gpui-dry-run"]');
-  return runInNewContext(expression, {
-    needs,
-    inputs: { "gpui-dry-run": dryRun },
-    always: () => true,
-    cancelled: () => cancelled,
-  });
+function jobGuards(name) {
+  const expression = job(name).if?.match(/^\$\{\{\s*([\s\S]+?)\s*\}\}$/);
+  assert.ok(expression, `${name} must define a job-level condition`);
+  return expression[1].split(/\s+&&\s+/).map((guard) => guard.trim()).toSorted();
 }
 
+const publishingJobs = ["stage-release-assets", "publish-containers", "publish"];
+
 test("releases publish only after GPUI staging and container publication succeed", () => {
-  for (const name of ["stage-release-assets", "publish-containers", "publish"]) {
+  assert.equal(job("publish-containers").needs, "stage-release-assets");
+  for (const name of publishingJobs) {
     const dependencies = [job(name).needs].flat();
-    const success = Object.fromEntries(dependencies.map((dependency) => [dependency, { result: "success" }]));
-    assert.equal(evaluatesJobIf(name, success), true, name);
-    assert.equal(evaluatesJobIf(name, success, false, true), false, `${name}: workflow cancelled`);
-    for (const dependency of dependencies) {
-      for (const result of ["failure", "skipped", "cancelled"]) {
-        assert.equal(evaluatesJobIf(name, { ...success, [dependency]: { result } }), false, `${name}: ${dependency} ${result}`);
-      }
-    }
+    assert.deepEqual(jobGuards(name), [
+      "!cancelled()",
+      "!inputs.gpui-dry-run",
+      ...dependencies.map((dependency) => `needs.${dependency}.result == 'success'`),
+    ].toSorted(), name);
   }
 });
 
@@ -440,10 +433,11 @@ test("release drafts wait for backend checks and every Kubernetes compatibility 
 test("a GPUI dry run starts only the GPUI job and can never write a release", () => {
   const input = workflow.on.workflow_dispatch.inputs["gpui-dry-run"];
   assert.deepEqual({ type: input.type, default: input.default }, { type: "boolean", default: false });
-  const others = Object.keys(workflow.jobs).filter((name) => name !== "gpui");
+  const others = Object.keys(workflow.jobs).filter((name) => name !== "gpui" && !publishingJobs.includes(name));
   assert.ok(others.length > 0);
   for (const name of others) {
-    assert.equal(evaluatesJobIf(name, {}, true), false, `${name} must skip a dry run`);
+    const guards = name === "verify" ? ["!inputs.gpui-dry-run", "always()"] : ["!inputs.gpui-dry-run"];
+    assert.deepEqual(jobGuards(name), guards, `${name} must skip a dry run`);
   }
   const gpui = job("gpui");
   assert.equal(gpui.uses, "./.github/workflows/gpui-release.yml");
@@ -501,7 +495,15 @@ test("GPUI packages check out and bundle kubeconform for each installer target",
   }
   assert.match(packaging.run, /--appimage-extract usr\/bin\/kubeconform/);
   assert.match(packaging.run, /Contents\/MacOS\/kubeconform" -v/);
-  assert.match(packaging.run, /7z l -ba[^\n]+kubeconform/);
+  const windowsInstall = step(bundle, "Verify the installed Windows kubeconform sidecar");
+  assert.ok(bundle.steps.indexOf(packaging) < bundle.steps.indexOf(windowsInstall));
+  assert.ok(bundle.steps.indexOf(windowsInstall) < bundle.steps.indexOf(step(bundle, "Upload unsigned GPUI bundle")));
+  assert.equal(windowsInstall.if, "runner.os == 'Windows'");
+  assert.equal(windowsInstall.shell, "pwsh");
+  assert.match(windowsInstall.run, /Start-Process .* -ArgumentList "\/S \/D=\$installDir" -Wait -PassThru/);
+  assert.match(windowsInstall.run, /Test-Path -LiteralPath \(Join-Path \$installDir "kubecove-gpui\.exe"\) -PathType Leaf/);
+  assert.match(windowsInstall.run, /\$sidecar = Join-Path \$installDir "kubeconform\.exe"/);
+  assert.match(windowsInstall.run, /& \$sidecar -v/);
 });
 
 // Produced by `tauri signer sign --app-version 1.2.3` with a throwaway key generated for these

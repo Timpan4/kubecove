@@ -1,7 +1,7 @@
 use super::scratch::Scratch;
 use kubecove_gpui::backend::{Backend, NativeBackend};
 use kubecove_lib::commands::REQUEST_READ_TIMEOUT;
-use std::{path::Path, process::Command};
+use std::{path::Path, process::Command, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::test]
@@ -53,11 +53,7 @@ fn context_reads_and_cancellation_finish_while_exec_credentials_are_pending() {
         .enable_all()
         .build()
         .unwrap();
-    runtime.block_on(async {
-        tokio::time::timeout(REQUEST_READ_TIMEOUT, exercise_pending_read())
-            .await
-            .expect("context listing and cancellation must finish before the credential deadline");
-    });
+    runtime.block_on(exercise_pending_read());
 }
 
 async fn exercise_pending_read() {
@@ -78,21 +74,33 @@ async fn exercise_pending_read() {
     std::fs::write(path, serde_json::to_vec(&config).unwrap()).unwrap();
     let backend = NativeBackend::new().unwrap();
     let pending = tokio::spawn(backend.namespaces("fixture".into(), None));
-    let (mut plugin, _) = gate.accept().await.unwrap();
-    let contexts = backend.contexts(None).await.unwrap();
+    let (mut plugin, contexts) = tokio::time::timeout(REQUEST_READ_TIMEOUT, async {
+        let (plugin, _) = gate.accept().await.unwrap();
+        (plugin, backend.contexts(None).await.unwrap())
+    })
+    .await
+    .expect("context listing must finish while credentials are pending");
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].name, "fixture");
     assert!(!pending.is_finished());
-    assert_eq!(namespace_loads(&backend).await, 1);
-    pending.abort();
-    assert!(pending.await.unwrap_err().is_cancelled());
-    // The credential process is owned by a blocking client build. The backend
-    // read must release its cache load while that build is still blocked.
-    while namespace_loads(&backend).await != 0 {
-        tokio::task::yield_now().await;
-    }
-    plugin.write_all(b"continue").await.unwrap();
-    assert_eq!(plugin.read(&mut [0]).await.unwrap(), 0);
+    // Use the local wait budget from the native MCP tests and the remote session poll cadence.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        assert_eq!(namespace_loads(&backend).await, 1);
+        pending.abort();
+        assert!(pending.await.unwrap_err().is_cancelled());
+        // The cache load must end while the credential process is still blocked.
+        while namespace_loads(&backend).await != 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("namespace cache still loading after cancellation");
+    tokio::time::timeout(REQUEST_READ_TIMEOUT, async {
+        plugin.write_all(b"continue").await.unwrap();
+        assert_eq!(plugin.read(&mut [0]).await.unwrap(), 0);
+    })
+    .await
+    .expect("credential plugin did not exit after being released");
 }
 
 async fn namespace_loads(backend: &NativeBackend) -> usize {

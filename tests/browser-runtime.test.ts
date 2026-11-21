@@ -7,6 +7,7 @@ import {
 	startBrowserOidcSignIn,
 	takeOverBrowserSession,
 } from "../src/lib/browser-runtime";
+import { clearDiagnostics, getDiagnosticsSnapshot, setDiagnosticsEnabled } from "../src/lib/diagnostics";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
@@ -105,6 +106,9 @@ describe("browser OIDC session lifecycle", () => {
 				return jsonResponse({ resumeToken: "current-owner-resume", serverVersion: "test", credentialStore: "memory", sessionGraceSeconds: 30 });
 			}
 			if (url.endsWith("/api/v1/oidc/logout")) return jsonResponse({});
+			if (url.endsWith("/api/v1/invoke/list_namespaces")) {
+				return jsonResponse({ kind: "validation", message: "Invalid token=diagnostics-fixture-secret" }, 400);
+			}
 			throw new Error(`Unexpected request to ${url}`);
 		});
 
@@ -116,6 +120,19 @@ describe("browser OIDC session lifecycle", () => {
 		expect(sessionRequests).toBe(2);
 		expect(getBrowserSessionState()).toMatchObject({ status: "ready", authenticationMode: "oidc" });
 		expect(storage.get("kubecove-browser-resume")).toBe("current-owner-resume");
+
+		setDiagnosticsEnabled(true);
+		try {
+			await expect(createBrowserTauriClient().invoke("list_namespaces")).rejects.toMatchObject({
+				kind: "validation",
+				message: "Invalid token=[REDACTED]",
+			});
+			const event = getDiagnosticsSnapshot().frontendEvents.findLast(({ event }) => event === "tauri.invoke.error");
+			expect(event?.data.error).toBe("Invalid token=[REDACTED]");
+		} finally {
+			setDiagnosticsEnabled(false);
+			clearDiagnostics();
+		}
 
 		let channelMessages = 0;
 		const createChannel = createBrowserTauriClient().createChannel;

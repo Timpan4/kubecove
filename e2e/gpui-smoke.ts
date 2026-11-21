@@ -18,6 +18,7 @@ function required(name: string) {
 const artifacts = required("KUBECOVE_E2E_ARTIFACTS");
 const checks: string[] = [];
 const failures: string[] = [];
+const skipped: { check: string; reason: string }[] = [];
 const cancelled = new AbortController();
 const stop = () => cancelled.abort();
 process.once("SIGINT", stop);
@@ -61,8 +62,8 @@ try {
 	}, readinessTimeoutMs, { retryErrors: false });
 	if (!endpoint) throw new Error("Missing GPUI endpoint");
 	const ui = await gpuiDriver(endpoint, data, cancelled.signal);
-	startupComplete = true;
 	await ui.id(`workspace-group:${cluster}-admin`);
+	startupComplete = true;
 	await ui.id(`workspace-group:${cluster}-restricted`);
 	await ui.click("Open settings");
 	await ui.clickId("settings-section:AI agents");
@@ -77,11 +78,12 @@ try {
 	await ui.click("MCP server");
 	await waitFor("disabled product listener to close", (signal) => listenerRefused(port, AbortSignal.any([cancelled.signal, signal])), readinessTimeoutMs, { retryErrors: false });
 	checks.push("Enabled product MCP in Settings, read both contexts and closed listener");
-	// Token-mode server startup requires a private token file, which is unsupported on Windows.
-	if (process.platform !== "win32") {
+	if (process.platform === "win32") {
+		skipped.push({ check: "Remote server sign-in and Pod log stream", reason: "Windows does not support the private token file required by token-mode server startup." });
+	} else {
 		const remoteDir = join(data, "remote-fixture");
 		await mkdir(remoteDir, { mode: 0o700 });
-		fixture = await startMemoryFixture("normal", remoteDir, { remoteDesktop: true });
+		fixture = await startMemoryFixture("normal", remoteDir, { remoteDesktop: true, signal: cancelled.signal });
 		const config = await writeSmokeConfig(remoteDir, "remote", fixture);
 		server = startServer(required("KUBECOVE_SERVER_BINARY"), remoteDir, { KUBECONFIG: config, HOME: remoteDir, USERPROFILE: remoteDir,
 			XDG_CONFIG_HOME: remoteDir, KUBECOVE_E2E: undefined, DBUS_SESSION_BUS_ADDRESS: undefined }, cancelled.signal);
@@ -101,7 +103,7 @@ try {
 		process.off("SIGTERM", stop);
 		const stderr = startupComplete ? undefined : safeDiagnosticText(startupStderr?.text() ?? "").trim();
 		if (stderr) failures.push(`GPUI startup stderr:\n${stderr}`);
-		await writeFile(join(artifacts, "gpui-smoke.json"), JSON.stringify({ passed: failures.length === 0, checks, failures }, null, 2));
+		await writeFile(join(artifacts, "gpui-smoke.json"), JSON.stringify({ passed: failures.length === 0, checks, skipped, failures }, null, 2));
 	}
 }
 if (failures.length) throw new Error(failures.join("\n"));

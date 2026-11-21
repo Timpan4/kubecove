@@ -535,7 +535,7 @@ async function desktopSmoke() {
 		await mkdir(artifacts);
 		const dataDir = join(dir, "data");
 		await mkdir(dataDir, { mode: 0o700 });
-		if (memoryFixture === "normal" || memoryFixture === "large") fixture = await startMemoryFixture(memoryFixture, dir);
+		if (memoryFixture === "normal" || memoryFixture === "large") fixture = await startMemoryFixture(memoryFixture, dir, { signal: cancellation.signal });
 		const kubeconfig = await writeSmokeConfig(dir, cluster, fixture);
 		const env = { KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_DATA_DIR: dataDir };
 		if (profiling) {
@@ -568,10 +568,9 @@ async function dev() {
 	try {
 		const record = await create("dev");
 		const binary = await buildBrowserServer(root, join(root, "e2e/artifacts", `dev-${runId}`), profiling, execute);
-		await runDevBrowser(binary, record.dataDir, record.kubeconfig, cancellation.signal);
+		await runDevBrowser(binary, join(stateDir, "dev-sessions"), record.kubeconfig, cancellation.signal);
 	} finally {
 		await stoppingChildren;
-		if (current?.kind === "dev") await rm(current.dataDir, { recursive: true, force: true });
 		current = undefined;
 	}
 }

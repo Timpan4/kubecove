@@ -1,15 +1,32 @@
 #[cfg(feature = "web-ui")]
 fn main() -> std::io::Result<()> {
-    use std::{fmt::Write as _, fs, io::Write, path::PathBuf};
+    use std::{fmt::Write as _, fs, io, io::Write, path::PathBuf};
 
+    const ASSET_DIR_ENV: &str = "KUBECOVE_WEB_ASSET_DIR";
     let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo manifest"));
-    println!("cargo:rerun-if-env-changed=KUBECOVE_WEB_ASSET_DIR");
-    let root = std::env::var_os("KUBECOVE_WEB_ASSET_DIR")
+    println!("cargo:rerun-if-env-changed={ASSET_DIR_ENV}");
+    let root = std::env::var_os(ASSET_DIR_ENV)
         .map_or_else(|| manifest.join("../../dist"), |path| manifest.join(path));
     println!("cargo:rerun-if-changed={}", root.display());
-    let root = root.canonicalize()?;
+    let root = root.canonicalize().map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!(
+                "Could not resolve frontend asset directory {} ({ASSET_DIR_ENV}): {error}",
+                root.display()
+            ),
+        )
+    })?;
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo output"));
-    let folder = root.to_str().expect("UTF-8 frontend asset path");
+    let folder = root.to_str().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Frontend asset directory {} ({ASSET_DIR_ENV}) must be a UTF-8 path for rust-embed",
+                root.display()
+            ),
+        )
+    })?;
     fs::write(
         output.join("embedded_assets.rs"),
         format!("#[derive(Embed)]\n#[folder = {folder:?}]\npub(super) struct Assets;\n"),

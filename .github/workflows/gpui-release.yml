@@ -152,7 +152,6 @@ jobs:
               ;;
             nsis)
               installer="kubecove-gpui_${version}_x64-setup.exe"
-              7z l -ba "$out/$installer" | grep -Ei '(^|[[:space:]/\\])kubeconform\.exe[[:space:]]*$'
               cp "$out/$installer" gpui-updater/
               ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
@@ -164,6 +163,24 @@ jobs:
               ;;
           esac
           ls -l gpui-updater
+
+      - name: Verify the installed Windows kubeconform sidecar
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = node -p 'require("./package.json").version'
+          $installer = Resolve-Path "gpui-updater/kubecove-gpui_${version}_x64-setup.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP ("kubecove-gpui-" + [guid]::NewGuid())
+          # NSIS requires /D last and unquoted, even when the path contains spaces.
+          $install = Start-Process -FilePath $installer.Path -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "GPUI installer exited with code $($install.ExitCode)" }
+          $sidecar = Join-Path $installDir "kubeconform.exe"
+          if (!(Test-Path -LiteralPath (Join-Path $installDir "kubecove-gpui.exe") -PathType Leaf) -or
+              !(Test-Path -LiteralPath $sidecar -PathType Leaf)) {
+            throw "GPUI and kubeconform must both be installed in $installDir"
+          }
+          & $sidecar -v
+          if ($LASTEXITCODE -ne 0) { throw "Installed kubeconform exited with code $LASTEXITCODE" }
 
       - name: Upload unsigned GPUI bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

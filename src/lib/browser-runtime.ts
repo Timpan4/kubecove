@@ -496,13 +496,13 @@ export function createBrowserTauriClient(): TauriClient {
 					},
 					body: JSON.stringify(args ?? {}),
 				});
-				const result: unknown = await response.json().catch(() => null);
+				const result: JsonValue = await response.json().catch(() => null);
 				if (!response.ok) {
 					if (response.status === 401 && sessionSnapshot.authenticationMode === "oidc") {
 						returnToOidcSignIn();
 					}
 					const error = new Error(parseSessionErrorMessage(result, `Command ${command} failed (${response.status}).`));
-					if (result && Object(result) === result) Object.assign(error, result);
+					if (isJsonObject(result) && isString(result.kind)) Object.assign(error, { kind: result.kind });
 					throw error;
 				}
 				succeeded = true;
