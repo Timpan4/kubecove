@@ -118,8 +118,10 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer: ${process.env[name]}`);
 		return value;
 	};
-	const jobs = positive("PARITY_JOBS", Math.max(1, Math.floor(availableParallelism() / 2)));
+	const halfCpus = Math.max(1, Math.floor(availableParallelism() / 2));
+	const jobs = positive("PARITY_JOBS", halfCpus);
 	const webJobs = executed.includes("web") ? positive("PARITY_WEB_JOBS", jobs) : jobs;
+	const coverageJobs = coverage ? positive("PARITY_GPUI_COVERAGE_JOBS", halfCpus) : jobs;
 	// The GPUI test processes render the same browser-mock responses the web driver reads.
 	// Only they read the fixture, so the web driver and the GPUI build start during the export.
 	const fixture = join(artifacts, "fixture.json");
@@ -129,7 +131,7 @@ async function runDrivers(selection: Record<Driver, Contract>, executed: Driver[
 		const exportExit = exported.exited.then((code) => { mark("fixture"); return code; });
 		const cancelExport = () => exported.kill();
 		controller.signal.addEventListener("abort", cancelExport, { once: true });
-		runs.push(runGpui(selection.gpui, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage)
+		runs.push(runGpui(selection.gpui, artifacts, { path: fixture, exit: exportExit }, jobs, controller.signal, mark, coverage, coverageJobs)
 			.then((problem) => { if (problem) driverFailed("gpui", problem); }, (error) => driverFailed("gpui", `GPUI driver: ${String(error)}`))
 			.finally(async () => { await exportExit; controller.signal.removeEventListener("abort", cancelExport); }));
 	}

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { startIdentity, stopGroup } from "../../.agents/skills/verify-kubecove/scripts/processes";
 import type { Contract } from "./contract";
 import { object, string } from "./contract-values";
-import { compiledFiles, COVERAGE_RUSTFLAGS, recordGpuiCoverage } from "./gpui-coverage-map";
+import { compiledFiles, COVERAGE_RUSTFLAGS, exitProfileDirectory, gpuiProfilePattern, recordGpuiCoverage } from "./gpui-coverage-map";
 import { type ParityBuild, parityBuild, verifyPrebuiltParity, writePrebuiltParity } from "./gpui-prebuilt";
 import { driverReportRows } from "./merge-reports";
 import { driverSelectionFile } from "./rerun";
@@ -63,26 +63,25 @@ async function buildParity(workspace: string, env: Record<string, string | undef
 	throw new Error("cargo did not report the parity test executable");
 }
 
-function gpuiEnvironment(workspace: string, coverage: boolean) {
+function gpuiEnvironment(workspace: string, artifacts: string, coverage: boolean) {
 	// Keep path-crate artifacts specific to this worktree, including environment overrides.
 	const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !["ARGV0", "KUBECONFIG", "KUBECOVE_PARITY_SCENARIO_PREFIX"].includes(name)));
 	const targetDir = process.env.CARGO_TARGET_DIR ?? join(workspace, "target");
-	const strayProfiles = resolve(targetDir, "coverage", "profraw");
 	const buildDir = coverage ? resolve(targetDir, "coverage") : process.env.CARGO_BUILD_BUILD_DIR ?? join(workspace, "build");
 	Object.assign(env, { CARGO_TARGET_DIR: coverage ? buildDir : targetDir, CARGO_BUILD_BUILD_DIR: buildDir });
 	if (coverage) {
 		const encoded = env.CARGO_ENCODED_RUSTFLAGS;
 		if (encoded !== undefined) env.CARGO_ENCODED_RUSTFLAGS = [encoded, ...COVERAGE_RUSTFLAGS.split(" ")].filter(Boolean).join("\x1f");
 		else env.RUSTFLAGS = `${env.RUSTFLAGS ?? env.CARGO_BUILD_RUSTFLAGS ?? ""} ${COVERAGE_RUSTFLAGS}`.trim();
-		env.LLVM_PROFILE_FILE = join(strayProfiles, "%p-%m.profraw");
+		env.LLVM_PROFILE_FILE = gpuiProfilePattern(artifacts, "build");
 	}
-	return { env, buildDir, strayProfiles };
+	return { env, buildDir };
 }
 
 export async function exportGpuiParity(directory: string, coverage: boolean, signal: AbortSignal): Promise<string> {
 	const expected = await parityBuild(coverage);
 	const workspace = join(expected.sourceRoot, "src-tauri", "gpui");
-	const { env, buildDir, strayProfiles } = gpuiEnvironment(workspace, coverage);
+	const { env, buildDir } = gpuiEnvironment(workspace, directory, coverage);
 	const inheritedFlags = env.CARGO_ENCODED_RUSTFLAGS ?? env.RUSTFLAGS ?? env.CARGO_BUILD_RUSTFLAGS ?? "";
 	if (!coverage && /instrument-coverage|kubecove_coverage/.test(inheritedFlags)) {
 		throw new Error("Uninstrumented GPUI parity cannot inherit coverage flags");
@@ -97,7 +96,7 @@ export async function exportGpuiParity(directory: string, coverage: boolean, sig
 		signal.throwIfAborted();
 		return await writePrebuiltParity(directory, executable, expected, compiled);
 	} finally {
-		if (coverage) await rm(strayProfiles, { recursive: true, force: true });
+		if (coverage) await rm(exitProfileDirectory(directory), { recursive: true, force: true });
 	}
 }
 
@@ -107,26 +106,44 @@ export async function exportGpuiParity(directory: string, coverage: boolean, sig
  * this merges them into `gpui.json` in contract order. With `coverage`, the binary is
  * instrumented in its own `<target>/coverage` directory, so it never evicts the normal build.
  */
-export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void, coverage = false): Promise<string | undefined> {
+export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void, coverage = false, coverageJobs = shards): Promise<string | undefined> {
 	const workspace = resolve("src-tauri/gpui");
 	// The runner records this driver's selection separately from the web driver's.
 	const ids = join(artifacts, driverSelectionFile.gpui);
-	const { env, buildDir, strayProfiles } = gpuiEnvironment(workspace, coverage);
+	const { env, buildDir } = gpuiEnvironment(workspace, artifacts, coverage);
 	Object.assign(env, { KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_PARITY_FIXTURE: fixture.path, KUBECOVE_PARITY_SCENARIO_IDS: ids });
 	const manifest = process.env.KUBECOVE_PARITY_MANIFEST;
 	const prebuilt = manifest ? await verifyPrebuiltParity(manifest, await parityBuild(coverage)) : undefined;
-	const executable = prebuilt?.executable ?? await buildParity(workspace, env, artifacts, signal);
-	if (prebuilt) console.log(`Running verified GPUI parity executable from ${manifest}`);
-	mark(prebuilt ? "gpuiVerify" : "gpuiBuild");
-	if (await fixture.exit !== 0) throw new Error("Fixture export failed");
 	const count = Math.max(1, Math.min(shards, contract.scenarios.length));
-	// The GPUI test platform renders without a display.
-	const runs = await Promise.all(Array.from({ length: count }, async (_, index) => {
-		const run = await spawnGroup([executable, "--nocapture"], { ...env, KUBECOVE_PARITY_SHARD: `${index}/${count}` }, signal);
-		mark(`gpuiShard${index}`);
-		await writeFile(join(artifacts, `gpui-${index}.log`), run.output);
-		return run;
-	}));
+	const strayProfiles = exitProfileDirectory(artifacts);
+	const { executable, runs } = await (async () => {
+		try {
+			const executable = prebuilt?.executable ?? await buildParity(workspace, env, artifacts, signal);
+			if (prebuilt) console.log(`Running verified GPUI parity executable from ${manifest}`);
+			mark(prebuilt ? "gpuiVerify" : "gpuiBuild");
+			if (await fixture.exit !== 0) throw new Error("Fixture export failed");
+			// The test platform renders without a display. Each scenario's atomic claim owns
+			// its numbered profile. Process exit profiles live outside that directory.
+			const results = await Promise.allSettled(Array.from({ length: count }, async (_, index) => {
+				const workerEnv = {
+					...env,
+					KUBECOVE_PARITY_SHARD: `${index}/${count}`,
+					LLVM_PROFILE_FILE: coverage ? gpuiProfilePattern(artifacts, `worker-${index}`) : env.LLVM_PROFILE_FILE,
+				};
+				const run = await spawnGroup([executable, "--nocapture"], workerEnv, signal);
+				mark(`gpuiShard${index}`);
+				await writeFile(join(artifacts, `gpui-${index}.log`), run.output);
+				return run;
+			}));
+			const runs = results.map((result) => {
+				if (result.status === "rejected") throw result.reason;
+				return result.value;
+			});
+			return { executable, runs };
+		} finally {
+			if (coverage) await rm(strayProfiles, { recursive: true, force: true });
+		}
+	})();
 	await writeFile(join(artifacts, "gpui.log"), runs.map((run, index) => `== shard ${index}/${count} exited ${run.code}\n${run.output}`).join("\n"));
 	const claims = new Map(await Promise.all(contract.scenarios.map(async ({ id }, index) => {
 		const owner = await readFile(join(artifacts, "gpui-claims", String(index)), "utf8").catch(() => undefined);
@@ -182,8 +199,7 @@ export async function runGpui(contract: Contract, artifacts: string, fixture: { 
 	await writeFile(join(artifacts, "gpui.json"), JSON.stringify({ driver: "gpui", scenarios }, null, 2));
 	if (coverage) {
 		const compiled = prebuilt?.compiled ?? await compiledFiles(buildDir, workspace, resolve("."));
-		await recordGpuiCoverage(artifacts, executable, compiled, contract.scenarios.map((scenario) => scenario.id), shards, signal);
-		await rm(strayProfiles, { recursive: true, force: true });
+		await recordGpuiCoverage(artifacts, executable, compiled, contract.scenarios.map((scenario) => scenario.id), coverageJobs, signal);
 		mark("gpuiCoverage");
 	}
 	return problems.length ? problems.join("; ") : undefined;
