@@ -47,7 +47,7 @@ If signature verification fails after commit creation, the branch may already co
 
 Release PRs use the same change-based frontend, Rust, and CodSpeed checks as other PRs. The Nix build does not run on pull requests. After merge or on manual dispatch, it builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds run the release gates for each product described below.
 
-After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The registry job publishes the container images after metadata, frontend checks and server packaging pass. The GitHub release publishes once the GPUI feed, native installers, server archives and registry job pass. While the Tauri config exists, a separate build uploads its installers to the same release and verifies its own feed.
+After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The workflow uploads and verifies the signed GPUI bundles, updater feed, and server archives before pushing container tags to GHCR. While the Tauri config exists, the legacy build must also upload its installers and pass `latest.json` verification before publication. GitHub makes the draft release public after the registry push succeeds.
 
 A manual dispatch of the release workflow only reruns an existing `app-v*` tag and preserves the release's visibility.
 
@@ -77,7 +77,7 @@ The release also ships the native GPUI client (`src-tauri/gpui`) as `KubeCove GP
 | macOS Apple silicon | `kubecove-gpui_<version>_aarch64.dmg` to install, and `kubecove-gpui_<version>_aarch64.app.tar.gz`, with `KubeCove GPUI.app` at the archive root, for the updater. There is no Intel macOS build. |
 | Windows x64 | `kubecove-gpui_<version>_x64-setup.exe`, a per-user NSIS installer |
 
-The DMG is the first-install download. Like the Tauri DMG, it is not in the updater feed and gets no `.sig`. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The publish job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
+The DMG is the first-install download. Like the Tauri DMG, it is not in the updater feed and gets no `.sig`. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The `stage-release-assets` job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
 
 The NSIS installer accepts `/P` for a passive install, `/R` to start the app after a silent or passive install, and `/NS` to skip shortcuts. In passive mode it closes a running `kubecove-gpui.exe` without asking.
 

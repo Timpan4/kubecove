@@ -91,8 +91,9 @@ const ARTIFACT_PREFIX: &str = "kubecove-gpui_";
 
 impl Feed {
     pub fn release() -> Result<Self, AppError> {
-        serde_json::from_str(include_str!("../../updater.json"))
-            .map_err(|_| AppError::new("Invalid updater configuration", AppErrorKind::Validation))
+        serde_json::from_str(include_str!("../../updater.json")).map_err(|error| {
+            AppError::new("Invalid gpui/updater.json", AppErrorKind::Validation).with_source(error)
+        })
     }
 }
 

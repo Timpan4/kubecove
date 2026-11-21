@@ -3,7 +3,7 @@ name: GPUI release bundles
 # Builds the native GPUI client into updater bundles, signs them with the Tauri updater key,
 # verifies the signatures and writes `latest-gpui.json`. Called by release.yml. Everything
 # leaves as workflow artifacts; this workflow cannot write to releases, and release.yml's
-# publish job uploads the `kubecove-gpui-release` artifact to the release.
+# stage-release-assets job uploads the `kubecove-gpui-release` artifact to the release.
 on:
   workflow_call:
     inputs:

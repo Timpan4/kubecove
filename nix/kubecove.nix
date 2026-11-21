@@ -18,7 +18,11 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   src = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.difference ../src-tauri (lib.fileset.maybeMissing ../src-tauri/bin);
+    fileset = lib.fileset.difference ../src-tauri (lib.fileset.unions [
+      (lib.fileset.maybeMissing ../src-tauri/bin)
+      (lib.fileset.maybeMissing ../src-tauri/gpui/build)
+      (lib.fileset.maybeMissing ../src-tauri/gpui/target)
+    ]);
   };
 
   cargoRoot = "src-tauri/gpui";

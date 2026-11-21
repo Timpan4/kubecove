@@ -300,7 +300,7 @@ jobs:
       release-tag: ${{ github.ref_name }}
 
   # The only job a GPUI dry run starts. It gets read-only contents and uploads workflow
-  # artifacts; publish uploads them to the release. A dry run passes no tag, so the
+  # artifacts; stage-release-assets uploads them to the release. A dry run passes no tag, so the
   # manifest points at app-v<version> instead of the branch name.
   gpui:
     name: GPUI client bundles
@@ -577,57 +577,20 @@ jobs:
               ($p[.].url and $p[.].signature)))
           ' latest.json
 
-  publish-containers:
-    name: Publish container images
-    needs: verify
-    if: ${{ !inputs.gpui-dry-run }}
-    permissions:
-      actions: read
-      contents: read
-      packages: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Download container images
-        env:
-          GH_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.run_id }}
-        run: gh run download "$RUN_ID" --repo "$GH_REPO" --pattern 'kubecove-container-*' --dir run-assets
-
-      - name: Publish container images
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          GH_ACTOR: ${{ github.actor }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          registry_image="ghcr.io/${GH_REPO,,}"
-          version="${TAG_NAME#app-v}"
-          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_ACTOR" --password-stdin
-          trap 'docker logout ghcr.io' EXIT
-          for variant in full slim; do
-            suffix=""
-            if [[ "$variant" == slim ]]; then suffix="-slim"; fi
-            image="${registry_image}:${version}${suffix}"
-            for arch in amd64 arm64; do
-              docker load --input "run-assets/kubecove-container-${variant}-${arch}/kubecove-container-${variant}-${arch}.tar"
-              docker tag "kubecove:release-${variant}-${arch}" "$image-${arch}"
-              docker push "$image-${arch}"
-            done
-            # imagetools accepts per-arch pushes that are already indexes, such as BuildKit attestations.
-            docker buildx imagetools create --tag "$image" "$image-amd64" "$image-arm64"
-          done
-
-  publish:
-    name: Publish release
+  stage-release-assets:
+    name: Upload and verify release assets
     needs:
-      - prepare
       - draft
-      - publish-containers
       - gpui
-    if: ${{ !inputs.gpui-dry-run }}
+      - metadata
+      - verify-tauri
+    # Override the implicit success() check so a GPUI-only release can skip verify-tauri.
+    if: >-
+      ${{ !cancelled() && !inputs.gpui-dry-run
+          && needs.draft.result == 'success' && needs.gpui.result == 'success'
+          && needs.metadata.result == 'success'
+          && ((needs.metadata.outputs.tauri == 'true' && needs.verify-tauri.result == 'success')
+              || (needs.metadata.outputs.tauri != 'true' && needs.verify-tauri.result == 'skipped')) }}
     permissions:
       actions: read
       contents: write
@@ -713,6 +676,67 @@ jobs:
           }
           EOF
 
+  publish-containers:
+    name: Publish container images
+    needs: stage-release-assets
+    if: ${{ !cancelled() && !inputs.gpui-dry-run && needs.stage-release-assets.result == 'success' }}
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download container images
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: gh run download "$RUN_ID" --repo "$GH_REPO" --pattern 'kubecove-container-*' --dir run-assets
+
+      - name: Publish container images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GH_ACTOR: ${{ github.actor }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          registry_image="ghcr.io/${GH_REPO,,}"
+          version="${TAG_NAME#app-v}"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+          for variant in full slim; do
+            suffix=""
+            if [[ "$variant" == slim ]]; then suffix="-slim"; fi
+            image="${registry_image}:${version}${suffix}"
+            for arch in amd64 arm64; do
+              docker load --input "run-assets/kubecove-container-${variant}-${arch}/kubecove-container-${variant}-${arch}.tar"
+              docker tag "kubecove:release-${variant}-${arch}" "$image-${arch}"
+              docker push "$image-${arch}"
+            done
+            # imagetools accepts per-arch pushes that are already indexes, such as BuildKit attestations.
+            docker buildx imagetools create --tag "$image" "$image-amd64" "$image-arm64"
+          done
+
+  publish:
+    name: Publish release
+    needs:
+      - prepare
+      - metadata
+      - verify-tauri
+      - publish-containers
+    if: >-
+      ${{ !cancelled() && !inputs.gpui-dry-run
+          && needs.prepare.result == 'success' && needs.publish-containers.result == 'success'
+          && needs.metadata.result == 'success'
+          && ((needs.metadata.outputs.tauri == 'true' && needs.verify-tauri.result == 'success')
+              || (needs.metadata.outputs.tauri != 'true' && needs.verify-tauri.result == 'skipped')) }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
       - name: Publish completed release
         if: needs.prepare.outputs.release-draft == 'true'
         env:
