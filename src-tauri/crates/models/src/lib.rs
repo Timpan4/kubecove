@@ -7,6 +7,7 @@ mod discovery;
 mod error;
 mod events;
 mod flux;
+mod gpui_upgrade;
 mod health;
 mod helm;
 mod incidents;
@@ -47,6 +48,7 @@ pub use flux::{
     FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
     FluxResourceSummary,
 };
+pub use gpui_upgrade::{GpuiInstallKind, GpuiUpgradeInfo};
 pub use health::{
     HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
     HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,

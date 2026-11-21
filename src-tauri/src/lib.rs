@@ -235,6 +235,7 @@ pub fn run() {
         .manage(ArgoConnectionStore::default())
         .manage(RemoteConnectionStore::default())
         .manage(McpHost::default())
+        .manage(commands::GpuiUpgrade::default())
         .invoke_handler(ipc::invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
