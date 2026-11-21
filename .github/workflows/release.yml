@@ -614,6 +614,19 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: gh run download "$RUN_ID" --repo "$GH_REPO" --pattern 'kubecove-server-*' --pattern kubecove-gpui-release --dir run-assets
 
+      - name: Verify release is still a draft
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')"
+          if [[ "$release_draft" != "true" ]]; then
+            echo "::error::Release $TAG_NAME is already published; refusing to overwrite live release assets." >&2
+            exit 1
+          fi
+
       - name: Upload headless server release assets
         env:
           GH_REPO: ${{ github.repository }}

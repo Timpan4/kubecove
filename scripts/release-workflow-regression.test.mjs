@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { posix, win32 } from "node:path";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, posix, win32 } from "node:path";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import { parse } from "yaml";
@@ -571,8 +572,58 @@ test("final verification rejects every missing archive, checksum, installer or u
   assert.equal(final.if, "needs.prepare.outputs.release-draft == 'true'");
 });
 
-test("prepare rejects an already-published release before any upload job runs", () => {
+test("prepare and stage-release-assets reject an already-published release", () => {
   const detect = step(job("prepare"), "Detect existing release state");
-  assert.match(detect.run, /if \[\[ "\$release_draft" != "true" \]\]; then/);
-  assert.match(detect.run, /already published; refusing to overwrite live release assets/);
+  const stageCheck = step(job("stage-release-assets"), "Verify release is still a draft");
+  const stageSteps = job("stage-release-assets").steps.map((entry) => entry.name);
+  assert.ok(stageSteps.indexOf("Verify release is still a draft") < stageSteps.indexOf("Upload headless server release assets"));
+
+  const runGuard = (script, mode) => {
+    const dir = mkdtempSync(join(tmpdir(), "kubecove-release-guard-"));
+    try {
+      const ghPath = join(dir, "gh");
+      const outputPath = join(dir, "github-output.txt");
+      writeFileSync(outputPath, "");
+      writeFileSync(
+        ghPath,
+        mode === "404"
+          ? "#!/usr/bin/env bash\necho 'release not found' >&2\nexit 1\n"
+          : `#!/usr/bin/env bash\necho '${mode}'\n`,
+      );
+      chmodSync(ghPath, 0o755);
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-c", script], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH ?? ""}`,
+          GITHUB_OUTPUT: outputPath,
+          TAG_NAME: "app-v1.2.3",
+        },
+      });
+      return { status: result.status, stderr: result.stderr, output: readFileSync(outputPath, "utf8") };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  const published = runGuard(detect.run, "false");
+  assert.notEqual(published.status, 0);
+  assert.match(published.stderr, /already published; refusing to overwrite live release assets/);
+  assert.equal(published.output, "");
+
+  const draft = runGuard(detect.run, "true");
+  assert.equal(draft.status, 0);
+  assert.equal(draft.output, "release-draft=true\nrelease-exists=true\n");
+
+  const missing = runGuard(detect.run, "404");
+  assert.equal(missing.status, 0);
+  assert.equal(missing.output, "release-draft=true\nrelease-exists=false\n");
+
+  const stagePublished = runGuard(stageCheck.run, "false");
+  assert.notEqual(stagePublished.status, 0);
+  assert.match(stagePublished.stderr, /already published; refusing to overwrite live release assets/);
+
+  const stageDraft = runGuard(stageCheck.run, "true");
+  assert.equal(stageDraft.status, 0);
 });
