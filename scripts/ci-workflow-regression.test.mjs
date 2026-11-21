@@ -377,7 +377,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
     return rustCondition(expression, task, skip === undefined ? "" : String(skip), event, successful);
   };
-  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
+  const builds = ["Install Tauri Linux dependencies", "Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify server command wrappers", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     assert.equal(condition("Restore Rust task pass", task, false), true);
     for (const event of ["push", "workflow_dispatch"]) assert.equal(condition("Restore Rust task pass", task, false, event), false);
@@ -540,10 +540,16 @@ test("pass cache keys partition both hosted images and never match compiler-cach
 });
 test("each existing check remains in its selected task", () => {
   const checks = job("checks");
-  const smoke = step("Verify HTTP and WebSocket lifecycle");
-  assert.match(smoke, /background: true/);
-  assert.ok(checks.indexOf(step("Build headless server")) < checks.indexOf(smoke));
-  assert.ok(checks.indexOf(smoke) < checks.indexOf(step("Test headless server")));
+  for (const [name, command] of [
+    ["Verify server command wrappers", "bun test tests/server-command-contract.test.ts"],
+    ["Verify HTTP and WebSocket lifecycle", "bun e2e/headless-smoke.ts --browser"],
+  ]) {
+    const background = step(name);
+    assert.match(background, /background: true/);
+    assert.ok(background.includes(`run: ${command}\n`));
+    assert.ok(checks.indexOf(step("Build headless server")) < checks.indexOf(background));
+    assert.ok(checks.indexOf(background) < checks.indexOf(step("Test headless server")));
+  }
   assert.ok(checks.indexOf(step("Lint headless server")) < checks.indexOf("      - wait-all:"));
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {

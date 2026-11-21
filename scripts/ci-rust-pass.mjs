@@ -7,7 +7,7 @@ const taskSteps = {
   "gpui-clippy": ["setup-gpui-native", "setup-gpui-profile", "lint-gpui"],
   "gpui-test": ["setup-gpui-native", "setup-gpui-profile", "export-gpui-fixture", "test-gpui"],
   "server-backend": ["dependency-tree", "test-backend"],
-  server: ["api-only", "browser-build", "test-server", "lint-server", "build-server", "http-lifecycle", "headless-report"],
+  server: ["api-only", "browser-build", "test-server", "lint-server", "build-server", "server-command-contract", "http-lifecycle", "headless-report"],
 };
 const auditSteps = ["audit-coverage", "install-audit", "audit-desktop", "audit-gpui", "audit-server"];
 const path = ".ci-rust-pass/record.json";

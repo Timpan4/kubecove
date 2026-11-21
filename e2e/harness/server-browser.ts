@@ -27,7 +27,10 @@ export async function verifyServerBrowser(origin: string, token: string) {
 		await Promise.all([
 			socket.waitForEvent("framereceived", ({ payload }) => {
 				const frame = JSON.parse(String(payload));
-				return frame.type === "channel" && frame.message.type === "started" && frame.message.label === "resources";
+				return frame.type === "channel" && frame.message.type === "resourceChanged"
+					&& frame.message.action === "added" && frame.message.target.kind === "Pod"
+					&& frame.message.target.cluster === "fixture" && frame.message.target.namespace === "readable"
+					&& frame.message.target.name === "watch-only-pod";
 			}),
 			(async () => {
 				await page.getByRole("button", { name: "Create workspace", exact: true }).click();
@@ -42,14 +45,13 @@ export async function verifyServerBrowser(origin: string, token: string) {
 		await page.getByRole("textbox", { name: "Kubeconfig path on server" }).waitFor();
 		assert.equal(await page.getByRole("button", { name: "Choose files" }).count(), 0);
 		// Revoke this session from outside the page. The UI can learn about it only via the live socket.
-		const [, closed] = await Promise.all([
+		await Promise.all([
 			socket.waitForEvent("framereceived", ({ payload }) => JSON.parse(String(payload)).type === "session_moved"),
 			page.request.post(`${origin}/api/v1/session/close`, {
 				headers: { Origin: origin, "X-Kubecove-Session": session.resumeToken },
 				data: {},
-			}),
+			}).then((closed) => assert.equal(closed.status(), 200, "Revoking the browser session must succeed")),
 		]);
-		assert.equal(closed.status(), 200);
 		await page.getByText("This browser's server session closed or expired.", { exact: true }).waitFor();
 	} catch (cause) {
 		// Playwright's failure log can include input values and authenticated URLs.

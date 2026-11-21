@@ -475,15 +475,19 @@ jobs:
 
       # Use the runner's installed Chrome and the same embedded dist/ as the protocol smoke.
       # Both checks overlap the existing server tests and Clippy, including on Rust-only PRs.
+      - name: Verify server command wrappers
+        id: server-command-contract
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        background: true
+        run: bun test tests/server-command-contract.test.ts
+
       - name: Verify HTTP and WebSocket lifecycle
         id: http-lifecycle
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         background: true
         env:
           KUBECOVE_VERIFY_CHROME: /usr/bin/google-chrome
-        run: |
-          bun test tests/server-command-contract.test.ts
-          bun e2e/headless-smoke.ts --browser
+        run: bun e2e/headless-smoke.ts --browser
 
       - name: Test headless server
         id: test-server

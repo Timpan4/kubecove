@@ -1,5 +1,5 @@
 import { sharedActions, type WebActions } from "./web-action";
-import type { Locator } from "playwright-core";
+import { errors, type Locator } from "playwright-core";
 
 /** The control a dialog reachability check names, as the web renders it. */
 function argoDialogControl(dialog: Locator, control: string): Locator {
@@ -299,7 +299,11 @@ export const argoActions = {
 					return window.innerWidth === viewport.width && window.innerHeight === viewport.height
 						&& box.width > 0 && box.height > 0 && box.left >= 0 && box.top >= 0
 						&& box.right <= viewport.width && box.bottom <= viewport.height;
-				}, { element: await dialog.elementHandle(), viewport });
+				}, { element: await dialog.elementHandle(), viewport }).catch(async (cause) => {
+					if (!(cause instanceof errors.TimeoutError)) throw cause;
+					const bounds = await dialog.evaluateAll(([element]) => element?.getBoundingClientRect().toJSON() ?? null);
+					throw new Error(`Argo CD connection dialog bounds ${JSON.stringify(bounds)} did not fit the expected ${viewport.width}x${viewport.height} viewport`, { cause });
+				});
 				break;
 			}
 			case "expectReachable": {
