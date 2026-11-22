@@ -116,12 +116,16 @@ impl Staged {
                 })
             }
             InstallTarget::AppBundle(bundle) => {
-                replace_bundle(bundle, &mut self.file, |from, to| fs::rename(from, to))
-                    .map_err(|error| failed("Could not replace the app bundle", &error))
-                    .map(|()| Relaunch {
-                        program: "/usr/bin/open".into(),
-                        args: vec!["-n".into(), bundle.clone().into()],
-                    })
+                let consolidated = semver::Version::parse(version)
+                    .is_ok_and(|version| super::is_consolidated(&version));
+                replace_bundle(bundle, &mut self.file, consolidated, |from, to| {
+                    fs::rename(from, to)
+                })
+                .map_err(|error| failed("Could not replace the app bundle", &error))
+                .map(|()| Relaunch {
+                    program: "/usr/bin/open".into(),
+                    args: vec!["-n".into(), bundle.clone().into()],
+                })
             }
             InstallTarget::Installer(directory) => {
                 let installer = directory.join(format!("KubeCove-GPUI-{version}-setup.exe"));
@@ -205,18 +209,18 @@ fn replace_appimage(path: &Path, staged: &Path, file: &mut fs::File) -> io::Resu
     fs::rename(staged, path)
 }
 
-fn verify_bundle_identity(bundle: &Path) -> io::Result<()> {
+fn verify_bundle_identity(bundle: &Path, identifier: &str) -> io::Result<()> {
     let info = plist::Value::from_file(bundle.join("Contents/Info.plist"))
         .map_err(|_| invalid_data("Cannot read the macOS bundle identity"))?;
     if info
         .as_dictionary()
         .and_then(|p| p.get("CFBundleIdentifier"))
         .and_then(plist::Value::as_string)
-        != Some("com.timpan.kubecove.gpui")
+        != Some(identifier)
     {
-        return Err(invalid_data(
-            "The bundle identifier is not com.timpan.kubecove.gpui",
-        ));
+        return Err(invalid_data(&format!(
+            "The bundle identifier is not {identifier}"
+        )));
     }
     Ok(())
 }
@@ -228,6 +232,7 @@ fn verify_bundle_identity(bundle: &Path) -> io::Result<()> {
 fn replace_bundle(
     bundle: &Path,
     archive: &mut fs::File,
+    consolidated: bool,
     rename: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> io::Result<()> {
     if bundle
@@ -238,8 +243,14 @@ fn replace_bundle(
             "The installed bundle is not KubeCove GPUI.app",
         ));
     }
+    // The pitstop puts the consolidated KubeCove.app in place of the side-by-side bundle (ADR 0036).
+    let (new_name, new_identifier) = if consolidated {
+        ("KubeCove.app", "com.timpan.kubecove")
+    } else {
+        ("KubeCove GPUI.app", "com.timpan.kubecove.gpui")
+    };
     fs::symlink_metadata(bundle)?;
-    verify_bundle_identity(bundle)?;
+    verify_bundle_identity(bundle, "com.timpan.kubecove.gpui")?;
     let staging = sibling(bundle, "update")?;
     let previous = sibling(bundle, "previous")?;
     remove_stale(&staging)?;
@@ -247,9 +258,9 @@ fn replace_bundle(
     fs::create_dir(&staging)?;
     let replaced = archive
         .rewind()
-        .and_then(|()| unpack_bundle(archive, &staging))
+        .and_then(|()| unpack_bundle(archive, &staging, new_name))
         .and_then(|unpacked| {
-            verify_bundle_identity(&unpacked)?;
+            verify_bundle_identity(&unpacked, new_identifier)?;
             rename(bundle, &previous)?;
             rename(&unpacked, bundle).inspect_err(|_| {
                 let _ = rename(&previous, bundle);
@@ -264,7 +275,7 @@ fn replace_bundle(
 
 /// Unpacks the archive into `staging` and returns its one `.app` directory. `Archive::unpack`
 /// skips entries that would land outside `staging`.
-fn unpack_bundle(archive: impl io::Read, staging: &Path) -> io::Result<PathBuf> {
+fn unpack_bundle(archive: impl io::Read, staging: &Path, name: &str) -> io::Result<PathBuf> {
     tar::Archive::new(flate2::read::GzDecoder::new(archive)).unpack(staging)?;
     let mut bundles = Vec::new();
     for entry in fs::read_dir(staging)? {
@@ -277,14 +288,8 @@ fn unpack_bundle(archive: impl io::Read, staging: &Path) -> io::Result<PathBuf> 
         }
     }
     match <[PathBuf; 1]>::try_from(bundles) {
-        Ok([bundle])
-            if bundle
-                .file_name()
-                .is_some_and(|name| name == "KubeCove GPUI.app") =>
-        {
-            Ok(bundle)
-        }
-        _ => Err(invalid_data("Expected a single KubeCove GPUI.app bundle")),
+        Ok([bundle]) if bundle.file_name().is_some_and(|found| found == name) => Ok(bundle),
+        _ => Err(invalid_data(&format!("Expected a single {name} bundle"))),
     }
 }
 
@@ -392,7 +397,7 @@ mod tests {
     fn a_failed_move_into_place_puts_the_installed_bundle_back() {
         let (_root, apps, bundle, mut archive) = installed("swap-fails");
         let previous = sibling(&bundle, "previous").unwrap();
-        let result = replace_bundle(&bundle, &mut archive, |from, to| {
+        let result = replace_bundle(&bundle, &mut archive, false, |from, to| {
             if to == bundle && from != previous {
                 Err(injected())
             } else {
@@ -408,7 +413,7 @@ mod tests {
     fn a_failed_restore_keeps_the_installed_bundle_under_its_hidden_name() {
         let (_root, apps, bundle, mut archive) = installed("restore-fails");
         let previous = sibling(&bundle, "previous").unwrap();
-        let result = replace_bundle(&bundle, &mut archive, |from, to| {
+        let result = replace_bundle(&bundle, &mut archive, false, |from, to| {
             if to == bundle {
                 Err(injected())
             } else {

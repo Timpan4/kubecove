@@ -424,6 +424,7 @@ jobs:
             --title "KubeCove v${version}" \
             --notes-file release-notes.md \
             --draft \
+            --latest=false \
             --verify-tag
 
       - name: Read release ID
@@ -799,4 +800,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release edit "$TAG_NAME" --draft=false --prerelease=false
+        # The 0.15.x pitstop must not replace app-v0.16.0 or later as Latest: every client reads
+        # its feeds from `releases/latest/download/`.
+        run: gh release edit "$TAG_NAME" --draft=false --prerelease=false --latest=false

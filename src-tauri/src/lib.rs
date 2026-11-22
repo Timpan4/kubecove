@@ -57,6 +57,25 @@ fn start_mcp(app: &tauri::App, config_dir: std::path::PathBuf) {
 }
 
 #[cfg(feature = "desktop")]
+// 0.15.2 is the last Tauri release. Its feed, `latest-desktop.json`, lists only the GPUI
+// builds, so the next update replaces this app with the GPUI client in place (ADR 0036).
+// GPUI ships no .deb or .rpm, so those installs look up a target the feed never has,
+// and the check fails instead of offering an AppImage that the package installer rejects.
+fn pitstop_updater<R: tauri::Runtime>()
+-> tauri::plugin::TauriPlugin<R, tauri_plugin_updater::Config> {
+    let builder =
+        tauri_plugin_updater::Builder::new().default_version_comparator(|current, release| {
+            release.version.cmp_precedence(&current).is_gt()
+        });
+    match tauri::utils::platform::bundle_type() {
+        Some(tauri::utils::config::BundleType::Deb) => builder.target("linux-x86_64-deb"),
+        Some(tauri::utils::config::BundleType::Rpm) => builder.target("linux-x86_64-rpm"),
+        _ => builder,
+    }
+    .build()
+}
+
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(all(
@@ -78,17 +97,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(
-            tauri_plugin_updater::Builder::new()
-                .default_version_comparator(|current, release| {
-                    release.version.cmp_precedence(&current).is_gt()
-                        && !release
-                            .version
-                            .cmp_precedence(&desktop_release::LEGACY_MAX)
-                            .is_gt()
-                })
-                .build(),
-        );
+        .plugin(pitstop_updater());
     #[cfg(feature = "e2e")]
     let builder = builder
         .plugin(tauri_plugin_wdio::init())

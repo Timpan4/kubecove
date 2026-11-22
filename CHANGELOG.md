@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.15.2 - 2026-11-22
+### Improved
+
+- Update the Tauri desktop app and the side-by-side GPUI build in place to KubeCove 0.16.0 or later. Tauri saves its settings for the GPUI import before it updates.
+
 ## 0.15.1 - 2026-11-22
 ### Improved
 

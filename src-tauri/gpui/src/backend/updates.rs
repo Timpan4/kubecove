@@ -151,17 +151,10 @@ async fn check_feeds(
     target: &str,
     current: &semver::Version,
 ) -> Result<UpdateStatus, AppError> {
-    let consolidated_error =
-        match kubecove_lib::desktop_release::consolidated(client, endpoint, target).await {
-            Ok(Some(version)) => {
-                return Ok(if version.cmp_precedence(current).is_gt() {
-                    UpdateStatus::Consolidated(version.to_string())
-                } else {
-                    UpdateStatus::UpToDate
-                });
-            }
-            result => result.err(),
-        };
+    let consolidated_error = match consolidated_update(client, endpoint, target, current).await {
+        Ok(Some(status)) => return Ok(status),
+        result => result.err(),
+    };
     match (
         check_legacy(client, endpoint, target, current).await,
         consolidated_error,
@@ -170,6 +163,66 @@ async fn check_feeds(
         (_, Some(error)) => Err(error),
         (result, None) => result,
     }
+}
+
+/// 0.15.2 is the last side-by-side build. It installs the consolidated KubeCove from
+/// `latest-desktop.json` in its own place, as an ordinary update (ADR 0036).
+async fn consolidated_update(
+    client: &reqwest::Client,
+    endpoint: &str,
+    target: &str,
+    current: &semver::Version,
+) -> Result<Option<UpdateStatus>, AppError> {
+    use kubecove_lib::desktop_release::{consolidated_version, read_manifest};
+    let base = endpoint
+        .strip_suffix("latest-gpui.json")
+        .ok_or_else(|| AppError::new("Invalid compiled GPUI feed", AppErrorKind::Validation))?;
+    let response = client
+        .get(format!("{base}latest-desktop.json"))
+        .send()
+        .await
+        .map_err(|_| {
+            AppError::new(
+                "Could not check for a desktop release",
+                AppErrorKind::Network,
+            )
+        })?;
+    if matches!(
+        response.status(),
+        reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::NO_CONTENT
+    ) {
+        return Ok(None);
+    }
+    let response = response
+        .error_for_status()
+        .map_err(|_| AppError::new("Desktop release check failed", AppErrorKind::Network))?;
+    let manifest = read_manifest(response).await?;
+    // Checks the product, the platform build, its asset name and that it carries a signature.
+    let Some(version) = consolidated_version(&manifest, target)? else {
+        return Ok(None);
+    };
+    if !version.cmp_precedence(current).is_gt() {
+        return Ok(Some(UpdateStatus::UpToDate));
+    }
+    let build = &manifest["platforms"][target];
+    let text = |name: &str| build[name].as_str().unwrap_or_default().to_owned();
+    Ok(Some(UpdateStatus::Available(AvailableUpdate {
+        version: version.to_string(),
+        notes: manifest["notes"]
+            .as_str()
+            .map(str::trim)
+            .filter(|notes| !notes.is_empty())
+            .map(str::to_owned),
+        artifact: Artifact {
+            url: text("url"),
+            signature: text("signature"),
+        },
+    })))
+}
+
+/// The consolidated KubeCove (0.16.0 and later) names its assets `kubecove_*`.
+fn is_consolidated(version: &semver::Version) -> bool {
+    version.major > 0 || version.minor >= 16
 }
 
 async fn check_legacy(
@@ -341,7 +394,12 @@ impl Signed {
         // The Tauri desktop app is signed with the same key and names its version too. The
         // signed file name tells the two products apart.
         let parsed = semver::Version::parse(version).map_err(|_| invalid_signature())?;
-        let name = kubecove_lib::desktop_release::asset_name(ARTIFACT_PREFIX, &parsed, platform)
+        let prefix = if is_consolidated(&parsed) {
+            "kubecove"
+        } else {
+            ARTIFACT_PREFIX
+        };
+        let name = kubecove_lib::desktop_release::asset_name(prefix, &parsed, platform)
             .ok_or_else(invalid_signature)?;
         if signed("file:") != Some(name.as_str()) {
             return Err(AppError::new(
@@ -363,7 +421,9 @@ pub async fn install(
     progress: watch::Sender<DownloadProgress>,
 ) -> Result<Relaunch, AppError> {
     let version = semver::Version::parse(&update.version).map_err(|_| invalid_signature())?;
-    legacy_version(&version)?;
+    if !is_consolidated(&version) {
+        legacy_version(&version)?;
+    }
     let signed = Signed::decode(&update.artifact.signature, &public_key)?;
     // 1 is the least capacity tokio allows, so at most one chunk waits between the two sides.
     let (sender, chunks) = mpsc::channel(1);
