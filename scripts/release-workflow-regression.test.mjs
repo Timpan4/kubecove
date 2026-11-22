@@ -544,7 +544,7 @@ test("latest-desktop.json lists every platform with its release URL and signatur
 test("only the consolidated product gets new manifests after 0.15.1", async () => {
   const { desktopReleaseChannel } = await import("./desktop-release-channel.mjs");
   for (const frozen of ["0.15.1", "0.15.2"]) {
-    assert.throws(() => desktopReleaseChannel(frozen), /frozen/);
+    assert.throws(() => desktopReleaseChannel(frozen), /pitstop/);
   }
   assert.equal(desktopReleaseChannel("0.15.1", { dryRun: true }).manifest, "latest-desktop.json");
   for (const version of ["0.16.0", "1.0.0"]) {

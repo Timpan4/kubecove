@@ -10,15 +10,15 @@ import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 test("historical release tags cannot publish a latest feed", () => {
   for (const version of ["0.14.9", "0.15.0", "0.15.1", "0.15.2"]) {
-    assert.throws(() => desktopReleaseChannel(version), /frozen/);
+    assert.throws(() => desktopReleaseChannel(version), /0\.15\.2 pitstop/);
   }
 });
 
 test("a pre-0.16.0 dry run on 0.15.1 uses the consolidated channel while other legacy versions stay frozen", () => {
   assert.deepEqual(desktopReleaseChannel("0.15.1", { dryRun: true }), desktopReleaseChannel("0.16.0"));
-  assert.throws(() => desktopReleaseChannel("0.15.0", { dryRun: true }), /frozen at 0\.15\.1/);
-  assert.throws(() => desktopReleaseChannel("0.15.1"), /frozen at 0\.15\.1/);
-  assert.throws(() => desktopReleaseChannel("0.15.2", { dryRun: true }), /frozen at 0\.15\.1/);
+  assert.throws(() => desktopReleaseChannel("0.15.0", { dryRun: true }), /0\.15\.2 pitstop/);
+  assert.throws(() => desktopReleaseChannel("0.15.1"), /0\.15\.2 pitstop/);
+  assert.throws(() => desktopReleaseChannel("0.15.2", { dryRun: true }), /0\.15\.2 pitstop/);
 });
 
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
