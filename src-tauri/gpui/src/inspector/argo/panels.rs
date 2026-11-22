@@ -129,16 +129,8 @@ pub(super) fn delivery(
     let facts = [
         ("Repository", &view.repository, "argo-delivery-repository"),
         ("Path", &view.path, "argo-delivery-path"),
-        (
-            "Revision",
-            &view.configured_revision,
-            "argo-delivery-revision",
-        ),
-        (
-            "Destination",
-            &view.destination,
-            "argo-delivery-destination",
-        ),
+        ("Revision", &view.configured_revision, "argo-delivery-revision"),
+        ("Destination", &view.destination, "argo-delivery-destination"),
         ("Policy", &view.policy, "argo-delivery-policy"),
     ];
     let deployment = state

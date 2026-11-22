@@ -37,7 +37,10 @@ impl McpFixture {
         if *self.settings_file.lock().unwrap() == SettingsFile::Loaded {
             Ok(())
         } else {
-            Err(AppError::new("Invalid MCP settings file", AppErrorKind::Io))
+            Err(AppError::new(
+                "Invalid MCP settings file",
+                AppErrorKind::Io,
+            ))
         }
     }
     pub(super) fn status(&self, request: String) -> Result<McpStatus, AppError> {

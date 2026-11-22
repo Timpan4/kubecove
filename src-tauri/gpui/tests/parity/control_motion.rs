@@ -158,10 +158,7 @@ pub(super) fn check(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, check
                 (start, midway, "at rest")
             };
             let only = |of: &[String], not: &[String]| -> Vec<String> {
-                of.iter()
-                    .filter(|quad| !not.contains(quad))
-                    .cloned()
-                    .collect()
+                of.iter().filter(|quad| !not.contains(quad)).cloned().collect()
             };
             let indicator = only(shown, other);
             assert!(!indicator.is_empty(), "{target} paints no indicator");
