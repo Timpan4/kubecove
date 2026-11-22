@@ -92,7 +92,10 @@ pub(super) fn guard_apply_manifest(mut manifest: Value, resource_version: &str) 
         .get_mut("metadata")
         .and_then(Value::as_object_mut)
         .expect("validated apply manifest has object metadata")
-        .insert("resourceVersion".into(), Value::String(resource_version.into()));
+        .insert(
+            "resourceVersion".into(),
+            Value::String(resource_version.into()),
+        );
     manifest
 }
 

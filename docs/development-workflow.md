@@ -46,6 +46,9 @@ bun run lint:anti-slop
 
 The shared Rust workspace contains private backend crates under `src-tauri/crates/`. Use `bun run rust:test`, `bun run rust:check` and `bun run rust:lint` for workspace-wide checks.
 
+`bun run rust:fmt` checks formatting across the shared, GPUI, and headless server
+workspaces. Fix drift with `cargo fmt --all --manifest-path <workspace>/Cargo.toml`.
+
 ```sh
 cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
 cargo check --locked --workspace --manifest-path src-tauri/Cargo.toml
@@ -61,7 +64,6 @@ The native client is a separate Cargo workspace under `src-tauri/gpui/`. It uses
 ```sh
 cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml
 cargo check --locked --manifest-path src-tauri/gpui/Cargo.toml
-cargo fmt --manifest-path src-tauri/gpui/Cargo.toml --all -- --check
 cargo clippy --locked --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings
 bun run e2e:parity
 ```
@@ -417,8 +419,8 @@ Removed benchmarks remain skipped until archived in CodSpeed.
 
 ## Verification Before Completion
 
-`bun run check` runs the CI orchestration tests, the shared frontend gate, and the
-shared Rust workspace checks. CI runs `bun run test:ci` before installing frontend
+`bun run check` runs Rust formatting, the CI orchestration tests, the shared
+frontend gate, and the shared Rust workspace checks. CI runs `bun run test:ci` before installing frontend
 dependencies and uses `bun run check:frontend` for the deterministic frontend
 checks and production build. Dependency audits, native host builds, and E2E jobs
 run separately in CI.

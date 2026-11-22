@@ -200,7 +200,11 @@ jobs:
         if: ${{ matrix.workspace }}
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+
+      - name: Check Rust formatting
+        if: ${{ matrix.task == 'rust' }}
+        run: node scripts/check-rust-format.mjs
 
       # An unchanged build restores its exact cache and skips the save, which took up to
       # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs). Only pushes to

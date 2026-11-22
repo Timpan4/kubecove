@@ -32,12 +32,20 @@ fn validates_product_identity_and_https_asset_urls() {
 
     let mut wrong_id = manifest.clone();
     wrong_id["platforms"]["linux-x86_64"]["bundleId"] = "com.timpan.kubecove.gpui".into();
-    assert!(validate_product(&wrong_id, "linux-x86_64", "KubeCove", "com.timpan.kubecove").is_err());
+    assert!(
+        validate_product(&wrong_id, "linux-x86_64", "KubeCove", "com.timpan.kubecove").is_err()
+    );
 
     let mut wrong_name = manifest;
     wrong_name["productName"] = "KubeCove GPUI".into();
     assert!(
-        validate_product(&wrong_name, "linux-x86_64", "KubeCove", "com.timpan.kubecove").is_err()
+        validate_product(
+            &wrong_name,
+            "linux-x86_64",
+            "KubeCove",
+            "com.timpan.kubecove"
+        )
+        .is_err()
     );
 
     assert!(matches_asset(

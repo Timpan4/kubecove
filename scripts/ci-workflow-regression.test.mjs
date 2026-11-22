@@ -576,7 +576,7 @@ test("each existing check remains in its selected task", () => {
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
     "frontend-e2e": ["bun run e2e:fast"],
-    rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
+    rust: ["node scripts/check-rust-format.mjs", "mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
     "gpui-test": [
       "bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json",

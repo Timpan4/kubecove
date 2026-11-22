@@ -47,7 +47,9 @@ async fn reads_consolidated_feed_and_handles_absent_or_failing_responses() {
         UpdateStatus::Unpublished
     ));
     assert!(matches!(
-        check(current.clone(), ("204 No Content", "")).await.unwrap(),
+        check(current.clone(), ("204 No Content", ""))
+            .await
+            .unwrap(),
         UpdateStatus::UpToDate
     ));
     for failed in [("503 Unavailable", ""), ("200 OK", "{")] {
