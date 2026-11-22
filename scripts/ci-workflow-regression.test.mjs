@@ -569,7 +569,7 @@ test("each existing check remains in its selected task", () => {
     assert.ok(checks.indexOf(step("Build headless server")) < checks.indexOf(background));
     assert.ok(checks.indexOf(background) < checks.indexOf(step("Test headless server")));
   }
-  const backgroundIds = [...checks.matchAll(/ id: ([\w-]+)\n(?:\s+if: .*\n)?\s+background: true\n/g)].map((match) => match[1]);
+  const backgroundIds = checks.split(/\n {6}- /).filter((block) => /\n {8}background: true\n/.test(block)).map((block) => block.match(/\n {8}id: ([\w-]+)\n/)?.[1]);
   const helper = readFileSync(fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), "utf8");
   assert.deepEqual(JSON.parse(helper.match(/const backgroundSteps = new Set\((\[[^\]]*\])\)/)[1]).sort(), backgroundIds.sort(), "the pass helper must know every background step");
   assert.ok(checks.indexOf(step("Lint headless server")) < checks.indexOf("      - wait-all:"));
