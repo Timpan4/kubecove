@@ -42,10 +42,15 @@ pub(super) struct MergeReport {
 /// non-conflicting state into `document`. Returns `Err(reason)` when the
 /// top-level document is corrupt or uses an unsupported schema version so the
 /// caller preserves `tauri-migration.json` without failing startup.
+///
+/// `existing_preference_keys` names the preference keys already stored by GPUI;
+/// those keep their value. `source_key` is the active kubeconfig source, which
+/// scopes migrated port-forward presets the way the inspector looks them up.
 pub(super) fn merge_bytes(
     bytes: &[u8],
     document: &mut Document,
-    has_existing_gpui_data: bool,
+    existing_preference_keys: &HashSet<String>,
+    source_key: Option<&str>,
 ) -> Result<MergeReport, String> {
     let root: Value =
         serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON ({error})"))?;
@@ -64,9 +69,13 @@ pub(super) fn merge_bytes(
 
     if let Some(workspaces_entry) = entries.get("kubecove-workspaces") {
         match entry_state(workspaces_entry) {
-            Some(state) => {
-                workspaces::merge_workspaces(state, document, &mut workspace_id_map, &mut skipped)
-            }
+            Some(state) => workspaces::merge_workspaces(
+                state,
+                document,
+                source_key,
+                &mut workspace_id_map,
+                &mut skipped,
+            ),
             None => skipped += 1,
         }
     }
@@ -76,7 +85,7 @@ pub(super) fn merge_bytes(
             Some(state) => merge_settings(
                 state,
                 &mut document.preferences,
-                has_existing_gpui_data,
+                existing_preference_keys,
                 &workspace_id_map,
                 &mut skipped,
             ),
@@ -136,13 +145,11 @@ pub(super) fn parse_port(value: &Value) -> Option<u16> {
 fn merge_settings(
     state: &serde_json::Map<String, Value>,
     prefs: &mut Preferences,
-    has_existing_gpui_data: bool,
+    existing_preference_keys: &HashSet<String>,
     workspace_id_map: &HashMap<String, String>,
     skipped: &mut usize,
 ) {
-    if !has_existing_gpui_data {
-        apply_scalar_preferences(state, prefs, skipped);
-    }
+    apply_scalar_preferences(state, prefs, existing_preference_keys, skipped);
 
     if let Some(raw_profiles) = state.get("argoProfiles") {
         match raw_profiles.as_array() {
@@ -173,14 +180,22 @@ fn merge_settings(
                         *skipped += 1;
                         continue;
                     }
+                    // GPUI keys these by its own workspace ID, so an unmapped Tauri
+                    // key could attach to an unrelated workspace with the same ID.
+                    let Some(key) = workspace_id_map.get(trimmed).cloned() else {
+                        *skipped += 1;
+                        continue;
+                    };
                     let Some(parsed) = parse_connection_preference(raw_pref) else {
                         *skipped += 1;
                         continue;
                     };
-                    let key = workspace_id_map
-                        .get(trimmed)
-                        .cloned()
-                        .unwrap_or_else(|| trimmed.to_owned());
+                    if let ConnectionPreference::Connected { profile_id } = &parsed
+                        && !prefs.argo_profiles.iter().any(|p| &p.id == profile_id)
+                    {
+                        *skipped += 1;
+                        continue;
+                    }
                     prefs
                         .argo_connection_preferences
                         .entry(key)
@@ -195,10 +210,16 @@ fn merge_settings(
 fn apply_scalar_preferences(
     state: &serde_json::Map<String, Value>,
     prefs: &mut Preferences,
+    existing_preference_keys: &HashSet<String>,
     skipped: &mut usize,
 ) {
+    let incoming = |key: &str| {
+        state
+            .get(key)
+            .filter(|_| !existing_preference_keys.contains(key))
+    };
     let mut apply_bool = |key: &str, slot: &mut bool| {
-        if let Some(value) = state.get(key) {
+        if let Some(value) = incoming(key) {
             match value.as_bool() {
                 Some(b) => *slot = b,
                 None => *skipped += 1,
@@ -242,47 +263,47 @@ fn apply_scalar_preferences(
     );
     apply_bool("yamlErrorLensEnabled", &mut prefs.yaml_error_lens_enabled);
 
-    if let Some(value) = state.get("gitOpsViewMode") {
+    if let Some(value) = incoming("gitOpsViewMode") {
         match parse_delivery_mode(value) {
             Some(mode) => prefs.git_ops_view_mode = mode,
             None => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("helmViewMode") {
+    if let Some(value) = incoming("helmViewMode") {
         match parse_delivery_mode(value) {
             Some(mode) => prefs.helm_view_mode = mode,
             None => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("timestampTimezone") {
+    if let Some(value) = incoming("timestampTimezone") {
         match value.as_str() {
             Some("local") => prefs.timestamp_timezone = TimestampTimezone::Local,
             Some("utc") => prefs.timestamp_timezone = TimestampTimezone::Utc,
             _ => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("yamlViewModeDefault") {
+    if let Some(value) = incoming("yamlViewModeDefault") {
         match value.as_str() {
             Some("kubectl") => prefs.yaml_view_mode_default = YamlShape::Kubectl,
             Some("applyClean") => prefs.yaml_view_mode_default = YamlShape::ApplyClean,
             _ => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("yamlEncodingDefault") {
+    if let Some(value) = incoming("yamlEncodingDefault") {
         match value.as_str() {
             Some("yaml") => prefs.yaml_encoding_default = YamlFormat::Yaml,
             Some("kyaml") => prefs.yaml_encoding_default = YamlFormat::Kyaml,
             _ => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("yamlDiffStyle") {
+    if let Some(value) = incoming("yamlDiffStyle") {
         match value.as_str() {
             Some("clean") => prefs.yaml_diff_style = DiffStyle::Clean,
             Some("git") => prefs.yaml_diff_style = DiffStyle::Git,
             _ => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("logLayout") {
+    if let Some(value) = incoming("logLayout") {
         match value.as_str() {
             Some("stacked") => prefs.log_layout = LogLayout::Stacked,
             Some("gutter") => prefs.log_layout = LogLayout::Gutter,
@@ -290,7 +311,7 @@ fn apply_scalar_preferences(
             _ => *skipped += 1,
         }
     }
-    if let Some(value) = state.get("resourceKindLanes") {
+    if let Some(value) = incoming("resourceKindLanes") {
         match parse_kind_lanes(value) {
             Some(lanes) => prefs.resource_kind_lanes = lanes,
             None => *skipped += 1,
@@ -343,8 +364,8 @@ fn parse_argo_profile(
     let id = safe_nonempty(obj.get("id"))?;
     let endpoint = parse_argo_endpoint(obj.get("endpoint"), obj.get("url"))?;
     let cluster_context = safe_optional(obj.get("clusterContext"))?;
-    let workspace_id = safe_optional(obj.get("workspaceId"))?
-        .map(|raw| workspace_id_map.get(&raw).cloned().unwrap_or(raw));
+    let workspace_id =
+        safe_optional(obj.get("workspaceId"))?.and_then(|raw| workspace_id_map.get(&raw).cloned());
     let kubeconfig_source_key = safe_optional(obj.get("kubeconfigSourceKey"))?;
     let remember_credential = obj
         .get("rememberCredential")

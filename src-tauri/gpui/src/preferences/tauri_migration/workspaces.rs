@@ -19,6 +19,7 @@ use std::collections::HashMap;
 pub(super) fn merge_workspaces(
     state: &serde_json::Map<String, Value>,
     document: &mut Document,
+    source_key: Option<&str>,
     workspace_id_map: &mut HashMap<String, String>,
     skipped: &mut usize,
 ) {
@@ -44,13 +45,13 @@ pub(super) fn merge_workspaces(
             continue;
         };
 
-        let target_id = if let Some(existing) = document
+        let (target_id, target_name) = if let Some(existing) = document
             .workspaces
             .iter_mut()
             .find(|w| w.name.eq_ignore_ascii_case(&parsed.name) && w.context == parsed.context)
         {
             merge_reviews(&mut existing.reviews, parsed.reviews);
-            existing.id
+            (existing.id, existing.name.clone())
         } else {
             if next_id == u64::MAX {
                 *skipped += 1;
@@ -73,7 +74,7 @@ pub(super) fn merge_workspaces(
                 document.workspace_documents.insert(id, retained);
             }
             document.workspaces.push(saved);
-            id
+            (id, parsed.name)
         };
 
         if let Some(source_id) = parsed.source_id {
@@ -89,9 +90,9 @@ pub(super) fn merge_workspaces(
         }
 
         if !parsed.port_forwards.is_empty() {
-            let preset_key =
-                serde_json::to_string(&(Option::<&str>::None, &parsed.context, &parsed.name))
-                    .expect("string tuple");
+            // Matches `Inspector::preset_key`: source, context, workspace name.
+            let preset_key = serde_json::to_string(&(source_key, &parsed.context, &target_name))
+                .expect("string tuple");
             let slot = document
                 .saved_forward_presets
                 .entry(preset_key)

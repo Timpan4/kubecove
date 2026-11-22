@@ -6,11 +6,17 @@ use super::{
 use crate::workspaces::SavedKind;
 use kubecove_lib::models::{AppError, AppErrorKind};
 use std::{
-    fs::{self, File, OpenOptions},
+    collections::HashSet,
+    fs::{self, File, OpenOptions, TryLockError},
     io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
 };
+
+enum LockError {
+    Busy,
+    Io(std::io::Error),
+}
 
 #[derive(Default)]
 pub struct Store {
@@ -55,26 +61,30 @@ impl Store {
     pub fn load(&self) -> Result<Document, AppError> {
         match &self.directory {
             None => Ok(self.memory.lock().map_err(|_| invalid())?.clone()),
-            Some(directory) => {
-                if directory.join(MIGRATION_FILE).exists() {
-                    return self.load_with_tauri_migration(directory);
+            Some(directory) => match directory.join(MIGRATION_FILE).try_exists() {
+                Ok(true) => self.load_with_tauri_migration(directory),
+                Ok(false) => self.load_unlocked(directory).map(|(document, _)| document),
+                Err(error) => {
+                    self.set_migration_diagnostic(Some(format!(
+                        "Could not inspect {MIGRATION_FILE}: {error}. The file was preserved."
+                    )));
+                    self.load_unlocked(directory).map(|(document, _)| document)
                 }
-                self.load_unlocked(directory).map(|(document, _)| document)
-            }
+            },
         }
     }
-    fn load_unlocked(&self, directory: &Path) -> Result<(Document, bool), AppError> {
+    fn load_unlocked(&self, directory: &Path) -> Result<(Document, HashSet<String>), AppError> {
         match fs::read(directory.join("live-sessions.json")) {
-            Ok(bytes) => Ok((decode(&bytes)?, true)),
+            Ok(bytes) => decode_with_keys(&bytes),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => match &self.legacy_file {
                 Some(path) => match fs::read(path) {
-                    Ok(bytes) => Ok((decode(&bytes)?, true)),
+                    Ok(bytes) => decode_with_keys(&bytes),
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                        Ok((Document::default(), false))
+                        Ok((Document::default(), HashSet::new()))
                     }
                     Err(_) => Err(io_error()),
                 },
-                None => Ok((Document::default(), false)),
+                None => Ok((Document::default(), HashSet::new())),
             },
             Err(_) => Err(io_error()),
         }
@@ -84,16 +94,34 @@ impl Store {
         fs::create_dir_all(directory).map_err(|_| io_error())?;
         let _lock = match acquire_lock(directory) {
             Ok(lock) => lock,
-            Err(_) => {
+            Err(LockError::Busy) => {
                 self.set_migration_diagnostic(Some(
                     "Skipped Tauri migration snapshot because another instance holds the preferences lock. The file was preserved."
                         .into(),
                 ));
                 return self.load_unlocked(directory).map(|(document, _)| document);
             }
+            Err(LockError::Io(error)) => {
+                self.set_migration_diagnostic(Some(format!(
+                    "Skipped Tauri migration snapshot because live-sessions.lock could not be opened or locked: {error}. The file was preserved."
+                )));
+                return self.load_unlocked(directory).map(|(document, _)| document);
+            }
         };
-        let (mut document, has_existing) = self.load_unlocked(directory)?;
+        let (mut document, existing_pref_keys) = self.load_unlocked(directory)?;
         let migration_path = directory.join(MIGRATION_FILE);
+        let imported_path = directory.join(IMPORTED_FILE);
+        if document.tauri_migration_imported {
+            if let Err(error) = fs::rename(&migration_path, &imported_path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                self.set_migration_diagnostic(Some(format!(
+                    "Tauri migration was already imported; could not archive {MIGRATION_FILE} to {IMPORTED_FILE}: {error}."
+                )));
+            }
+            *memory = document.clone();
+            return Ok(document);
+        }
         let bytes = match fs::read(&migration_path) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -108,8 +136,16 @@ impl Store {
                 return Ok(document);
             }
         };
+        let source_key = kubecove_lib::commands::ClusterAccess::resolve(None)
+            .ok()
+            .map(|access| access.source_key().to_owned());
         let mut candidate = document.clone();
-        let report = match tauri_migration::merge_bytes(&bytes, &mut candidate, has_existing) {
+        let report = match tauri_migration::merge_bytes(
+            &bytes,
+            &mut candidate,
+            &existing_pref_keys,
+            source_key.as_deref(),
+        ) {
             Ok(report) => report,
             Err(reason) => {
                 self.set_migration_diagnostic(Some(format!(
@@ -119,6 +155,7 @@ impl Store {
                 return Ok(document);
             }
         };
+        candidate.tauri_migration_imported = true;
         if let Err(error) = validate(&candidate).and_then(|()| {
             let value = serde_json::to_value(&candidate).map_err(|_| invalid())?;
             reject_credentials(&value)
@@ -138,7 +175,6 @@ impl Store {
             *memory = document.clone();
             return Ok(document);
         }
-        let imported_path = directory.join(IMPORTED_FILE);
         if let Err(error) = fs::rename(&migration_path, &imported_path) {
             self.set_migration_diagnostic(Some(format!(
                 "Imported {MIGRATION_FILE} into live-sessions.json, but could not rename it to {IMPORTED_FILE}: {error}."
@@ -167,7 +203,7 @@ impl Store {
             return Ok(document);
         };
         fs::create_dir_all(directory).map_err(|_| io_error())?;
-        let _lock = acquire_lock(directory)?;
+        let _lock = acquire_lock(directory).map_err(|_| io_error())?;
         // Re-read under the process-shared lock. A corrupt/future document blocks writes.
         if self.load_unlocked(directory)?.0.revision != document.revision {
             return Err(conflict());
@@ -178,7 +214,7 @@ impl Store {
         Ok(document)
     }
 }
-fn acquire_lock(directory: &Path) -> Result<File, AppError> {
+fn acquire_lock(directory: &Path) -> Result<File, LockError> {
     let mut options = OpenOptions::new();
     options.create(true).truncate(false).read(true).write(true);
     #[cfg(unix)]
@@ -188,8 +224,11 @@ fn acquire_lock(directory: &Path) -> Result<File, AppError> {
     }
     let lock = options
         .open(directory.join("live-sessions.lock"))
-        .map_err(|_| io_error())?;
-    lock.try_lock().map_err(|_| io_error())?;
+        .map_err(LockError::Io)?;
+    lock.try_lock().map_err(|error| match error {
+        TryLockError::WouldBlock => LockError::Busy,
+        TryLockError::Error(io) => LockError::Io(io),
+    })?;
     Ok(lock)
 }
 fn write_atomic(directory: &Path, document: &Document) -> Result<(), AppError> {
@@ -215,15 +254,29 @@ fn write_atomic(directory: &Path, document: &Document) -> Result<(), AppError> {
     }
     Ok(())
 }
-fn decode(bytes: &[u8]) -> Result<Document, AppError> {
+fn decode_with_keys(bytes: &[u8]) -> Result<(Document, HashSet<String>), AppError> {
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
     reject_credentials(&value)?;
     let versioned = value.get("version").is_some();
-    let mut document: Document = if !versioned
+    let is_legacy = !versioned
         && ["presets", "autoStart", "keep"]
             .iter()
-            .any(|key| value.get(key).is_some())
+            .any(|key| value.get(key).is_some());
+    let mut existing_pref_keys = HashSet::new();
+    if is_legacy {
+        if value.get("autoStart").is_some() {
+            existing_pref_keys.insert("autoStartSavedPortForwards".into());
+        }
+        if value.get("keep").is_some() {
+            existing_pref_keys.insert("keepLiveSessionsOnWorkspaceSwitch".into());
+        }
+    } else if let Some(prefs) = value
+        .get("preferences")
+        .and_then(serde_json::Value::as_object)
     {
+        existing_pref_keys.extend(prefs.keys().cloned());
+    }
+    let mut document: Document = if is_legacy {
         #[derive(Default, serde::Deserialize)]
         #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
         struct Legacy {
@@ -263,7 +316,7 @@ fn decode(bytes: &[u8]) -> Result<Document, AppError> {
         }
     }
     validate(&document)?;
-    Ok(document)
+    Ok((document, existing_pref_keys))
 }
 /// Version 1 saved only kind names. An import kept its document, whose kinds
 /// carry the API identity; when the saved names are exactly that document's

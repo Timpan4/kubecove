@@ -149,7 +149,11 @@ fn tauri_migration_fresh_import_and_idempotency() {
 
     let store = Store::file(directory.clone());
     let loaded = store.load().unwrap();
-    assert!(store.last_migration_diagnostic().is_none());
+    // The "staging" connection key names no migrated workspace, so it is skipped.
+    assert_eq!(
+        store.last_migration_diagnostic().as_deref(),
+        Some("Imported tauri-migration.json with 1 invalid or unsafe field(s) skipped.")
+    );
     assert!(!migration_path.exists());
     assert!(imported_path.exists());
     assert!(directory.join("live-sessions.json").exists());
@@ -176,17 +180,14 @@ fn tauri_migration_fresh_import_and_idempotency() {
         loaded.preferences.argo_profiles[0].workspace_id.as_deref(),
         Some("1")
     );
-    assert!(
+    // GPUI keys connection preferences by its own workspace ID; "staging" names no workspace.
+    assert_eq!(
         loaded
             .preferences
             .argo_connection_preferences
-            .contains_key("1")
-    );
-    assert!(
-        loaded
-            .preferences
-            .argo_connection_preferences
-            .contains_key("staging")
+            .keys()
+            .collect::<Vec<_>>(),
+        vec!["1"]
     );
 
     assert_eq!(loaded.workspaces.len(), 1);
@@ -203,7 +204,11 @@ fn tauri_migration_fresh_import_and_idempotency() {
     assert!(loaded.workspace_documents.contains_key(&1));
     assert_eq!(loaded.workspace_entry_points[&1].pinned.len(), 1);
     assert_eq!(loaded.workspace_entry_points[&1].recent.len(), 1);
-    let preset_key = serde_json::to_string(&(Option::<&str>::None, "prod", "Production")).unwrap();
+    // Native live-session hydration scopes presets by this same resolution.
+    let source = kubecove_lib::commands::ClusterAccess::resolve(None)
+        .ok()
+        .map(|access| access.source_key().to_owned());
+    let preset_key = serde_json::to_string(&(source.as_deref(), "prod", "Production")).unwrap();
     assert_eq!(loaded.saved_forward_presets[&preset_key].len(), 1);
     assert_eq!(
         loaded.saved_forward_presets[&preset_key][0].label,
@@ -285,12 +290,20 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                         {
                             "id": "new-profile",
                             "transport": "connected",
+                            "workspaceId": "tauri-unknown",
                             "endpoint": { "kind": "externalHttps", "url": "https://tauri-new.example.test" }
+                        },
+                        {
+                            "id": "dropped-profile",
+                            "transport": "connected",
+                            "endpoint": { "kind": "externalHttps", "url": "https://admin:pw@tauri-dropped.example.test" }
                         }
                     ],
                     "argoConnectionPreferences": {
                         "tauri-prod": { "kind": "connected", "profileId": "shared-profile" },
-                        "staging": { "kind": "connected", "profileId": "new-profile" }
+                        "tauri-staging": { "kind": "connected", "profileId": "new-profile" },
+                        "tauri-dev": { "kind": "connected", "profileId": "dropped-profile" },
+                        "tauri-unknown": { "kind": "kubernetes" }
                     }
                 }
             },
@@ -300,8 +313,16 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                     "workspaces": [
                         {
                             "id": "tauri-prod",
-                            "name": "Production",
+                            "name": "PRODUCTION",
                             "scope": { "clusterContext": "prod", "namespaces": ["tauri-ns"] },
+                            "portForwards": [
+                                {
+                                    "clusterContext": "prod",
+                                    "namespace": "payments",
+                                    "serviceName": "api",
+                                    "servicePort": 8080
+                                }
+                            ],
                             "rbacReviews": [
                                 {
                                     "clusterContext": "prod",
@@ -325,6 +346,11 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                             "id": "tauri-staging",
                             "name": "Staging",
                             "scope": { "clusterContext": "staging", "namespaces": ["web"] }
+                        },
+                        {
+                            "id": "tauri-dev",
+                            "name": "Dev",
+                            "scope": { "clusterContext": "dev" }
                         }
                     ]
                 }
@@ -344,23 +370,89 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
         }
     );
     assert_eq!(merged.preferences.argo_profiles[1].id, "new-profile");
+    // An unmapped Tauri workspace ID is cleared rather than kept as a GPUI ID.
+    assert_eq!(merged.preferences.argo_profiles[1].workspace_id, None);
+    // Staging maps to GPUI workspace 2. Dev's profile was rejected, so its
+    // selection is dropped, and the unknown Tauri workspace has no GPUI key.
     assert_eq!(
-        merged.preferences.argo_connection_preferences["1"],
-        ConnectionPreference::Kubernetes
+        merged.preferences.argo_connection_preferences,
+        [
+            ("1".to_owned(), ConnectionPreference::Kubernetes),
+            (
+                "2".to_owned(),
+                ConnectionPreference::Connected {
+                    profile_id: "new-profile".into()
+                }
+            ),
+        ]
+        .into()
     );
-    assert_eq!(
-        merged.preferences.argo_connection_preferences["staging"],
-        ConnectionPreference::Connected {
-            profile_id: "new-profile".into()
-        }
-    );
-    assert_eq!(merged.workspaces.len(), 2);
+    assert_eq!(merged.workspaces.len(), 3);
+    assert_eq!(merged.workspaces[0].name, "Production");
     assert_eq!(merged.workspaces[0].namespaces, vec!["gpui-ns"]);
     assert_eq!(merged.workspaces[0].reviews.len(), 2);
     assert_eq!(merged.workspaces[0].reviews[0].note, "GPUI note wins");
     assert_eq!(merged.workspaces[0].reviews[1].note, "Merged new review");
     assert_eq!(merged.workspaces[1].name, "Staging");
     assert_eq!(merged.workspaces[1].id, 2);
+    // A case-insensitive match files presets under the existing workspace's name.
+    let source = kubecove_lib::commands::ClusterAccess::resolve(None)
+        .ok()
+        .map(|access| access.source_key().to_owned());
+    let preset_key = serde_json::to_string(&(source.as_deref(), "prod", "Production")).unwrap();
+    assert_eq!(merged.saved_forward_presets.len(), 1);
+    assert_eq!(merged.saved_forward_presets[&preset_key].len(), 1);
+}
+
+#[test]
+fn tauri_migration_marker_blocks_reimport_after_failed_archive_or_republish() {
+    let root = Scratch::new("preferences-tests", "tauri-marker");
+    let directory = root.to_path_buf();
+    let migration_path = directory.join("tauri-migration.json");
+    let imported_path = directory.join("tauri-migration.imported.json");
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "entries": {
+            "kubecove-workspaces": {
+                "version": 0,
+                "state": {
+                    "workspaces": [
+                        { "id": "a", "name": "Alpha", "scope": { "clusterContext": "dev" } },
+                        { "id": "b", "name": "Beta", "scope": { "clusterContext": "dev" } }
+                    ]
+                }
+            }
+        }
+    })
+    .to_string();
+    std::fs::write(&migration_path, &snapshot).unwrap();
+    // A directory at the archive path makes the rename fail after the merge is saved.
+    std::fs::create_dir(&imported_path).unwrap();
+
+    let store = Store::file(directory.clone());
+    let imported = store.load().unwrap();
+    assert_eq!(imported.workspaces.len(), 2);
+    assert!(imported.tauri_migration_imported);
+    assert!(store.last_migration_diagnostic().is_some());
+    assert!(migration_path.exists());
+
+    // The user deletes a migrated workspace; Tauri republishes the same snapshot.
+    let mut edited = imported;
+    edited.workspaces.retain(|w| w.name != "Beta");
+    let saved = store.save(edited).unwrap();
+    std::fs::write(&migration_path, &snapshot).unwrap();
+
+    let reloaded = Store::file(directory.clone()).load().unwrap();
+    assert_eq!(reloaded.revision, saved.revision);
+    assert_eq!(reloaded.workspaces.len(), 1);
+    assert_eq!(reloaded.workspaces[0].name, "Alpha");
+
+    // Once the archive path is free, the leftover snapshot is archived untouched.
+    std::fs::remove_dir(&imported_path).unwrap();
+    let archived = Store::file(directory).load().unwrap();
+    assert_eq!(archived.revision, saved.revision);
+    assert!(!migration_path.exists());
+    assert_eq!(std::fs::read_to_string(&imported_path).unwrap(), snapshot);
 }
 
 #[test]
@@ -459,7 +551,7 @@ fn tauri_migration_never_persists_secrets() {
                     ],
                     "argoConnectionPreferences": {
                         "token": { "kind": "automatic" },
-                        "safe-ctx": { "kind": "connected", "profileId": "good-argo", "headers": { "Authorization": "Bearer canary-hdr" } }
+                        "ws-1": { "kind": "connected", "profileId": "good-argo", "headers": { "Authorization": "Bearer canary-hdr" } }
                     }
                 }
             },
@@ -519,7 +611,7 @@ fn tauri_migration_never_persists_secrets() {
     assert!(
         doc.preferences
             .argo_connection_preferences
-            .contains_key("safe-ctx")
+            .contains_key("1")
     );
     assert_eq!(doc.workspaces.len(), 1);
     assert_eq!(doc.workspaces[0].reviews.len(), 1);

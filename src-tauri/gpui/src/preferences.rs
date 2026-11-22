@@ -224,6 +224,8 @@ pub struct Document {
     pub workspace_documents: BTreeMap<u64, serde_json::Value>,
     pub workspace_entry_points: BTreeMap<u64, crate::workspaces::entries::Entries>,
     pub saved_forward_presets: std::collections::HashMap<String, Vec<SavedForward>>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tauri_migration_imported: bool,
 }
 impl Default for Document {
     fn default() -> Self {
@@ -236,6 +238,7 @@ impl Default for Document {
             workspace_documents: BTreeMap::new(),
             workspace_entry_points: BTreeMap::new(),
             saved_forward_presets: std::collections::HashMap::new(),
+            tauri_migration_imported: false,
         }
     }
 }
