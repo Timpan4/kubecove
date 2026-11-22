@@ -7,7 +7,9 @@ import {
 
 const tagName = process.env.TAG_NAME ?? "";
 const refType = process.env.REF_TYPE ?? "";
+// Main no longer builds Tauri, so the 0.15.x pitstop ships from the head of its maintenance branch.
 const TAG_BRANCHES: Record<string, string> = { "app-v0.15.2": "release/0.15.x" };
+const RELEASE_BRANCH = TAG_BRANCHES[tagName] ?? "main";
 
 try {
 	const versions = readWorkspaceReleaseVersions();
@@ -41,9 +43,6 @@ function fail(message: string): never {
 	console.error(message);
 	process.exit(1);
 }
-
-// Main no longer builds Tauri, so the 0.15.x pitstop ships from the head of its maintenance branch.
-const RELEASE_BRANCH = TAG_BRANCHES[tagName] ?? "main";
 
 function assertTagTargetsReleaseBranch(tagName: string): void {
 	run("git", ["fetch", "--quiet", "--no-tags", "origin", `${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}`]);
