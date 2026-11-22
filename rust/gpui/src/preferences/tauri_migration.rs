@@ -1,4 +1,4 @@
-//! Defensive one-time import of Tauri 0.15.1's `tauri-migration.json` (ADR 0036)
+//! Defensive one-time import of the `tauri-migration.json` that Tauri 0.15.1 or 0.15.2 wrote (ADR 0036)
 //! into GPUI's `live-sessions.json` (ADR 0030). The snapshot is read-only input.
 //!
 //! Every field is projected and validated individually; raw source objects are

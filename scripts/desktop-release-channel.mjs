@@ -1,6 +1,9 @@
 import { pathToFileURL } from "node:url";
 
-const FROZEN_LEGACY_VERSION = "0.15.1";
+// The version the consolidated build was dry-run from before main moved to 0.16.0.
+const DRY_RUN_LEGACY_VERSION = "0.15.1";
+// The last Tauri and side-by-side GPUI release. Its feeds are carried forward (ADR 0036).
+const PITSTOP_VERSION = "0.15.2";
 const MIN_CONSOLIDATED_VERSION = "0.16.0";
 const CONSOLIDATED = {
   prefix: "kubecove",
@@ -12,8 +15,8 @@ const CONSOLIDATED = {
 export function desktopReleaseChannel(version, { dryRun = false } = {}) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) throw new Error("Expected a stable desktop release version");
   if (compareVersions(version, MIN_CONSOLIDATED_VERSION) < 0) {
-    if (dryRun && version === FROZEN_LEGACY_VERSION) return { ...CONSOLIDATED };
-    throw new Error(`Both legacy feeds are frozen at ${FROZEN_LEGACY_VERSION}`);
+    if (dryRun && version === DRY_RUN_LEGACY_VERSION) return { ...CONSOLIDATED };
+    throw new Error(`Both legacy feeds end at the ${PITSTOP_VERSION} pitstop`);
   }
   return { ...CONSOLIDATED };
 }
