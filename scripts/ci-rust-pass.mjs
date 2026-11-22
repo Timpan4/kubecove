@@ -12,7 +12,7 @@ const taskSteps = {
 // GitHub omits a skipped `background: true` step from the steps context, so a
 // reused pass sees no entry for these. A run that executes them still records an outcome.
 const backgroundSteps = new Set(["server-command-contract", "http-lifecycle"]);
-const auditSteps =["audit-coverage", "install-audit", "audit-desktop", "audit-gpui", "audit-server"];
+const auditSteps = ["audit-coverage", "install-audit", "audit-desktop", "audit-gpui", "audit-server"];
 const path = ".ci-rust-pass/record.json";
 const { PASS_TASK: task, PASS_KEY: key, PASS_EVENT: event, PASS_CACHE_MATCH: matched } = process.env;
 const environment = Object.fromEntries(["RUNNER_OS", "RUNNER_ARCH", "ImageOS", "ImageVersion"].map((name) => [name, process.env[name]]));
