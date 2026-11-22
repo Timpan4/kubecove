@@ -9,7 +9,10 @@ const taskSteps = {
   "server-backend": ["dependency-tree", "test-backend"],
   server: ["api-only", "browser-build", "test-server", "lint-server", "build-server", "server-command-contract", "http-lifecycle", "headless-report"],
 };
-const auditSteps = ["audit-coverage", "install-audit", "audit-desktop", "audit-gpui", "audit-server"];
+// GitHub omits a skipped `background: true` step from the steps context, so a
+// reused pass sees no entry for these. A run that executes them still records an outcome.
+const backgroundSteps = new Set(["server-command-contract", "http-lifecycle"]);
+const auditSteps =["audit-coverage", "install-audit", "audit-desktop", "audit-gpui", "audit-server"];
 const path = ".ci-rust-pass/record.json";
 const { PASS_TASK: task, PASS_KEY: key, PASS_EVENT: event, PASS_CACHE_MATCH: matched } = process.env;
 const environment = Object.fromEntries(["RUNNER_OS", "RUNNER_ARCH", "ImageOS", "ImageVersion"].map((name) => [name, process.env[name]]));
@@ -93,7 +96,10 @@ if (!Object.hasOwn(taskSteps, task) || !new RegExp(`^mbx-ci-${task}-pass-[a-f0-9
     if (steps[id]?.outcome !== outcome) throw new Error(`${task}: ${id} did not ${outcome}`);
   };
   for (const id of ["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass"]) requireOutcome(id, "success");
-  for (const id of ["setup-mbx", "activate-cargo", ...taskSteps[task]]) requireOutcome(id, skip ? "skipped" : "success");
+  for (const id of ["setup-mbx", "activate-cargo", ...taskSteps[task]]) {
+    if (skip && backgroundSteps.has(id) && !Object.hasOwn(steps, id)) continue;
+    requireOutcome(id, skip ? "skipped" : "success");
+  }
   if (task === "rust") for (const id of auditSteps) requireOutcome(id, "success");
   for (const [id, step] of Object.entries(steps)) {
     if (["failure", "cancelled"].includes(step.conclusion)) throw new Error(`${task}: ${id} ${step.conclusion}`);

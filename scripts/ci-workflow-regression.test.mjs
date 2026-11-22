@@ -141,6 +141,26 @@ test("Rust pass records require exact inputs, runner identity and a pull request
     assert.equal(run("verify", { GITHUB_RUN_ATTEMPT: "2", PASS_SKIP: "false", PASS_STEPS: JSON.stringify(steps) }).status, 0);
     assert.equal(decide({ PASS_CACHE_MATCH: rerun.key, SOURCE_ATTEMPT: "2" }).skip, true);
     assert.equal(decide({ SOURCE_ATTEMPT: "2" }).skip, false, "a record must name the run in its restored key");
+
+    // GitHub leaves skipped background steps out of the steps context entirely.
+    const server = { PASS_TASK: "server", PASS_KEY: key.replace("gpui-test", "server") };
+    const serverIds = ["setup-mbx", "activate-cargo", "api-only", "browser-build", "test-server", "lint-server", "build-server", "headless-report"];
+    const background = ["server-command-contract", "http-lifecycle"];
+    const base = Object.fromEntries(["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
+    const ran = { ...base, "decide-pass": { ...base["decide-pass"], outputs: { skip: "false" } }, ...Object.fromEntries([...serverIds, ...background].map((id) => [id, { outcome: "success", conclusion: "success" }])) };
+    const serverKey = cache(server).key;
+    assert.equal(run("verify", { ...server, PASS_SKIP: "false", PASS_STEPS: JSON.stringify(ran) }).status, 0);
+    for (const id of background) {
+      const { [id]: _, ...missing } = ran;
+      assert.notEqual(run("verify", { ...server, PASS_SKIP: "false", PASS_STEPS: JSON.stringify(missing) }).status, 0, `a run that skipped ${id} must fail`);
+    }
+    const reused = { ...base, "decide-pass": { ...base["decide-pass"], outputs: { skip: "true" } }, ...Object.fromEntries(serverIds.map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
+    const reuse = { ...server, PASS_SKIP: "true", PASS_CACHE_MATCH: serverKey };
+    const reusedResult = run("verify", { ...reuse, PASS_STEPS: JSON.stringify(reused) });
+    assert.equal(reusedResult.status, 0, reusedResult.stderr);
+    const reusedSkipped = { ...reused, ...Object.fromEntries(background.map((id) => [id, { outcome: "skipped", conclusion: "skipped" }])) };
+    assert.equal(run("verify", { ...reuse, PASS_STEPS: JSON.stringify(reusedSkipped) }).status, 0);
+    assert.notEqual(run("verify", { ...reuse, PASS_STEPS: JSON.stringify({ ...reusedSkipped, "http-lifecycle": { outcome: "success", conclusion: "success" } }) }).status, 0, "a reused pass cannot run a background step");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -549,6 +569,9 @@ test("each existing check remains in its selected task", () => {
     assert.ok(checks.indexOf(step("Build headless server")) < checks.indexOf(background));
     assert.ok(checks.indexOf(background) < checks.indexOf(step("Test headless server")));
   }
+  const backgroundIds = [...checks.matchAll(/ id: ([\w-]+)\n(?:\s+if: .*\n)?\s+background: true\n/g)].map((match) => match[1]);
+  const helper = readFileSync(fileURLToPath(new URL("./ci-rust-pass.mjs", import.meta.url)), "utf8");
+  assert.deepEqual(JSON.parse(helper.match(/const backgroundSteps = new Set\((\[[^\]]*\])\)/)[1]).sort(), backgroundIds.sort(), "the pass helper must know every background step");
   assert.ok(checks.indexOf(step("Lint headless server")) < checks.indexOf("      - wait-all:"));
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
