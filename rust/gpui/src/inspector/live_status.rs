@@ -348,6 +348,12 @@ impl Inspector {
             .shown();
         let only_table_stale = table_pending && table_shown && !map_pending;
         let only_map_stale = map_pending && map_shown && !table_pending;
+        if only_table_stale {
+            self.loading.release_hold("map-live-notice");
+        }
+        if only_map_stale {
+            self.loading.release_hold("table-live-notice");
+        }
         let table = freshness
             .table
             .and_then(|status| notice_text(status, table_shown && !only_map_stale));

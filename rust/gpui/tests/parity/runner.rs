@@ -213,7 +213,8 @@ pub(super) fn run_scenario(
                 }
             }
             cx.run_until_parked();
-            if step["control"]["operation"] == "release"
+            if !scenario_clock
+                && step["control"]["operation"] == "release"
                 && step["control"]["command"] == "list_resource_topology"
             {
                 // read_retry.rs uses TanStack's first cancelled-read backoff.

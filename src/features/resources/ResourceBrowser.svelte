@@ -481,6 +481,10 @@
 	// Narrow the wording as soon as the panel that is still stale can keep the banner visible.
 	const onlyTableStale = $derived(tableStalePending && tableStale.shown && !mapStalePending);
 	const onlyMapStale = $derived(mapStalePending && mapStale.shown && !tableStalePending);
+	$effect(() => {
+		if (onlyTableStale) mapStale.releaseHold();
+		if (onlyMapStale) tableStale.releaseHold();
+	});
 	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
 	const tableNotice = $derived(notice.table && (notice.table.error
 		? "refreshFailed"

@@ -158,6 +158,18 @@ impl LoadingDelays {
         phase
     }
 
+    /// Ends a settled episode's hold when another indicator stays visible.
+    pub fn release_hold(&self, key: &str) {
+        let mut frame = self.frame.borrow_mut();
+        if frame
+            .episodes
+            .get(key)
+            .is_some_and(|(episode, _)| episode.finished.is_some())
+        {
+            frame.episodes.remove(key);
+        }
+    }
+
     /// Whether the indicator `key` rendered this frame in place of its
     /// content: its read is pending, or the indicator is held for its minimum
     /// visible time. Ready episodes are removed as they settle.

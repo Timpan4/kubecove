@@ -11,6 +11,8 @@ export type LoadingIndicator = {
 	readonly shown: boolean;
 	/** The read is pending or its indicator is held. Content waits while this is true. */
 	readonly active: boolean;
+	/** End the hold for a settled read when another indicator will stay visible. */
+	releaseHold(): void;
 };
 
 /** "waiting": pending, before the show delay. "shown": visible, and held after the read settles. */
@@ -55,6 +57,12 @@ class LoadingTimer {
 		this.timer = undefined;
 	}
 
+	releaseHold(): void {
+		if (this.phase !== "shown") return;
+		this.dispose();
+		this.set("idle");
+	}
+
 	private set(phase: "idle" | "shown"): void {
 		this.phase = phase;
 		this.changed();
@@ -82,6 +90,9 @@ export function loadingDelay(pending: () => boolean, showDelayMs = LOADING_SHOW_
 		get active() {
 			void version;
 			return timer.phase === "shown" || pending();
+		},
+		releaseHold() {
+			if (!pending()) untrack(() => timer.releaseHold());
 		},
 	};
 }

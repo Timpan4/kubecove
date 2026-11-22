@@ -83,7 +83,7 @@
     },
     {
       "id": "map.catch-up-keeps-table-live",
-      "title": "The stale notice names only the map when the table recovers during the hold",
+      "title": "The stale notice keeps its map-only wording after both panels recover during the hold",
       "steps": [
         { "action": "openResources" },
         { "action": "setWindowActive", "active": true },
@@ -106,7 +106,10 @@
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
-        { "action": "advanceClock", "ms": 50 },
+        { "action": "advanceClock", "ms": 49 },
+        { "action": "expectPageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover." },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "advanceClock", "ms": 1 },
         { "action": "expectLiveState", "label": "Live" },
         { "action": "coverageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover.", "visible": false }
       ]
