@@ -21,6 +21,7 @@ pub(super) fn merge_workspaces(
     document: &mut Document,
     source_key: Option<&str>,
     workspace_id_map: &mut HashMap<String, String>,
+    presets: &mut usize,
     skipped: &mut usize,
 ) {
     let Some(raw_workspaces) = state.get("workspaces") else {
@@ -90,6 +91,7 @@ pub(super) fn merge_workspaces(
         }
 
         if !parsed.port_forwards.is_empty() {
+            *presets += parsed.port_forwards.len();
             // Matches `Inspector::preset_key`: source, context, workspace name.
             let preset_key = serde_json::to_string(&(source_key, &parsed.context, &target_name))
                 .expect("string tuple");
@@ -236,8 +238,13 @@ fn parse_saved_kind(value: &Value) -> Option<SavedKind> {
     }
     let obj = value.as_object()?;
     let namespaced = obj.get("namespaced")?.as_bool()?;
+    // The core API group is the empty string.
+    let group = obj.get("group")?.as_str()?.trim();
+    if !group.is_empty() && !is_safe_text(group) {
+        return None;
+    }
     Some(SavedKind::Api(ApiKind {
-        group: safe_nonempty(obj.get("group"))?,
+        group: group.to_owned(),
         version: safe_nonempty(obj.get("version"))?,
         api_version: safe_nonempty(obj.get("apiVersion"))?,
         kind: safe_nonempty(obj.get("kind"))?,
@@ -431,6 +438,12 @@ fn build_retained_document(
             trimmed.into()
         }
     });
+    // The shared workspace format requires a nonempty group, so core-group
+    // discovered kinds stay only on the saved workspace.
+    let kinds: Vec<&SavedKind> = kinds
+        .iter()
+        .filter(|kind| !matches!(kind, SavedKind::Api(api) if api.group.is_empty()))
+        .collect();
     let mut scope = json!({
         "clusterContext": context,
         "namespaces": namespaces,

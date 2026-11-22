@@ -18,21 +18,44 @@ enum LockError {
     Io(std::io::Error),
 }
 
-#[derive(Default)]
+/// Resolves the active kubeconfig source key.
+pub type SourceResolver = fn() -> Result<String, AppError>;
+
+fn active_source() -> Result<String, AppError> {
+    kubecove_lib::commands::ClusterAccess::resolve(None)
+        .map(|access| access.source_key().to_owned())
+}
+
 pub struct Store {
     directory: Option<PathBuf>,
     memory: Mutex<Document>,
     legacy_file: Option<PathBuf>,
     migration_diagnostic: Mutex<Option<String>>,
+    source: SourceResolver,
+}
+impl Default for Store {
+    fn default() -> Self {
+        Self {
+            directory: None,
+            memory: Mutex::default(),
+            legacy_file: None,
+            migration_diagnostic: Mutex::default(),
+            source: active_source,
+        }
+    }
 }
 impl Store {
     pub fn file(directory: PathBuf) -> Self {
         Self {
             directory: Some(directory),
-            memory: Mutex::default(),
-            legacy_file: None,
-            migration_diagnostic: Mutex::default(),
+            ..Self::default()
         }
+    }
+    /// Replaces how the Tauri import resolves the kubeconfig source that scopes
+    /// migrated port-forward presets. Native hydration uses `active_source`.
+    pub fn with_source_resolver(mut self, resolver: SourceResolver) -> Self {
+        self.source = resolver;
+        self
     }
     pub fn set_legacy_file(&mut self, path: PathBuf) {
         self.legacy_file = Some(path);
@@ -111,17 +134,6 @@ impl Store {
         let (mut document, existing_pref_keys) = self.load_unlocked(directory)?;
         let migration_path = directory.join(MIGRATION_FILE);
         let imported_path = directory.join(IMPORTED_FILE);
-        if document.tauri_migration_imported {
-            if let Err(error) = fs::rename(&migration_path, &imported_path)
-                && error.kind() != std::io::ErrorKind::NotFound
-            {
-                self.set_migration_diagnostic(Some(format!(
-                    "Tauri migration was already imported; could not archive {MIGRATION_FILE} to {IMPORTED_FILE}: {error}."
-                )));
-            }
-            *memory = document.clone();
-            return Ok(document);
-        }
         let bytes = match fs::read(&migration_path) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -136,15 +148,34 @@ impl Store {
                 return Ok(document);
             }
         };
-        let source_key = kubecove_lib::commands::ClusterAccess::resolve(None)
-            .ok()
-            .map(|access| access.source_key().to_owned());
+        // Import runs once. Archival of the imported snapshot is cleanup that a
+        // later start retries; a different snapshot stays for the user to see.
+        if let Some(imported) = document.tauri_migration_imported.clone() {
+            match tauri_migration::snapshot_identity(&bytes) {
+                Ok(identity) if identity == imported => {
+                    if let Err(error) = fs::rename(&migration_path, &imported_path) {
+                        self.set_migration_diagnostic(Some(format!(
+                            "Tauri migration was already imported; could not archive {MIGRATION_FILE} to {IMPORTED_FILE}: {error}."
+                        )));
+                    }
+                }
+                Ok(identity) => self.set_migration_diagnostic(Some(format!(
+                    "Did not import {MIGRATION_FILE} exported at {identity}: GPUI already imported the snapshot exported at {imported}. The file was preserved."
+                ))),
+                Err(reason) => self.set_migration_diagnostic(Some(format!(
+                    "Ignored corrupt {MIGRATION_FILE}: {reason}. The file was preserved."
+                ))),
+            }
+            *memory = document.clone();
+            return Ok(document);
+        }
+        let source_key = (self.source)();
         let mut candidate = document.clone();
         let report = match tauri_migration::merge_bytes(
             &bytes,
             &mut candidate,
             &existing_pref_keys,
-            source_key.as_deref(),
+            source_key.as_deref().ok(),
         ) {
             Ok(report) => report,
             Err(reason) => {
@@ -155,7 +186,19 @@ impl Store {
                 return Ok(document);
             }
         };
-        candidate.tauri_migration_imported = true;
+        if let Err(error) = &source_key
+            && report.presets > 0
+        {
+            // Presets filed under no source would never match the source the
+            // inspector resolves once the kubeconfig settings are repaired.
+            self.set_migration_diagnostic(Some(format!(
+                "Did not import {MIGRATION_FILE} yet: its saved port forwards need the active kubeconfig source, which could not be resolved ({}). The file was preserved for the next start.",
+                error.message
+            )));
+            *memory = document.clone();
+            return Ok(document);
+        }
+        candidate.tauri_migration_imported = Some(report.identity);
         if let Err(error) = validate(&candidate).and_then(|()| {
             let value = serde_json::to_value(&candidate).map_err(|_| invalid())?;
             reject_credentials(&value)

@@ -4,7 +4,26 @@
 
 use crate::scratch::Scratch;
 use kubecove_gpui::preferences::{ConnectionPreference, Endpoint, LogLayout, Store};
+use kubecove_lib::models::{AppError, AppErrorKind};
 use serde_json::json;
+
+const SOURCE: &str = "kubeconfigEnv=KUBECONFIG";
+
+fn fixed_source() -> Result<String, AppError> {
+    Ok(SOURCE.into())
+}
+
+fn unresolved_source() -> Result<String, AppError> {
+    Err(AppError::new(
+        "kubeconfig settings unreadable",
+        AppErrorKind::Io,
+    ))
+}
+
+/// The key `Inspector::preset_key` builds once hydration reports `SOURCE`.
+fn scoped_preset_key(context: &str, workspace: &str) -> String {
+    serde_json::to_string(&(Some(SOURCE), context, workspace)).unwrap()
+}
 
 #[test]
 fn tauri_migration_fresh_import_and_idempotency() {
@@ -82,6 +101,14 @@ fn tauri_migration_fresh_import_and_idempotency() {
                                         "kind": "Application",
                                         "plural": "applications",
                                         "namespaced": true
+                                    },
+                                    {
+                                        "group": "",
+                                        "version": "v1",
+                                        "apiVersion": "v1",
+                                        "kind": "ResourceQuota",
+                                        "plural": "resourcequotas",
+                                        "namespaced": true
                                     }
                                 ],
                                 "clusterGroup": {
@@ -147,8 +174,9 @@ fn tauri_migration_fresh_import_and_idempotency() {
     let imported_path = directory.join("tauri-migration.imported.json");
     std::fs::write(&migration_path, snapshot.to_string()).unwrap();
 
-    let store = Store::file(directory.clone());
+    let store = Store::file(directory.clone()).with_source_resolver(fixed_source);
     let loaded = store.load().unwrap();
+    assert_eq!(loaded.tauri_migration_imported.as_deref(), Some(timestamp));
     // The "staging" connection key names no migrated workspace, so it is skipped.
     assert_eq!(
         store.last_migration_diagnostic().as_deref(),
@@ -198,17 +226,15 @@ fn tauri_migration_fresh_import_and_idempotency() {
     assert_eq!(ws.group, vec!["prod-eu"]);
     assert_eq!(ws.group_name.as_deref(), Some("Prod Fleet"));
     assert_eq!(ws.namespaces, vec!["checkout", "payments"]);
-    assert_eq!(ws.kinds.len(), 2);
+    // A discovered core-group kind carries the empty group and is kept.
+    assert_eq!(ws.kinds.len(), 3);
     assert_eq!(ws.reviews.len(), 1);
     assert_eq!(ws.reviews[0].note, "Approved for on-call");
     assert!(loaded.workspace_documents.contains_key(&1));
     assert_eq!(loaded.workspace_entry_points[&1].pinned.len(), 1);
     assert_eq!(loaded.workspace_entry_points[&1].recent.len(), 1);
-    // Native live-session hydration scopes presets by this same resolution.
-    let source = kubecove_lib::commands::ClusterAccess::resolve(None)
-        .ok()
-        .map(|access| access.source_key().to_owned());
-    let preset_key = serde_json::to_string(&(source.as_deref(), "prod", "Production")).unwrap();
+    let preset_key = scoped_preset_key("prod", "Production");
+    assert_eq!(loaded.saved_forward_presets.len(), 1);
     assert_eq!(loaded.saved_forward_presets[&preset_key].len(), 1);
     assert_eq!(
         loaded.saved_forward_presets[&preset_key][0].label,
@@ -221,6 +247,7 @@ fn tauri_migration_fresh_import_and_idempotency() {
     let saved = store.save(edited).unwrap();
     let reloaded = Store::file(directory).load().unwrap();
     assert!(!reloaded.preferences.show_exact_timestamps);
+    assert_eq!(reloaded.workspaces[0].kinds.len(), 3);
     assert_eq!(reloaded.revision, saved.revision);
 }
 
@@ -303,6 +330,7 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                         "tauri-prod": { "kind": "connected", "profileId": "shared-profile" },
                         "tauri-staging": { "kind": "connected", "profileId": "new-profile" },
                         "tauri-dev": { "kind": "connected", "profileId": "dropped-profile" },
+                        "tauri-qa": { "kind": "connected", "profileId": "shared-profile" },
                         "tauri-unknown": { "kind": "kubernetes" }
                     }
                 }
@@ -351,6 +379,11 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                             "id": "tauri-dev",
                             "name": "Dev",
                             "scope": { "clusterContext": "dev" }
+                        },
+                        {
+                            "id": "tauri-qa",
+                            "name": "QA",
+                            "scope": { "clusterContext": "qa" }
                         }
                     ]
                 }
@@ -359,7 +392,10 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
     });
     std::fs::write(directory.join("tauri-migration.json"), snapshot.to_string()).unwrap();
 
-    let merged = Store::file(directory).load().unwrap();
+    let merged = Store::file(directory)
+        .with_source_resolver(fixed_source)
+        .load()
+        .unwrap();
     assert!(merged.preferences.show_exact_timestamps);
     assert!(!merged.preferences.show_usage_footer);
     assert_eq!(merged.preferences.argo_profiles.len(), 2);
@@ -373,7 +409,9 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
     // An unmapped Tauri workspace ID is cleared rather than kept as a GPUI ID.
     assert_eq!(merged.preferences.argo_profiles[1].workspace_id, None);
     // Staging maps to GPUI workspace 2. Dev's profile was rejected, so its
-    // selection is dropped, and the unknown Tauri workspace has no GPUI key.
+    // selection is dropped. QA selected Tauri's "shared-profile", whose ID GPUI
+    // already holds with another endpoint, so that selection is dropped too.
+    // The unknown Tauri workspace has no GPUI key.
     assert_eq!(
         merged.preferences.argo_connection_preferences,
         [
@@ -387,7 +425,7 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
         ]
         .into()
     );
-    assert_eq!(merged.workspaces.len(), 3);
+    assert_eq!(merged.workspaces.len(), 4);
     assert_eq!(merged.workspaces[0].name, "Production");
     assert_eq!(merged.workspaces[0].namespaces, vec!["gpui-ns"]);
     assert_eq!(merged.workspaces[0].reviews.len(), 2);
@@ -396,12 +434,101 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
     assert_eq!(merged.workspaces[1].name, "Staging");
     assert_eq!(merged.workspaces[1].id, 2);
     // A case-insensitive match files presets under the existing workspace's name.
-    let source = kubecove_lib::commands::ClusterAccess::resolve(None)
-        .ok()
-        .map(|access| access.source_key().to_owned());
-    let preset_key = serde_json::to_string(&(source.as_deref(), "prod", "Production")).unwrap();
+    let preset_key = scoped_preset_key("prod", "Production");
     assert_eq!(merged.saved_forward_presets.len(), 1);
     assert_eq!(merged.saved_forward_presets[&preset_key].len(), 1);
+}
+
+#[test]
+fn tauri_migration_imports_only_preference_keys_gpui_has_not_stored() {
+    let root = Scratch::new("preferences-tests", "tauri-sparse");
+    let directory = root.to_path_buf();
+    // GPUI stored showUsageFooter explicitly at its default and never stored
+    // showExactTimestamps.
+    let mut stored = serde_json::to_value(kubecove_gpui::preferences::Document::default()).unwrap();
+    stored["preferences"] = json!({ "showUsageFooter": false });
+    std::fs::write(directory.join("live-sessions.json"), stored.to_string()).unwrap();
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "exportedAt": "2026-11-21T00:00:00Z",
+        "entries": {
+            "kubecove-settings": {
+                "version": 0,
+                "state": { "showUsageFooter": true, "showExactTimestamps": true }
+            }
+        }
+    });
+    std::fs::write(directory.join("tauri-migration.json"), snapshot.to_string()).unwrap();
+
+    let merged = Store::file(directory).load().unwrap();
+    assert!(!merged.preferences.show_usage_footer);
+    assert!(merged.preferences.show_exact_timestamps);
+}
+
+#[test]
+fn tauri_migration_waits_for_a_kubeconfig_source_before_importing_presets() {
+    let root = Scratch::new("preferences-tests", "tauri-source");
+    let directory = root.to_path_buf();
+    let migration_path = directory.join("tauri-migration.json");
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "exportedAt": "2026-11-21T00:00:00Z",
+        "entries": {
+            "kubecove-workspaces": {
+                "version": 0,
+                "state": {
+                    "workspaces": [{
+                        "id": "a",
+                        "name": "Alpha",
+                        "scope": { "clusterContext": "dev" },
+                        "portForwards": [{
+                            "clusterContext": "dev",
+                            "namespace": "web",
+                            "serviceName": "api",
+                            "servicePort": 80
+                        }]
+                    }]
+                }
+            }
+        }
+    })
+    .to_string();
+    std::fs::write(&migration_path, &snapshot).unwrap();
+
+    let store = Store::file(directory.clone()).with_source_resolver(unresolved_source);
+    let waiting = store.load().unwrap();
+    assert!(waiting.workspaces.is_empty());
+    assert_eq!(waiting.tauri_migration_imported, None);
+    assert!(
+        store
+            .last_migration_diagnostic()
+            .unwrap()
+            .contains("kubeconfig settings unreadable")
+    );
+    assert_eq!(std::fs::read_to_string(&migration_path).unwrap(), snapshot);
+
+    let imported = Store::file(directory.clone())
+        .with_source_resolver(fixed_source)
+        .load()
+        .unwrap();
+    assert_eq!(imported.workspaces.len(), 1);
+    assert_eq!(
+        imported.saved_forward_presets[&scoped_preset_key("dev", "Alpha")].len(),
+        1
+    );
+    assert!(!migration_path.exists());
+
+    // A snapshot without presets needs no source.
+    let bare = Scratch::new("preferences-tests", "tauri-source-bare");
+    let bare_directory = bare.to_path_buf();
+    let without_presets = snapshot.replace(r#","portForwards":[{"clusterContext":"dev","namespace":"web","serviceName":"api","servicePort":80}]"#, "");
+    assert_ne!(without_presets, snapshot);
+    std::fs::write(bare_directory.join("tauri-migration.json"), without_presets).unwrap();
+    let bare_doc = Store::file(bare_directory)
+        .with_source_resolver(unresolved_source)
+        .load()
+        .unwrap();
+    assert_eq!(bare_doc.workspaces.len(), 1);
 }
 
 #[test]
@@ -410,21 +537,21 @@ fn tauri_migration_marker_blocks_reimport_after_failed_archive_or_republish() {
     let directory = root.to_path_buf();
     let migration_path = directory.join("tauri-migration.json");
     let imported_path = directory.join("tauri-migration.imported.json");
-    let snapshot = json!({
-        "schemaVersion": 1,
-        "entries": {
-            "kubecove-workspaces": {
-                "version": 0,
-                "state": {
-                    "workspaces": [
-                        { "id": "a", "name": "Alpha", "scope": { "clusterContext": "dev" } },
-                        { "id": "b", "name": "Beta", "scope": { "clusterContext": "dev" } }
-                    ]
-                }
+    let snapshot_at = |exported_at: &str, names: &[&str]| {
+        let workspaces: Vec<_> = names
+            .iter()
+            .map(|name| json!({ "id": name, "name": name, "scope": { "clusterContext": "dev" } }))
+            .collect();
+        json!({
+            "schemaVersion": 1,
+            "exportedAt": exported_at,
+            "entries": {
+                "kubecove-workspaces": { "version": 0, "state": { "workspaces": workspaces } }
             }
-        }
-    })
-    .to_string();
+        })
+        .to_string()
+    };
+    let snapshot = snapshot_at("2026-11-21T00:00:00Z", &["Alpha", "Beta"]);
     std::fs::write(&migration_path, &snapshot).unwrap();
     // A directory at the archive path makes the rename fail after the merge is saved.
     std::fs::create_dir(&imported_path).unwrap();
@@ -432,7 +559,10 @@ fn tauri_migration_marker_blocks_reimport_after_failed_archive_or_republish() {
     let store = Store::file(directory.clone());
     let imported = store.load().unwrap();
     assert_eq!(imported.workspaces.len(), 2);
-    assert!(imported.tauri_migration_imported);
+    assert_eq!(
+        imported.tauri_migration_imported.as_deref(),
+        Some("2026-11-21T00:00:00Z")
+    );
     assert!(store.last_migration_diagnostic().is_some());
     assert!(migration_path.exists());
 
@@ -449,9 +579,26 @@ fn tauri_migration_marker_blocks_reimport_after_failed_archive_or_republish() {
 
     // Once the archive path is free, the leftover snapshot is archived untouched.
     std::fs::remove_dir(&imported_path).unwrap();
-    let archived = Store::file(directory).load().unwrap();
+    let archived = Store::file(directory.clone()).load().unwrap();
     assert_eq!(archived.revision, saved.revision);
     assert!(!migration_path.exists());
+    assert_eq!(std::fs::read_to_string(&imported_path).unwrap(), snapshot);
+
+    // A later Tauri export is a different snapshot: it is neither merged nor
+    // archived over the imported one, and the user is told why.
+    let newer = snapshot_at("2026-11-22T00:00:00Z", &["Alpha", "Beta", "Gamma"]);
+    std::fs::write(&migration_path, &newer).unwrap();
+    let store = Store::file(directory);
+    let unchanged = store.load().unwrap();
+    assert_eq!(unchanged.revision, saved.revision);
+    assert_eq!(unchanged.workspaces.len(), 1);
+    assert!(
+        store
+            .last_migration_diagnostic()
+            .unwrap()
+            .contains("already imported the snapshot exported at 2026-11-21T00:00:00Z")
+    );
+    assert_eq!(std::fs::read_to_string(&migration_path).unwrap(), newer);
     assert_eq!(std::fs::read_to_string(&imported_path).unwrap(), snapshot);
 }
 
@@ -464,8 +611,10 @@ fn tauri_migration_corrupt_and_partial_handling() {
 
     for raw in [
         "{not-json",
-        r#"{"schemaVersion":2,"entries":{}}"#,
-        r#"{"schemaVersion":1,"entries":"bad"}"#,
+        r#"{"schemaVersion":2,"exportedAt":"2026-11-21T00:00:00Z","entries":{}}"#,
+        r#"{"schemaVersion":1,"exportedAt":"2026-11-21T00:00:00Z","entries":"bad"}"#,
+        r#"{"schemaVersion":1,"entries":{}}"#,
+        r#"{"schemaVersion":1,"exportedAt":"yesterday","entries":{}}"#,
     ] {
         std::fs::write(&migration_path, raw).unwrap();
         let store = Store::file(directory.clone());
@@ -478,6 +627,7 @@ fn tauri_migration_corrupt_and_partial_handling() {
 
     let partial = json!({
         "schemaVersion": 1,
+        "exportedAt": "2026-11-21T00:00:00Z",
         "entries": {
             "kubecove-settings": {
                 "version": 0,

@@ -35,7 +35,36 @@ static SENSITIVE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 pub(super) struct MergeReport {
+    /// The snapshot's `exportedAt`, which identifies it for the import marker.
+    pub identity: String,
     pub skipped: usize,
+    /// Port-forward presets merged, which are keyed by `source_key`.
+    pub presets: usize,
+}
+
+/// Validates the top level of a schema-v1 snapshot and returns its identity,
+/// the `exportedAt` time. Tauri rewrites the file only when its entries
+/// change, and every rewrite carries a new export time (ADR 0036).
+pub(super) fn snapshot_identity(bytes: &[u8]) -> Result<String, String> {
+    snapshot_root(bytes).map(|(identity, _)| identity)
+}
+
+fn snapshot_root(bytes: &[u8]) -> Result<(String, serde_json::Map<String, Value>), String> {
+    let root: Value =
+        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON ({error})"))?;
+    let Value::Object(object) = root else {
+        return Err("top-level value must be a JSON object".into());
+    };
+    if object.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
+        return Err("unsupported or missing schemaVersion (expected 1)".into());
+    }
+    let identity = object
+        .get("exportedAt")
+        .and_then(Value::as_str)
+        .filter(|text| chrono::DateTime::parse_from_rfc3339(text).is_ok())
+        .ok_or("missing or invalid exportedAt")?
+        .to_owned();
+    Ok((identity, object))
 }
 
 /// Parses `bytes` as a schema-v1 Tauri migration snapshot and merges valid
@@ -52,19 +81,13 @@ pub(super) fn merge_bytes(
     existing_preference_keys: &HashSet<String>,
     source_key: Option<&str>,
 ) -> Result<MergeReport, String> {
-    let root: Value =
-        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON ({error})"))?;
-    let Some(object) = root.as_object() else {
-        return Err("top-level value must be a JSON object".into());
-    };
-    if object.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
-        return Err("unsupported or missing schemaVersion (expected 1)".into());
-    }
+    let (identity, object) = snapshot_root(bytes)?;
     let Some(entries) = object.get("entries").and_then(Value::as_object) else {
         return Err("missing or invalid entries object".into());
     };
 
     let mut skipped = 0usize;
+    let mut presets = 0usize;
     let mut workspace_id_map = HashMap::new();
 
     if let Some(workspaces_entry) = entries.get("kubecove-workspaces") {
@@ -74,6 +97,7 @@ pub(super) fn merge_bytes(
                 document,
                 source_key,
                 &mut workspace_id_map,
+                &mut presets,
                 &mut skipped,
             ),
             None => skipped += 1,
@@ -93,7 +117,11 @@ pub(super) fn merge_bytes(
         }
     }
 
-    Ok(MergeReport { skipped })
+    Ok(MergeReport {
+        identity,
+        skipped,
+        presets,
+    })
 }
 
 fn entry_state(entry: &Value) -> Option<&serde_json::Map<String, Value>> {
@@ -151,19 +179,27 @@ fn merge_settings(
 ) {
     apply_scalar_preferences(state, prefs, existing_preference_keys, skipped);
 
+    // Incoming profiles a migrated selection may name: imported ones, and ones
+    // equal to the GPUI profile that already holds the ID. A different GPUI
+    // profile with the same ID is not the endpoint the user selected in Tauri.
+    let mut selectable = HashSet::new();
     if let Some(raw_profiles) = state.get("argoProfiles") {
         match raw_profiles.as_array() {
             Some(items) => {
-                let mut existing_ids: HashSet<String> =
-                    prefs.argo_profiles.iter().map(|p| p.id.clone()).collect();
                 for item in items {
-                    match parse_argo_profile(item, workspace_id_map) {
-                        Some(profile) => {
-                            if existing_ids.insert(profile.id.clone()) {
-                                prefs.argo_profiles.push(profile);
-                            }
+                    let Some(profile) = parse_argo_profile(item, workspace_id_map) else {
+                        *skipped += 1;
+                        continue;
+                    };
+                    match prefs.argo_profiles.iter().find(|p| p.id == profile.id) {
+                        Some(existing) if *existing == profile => {
+                            selectable.insert(profile.id);
                         }
-                        None => *skipped += 1,
+                        Some(_) => {}
+                        None => {
+                            selectable.insert(profile.id.clone());
+                            prefs.argo_profiles.push(profile);
+                        }
                     }
                 }
             }
@@ -191,7 +227,7 @@ fn merge_settings(
                         continue;
                     };
                     if let ConnectionPreference::Connected { profile_id } = &parsed
-                        && !prefs.argo_profiles.iter().any(|p| &p.id == profile_id)
+                        && !selectable.contains(profile_id)
                     {
                         *skipped += 1;
                         continue;
