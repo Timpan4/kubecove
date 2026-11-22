@@ -9,7 +9,7 @@
    - Linux x64: `kubecove_*_x86_64.AppImage`
 3. Install and launch the app.
 
-There is no Intel macOS build. Release 0.15.1 was the last with separate Tauri installers and the side-by-side **KubeCove GPUI** client. Those installs stay on 0.15.1 and do not update to 0.16.0, so install 0.16.0 from the release page.
+There is no Intel macOS build. Release 0.15.2 was the last with separate Tauri installers and the side-by-side **KubeCove GPUI** client. Those installs update to 0.15.2 and then to the current KubeCove like any other update. Release 0.15.1 was withdrawn: if you run 0.15.1, install the current release from the release page once. Tauri installs from a .deb or .rpm package also need the AppImage from the release page.
 
 KubeCove is tested against Kubernetes 1.34 through 1.37.
 
