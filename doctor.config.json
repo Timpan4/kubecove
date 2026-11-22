@@ -6,7 +6,7 @@
       "build/**",
       ".vite/**",
       "target/**",
-      "src-tauri/target/**"
+      "rust/target/**"
     ]
   }
 }

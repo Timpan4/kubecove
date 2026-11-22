@@ -16,16 +16,16 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 WORKDIR /src
 COPY . /src
 RUN bun install --frozen-lockfile \
-    && cargo fetch --locked --manifest-path src-tauri/Cargo.toml \
-    && cargo fetch --locked --manifest-path src-tauri/server/Cargo.toml \
-    && cargo fetch --locked --manifest-path src-tauri/gpui/Cargo.toml
+    && cargo fetch --locked --manifest-path rust/Cargo.toml \
+    && cargo fetch --locked --manifest-path rust/server/Cargo.toml \
+    && cargo fetch --locked --manifest-path rust/gpui/Cargo.toml
 
 ENV CARGO_NET_OFFLINE=true
-RUN --network=none cargo build --locked --manifest-path src-tauri/Cargo.toml \
-    && cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml --no-run
+RUN --network=none cargo build --locked --manifest-path rust/Cargo.toml \
+    && cargo test --locked --workspace --manifest-path rust/Cargo.toml --no-run
 RUN --network=none KUBECOVE_PUBLIC_RUNTIME=web bun run build \
-    && cargo build --locked --manifest-path src-tauri/server/Cargo.toml \
-    && cargo test --locked --manifest-path src-tauri/server/Cargo.toml --no-run
-RUN --network=none cargo build --locked --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui
+    && cargo build --locked --manifest-path rust/server/Cargo.toml \
+    && cargo test --locked --manifest-path rust/server/Cargo.toml --no-run
+RUN --network=none cargo build --locked --manifest-path rust/gpui/Cargo.toml --bin kubecove-gpui
 
 CMD ["bash"]

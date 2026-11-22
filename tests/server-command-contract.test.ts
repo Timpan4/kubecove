@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parseSync, Visitor } from "vite";
 
 test("every server command has an exported Svelte invoke wrapper", () => {
-	const contract = readFileSync(new URL("../src-tauri/crates/models/src/command_contract.rs", import.meta.url), "utf8");
+	const contract = readFileSync(new URL("../rust/crates/models/src/command_contract.rs", import.meta.url), "utf8");
 	const entries = /\$adapter!\s*\{([^}]*)\}/.exec(contract)?.[1];
 	if (!entries?.trim()) throw new Error("Cannot read command_contract!'s adapter entries");
 	const required = new Set<string>();

@@ -8,9 +8,9 @@ Accepted on 2026-10-23.
 
 [ADR 0020](0020-headless-server-mode.md) made the backend command surface reachable through two transports: Tauri IPC in the desktop app and HTTP in `kubecove-server`. Each command's name, argument keys, argument types, managed state and transport class are restated in up to four hand-synchronized places:
 
-- the desktop `tauri::generate_handler!` list in `src-tauri/src/lib.rs`;
-- the server `command_table!` entries and `DESKTOP_ONLY` list in `src-tauri/server/src/dispatch/`, which repeat each camelCase key, Rust type and `State` wiring;
-- the desktop remote client, which intercepts the three port-forward commands and live-session scope cleanup by string in `src-tauri/crates/host/src/remote/tunnels.rs`;
+- the desktop `tauri::generate_handler!` list in `rust/src/lib.rs`;
+- the server `command_table!` entries and `DESKTOP_ONLY` list in `rust/server/src/dispatch/`, which repeat each camelCase key, Rust type and `State` wiring;
+- the desktop remote client, which intercepts the three port-forward commands and live-session scope cleanup by string in `rust/crates/host/src/remote/tunnels.rs`;
 - the typed frontend wrappers in `src/lib/tauri.ts`.
 
 Tauri derives a desktop argument key from the Rust parameter name, while the server reads the key it was given and treats a missing key as null. A misspelled optional key in the server table therefore decodes as `None` without an error. The guards are a test that parses `lib.rs` as text and a camelCase test that covers one command.

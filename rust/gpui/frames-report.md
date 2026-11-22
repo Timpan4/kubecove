@@ -4,7 +4,7 @@ The port, required checks and focused parity pass. The 120 fps gate remains red.
 
 ## Source and scope
 
-Base: `a2239cc`. Parent parity fixes were cherry-picked as `d427251` and `dbe7b79`. Port commit: `d0860ac`. Harness alignment commit: `5806142`. Both commits' pre-commit hooks passed, including `cargo check --workspace --manifest-path src-tauri/Cargo.toml`. The older 82-file patch was ported by intent. The missing earlier report was waived by the user. The earlier worktrees were read without modification. Their timings are historical evidence only.
+Base: `a2239cc`. Parent parity fixes were cherry-picked as `d427251` and `dbe7b79`. Port commit: `d0860ac`. Harness alignment commit: `5806142`. Both commits' pre-commit hooks passed, including `cargo check --workspace --manifest-path rust/Cargo.toml`. The older 82-file patch was ported by intent. The missing earlier report was waived by the user. The earlier worktrees were read without modification. Their timings are historical evidence only.
 
 The port adds the 108-case headless production-mode harness, prepared resource rows and watch patches, indexed filtering, a kind-selection mask, map edge culling and topology preparation comparisons. It fixes Events and Details timeline overflow with shared scroll scenarios. It preserves the current expandable namespace tree, resource controls, custom-resource state, map focus controls, retry behavior and concurrent parity runner.
 
@@ -158,7 +158,7 @@ The measured Rust source is `5806142`. The runner includes `9b0312f` and its sub
 
 SHA-256: `ebc8eeb3c0c9f48c16f1ff798db04e345b541487aa39c0444a0826a131d8f5cf`.
 
-Manifest directory: `src-tauri/gpui`. Target: `src-tauri/gpui/target`. Build: `src-tauri/gpui/build`. Optimized build, profiling disabled, debug assertions disabled. CPU: AMD Ryzen 7 9800X3D 8-Core Processor, 16 logical processors.
+Manifest directory: `rust/gpui`. Target: `rust/gpui/target`. Build: `rust/gpui/build`. Optimized build, profiling disabled, debug assertions disabled. CPU: AMD Ryzen 7 9800X3D 8-Core Processor, 16 logical processors.
 
 | Repetition | Uptime before measurement, local CET | Load before | Load after | Observed child priority |
 | --- | --- | --- | --- | ---: |
@@ -377,6 +377,6 @@ Component costs below are p95 of the sum of each named span within one input, ov
 
 The requested port is committed on `perf/gpui-frame-time`, with functional source at `5be5d9a`. Required checks and 41 scenarios per parity driver pass. The final optimized gate fails seven cases, each with measured causes above. Twelve original failures pass after optimization. The full 108-case baseline remains available; 86 earlier passes were not remeasured after these changes.
 
-Temporary diagnostic changes were removed. `git diff --exit-code -- src-tauri/gpui` confirms the source is identical to the gated commit. No further functional change follows that measurement. This report and `frames-first-run.md` are committed separately.
+Temporary diagnostic changes were removed. `git diff --exit-code -- rust/gpui` confirms the source is identical to the gated commit. No further functional change follows that measurement. This report and `frames-first-run.md` are committed separately.
 
 These results cover Linux headless CPU frame work and renderer encoding/submission. Physical display presentation, other operating systems and production disk-backed preference writes remain unmeasured. The profiles identify the YAML layout component and Argo completion task; their internal subroutine costs remain unsplit.

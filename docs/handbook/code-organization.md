@@ -22,15 +22,15 @@ Generic Svelte UI only: shared layout, generic displays, and primitives in `ui/s
 
 Typed Tauri wrappers, frontend-safe contracts, stores, query keys, and pure shared logic. No feature-specific UI behavior.
 
-## Backend (`src-tauri/src/`)
+## Backend (`rust/src/`)
 
-`src-tauri/crates/` contains private Rust workspace crates for frontend contracts, Kubernetes/session infrastructure, resource inspection, live sessions, GitOps, and host support. The desktop package remains the composition root; the server stays outside the desktop workspace's package selection.
+`rust/crates/` contains private Rust workspace crates for frontend contracts, Kubernetes/session infrastructure, resource inspection, live sessions, GitOps, and host support. The desktop package remains the composition root; the server stays outside the desktop workspace's package selection.
 
-The desktop `commands/` module composes domain APIs and coordinates workspace cancellation. Domain `commands/` implementations live in `src-tauri/crates/`; frontend-safe contracts live in `crates/models/`. Keep kubeconfig contents, tokens, certificates, and unnecessary raw Kubernetes objects out of models. Shared Kubernetes clients and session infrastructure belong in `crates/kube/`. See the [crate map](../../src-tauri/crates/README.md) before introducing cross-domain dependencies.
+The desktop `commands/` module composes domain APIs and coordinates workspace cancellation. Domain `commands/` implementations live in `rust/crates/`; frontend-safe contracts live in `crates/models/`. Keep kubeconfig contents, tokens, certificates, and unnecessary raw Kubernetes objects out of models. Shared Kubernetes clients and session infrastructure belong in `crates/kube/`. See the [crate map](../../rust/crates/README.md) before introducing cross-domain dependencies.
 
-`src-tauri/server/` is the headless binary's separate workspace. It owns authenticated HTTP and WebSocket adapters, session ownership, and server startup. It calls the existing backend facade through `crates/kube/src/runtime.rs`'s transport seam with the `desktop` feature disabled.
+`rust/server/` is the headless binary's separate workspace. It owns authenticated HTTP and WebSocket adapters, session ownership, and server startup. It calls the existing backend facade through `crates/kube/src/runtime.rs`'s transport seam with the `desktop` feature disabled.
 
-`src-tauri/gpui/` is the opt-in native client's separate Cargo workspace. It owns GPUI Kit presentation and its host runtime, and calls shared Rust commands with Tauri features disabled. Shared frontend acceptance scenarios live in `e2e/parity/`. See [ADR 0029](../decisions/0029-gpui-native-client-and-feature-parity.md).
+`rust/gpui/` is the opt-in native client's separate Cargo workspace. It owns GPUI Kit presentation and its host runtime, and calls shared Rust commands with Tauri features disabled. Shared frontend acceptance scenarios live in `e2e/parity/`. See [ADR 0029](../decisions/0029-gpui-native-client-and-feature-parity.md).
 
 `deploy/` contains operator-applied deployment examples for the headless server. The root `Dockerfile` builds its container image; these files are not app runtime installation paths.
 
@@ -44,5 +44,5 @@ The desktop `commands/` module composes domain APIs and coordinates workspace ca
 - Cluster data crosses the typed Tauri boundary only.
 - Live sessions follow [ADR 0003](../decisions/0003-guarded-live-sessions.md); other changing operations follow [ADR 0004](../decisions/0004-guarded-cluster-operations.md).
 - Security-boundary changes require an ADR.
-- A new top-level `src/` or `src-tauri/src/` directory requires a one-line entry here first.
+- A new top-level `src/` or `rust/src/` directory requires a one-line entry here first.
 - `scripts/` is maintainer automation, never app runtime code.

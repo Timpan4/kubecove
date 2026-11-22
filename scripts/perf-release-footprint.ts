@@ -83,7 +83,7 @@ try {
 		const settings = { ...baseline, ...variant.settings };
 		const env = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: target, ...Object.fromEntries(Object.entries(settings).flatMap(([name, value]) =>
 			[[`CARGO_PROFILE_RELEASE_${name}`, value], [`CARGO_PROFILE_BENCH_${name}`, value]])) };
-		const build = ["cargo", "build", "--release", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml"];
+		const build = ["cargo", "build", "--release", "--locked", "--manifest-path", "rust/server/Cargo.toml"];
 		const production = await buildFrontend(target, directory, false);
 		productionHash ??= production.sha256;
 		if (production.sha256 !== productionHash) throw new Error("Production frontend changed");
@@ -93,7 +93,7 @@ try {
 		const binary = join(target, "release", "kubecove-server");
 		const executableBytes = (await stat(binary)).size;
 		const elf = inspectElfSections(await command(["readelf", "--section-headers", "--wide", binary]));
-		await command(["cargo", "bench", "--manifest-path", "src-tauri/Cargo.toml", "--features", "bench-support", "--bench", "backend_hot_paths"], env, join(directory, "benchmarks.txt"));
+		await command(["cargo", "bench", "--manifest-path", "rust/Cargo.toml", "--features", "bench-support", "--bench", "backend_hot_paths"], env, join(directory, "benchmarks.txt"));
 		const companion = await buildFrontend(target, directory, true);
 		companionHash ??= companion.sha256;
 		if (companion.sha256 !== companionHash) throw new Error("Profile frontend changed");

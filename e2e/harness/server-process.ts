@@ -5,7 +5,7 @@ import { redactSensitiveErrorDetail } from "../../src/lib/error-redaction";
 import { safeDiagnosticText } from "./diagnostics";
 import { captureProcessOutput, cleanEnvironment, processOutput, trackChild } from "./lifecycle-processes";
 
-export function serverBinary(release = false, target = resolve("src-tauri/server/target")) {
+export function serverBinary(release = false, target = resolve("rust/server/target")) {
 	return join(target, release ? "release" : "debug", process.platform === "win32" ? "kubecove-server.exe" : "kubecove-server");
 }
 

@@ -12,11 +12,11 @@ Closing the window was not guarded in either web runtime:
 
 - In browser mode, commit 0a2a34f adds a `beforeunload` guard. The browser asks before the page unloads while the draft has changes.
 - In the Tauri desktop build, the window emits a close request. `onCloseRequested` in `@tauri-apps/api` runs the handler, then calls `destroy()` unless the handler called `preventDefault()`. The handler must call `preventDefault()` before it returns.
-- The `@tauri-apps/api` documentation for `destroy()` says it requires `core:window:allow-destroy`, which is not included in `core:window:default`. The current `src-tauri/capabilities/default.json` grants `core:default` and no window destroy permission, so a handler that allows the close cannot destroy the window through that API.
+- The `@tauri-apps/api` documentation for `destroy()` says it requires `core:window:allow-destroy`, which is not included in `core:window:default`. The current `rust/capabilities/default.json` grants `core:default` and no window destroy permission, so a handler that allows the close cannot destroy the window through that API.
 
 ## Decision
 
-1. Grant `core:window:allow-destroy` in `src-tauri/capabilities/default.json`, scoped to the `main` window as that capability already scopes its permissions.
+1. Grant `core:window:allow-destroy` in `rust/capabilities/default.json`, scoped to the `main` window as that capability already scopes its permissions.
 2. Register `onCloseRequested` once in the Svelte app, and only when `isTauriRuntime()` is true. The handler calls `canLeaveYamlDraft()`. When that returns false, the handler calls `preventDefault()`, and the existing in-page notice explains why the window stayed open.
 3. Keep the browser `beforeunload` guard for browser mode only. The same runtime check gates it, so a Tauri build does not run both guards.
 

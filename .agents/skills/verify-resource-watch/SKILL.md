@@ -45,9 +45,9 @@ Coverage at sync commit `ca62604` (origin/main, KubeCove v0.13.0):
 | `src/lib/resource-watch.ts`: `publish` | Only the published `error`, `warnings`, and `status` |
 | `src/lib/tauri-streams.ts`: `startResourceWatch`, `stopStream`, `closeStreamChannel` | A closed channel delivers nothing more |
 | `src/lib/types.ts`: `StreamMessage`, `StreamStatus` | The messages `status` (connected, reconnecting, forbidden), `error`, `stopped` |
-| `src-tauri/crates/live/src/commands/streams.rs`: `start_resource_watch`, `stop_stream` | The start is refused before it subscribes, or it subscribes and returns the stream id |
-| `src-tauri/crates/live/src/commands/streams/watch.rs`: `run_resource_watch`, `report_forbidden_watch` | A stream ends after `forbidden` or a final `error`; transient errors and `reconnecting` keep it live |
-| `src-tauri/crates/live/src/commands/streams/registry.rs`: `stop` | `stop_stream` ends the stream |
+| `rust/crates/live/src/commands/streams.rs`: `start_resource_watch`, `stop_stream` | The start is refused before it subscribes, or it subscribes and returns the stream id |
+| `rust/crates/live/src/commands/streams/watch.rs`: `run_resource_watch`, `report_forbidden_watch` | A stream ends after `forbidden` or a final `error`; transient errors and `reconnecting` keep it live |
+| `rust/crates/live/src/commands/streams/registry.rs`: `stop` | `stop_stream` ends the stream |
 
 Run `git diff ca62604 -- <those paths>`. If the diff changes any listed function, run the check. Move the sync commit and this table forward only after you have confirmed that the model describes the code at the new commit.
 

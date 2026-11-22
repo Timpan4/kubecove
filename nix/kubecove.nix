@@ -14,20 +14,20 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "kubecove";
-  version = (builtins.fromTOML (builtins.readFile ../src-tauri/gpui/Cargo.toml)).package.version;
+  version = (builtins.fromTOML (builtins.readFile ../rust/gpui/Cargo.toml)).package.version;
 
   src = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.difference ../src-tauri (lib.fileset.unions [
-      (lib.fileset.maybeMissing ../src-tauri/bin)
-      (lib.fileset.maybeMissing ../src-tauri/gpui/build)
-      (lib.fileset.maybeMissing ../src-tauri/gpui/target)
+    fileset = lib.fileset.difference ../rust (lib.fileset.unions [
+      (lib.fileset.maybeMissing ../rust/bin)
+      (lib.fileset.maybeMissing ../rust/gpui/build)
+      (lib.fileset.maybeMissing ../rust/gpui/target)
     ]);
   };
 
-  cargoRoot = "src-tauri/gpui";
+  cargoRoot = "rust/gpui";
   buildAndTestSubdir = finalAttrs.cargoRoot;
-  cargoLock.lockFile = ../src-tauri/gpui/Cargo.lock;
+  cargoLock.lockFile = ../rust/gpui/Cargo.lock;
   cargoBuildFlags = [ "--bin" "kubecove-gpui" ];
   doCheck = false;
 

@@ -14,7 +14,7 @@ const flag = (name: string) => {
 };
 const runId = flag("run") ?? `${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${process.pid}`;
 if (!/^[a-zA-Z0-9-]{1,48}$/.test(runId)) throw new Error("run id must be 1-48 letters, digits, or hyphens");
-const binary = flag("binary") ?? join(root, "src-tauri/server/target/debug", process.platform === "win32" ? "kubecove-server.exe" : "kubecove-server");
+const binary = flag("binary") ?? join(root, "rust/server/target/debug", process.platform === "win32" ? "kubecove-server.exe" : "kubecove-server");
 const scratch = join(root, ".e2e", "verify", `server-${runId}`);
 const evidence = join(root, "e2e", "artifacts", `verify-server-${runId}`);
 const context = "verify-fixture";

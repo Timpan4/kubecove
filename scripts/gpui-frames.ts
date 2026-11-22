@@ -3,7 +3,7 @@
 // Usage: nice -n 10 bun scripts/gpui-frames.ts [--runs N] [--frames N] [--warmup N] [--no-gpu]
 //        [--compare <report.json>] [--binary <frames test binary>] [--manifest <Cargo.toml>] [--fixture <fixture.json>] [case,case]
 // `--binary` times a saved build of the harness, such as one from before a change.
-// The harness is `src-tauri/gpui/tests/frames.rs`; its header says what each number includes.
+// The harness is `rust/gpui/tests/frames.rs`; its header says what each number includes.
 
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
@@ -116,7 +116,7 @@ await run(
     process.env,
     "export-watch-burst.log",
 );
-const workspace = resolve("src-tauri/gpui");
+const workspace = resolve("rust/gpui");
 const manifest = realpathSync(option("--manifest") ?? join(workspace, "Cargo.toml"));
 const sourceDirectory = dirname(manifest);
 const sourceRelative = relative(realpathSync("."), sourceDirectory);

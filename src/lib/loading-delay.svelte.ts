@@ -1,6 +1,6 @@
 import { untrack } from "svelte";
 
-// The user chose both values. `src-tauri/gpui/src/inspector/loading.rs` uses the same ones.
+// The user chose both values. `rust/gpui/src/inspector/loading.rs` uses the same ones.
 /** A loading indicator appears only when its read is still pending after this delay. */
 export const LOADING_SHOW_DELAY_MS = 300;
 /** Once shown, a loading indicator stays visible for at least this long. */

@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* One watch registration in observeResourceScope (src/lib/resource-watch.ts) *)
 (* and the backend streams it starts (start_resource_watch in               *)
-(* src-tauri/crates/live/src/commands/streams.rs).                           *)
+(* rust/crates/live/src/commands/streams.rs).                           *)
 (*                                                                         *)
 (* Every frontend action is one JavaScript callback, which runs to the end  *)
 (* before another one starts: start() from the recovery tick, the channel   *)

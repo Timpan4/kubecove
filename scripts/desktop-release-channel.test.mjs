@@ -39,7 +39,7 @@ test("the bundle step stages cargo-packager outputs under the public channel nam
       writeFileSync(join(directory, "package.json"), JSON.stringify({ version }));
       const metadata = { packages: [{ name: "kubecove-gpui", metadata: { packager: { productName: product, identifier } } }] };
       writeFileSync(join(directory, "metadata.json"), JSON.stringify(metadata));
-      const out = join(directory, "src-tauri/gpui/target/gpui-bundle");
+      const out = join(directory, "rust/gpui/target/gpui-bundle");
       const bundle = join(out, product + ".app", "Contents/MacOS");
       mkdirSync(bundle, { recursive: true });
       const sidecar = '#!/usr/bin/env bash\n[[ "$*" == "-v" ]]\n';

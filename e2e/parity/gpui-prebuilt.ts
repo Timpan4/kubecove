@@ -15,7 +15,7 @@ export type ParityBuild = {
 };
 
 const binaryFile = process.platform === "win32" ? "parity.exe" : "parity";
-export const GPUI_CRATE_ROOT = "src-tauri/gpui/src/lib.rs";
+export const GPUI_CRATE_ROOT = "rust/gpui/src/lib.rs";
 
 export function rustcHost(version: string): string | undefined {
 	return /^host: (\S+)$/m.exec(version)?.[1];
@@ -31,7 +31,7 @@ export async function parityBuild(instrumented: boolean): Promise<ParityBuild> {
 	};
 	const [gitSha, rustcVersion, modified] = await Promise.all([
 		get(["git", "rev-parse", "HEAD"], sourceRoot),
-		get([process.env.RUSTC ?? process.env.CARGO_BUILD_RUSTC ?? "rustc", "-vV"], join(sourceRoot, "src-tauri", "gpui")),
+		get([process.env.RUSTC ?? process.env.CARGO_BUILD_RUSTC ?? "rustc", "-vV"], join(sourceRoot, "rust", "gpui")),
 		get(["git", "status", "--porcelain", "--untracked-files=no"], sourceRoot),
 	]);
 	if (modified) throw new Error("Prebuilt GPUI parity requires a clean tracked checkout");

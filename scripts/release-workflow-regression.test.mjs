@@ -67,9 +67,9 @@ test("release preparation commits frontend, backend, GPUI and server version met
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
   const commands = step(job("prepare", preparation), "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
-  for (const path of ["package.json", "src-tauri/Cargo.toml",
-    "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock",
-    "src-tauri/gpui/Cargo.toml", "src-tauri/gpui/Cargo.lock", "CHANGELOG.md"]) {
+  for (const path of ["package.json", "rust/Cargo.toml",
+    "rust/Cargo.lock", "rust/server/Cargo.toml", "rust/server/Cargo.lock",
+    "rust/gpui/Cargo.toml", "rust/gpui/Cargo.lock", "CHANGELOG.md"]) {
     assert.ok(staged.includes(path), `Release commit omits ${path}`);
   }
 });
@@ -137,7 +137,7 @@ test("release preparation creates verified commits without rewriting the branch"
         spawnSync: (command, args, options) => {
           calls.push([command, ...args]);
           let stdout;
-          if (command === "git") stdout = args[0] === "rev-parse" ? base : "package.json\0src-tauri/server/Cargo.toml\0";
+          if (command === "git") stdout = args[0] === "rev-parse" ? base : "package.json\0rust/server/Cargo.toml\0";
           else if (args[1] === "graphql") {
             payload = JSON.parse(options.input);
             stdout = JSON.stringify({ data: { createCommitOnBranch: { commit: { oid: "c".repeat(40), signature: { isValid: valid } } } } });
@@ -154,7 +154,7 @@ test("release preparation creates verified commits without rewriting the branch"
         branchName: "release/app-v1.2.3",
       });
       assert.deepEqual(payload.variables.input.fileChanges.additions.map(({ path, contents }) => [path, Buffer.from(contents, "base64").toString()]),
-        [["package.json", "package.json contents"], ["src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.toml contents"]]);
+        [["package.json", "package.json contents"], ["rust/server/Cargo.toml", "rust/server/Cargo.toml contents"]]);
       assert.equal(calls.filter((call) => call.includes("POST")).length, parent ? 0 : 1);
       assert.ok(calls.every((call) => !call.includes("push") && !call.includes("update-ref")));
     }
@@ -248,7 +248,7 @@ test("native builds include Linux arm64 and both variants without a desktop runt
   const native = step(build, "Build and package both native variants");
   assert.ok(build.steps.indexOf(web) < build.steps.indexOf(native));
   assert.match(native.run, /for variant in full slim/);
-  assert.match(native.run, /cargo build --locked --release --manifest-path src-tauri\/server\/Cargo\.toml --target/);
+  assert.match(native.run, /cargo build --locked --release --manifest-path rust\/server\/Cargo\.toml --target/);
   assert.match(native.run, /--no-default-features/);
   assert.match(native.run, /scripts\/package-server\.sh/);
   assert.equal(step(build, "Upload server archive for release assembly").with.path, "kubecove-server_*");
@@ -267,9 +267,9 @@ test("native shell builds both variants with a nonempty command array", () => {
   `], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.stdout.trim().split("\n"), [
-    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-unknown-linux-gnu",
+    "cargo build --locked --release --manifest-path rust/server/Cargo.toml --target aarch64-unknown-linux-gnu",
     "package scripts/package-server.sh aarch64-unknown-linux-gnu full 1.2.3",
-    "cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target aarch64-unknown-linux-gnu --no-default-features",
+    "cargo build --locked --release --manifest-path rust/server/Cargo.toml --target aarch64-unknown-linux-gnu --no-default-features",
     "package scripts/package-server.sh aarch64-unknown-linux-gnu slim 1.2.3",
   ]);
   // Bash 3.2 treats empty arrays as unset under nounset; the base command must never be empty.
@@ -309,11 +309,11 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
     assert.match(step(check, "Run real suite").run, /^bun run e2e:real -- --kubernetes /);
     assert.doesNotMatch(JSON.stringify(check.steps), /webkit2gtk|gnome-keyring|xvfb-run/);
     const key = check.steps.find(({ id }) => id === "rust-cache");
-    assert.equal(key?.run, "node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'");
+    assert.equal(key?.run, "node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts rust ':!rust/gpui'");
     const setups = check.steps.filter(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
     assert.deepEqual(setups.map(({ with: inputs }) => inputs), [{
       version: "1.30.0",
-      "working-directory": "src-tauri",
+      "working-directory": "rust",
       "cache-key": "${{ steps.rust-cache.outputs.key }}",
       "restore-keys": "${{ steps.rust-cache.outputs.prefix }}",
       "github-cache-mode": "objects",
@@ -392,8 +392,8 @@ test("release drafts wait for backend checks and every Kubernetes compatibility 
   const backend = job("backend-rust");
   const compatibility = job("kubernetes-compatibility");
   assert.equal(step(backend, "Setup Rust").with.components, "clippy");
-  assert.match(step(backend, "Test shared backend").run, /cargo test --locked --workspace --manifest-path src-tauri\/Cargo\.toml --features desktop-release/);
-  assert.match(step(backend, "Lint shared backend").run, /cargo clippy --locked --workspace --manifest-path src-tauri\/Cargo\.toml .* -D warnings/);
+  assert.match(step(backend, "Test shared backend").run, /cargo test --locked --workspace --manifest-path rust\/Cargo\.toml --features desktop-release/);
+  assert.match(step(backend, "Lint shared backend").run, /cargo clippy --locked --workspace --manifest-path rust\/Cargo\.toml .* -D warnings/);
   assert.equal(compatibility.uses, "./.github/workflows/e2e.yml");
   assert.equal(compatibility.with["compatibility-only"], true);
   assert.ok(e2e.on.workflow_call.inputs["compatibility-only"].required);
@@ -445,9 +445,9 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
     "windows-latest/x86_64-pc-windows-msvc/nsis",
   ]);
   const built = step(bundle, "Build GPUI client").run;
-  assert.match(built, /cargo build --locked --release --manifest-path src-tauri\/gpui\/Cargo\.toml --bin kubecove-gpui --target "\$BUNDLE_TARGET"/);
+  assert.match(built, /cargo build --locked --release --manifest-path rust\/gpui\/Cargo\.toml --bin kubecove-gpui --target "\$BUNDLE_TARGET"/);
   assert.match(step(bundle, "Install cargo-packager").run, /^cargo install cargo-packager --version \d+\.\d+\.\d+ --locked$/);
-  assert.match(step(bundle, "Bundle GPUI client").run, /cargo packager --manifest-path src-tauri\/gpui\/Cargo\.toml --release --target "\$BUNDLE_TARGET"/);
+  assert.match(step(bundle, "Bundle GPUI client").run, /cargo packager --manifest-path rust\/gpui\/Cargo\.toml --release --target "\$BUNDLE_TARGET"/);
   assert.equal(step(bundle, "Bundle GPUI client").env.APPIMAGE_EXTRACT_AND_RUN, undefined);
   assert.doesNotMatch(JSON.stringify(bundle), /secrets\./);
   const signing = step(job("sign", gpuiRelease), "Sign GPUI bundles");
@@ -464,18 +464,18 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
 });
 
 test("GPUI packages check out and bundle kubeconform for each installer target", () => {
-  const manifest = readFileSync(new URL("../src-tauri/gpui/Cargo.toml", import.meta.url), "utf8");
+  const manifest = readFileSync(new URL("../rust/gpui/Cargo.toml", import.meta.url), "utf8");
   assert.match(manifest, /\[package\.metadata\.packager\][^[]*externalBinaries = \["\.\.\/bin\/kubeconform"\]/);
   const bundle = job("bundle", gpuiRelease);
   const sidecar = step(bundle, "Verify the target kubeconform sidecar");
   const packaging = step(bundle, "Bundle GPUI client");
   assert.ok(bundle.steps.indexOf(sidecar) < bundle.steps.indexOf(packaging));
   assert.equal(sidecar.env.BUNDLE_TARGET, packaging.env.BUNDLE_TARGET);
-  assert.match(sidecar.run, /sidecar="src-tauri\/bin\/kubeconform-\$BUNDLE_TARGET"/);
+  assert.match(sidecar.run, /sidecar="rust\/bin\/kubeconform-\$BUNDLE_TARGET"/);
   assert.match(sidecar.run, /"\$sidecar" -v/);
   for (const { "bundle-target": target } of bundle.strategy.matrix.include) {
     const ending = target.includes("windows") ? ".exe" : "";
-    const file = new URL(`../src-tauri/bin/kubeconform-${target}${ending}`, import.meta.url);
+    const file = new URL(`../rust/bin/kubeconform-${target}${ending}`, import.meta.url);
     assert.ok(statSync(file).size > 0, target);
   }
   assert.match(packaging.run, /--appimage-extract usr\/bin\/kubeconform/);
@@ -511,7 +511,7 @@ test("GPUI signature verification accepts only the updater key, the exact bytes,
   assert.doesNotThrow(() => verifyUpdaterSignature(signature));
   // A signature made for another asset is refused, as the client refuses legacy builds.
   assert.throws(() => verifyUpdaterSignature({ ...signature, name: "kubecove_0.16.0_x64-setup.exe" }), /file:kubecove_0\.16\.0_x64-setup\.exe/);
-  const productionKey = JSON.parse(readFileSync(new URL("../src-tauri/gpui/updater.json", import.meta.url), "utf8")).public_key;
+  const productionKey = JSON.parse(readFileSync(new URL("../rust/gpui/updater.json", import.meta.url), "utf8")).public_key;
   assert.throws(() => verifyUpdaterSignature({ ...signature, publicKey: productionKey }), /different key/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, data: Buffer.from("kubecove fixture!\n") }), /does not match the file/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, version: "1.2.4" }), /version:1\.2\.4/);

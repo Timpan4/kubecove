@@ -18,7 +18,7 @@ const FULL_SUITE = [
 	/^e2e\/parity\/(?!scenarios\/[^/]+\.json$)(?!.*\.md$)/,
 	/^scripts\/(e2e-parity|dev-interactions-plugin|frontend-bundle-report)\.ts$/,
 	/^\.agents\/skills\/verify-kubecove\/scripts\/processes\.ts$/,
-	/^src-tauri\/gpui\/tests\/(parity\.rs|parity\/|common\/)/,
+	/^rust\/gpui\/tests\/(parity\.rs|parity\/|common\/)/,
 	/^\.github\/workflows\/parity[^/]*\.yml$/,
 	// Scripts the driver jobs run before the build. ci-selection.test.ts checks that every
 	// script the parity workflows name selects the full suite.
@@ -27,10 +27,10 @@ const FULL_SUITE = [
 	/^src\/lib\/(tauri-dev-mock[^/]*|mcp-dev-mocks)\.ts$/,
 	// Files the native crates embed, such as fonts, icons and configuration. The map lists
 	// only what cargo's dep-info names, and it has no line coverage for any of them.
-	/^src-tauri\/(?!server\/)(?!.*\.(rs|md)$)/,
+	/^rust\/(?!server\/)(?!.*\.(rs|md)$)/,
 ];
 const SCENARIO_FILE = /^e2e\/parity\/scenarios\/[^/]+\.json$/;
-const GPUI_SOURCE = "src-tauri/gpui/src/";
+const GPUI_SOURCE = "rust/gpui/src/";
 // A line that is only comment text: code after a closing `*/` makes it a code line.
 const COMMENT_LINE = String.raw`\/\/.*|\/\*(?:(?!\*\/).)*(?:\*\/\s*)?|\*\/\s*|\*(?:\s(?:(?!\*\/).)*(?:\*\/\s*)?)?`;
 const COMMENT = new RegExp(`^\\s*(${COMMENT_LINE})?$`);

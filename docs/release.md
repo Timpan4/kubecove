@@ -58,7 +58,7 @@ Release notes mirror the matching [CHANGELOG.md](../CHANGELOG.md) section.
 
 ### Native GPUI client
 
-The desktop release ships `KubeCove` under the identifier `com.timpan.kubecove`. `.github/workflows/gpui-release.yml` builds it with `cargo build --locked` and bundles it with `cargo packager`, configured in `[package.metadata.packager]` of `src-tauri/gpui/Cargo.toml`:
+The desktop release ships `KubeCove` under the identifier `com.timpan.kubecove`. `.github/workflows/gpui-release.yml` builds it with `cargo build --locked` and bundles it with `cargo packager`, configured in `[package.metadata.packager]` of `rust/gpui/Cargo.toml`:
 
 | Platform | Release asset |
 | --- | --- |
@@ -66,11 +66,11 @@ The desktop release ships `KubeCove` under the identifier `com.timpan.kubecove`.
 | macOS Apple silicon | `kubecove_<version>_aarch64.dmg` to install, and `kubecove_<version>_aarch64.app.tar.gz`, with `KubeCove.app` at the archive root, for the updater. There is no Intel macOS build. |
 | Windows x64 | `kubecove_<version>_x64-setup.exe`, a per-user NSIS installer |
 
-The DMG is the first-install download. The updater uses the signed app archive. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`. Then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-desktop.json` with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The `stage-release-assets` job uploads the assets, their signatures and `latest-desktop.json` to the release, and carries forward the frozen `0.15.1` `latest.json` and `latest-gpui.json` manifests untouched for legacy installs.
+The DMG is the first-install download. The updater uses the signed app archive. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`. Then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `rust/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-desktop.json` with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The `stage-release-assets` job uploads the assets, their signatures and `latest-desktop.json` to the release, and carries forward the frozen `0.15.1` `latest.json` and `latest-gpui.json` manifests untouched for legacy installs.
 
 The NSIS installer accepts `/P` for a passive install, `/R` to start the app after a silent or passive install, and `/NS` to skip shortcuts. In passive mode it closes a running `kubecove-gpui.exe` without asking.
 
-The GPUI crate version must equal the app version, because the client compares it with the manifest. `bun scripts/bump-version.ts` and release preparation update `src-tauri/gpui/Cargo.toml` and `src-tauri/gpui/Cargo.lock`, and release validation rejects a mismatch.
+The GPUI crate version must equal the app version, because the client compares it with the manifest. `bun scripts/bump-version.ts` and release preparation update `rust/gpui/Cargo.toml` and `rust/gpui/Cargo.lock`, and release validation rejects a mismatch.
 
 To prove the GPUI build, bundle and signing steps on a branch without touching any release:
 

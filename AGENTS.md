@@ -55,7 +55,7 @@ Rust-side Tauri commands own Kubernetes access. Current command families include
 - explicit connected Argo CD discovery, connection, inspection, comparison, preflight, and operation commands
 - Argo CD, Helm, RBAC, and usage commands
 
-The frontend apps should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `src-tauri/src`.
+The frontend apps should call only typed Tauri command wrappers. Kubernetes credentials and kubeconfig parsing belong in Rust modules under `rust/src`.
 
 ## File Organization
 
@@ -63,7 +63,7 @@ The engineering handbook at [docs/handbook/](docs/handbook/) is the source of tr
 
 Quick rules:
 
-- New files: feature-specific code goes in `src/features/<area>/`; generic reusables in `src/components/`; pure logic in `src/lib/`. Backend commands go in `src-tauri/src/commands/<domain>.rs` or a focused domain folder. Module READMEs at each folder describe what belongs where.
+- New files: feature-specific code goes in `src/features/<area>/`; generic reusables in `src/components/`; pure logic in `src/lib/`. Backend commands go in `rust/src/commands/<domain>.rs` or a focused domain folder. Module READMEs at each folder describe what belongs where.
 - File-size caps: `.rs` 500 soft / 800 hard; `.svelte` 400 soft / 700 hard; `.ts` 300 soft / 600 hard. The pre-commit hook warns at soft, fails at hard. See [file-size-and-split.md](docs/handbook/file-size-and-split.md).
 - Orphan and superseded files are deleted in the PR that creates the orphan. No "for reference" copies, no stub re-exports. See [hygiene.md](docs/handbook/hygiene.md).
 - A new top-level directory requires a one-line entry in [code-organization.md](docs/handbook/code-organization.md) before the directory is created.
@@ -87,23 +87,23 @@ Run through [docs/handbook/pr-checklist.md](docs/handbook/pr-checklist.md) befor
 - Prefer E2E tests (`e2e/specs/`, see `docs/development-workflow.md`) as the primary way to verify features. Each E2E run must end with a verifiable, repeatable artifact under `e2e/artifacts/` (WDIO spec report, cluster diagnostics, failure screenshots).
 - If a system must be tested in isolation (pure parsing, diff, topology, retry, or security-boundary logic), first write down every way it could fail, then write the code and tests against those failure modes.
 - Delete unit tests that would not catch a real bug the E2E suite misses.
-- Equal tests: the Svelte and GPUI clients share their UI acceptance tests in `e2e/parity/scenarios/`, so neither UI drifts from the other. A UI change in either client lands with a shared scenario that both drivers pass in `bun run e2e:parity`. Every view in `e2e/parity/visual/views.ts` needs a scenario whose ID starts with `<view>.`, and a new action needs a handler in both drivers, written in the area files described under GPUI work. `e2e/parity/contract.test.ts` enforces both. Native-only tests in `src-tauri/gpui/tests/native.rs` cover what the browser mocks cannot express, such as read errors, cancellation and stale reads. See `e2e/parity/README.md`.
+- Equal tests: the Svelte and GPUI clients share their UI acceptance tests in `e2e/parity/scenarios/`, so neither UI drifts from the other. A UI change in either client lands with a shared scenario that both drivers pass in `bun run e2e:parity`. Every view in `e2e/parity/visual/views.ts` needs a scenario whose ID starts with `<view>.`, and a new action needs a handler in both drivers, written in the area files described under GPUI work. `e2e/parity/contract.test.ts` enforces both. Native-only tests in `rust/gpui/tests/native.rs` cover what the browser mocks cannot express, such as read errors, cancellation and stale reads. See `e2e/parity/README.md`.
 
 - For every GPUI UI change outside `desktop_only` behavior, ship Svelte parity for `kubecove-server` and a shared acceptance scenario in the same PR. For styling and layout changes, run `bun scripts/gpui-visual.ts` for the affected views and compare the web and GPUI renders.
 
 ## GPUI work
 
-The native client lives in `src-tauri/gpui`. These rules come from parallel agent work on it.
+The native client lives in `rust/gpui`. These rules come from parallel agent work on it.
 
-- Give every checkout its own build directories, from the checkout root: `CARGO_TARGET_DIR=$PWD/src-tauri/gpui/target CARGO_BUILD_BUILD_DIR=$PWD/src-tauri/gpui/build`. Path crates get the same artifact names in every checkout, so a shared directory lets one build overwrite another's crates ("multiple different versions of crate kubecove_kube").
-- On the shared workstation, run cargo as `nice -n 10` with `RUSTC_WRAPPER=` empty, and wrap builds, tests and parity runs in `flock <coordinating checkout>/src-tauri/gpui/target/heavy.lock`. Child checkouts use the lock path from their brief, so every agent queues on one lock.
+- Give every checkout its own build directories, from the checkout root: `CARGO_TARGET_DIR=$PWD/rust/gpui/target CARGO_BUILD_BUILD_DIR=$PWD/rust/gpui/build`. Path crates get the same artifact names in every checkout, so a shared directory lets one build overwrite another's crates ("multiple different versions of crate kubecove_kube").
+- On the shared workstation, run cargo as `nice -n 10` with `RUSTC_WRAPPER=` empty, and wrap builds, tests and parity runs in `flock <coordinating checkout>/rust/gpui/target/heavy.lock`. Child checkouts use the lock path from their brief, so every agent queues on one lock.
 - Do not set `CARGO_BUILD_JOBS` for GPUI builds. The job count comes from the machine's cargo configuration, and on the shared workstation mbx admits compilers from one pool with a memory budget. One job doubled the debug build after an edit and makes a release rebuild take minutes. See "GPUI client edit loop" in `docs/rust-build-measurements.md`.
 - Cargo on that workstation resolves to the `mbx` shim, which shares compiled work across checkouts. A set `RUSTC_WRAPPER` bypasses it.
-- Keep build outputs, binary copies, logs and ledgers inside the checkout, under `src-tauri/gpui/target/` or `e2e/artifacts/`. Never put them in `/tmp`.
-- The parity work ledger is `src-tauri/gpui/target/plan.md` in the coordinating checkout. `target/` is ignored, so the ledger is not committed.
+- Keep build outputs, binary copies, logs and ledgers inside the checkout, under `rust/gpui/target/` or `e2e/artifacts/`. Never put them in `/tmp`.
+- The parity work ledger is `rust/gpui/target/plan.md` in the coordinating checkout. `target/` is ignored, so the ledger is not committed.
 - `bun scripts/gpui-visual.ts [--skip-web] [view,view]` captures web and GPUI views from the same mock data and writes stacked images and a per-view RMSE to `e2e/artifacts/gpui-visual-<id>/`. `bun scripts/gpui-fonts.ts` regenerates the bundled static font cuts.
-- To open the native client for the user, run `scripts/gpui-feel.sh`, and only when the user asks. It builds a release binary under the lock, copies it to `src-tauri/gpui/target/feel/`, and starts it with `systemd-run --user`, passing PATH and the display variables.
-- Parity actions go in area files: `e2e/parity/web-<area>.ts` and `src-tauri/gpui/tests/parity/<area>.rs`. The hub files `src-tauri/gpui/src/inspector.rs`, `src-tauri/gpui/tests/parity.rs`, `e2e/parity/web.ts`, `e2e/parity/contract.ts` and `src-tauri/gpui/tests/common/mod.rs` get only a dispatch or registration line, so parallel branches do not conflict there.
+- To open the native client for the user, run `scripts/gpui-feel.sh`, and only when the user asks. It builds a release binary under the lock, copies it to `rust/gpui/target/feel/`, and starts it with `systemd-run --user`, passing PATH and the display variables.
+- Parity actions go in area files: `e2e/parity/web-<area>.ts` and `rust/gpui/tests/parity/<area>.rs`. The hub files `rust/gpui/src/inspector.rs`, `rust/gpui/tests/parity.rs`, `e2e/parity/web.ts`, `e2e/parity/contract.ts` and `rust/gpui/tests/common/mod.rs` get only a dispatch or registration line, so parallel branches do not conflict there.
 - Resolve conflicts in `.rs` files by hand. Never union-merge them; keeping both sides duplicates items and breaks match arms.
 - When a merge would push a file over its line cap, split the file first in its own commit (see `docs/handbook/file-size-and-split.md`).
 
@@ -128,7 +128,7 @@ The native client lives in `src-tauri/gpui`. These rules come from parallel agen
 KubeCove ships cross-platform: macOS (Apple silicon), Windows x64, and Linux x64 (see `.github/workflows/release.yml`). The 0.15.x Tauri series was the last universal macOS release. All changes must work on all three platforms, not just the one you are developing on.
 
 - Never hardcode path separators, path-list separators, or home directories. Use `std::env::split_paths` for path lists (`:` vs `;`) and the existing helpers (e.g. `default_kubeconfig_path` handles `HOME` and `USERPROFILE`).
-- Platform-specific code is gated with `#[cfg(target_os = "...")]` at the call site, but its helpers stay compiled on every platform so shared tests cover them — mark those helpers `#[allow(dead_code)]` with the standard comment (see `src-tauri/src/commands/usage_webview.rs`).
+- Platform-specific code is gated with `#[cfg(target_os = "...")]` at the call site, but its helpers stay compiled on every platform so shared tests cover them — mark those helpers `#[allow(dead_code)]` with the standard comment (see `rust/src/commands/usage_webview.rs`).
 - Dead-code and lint results differ per OS: code that is "unused" on your machine may be the production path on another platform. Never delete platform-gated code because local clippy flags it; gate or annotate it instead.
 - Frontend code must not assume platform-specific keyboard shortcuts (Cmd vs Ctrl), window chrome, or file-system casing behavior.
 - The webview engine differs per platform: WKWebView/WebKit on macOS, WebView2/Chromium on Windows, WebKitGTK on Linux. Rendering-sensitive CSS (infinite animations, `filter`, compositing-heavy effects, especially inside transformed/scaled containers) must be verified on WebKit, not just on Windows — WebKit intermittently rasterizes animated-filter layers blank (see the topology glow fix).
@@ -179,19 +179,19 @@ Write an ADR before changing:
 Run the smallest tier that covers the change, from the checkout root with the build settings under GPUI work. Pick the checks that would fail if the change broke, and stop there.
 
 1. Agent patch from a parallel child agent: no compilation. The child runs no cargo command (check, clippy, test or build), no parity and no frames run. It edits, runs `bun run typecheck` and `bun run lint` for TypeScript changes, commits, and lists in its report what was never compiled or run. The parent merges the batch and runs tier 2 once for all of it. Never give a child `PARITY_CHANGED`: without the coverage map at `e2e/artifacts/parity-coverage-map.json` it runs the full suite. `e2e/parity/README.md` ("Change-based selection") shows how to download the map from CI or record it.
-2. Merge of a batch into the working branch, run by the parent once per batch: `cargo clippy --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --lib --test native`, and `PARITY_CHANGED=<working branch> bun run e2e:parity`.
+2. Merge of a batch into the working branch, run by the parent once per batch: `cargo clippy --manifest-path rust/gpui/Cargo.toml --all-targets -- -D warnings`, `cargo test --manifest-path rust/gpui/Cargo.toml --lib --test native`, and `PARITY_CHANGED=<working branch> bun run e2e:parity`.
 3. After a fix: `PARITY_RERUN=last bun run e2e:parity` runs only the scenarios either driver did not pass in the newest run. Give an artifacts directory instead of `last` to use another run.
 4. PR CI runs the change-based scenario selection on separate web and GPUI runners. If selection fails, it runs the full suite. `Parity result` requires passing reports from both drivers for every selected scenario. Main runs the full suite and records coverage (`.github/workflows/parity.yml`). Developers and agents run tiers 1 to 3 locally. Run `bun scripts/gpui-frames.ts --runs 3` only before a PR.
 
 `PARITY_PREFIX` (comma-separated scenario ID prefixes) still narrows any run, such as one failing scenario or one area.
 
-While iterating on one area, `cargo test --manifest-path src-tauri/gpui/Cargo.toml --test native <module>::` runs one module of `src-tauri/gpui/tests/native/`, such as `shell::`. The full native run takes about 14 seconds, and tier 2 still runs all of it.
+While iterating on one area, `cargo test --manifest-path rust/gpui/Cargo.toml --test native <module>::` runs one module of `rust/gpui/tests/native/`, such as `shell::`. The full native run takes about 14 seconds, and tier 2 still runs all of it.
 
 Between PRs, run `bun scripts/gpui-frames.ts <case,case>` only for frame cases whose GPUI render or layout code changed.
 
 Frontend changes in any tier also run `bun run typecheck`, `bun run lint` and `bun test e2e/parity/contract.test.ts`.
 
-GPUI changes to column widths, toolbars or text sizes also run `src-tauri/gpui/tests/text_fit.rs`, which checks text against the bundled fonts. The parity driver cannot, because every glyph there is 0.6 em wide. Its header gives the command.
+GPUI changes to column widths, toolbars or text sizes also run `rust/gpui/tests/text_fit.rs`, which checks text against the bundled fonts. The parity driver cannot, because every glyph there is 0.6 em wide. Its header gives the command.
 
 The runner starts both drivers at once. It builds the parity test once and runs it in `PARITY_JOBS` processes (`KUBECOVE_PARITY_SHARD=<index>/<count>`) that take scenarios from a shared queue, and the web driver runs as many pages. The default is half the CPU count. `e2e/parity/README.md` shows how to replay one native shard.
 

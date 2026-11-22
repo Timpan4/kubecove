@@ -7,9 +7,9 @@ output except that PersistentVolumeClaims now show their phase, and the health a
 contract.
 
 The projection is the `BuiltinSummary` trait in
-[builtin_summary.rs](../src-tauri/crates/inspection/src/commands/resources/builtin_summary.rs).
+[builtin_summary.rs](../rust/crates/inspection/src/commands/resources/builtin_summary.rs).
 Each kind implements it next to its list fetcher. The parity test in
-[summary_parity_tests.rs](../src-tauri/crates/inspection/src/commands/resources/summary_parity_tests.rs)
+[summary_parity_tests.rs](../rust/crates/inspection/src/commands/resources/summary_parity_tests.rs)
 serves one object through a mock Kubernetes client to the real list, details, and
 topology entry points and compares the three summaries for every listed built-in kind.
 
@@ -148,5 +148,5 @@ built two summaries per typed workload object; it now calls the production input
 builder once. CodSpeed instrumented runs were not performed locally.
 
 ```sh
-cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- 'typed_resource_summaries_10000|pod_list_decode_projected_1000|ownership_topology_production_mapping_500_apps|details_complete_inspection|secret_details_'
+cargo bench --manifest-path rust/Cargo.toml --features bench-support --bench backend_hot_paths -- 'typed_resource_summaries_10000|pod_list_decode_projected_1000|ownership_topology_production_mapping_500_apps|details_complete_inspection|secret_details_'
 ```

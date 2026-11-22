@@ -32,7 +32,7 @@ if (!skipWeb) {
 	await cp(webDir, join(latest, "web"), { recursive: true });
 }
 
-const workspace = resolve("src-tauri/gpui");
+const workspace = resolve("rust/gpui");
 // Keep both Cargo directories specific to this worktree. Shared path-crate
 // artifacts can overwrite each other across checkouts. The job count comes from
 // the machine's cargo configuration; set CARGO_BUILD_JOBS on a machine short of RAM.

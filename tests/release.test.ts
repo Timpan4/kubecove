@@ -176,75 +176,75 @@ example = "9.9.9"
 	test("updates all release workspaces and selects the consolidated GPUI identity", () => {
 		const version = "0.16.0";
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
-		mkdirSync(join(root, "src-tauri"), { recursive: true });
+		mkdirSync(join(root, "rust"), { recursive: true });
 		writeFileSync(
 			join(root, "package.json"),
 			'{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n',
 		);
 		writeFileSync(
-			join(root, "src-tauri", "Cargo.toml"),
+			join(root, "rust", "Cargo.toml"),
 			'[package]\nname = "kubecove"\nversion = "0.1.0"\n\n[dependencies]\nexample = "9.9.9"\n',
 		);
 		writeFileSync(
-			join(root, "src-tauri", "Cargo.lock"),
+			join(root, "rust", "Cargo.lock"),
 			'[[package]]\nname = "kubecove"\nversion = "0.1.0"\n',
 		);
 
-		mkdirSync(join(root, "src-tauri", "server"), { recursive: true });
-		writeFileSync(join(root, "src-tauri", "server", "Cargo.toml"), '[package]\nname = "kubecove-server"\nversion = "0.1.0"\n');
-		writeFileSync(join(root, "src-tauri", "server", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.1.0"\n');
-		mkdirSync(join(root, "src-tauri", "gpui"), { recursive: true });
-		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[workspace]\nresolver = "2"\n\n[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\nidentifier = "com.timpan.kubecove.gpui"\n');
-		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
+		mkdirSync(join(root, "rust", "server"), { recursive: true });
+		writeFileSync(join(root, "rust", "server", "Cargo.toml"), '[package]\nname = "kubecove-server"\nversion = "0.1.0"\n');
+		writeFileSync(join(root, "rust", "server", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.1.0"\n');
+		mkdirSync(join(root, "rust", "gpui"), { recursive: true });
+		writeFileSync(join(root, "rust", "gpui", "Cargo.toml"), '[workspace]\nresolver = "2"\n\n[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\nidentifier = "com.timpan.kubecove.gpui"\n');
+		writeFileSync(join(root, "rust", "gpui", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 
 		const updated = updateWorkspaceReleaseVersions(version, root);
-		const packager = Bun.TOML.parse(readFileSync(join(root, "src-tauri/gpui/Cargo.toml"), "utf8")).package.metadata.packager;
+		const packager = Bun.TOML.parse(readFileSync(join(root, "rust/gpui/Cargo.toml"), "utf8")).package.metadata.packager;
 		expect(packager.productName).toBe("KubeCove");
 		expect(packager.identifier).toBe("com.timpan.kubecove");
 		expect(updated).toEqual(readWorkspaceReleaseVersions(root));
 		assertMatchingReleaseVersions(updated);
 
 		expect(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version).toBe(version);
-		expect(readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
-		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain(`version = "${version}"`);
-		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
-		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
+		expect(readFileSync(join(root, "rust", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
+		expect(readFileSync(join(root, "rust", "Cargo.lock"), "utf8")).toContain(`version = "${version}"`);
+		expect(readFileSync(join(root, "rust", "server", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
+		expect(readFileSync(join(root, "rust", "server", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
 		// The GPUI updater compares its crate version with the release manifest.
-		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
-		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
+		expect(readFileSync(join(root, "rust", "gpui", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
+		expect(readFileSync(join(root, "rust", "gpui", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
 		expect(readWorkspaceReleaseVersions(root).cargoVersion).toBe(version);
-		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
+		writeFileSync(join(root, "rust", "gpui", "Cargo.toml"), '[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 		expect(() => readWorkspaceReleaseVersions(root)).toThrow("Backend and GPUI client package versions must match.");
 	});
 
 	test("fails a bump when Cargo.lock is missing the kubecove package", () => {
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
-		mkdirSync(join(root, "src-tauri"), { recursive: true });
+		mkdirSync(join(root, "rust"), { recursive: true });
 		writeFileSync(
 			join(root, "package.json"),
 			'{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n',
 		);
 		writeFileSync(
-			join(root, "src-tauri", "Cargo.toml"),
+			join(root, "rust", "Cargo.toml"),
 			'[package]\nname = "kubecove"\nversion = "0.1.0"\n',
 		);
 		writeFileSync(
-			join(root, "src-tauri", "Cargo.lock"),
+			join(root, "rust", "Cargo.lock"),
 			'[[package]]\nname = "other"\nversion = "0.1.0"\n',
 		);
 
 		expect(() => updateWorkspaceReleaseVersions("0.2.0", root)).toThrow(
-			'src-tauri/Cargo.lock is missing [[package]] entry with name = "kubecove".',
+			'rust/Cargo.lock is missing [[package]] entry with name = "kubecove".',
 		);
 	});
 
 	test("rejects a non-object package.json without modifying it", () => {
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
-		mkdirSync(join(root, "src-tauri"), { recursive: true });
+		mkdirSync(join(root, "rust"), { recursive: true });
 		const originalPackage = "[]\n";
 		writeFileSync(join(root, "package.json"), originalPackage);
 		writeFileSync(
-			join(root, "src-tauri", "Cargo.toml"),
+			join(root, "rust", "Cargo.toml"),
 			'[package]\nname = "kubecove"\nversion = "0.1.0"\n',
 		);
 
@@ -258,15 +258,15 @@ example = "9.9.9"
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
 		const files = {
 			"package.json": '{"version":"0.15.1"}\n',
-			"src-tauri/Cargo.toml": '[package]\nname = "kubecove"\nversion = "0.15.1"\n',
-			"src-tauri/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n',
-			"src-tauri/server/Cargo.toml": '[package]\nname = "kubecove-server"\nversion = "0.15.1"\n',
-			"src-tauri/server/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.15.1"\n',
-			"src-tauri/gpui/Cargo.toml": '[package]\nname = "kubecove-gpui"\nversion = "0.15.1"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\n',
-			"src-tauri/gpui/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.15.1"\n',
+			"rust/Cargo.toml": '[package]\nname = "kubecove"\nversion = "0.15.1"\n',
+			"rust/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n',
+			"rust/server/Cargo.toml": '[package]\nname = "kubecove-server"\nversion = "0.15.1"\n',
+			"rust/server/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.15.1"\n',
+			"rust/gpui/Cargo.toml": '[package]\nname = "kubecove-gpui"\nversion = "0.15.1"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\n',
+			"rust/gpui/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.15.1"\n',
 		};
 		try {
-			for (const directory of ["src-tauri/server", "src-tauri/gpui"]) {
+			for (const directory of ["rust/server", "rust/gpui"]) {
 				mkdirSync(join(root, directory), { recursive: true });
 			}
 			for (const [path, contents] of Object.entries(files)) {

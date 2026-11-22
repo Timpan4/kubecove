@@ -44,10 +44,10 @@ Local logs and browser evidence are under ignored `e2e/artifacts/legacy-audit/`.
 | `bun run svelte:check` | 0 errors, 0 warnings, using the existing script exclusions. |
 | `bun run lint` | Passed with 8 existing warnings and 2 informational notices in unchanged code. Biome formatting is disabled by repository configuration. |
 | `bun run lint:anti-slop` | Passed. |
-| `cargo check --locked --workspace --manifest-path src-tauri/Cargo.toml` | Passed on Windows. |
-| `cargo test --locked --manifest-path src-tauri/Cargo.toml -p kubecove-host` | 13 passed, 0 failed. |
-| `cargo clippy --locked --manifest-path src-tauri/Cargo.toml -p kubecove-host --all-targets -- -D warnings` | Passed. |
-| `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` | Passed. |
+| `cargo check --locked --workspace --manifest-path rust/Cargo.toml` | Passed on Windows. |
+| `cargo test --locked --manifest-path rust/Cargo.toml -p kubecove-host` | 13 passed, 0 failed. |
+| `cargo clippy --locked --manifest-path rust/Cargo.toml -p kubecove-host --all-targets -- -D warnings` | Passed. |
+| `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Passed. |
 | `bun run docs:check` and `git diff --check` | Passed. |
 | Collaborative browser | Malformed hashes rejected, saved Settings restored and rendered without console errors. |
 

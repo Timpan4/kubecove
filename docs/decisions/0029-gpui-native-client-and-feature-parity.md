@@ -6,7 +6,7 @@ Accepted on 2026-11-04 for an incremental native client. Full feature parity and
 
 ## Decision
 
-Keep Svelte for the web application and existing Tauri desktop client. Add an opt-in Rust desktop client built with [GPUI Kit](https://gpui-kit.com/) under `src-tauri/gpui/`. It has its own Cargo workspace and lockfile, like the headless server, so its GUI dependencies do not enter existing host builds.
+Keep Svelte for the web application and existing Tauri desktop client. Add an opt-in Rust desktop client built with [GPUI Kit](https://gpui-kit.com/) under `rust/gpui/`. It has its own Cargo workspace and lockfile, like the headless server, so its GUI dependencies do not enter existing host builds.
 
 The native client calls the existing typed Rust command implementation with desktop features disabled. Kubernetes clients, credential access, redaction, authorization, cancellation and guarded operations remain in the shared backend. The client receives the same frontend-safe models as Svelte. It does not introduce an HTTP transport for UI commands, shell access, JavaScript extensions, or a webview. The optional AI agents listener reuses the desktop MCP host, settings and credential file under [ADR 0028](0028-read-only-mcp-server.md). It stays loopback-only and local even while the UI selects a remote runtime. GPUI Kit owns presentation and interaction, not Kubernetes policy.
 

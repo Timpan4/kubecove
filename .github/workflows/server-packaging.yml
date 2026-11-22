@@ -17,10 +17,10 @@ on:
       - deploy/**
       - scripts/container-smoke.sh
       - scripts/package-server.sh
-      - src-tauri/server/**
-      - src-tauri/bin/**
-      - src-tauri/build.rs
-      - src-tauri/crates/inspection/src/commands/resources/kubeconform.rs
+      - rust/server/**
+      - rust/bin/**
+      - rust/build.rs
+      - rust/crates/inspection/src/commands/resources/kubeconform.rs
   workflow_dispatch:
 
 permissions:
@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           for variant in full slim; do
-            build=(cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml --target "$TARGET")
+            build=(cargo build --locked --release --manifest-path rust/server/Cargo.toml --target "$TARGET")
             if [[ "$variant" == slim ]]; then build+=(--no-default-features); fi
             "${build[@]}"
             bash scripts/package-server.sh "$TARGET" "$variant" "${TAG_NAME#app-v}"

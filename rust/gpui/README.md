@@ -8,7 +8,7 @@ and the [shared parity guide](../../e2e/parity/README.md) for the delivery bound
 From the repository root:
 
 ```sh
-cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml
+cargo run --locked --manifest-path rust/gpui/Cargo.toml
 bun run e2e:parity
 bun scripts/gpui-visual.ts rbac,workspaces,settings,palette
 ```
@@ -73,7 +73,7 @@ export KUBECOVE_E2E=1
 export KUBECOVE_KUBECONFIG=/absolute/path/to/kubeconfig
 export KUBECOVE_DATA_DIR=/absolute/path/to/empty/directory
 export KUBECOVE_AUTOMATION_PORT=0   # 0 picks a free port
-cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml --features e2e
+cargo run --locked --manifest-path rust/gpui/Cargo.toml --features e2e
 ```
 
 The app prints `[kubecove:automation] MCP endpoint http://127.0.0.1:<port>/mcp; bearer

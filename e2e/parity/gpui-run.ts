@@ -114,7 +114,7 @@ function gpuiEnvironment(workspace: string, artifacts: string, coverage: boolean
 
 export async function exportGpuiParity(directory: string, coverage: boolean, signal: AbortSignal): Promise<string> {
 	const expected = await parityBuild(coverage);
-	const workspace = join(expected.sourceRoot, "src-tauri", "gpui");
+	const workspace = join(expected.sourceRoot, "rust", "gpui");
 	const { env, buildDir } = gpuiEnvironment(workspace, directory, coverage);
 	const inheritedFlags = env.CARGO_ENCODED_RUSTFLAGS ?? env.RUSTFLAGS ?? env.CARGO_BUILD_RUSTFLAGS ?? "";
 	if (!coverage && /instrument-coverage|kubecove_coverage/.test(inheritedFlags)) {
@@ -141,7 +141,7 @@ export async function exportGpuiParity(directory: string, coverage: boolean, sig
  * instrumented in its own `<target>/coverage` directory, so it never evicts the normal build.
  */
 export async function runGpui(contract: Contract, artifacts: string, fixture: { path: string; exit: Promise<number> }, shards: number, signal: AbortSignal, mark: (phase: string) => void, coverage = false, coverageJobs = shards): Promise<string | undefined> {
-	const workspace = resolve("src-tauri/gpui");
+	const workspace = resolve("rust/gpui");
 	// The runner records this driver's selection separately from the web driver's.
 	const ids = join(artifacts, driverSelectionFile.gpui);
 	const { env, buildDir } = gpuiEnvironment(workspace, artifacts, coverage);

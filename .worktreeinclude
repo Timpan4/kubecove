@@ -1,3 +1,3 @@
 # Gitignored paths that `wt step copy-ignored` reflinks from the main checkout into a new worktree.
 # The GPUI build directory holds compiled dependencies, so a seeded worktree rebuilds only workspace crates.
-src-tauri/gpui/build/
+rust/gpui/build/

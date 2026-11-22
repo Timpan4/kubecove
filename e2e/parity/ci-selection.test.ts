@@ -14,7 +14,7 @@ const ids = ["one", "one.more", SPIKE];
 const contract: Contract = { scenarios: ids.map((id) => ({ id, title: id, steps: [] })) };
 const report = (driver: Driver, ...ids: string[]) => ({ driver, scenarios: ids.map((id) => ({ id, status: "passed" })) });
 const planner = resolve("e2e/parity/ci-selection.ts");
-const RUST = "src-tauri/gpui/src/page.rs";
+const RUST = "rust/gpui/src/page.rs";
 const RUST_SOURCE = "use super::loading::Phase;\npub use super::names::Name;\n\npub fn first() -> Phase {\n    Phase::Ready\n}\nuse super::shapes::{\n    Circle,\n    Square,\n};\npub use super::kinds::{\n    Kind, // one; per line\n    Sort,\n};\npub use super::more::{ /* outer /* nested ; */ ; */\n    Extra,\n};\npub\nuse super::split::{\n    Split,\n};\n";
 
 async function run(cwd: string, args: string[], env = process.env) {
@@ -149,7 +149,7 @@ test("compiled Rust changes select all scenarios even without parent execution",
 	]) await fixture(async (root) => {
 		const map = JSON.parse(await readFile(join(root, "map.json"), "utf8"));
 		const parent = map.files[RUST];
-		const child = "src-tauri/gpui/src/child.rs";
+		const child = "rust/gpui/src/child.rs";
 		map.files[child] = parent;
 		map.compiled.push(child);
 		map.sets.push([]);
@@ -162,7 +162,7 @@ test("compiled Rust changes select all scenarios even without parent execution",
 		expect(result.fallback).toContain("compiled Rust");
 	});
 	await fixture(async (root) => {
-		const path = "src-tauri/src/uncompiled.rs";
+		const path = "rust/src/uncompiled.rs";
 		await mkdir(join(root, path, ".."), { recursive: true });
 		await writeFile(join(root, path), "pub fn uncompiled() {}\n");
 		await run(root, ["git", "add", path]);
@@ -182,7 +182,7 @@ test("a map that lists no compiled GPUI source selects all scenarios for a GPUI 
 		await run(root, ["git", "-c", "user.name=Parity test", "-c", "user.email=parity@example.invalid", "commit", "--quiet", "-am", "GPUI Rust edit"]);
 		const result = await plan(root);
 		expect(result.ids).toEqual(ids);
-		expect(result.fallback).toContain("lists no compiled file under src-tauri/gpui/src/");
+		expect(result.fallback).toContain("lists no compiled file under rust/gpui/src/");
 	});
 });
 
@@ -210,7 +210,7 @@ test("a stale map includes intervening source changes and falls back for blind i
 	const workflows = await Promise.all(["parity.yml", "parity-suite.yml"].map((name) => readFile(resolve(".github/workflows", name), "utf8")));
 	const scripts = [...new Set(workflows.join("\n").match(/\b(?:scripts|e2e\/parity)\/[\w./-]+\.(?:mjs|ts)\b/g) ?? [])];
 	expect(scripts).toContain("scripts/ci-mbx-cargo.mjs");
-	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/gpui/updater.json", "scripts/e2e-parity.ts", ".env", ".env.local", ".env.test", ".env.test.local", ...scripts]) {
+	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "rust/gpui/assets/icons/search.svg", "rust/gpui/assets/fonts/inter-400.ttf", "rust/gpui/updater.json", "scripts/e2e-parity.ts", ".env", ".env.local", ".env.test", ".env.test.local", ...scripts]) {
 		await fixture(async (root) => {
 			await mkdir(join(root, path, ".."), { recursive: true });
 			await writeFile(join(root, path), path === "src/feature.ts" ? "export function first() {\n return 3;\n}\nexport function second() {\n return 2;\n}\n" : path.endsWith("new.json") ? JSON.stringify({ scenarios: [{ id: "one" }] }) : "Changed input\n");

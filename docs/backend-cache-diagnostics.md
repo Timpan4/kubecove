@@ -25,7 +25,7 @@ Ready and loading counts are disjoint. Dirty counts include the retained previou
 
 ## Repeatable measurements
 
-`cargo run --release --manifest-path src-tauri/Cargo.toml --features bench-support --example cache_diagnostics` prints a redacted snapshot of cached Pod summaries and topology from the existing 500-app backend benchmark fixture. It runs no Kubernetes API calls. The example is excluded from default Cargo targets unless `bench-support` is enabled.
+`cargo run --release --manifest-path rust/Cargo.toml --features bench-support --example cache_diagnostics` prints a redacted snapshot of cached Pod summaries and topology from the existing 500-app backend benchmark fixture. It runs no Kubernetes API calls. The example is excluded from default Cargo targets unless `bench-support` is enabled.
 
 `bun run rust:bench -- inspect_cached_payload_weights_500_apps` measures snapshot collection against those retained payloads. Fixture generation runs outside the timed region. This measures local observation cost, not network latency or complete allocation size.
 

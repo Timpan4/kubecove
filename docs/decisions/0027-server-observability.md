@@ -14,7 +14,7 @@ Logs and metrics leave the server's trust boundary: they go to log collectors an
 
 ### One observation module
 
-`src-tauri/server/src/observe.rs` is the only server module that emits log events or updates metrics. Each observed point is one typed function. The event name is the log `event` field and the metric name stem, so logs and metrics cannot drift apart. Reason and outcome values are Rust enums, so every value is fixed at compile time.
+`rust/server/src/observe.rs` is the only server module that emits log events or updates metrics. Each observed point is one typed function. The event name is the log `event` field and the metric name stem, so logs and metrics cannot drift apart. Reason and outcome values are Rust enums, so every value is fixed at compile time.
 
 ### Redaction
 

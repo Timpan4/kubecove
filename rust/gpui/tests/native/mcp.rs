@@ -16,7 +16,7 @@ fn test_backend(directory: &Path) -> NativeBackend {
 /// A dropped host shuts its runtime down in the background, so its listening socket closes
 /// shortly after the drop returns. The next host binds once at construction and reports a
 /// port in use instead of retrying, so a test that reopens on the same port waits here.
-/// Five seconds is the deadline most local waits in the backend crates' tests (`src-tauri/crates`) use.
+/// Five seconds is the deadline most local waits in the backend crates' tests (`rust/crates`) use.
 fn wait_until_free(port: u16) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while TcpListener::bind(("127.0.0.1", port)).is_err() {

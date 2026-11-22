@@ -133,7 +133,7 @@ jobs:
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ inputs.build != '' }}
-        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml src-tauri ':!src-tauri/server' 'src/lib/*-workspace.json' .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml rust ':!rust/server' 'src/lib/*-workspace.json' .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile
 
       # Only one main build per key saves objects. Shards use the binary artifact.
       - name: Cache Rust builds
@@ -141,7 +141,7 @@ jobs:
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
           version: "1.30.0"
-          working-directory: src-tauri/gpui
+          working-directory: rust/gpui
           cache-key: ${{ steps.rust-cache.outputs.key }}
           restore-keys: ${{ steps.rust-cache.outputs.prefix }}
           github-cache-mode: objects
@@ -179,9 +179,9 @@ jobs:
       - name: Seed the uninstrumented GPUI cache
         if: ${{ inputs.build == 'cache' }}
         env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-        run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path src-tauri/gpui/Cargo.toml --test parity --no-run --message-format=json-render-diagnostics
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rust/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/rust/gpui/target
+        run: CARGO_BUILD_JOBS="$(nproc)" cargo test --manifest-path rust/gpui/Cargo.toml --test parity --no-run --message-format=json-render-diagnostics
 
       # Keep the default checkout path in build and replay jobs: LLVM reports absolute paths.
       - name: Export the GPUI parity binary
@@ -190,8 +190,8 @@ jobs:
         env:
           KUBECOVE_PARITY_BUILD_DIR: ${{ runner.temp }}/gpui-parity
           PARITY_COVERAGE: ${{ inputs.coverage && '1' || '0' }}
-          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rust/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/rust/gpui/target
         run: |
           CARGO_BUILD_JOBS="$(nproc)" bun run e2e:parity
           release=$(jq -er '.rustcVersion | split("\n")[] | select(startswith("release: ")) | ltrimstr("release: ")' "$KUBECOVE_PARITY_BUILD_DIR/manifest.json")

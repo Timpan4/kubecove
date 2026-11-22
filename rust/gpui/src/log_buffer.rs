@@ -2,7 +2,7 @@
 //! filters in `ResourceLogsPane.svelte`. Lines live in arrival order in a ring
 //! buffer, so eviction and lookup by arrival index are constant time, and the
 //! level counts update with each append instead of rescanning every line.
-//! (A `logs/` directory would match `src-tauri/.gitignore`, so this module
+//! (A `logs/` directory would match `rust/.gitignore`, so this module
 //! sits beside `logs.rs`.)
 
 use crate::logs::{MAX_RETAINED_LOG_LINES, ParsedLogLine, inline_log_text, parse_line};

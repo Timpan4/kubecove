@@ -1,6 +1,6 @@
-# `src-tauri/src/commands/`
+# `rust/src/commands/`
 
-This folder holds `mod.rs` and benchmark support. Command handlers live in the domain crates under `src-tauri/crates/<crate>/src/commands/` (`kube`, `inspection`, `live`, `gitops`, `host`); see the [crates guide](../../crates/README.md). `mod.rs` re-exports the command functions that `command_contract!` in `kubecove-models` declares. The server generates its HTTP dispatch from that declaration. See [ADR 0025](../../../docs/decisions/0025-single-command-contract.md).
+This folder holds `mod.rs` and benchmark support. Command handlers live in the domain crates under `rust/crates/<crate>/src/commands/` (`kube`, `inspection`, `live`, `gitops`, `host`); see the [crates guide](../../crates/README.md). `mod.rs` re-exports the command functions that `command_contract!` in `kubecove-models` declares. The server generates its HTTP dispatch from that declaration. See [ADR 0025](../../../docs/decisions/0025-single-command-contract.md).
 
 Rules for command code in those crates:
 

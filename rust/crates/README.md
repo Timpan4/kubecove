@@ -1,6 +1,6 @@
 # Private backend crates
 
-The shared backend library at `src-tauri/` is the Cargo workspace root and host composition layer. Internal crates are unpublished and versioned independently of app releases. Dependencies are pinned in `[workspace.dependencies]`; members opt into the existing backend lint policy with `[lints] workspace = true`.
+The shared backend library at `rust/` is the Cargo workspace root and host composition layer. Internal crates are unpublished and versioned independently of app releases. Dependencies are pinned in `[workspace.dependencies]`; members opt into the existing backend lint policy with `[lints] workspace = true`.
 
 | Crate | Responsibility | Internal dependencies |
 | --- | --- | --- |
@@ -25,10 +25,10 @@ The server and GPUI each have a separate workspace, lockfile and target director
 ## Verification and rebuild measurements
 
 ```sh
-cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
-cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --locked --no-default-features --manifest-path src-tauri/server/Cargo.toml
-cargo tree --locked --manifest-path src-tauri/server/Cargo.toml --edges normal,build
+cargo test --locked --workspace --manifest-path rust/Cargo.toml
+cargo clippy --locked --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --locked --no-default-features --manifest-path rust/server/Cargo.toml
+cargo tree --locked --manifest-path rust/server/Cargo.toml --edges normal,build
 ```
 
 Use the workspace selectors when testing: dependency-crate unit tests do not run merely because the library depends on them. Use the standalone server command for GUI-free verification.

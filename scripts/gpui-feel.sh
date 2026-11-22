@@ -6,7 +6,7 @@
 set -eu
 
 root=$(git rev-parse --show-toplevel)
-gpui="$root/src-tauri/gpui"
+gpui="$root/rust/gpui"
 feel="$gpui/target/feel"
 mkdir -p "$feel"
 

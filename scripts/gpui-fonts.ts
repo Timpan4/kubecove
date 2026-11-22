@@ -12,7 +12,7 @@ const families = [
 	{ pkg: "geist", file: "geist-latin-wght-normal", weights: [500, 600] },
 	{ pkg: "geist-mono", file: "geist-mono-latin-wght-normal", weights: [400, 500] },
 ];
-const output = resolve("src-tauri/gpui/assets/fonts");
+const output = resolve("rust/gpui/assets/fonts");
 
 async function run(command: string[]) {
 	const child = Bun.spawn(command, { stdout: "ignore", stderr: "pipe" });
