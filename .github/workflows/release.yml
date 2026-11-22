@@ -579,7 +579,8 @@ jobs:
     if: ${{ !inputs.gpui-dry-run }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # GitHub only exposes draft releases to tokens with write access.
+      contents: write
     steps:
       - name: Verify legacy platform coverage
         env:
