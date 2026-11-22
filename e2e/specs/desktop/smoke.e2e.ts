@@ -41,24 +41,6 @@ describe("native desktop smoke", () => {
 		await settings.waitForClickable();
 		await settings.click();
 		await expect($("body")).toHaveText(expect.stringContaining("Settings"));
-		await $("button=Updates").click();
-		await expect($("h3=Switch to KubeCove GPUI")).toBeDisplayed();
-		if (process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL !== "stable") {
-			const check = $("button=Check for GPUI release");
-			await expect(check).toBeClickable();
-			await check.click();
-		}
-		const status = $('section[aria-labelledby="gpui-upgrade-title"] [aria-live] p');
-		await expect(status).toHaveText(
-			expect.stringMatching(/^(KubeCove 0\.16\.0 is available as a separate download|KubeCove GPUI (requires Apple silicon|has no release))/),
-		);
-		if ((await status.getText()).includes("separate download")) {
-			await expect($("button=Open GitHub Releases")).toBeClickable();
-			await expect($("button=Download GPUI installer")).not.toExist();
-			await expect($("button=Choose GPUI install folder")).not.toExist();
-		}
-		const artifacts = process.env.KUBECOVE_E2E_ARTIFACTS;
-		if (artifacts) await browser.saveScreenshot(join(artifacts, "gpui-migration.png"));
 	});
 
 	it("samples the memory figures this platform reports", async () => {

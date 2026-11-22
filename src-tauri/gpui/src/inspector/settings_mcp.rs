@@ -286,9 +286,8 @@ impl Inspector {
         if state.status.is_none() && state.error.is_some() {
             section = section.child(
                 div().flex().child(
-                    action("Reload settings", state.call.is_some()).on_click(
-                        cx.listener(|this, _, window, cx| this.reload_mcp(window, cx)),
-                    ),
+                    action("Reload settings", state.call.is_some())
+                        .on_click(cx.listener(|this, _, window, cx| this.reload_mcp(window, cx))),
                 ),
             );
         }

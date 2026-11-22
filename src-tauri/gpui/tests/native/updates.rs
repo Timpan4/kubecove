@@ -424,6 +424,12 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
     );
 
     let target = InstallTarget::AppBundle(bundle.clone());
+    // A 0.15.x release must hold the side-by-side bundle, and a 0.16+ release the consolidated one.
+    let install_legacy = |payload: &[u8]| {
+        let mut staged = target.stage()?;
+        staged.write(payload)?;
+        staged.install("0.15.1")
+    };
     for (case, payload) in [
         ("no bundle", archive(&[("README", b"no app here")])),
         (
@@ -448,10 +454,7 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         ),
         ("not an archive", b"not gzip".to_vec()),
     ] {
-        assert!(
-            install_unsigned(&target, &payload).is_err(),
-            "installed {case}"
-        );
+        assert!(install_legacy(&payload).is_err(), "installed {case}");
         assert_eq!(std::fs::read(&binary).unwrap(), b"installed version");
         assert_eq!(names(&directory), ["KubeCove GPUI.app"]);
     }
@@ -463,7 +466,13 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         ),
         ("KubeCove GPUI.app/Contents/Info.plist", info),
     ]);
-    let relaunch = install_unsigned(&target, &update).unwrap();
+    assert!(
+        install_unsigned(&target, &update).is_err(),
+        "installed a side-by-side bundle as {VERSION}"
+    );
+    assert_eq!(std::fs::read(&binary).unwrap(), b"installed version");
+    assert_eq!(names(&directory), ["KubeCove GPUI.app"]);
+    let relaunch = install_legacy(&update).unwrap();
     assert_eq!(std::fs::read(&binary).unwrap(), b"new version");
     assert!(!bundle.join("Contents/removed-in-update").exists());
     assert_eq!(names(&directory), ["KubeCove GPUI.app"]);

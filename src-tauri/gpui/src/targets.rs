@@ -82,7 +82,11 @@ pub(crate) fn focused(window: &Window, cx: &App) -> Option<String> {
 /// `<role> [src=<file>:<line>]`, with `/` separators on every platform so
 /// recordings compare across machines.
 fn target_name(role: Option<gpui_kit::Role>, source: &Location<'static>) -> String {
-    let source = format!("[src={}:{}]", source.file().replace('\\', "/"), source.line());
+    let source = format!(
+        "[src={}:{}]",
+        source.file().replace('\\', "/"),
+        source.line()
+    );
     match role {
         Some(role) => format!("{} {source}", format!("{role:?}").to_lowercase()),
         None => source,

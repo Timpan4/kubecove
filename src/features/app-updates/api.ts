@@ -11,7 +11,7 @@ function mapDownloadEvent(event: DownloadEvent): AppUpdateDownloadEvent {
 // The feed has no GPUI build for .deb, .rpm or Intel Mac installs (ADR 0036).
 const NO_TARGET = /was not found in the response `platforms` object|None of the fallback platforms/;
 const NO_TARGET_MESSAGE =
-	"The new KubeCove has no update for this install type. Download the AppImage, DMG or Windows installer from GitHub Releases.";
+	"The new KubeCove has no update for this install type. GitHub Releases lists the supported downloads.";
 
 export const tauriAppUpdateApi: AppUpdateApi = {
 	check: async (): Promise<AppUpdate | null> => {
