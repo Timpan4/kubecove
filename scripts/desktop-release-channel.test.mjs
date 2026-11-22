@@ -9,15 +9,19 @@ import { parse } from "yaml";
 import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 test("historical release tags cannot publish a latest feed", () => {
-  for (const version of ["0.14.9", "0.15.0", "0.15.2"]) {
-    assert.throws(() => desktopReleaseChannel(version), /frozen/);
+  for (const version of ["0.14.9", "0.15.0", "0.15.3"]) {
+    assert.throws(() => desktopReleaseChannel(version), /0\.15\.2 pitstop/);
   }
+});
+
+test("the 0.15.2 pitstop ships on the side-by-side channel", () => {
+  assert.deepEqual(desktopReleaseChannel("0.15.2"), desktopReleaseChannel("0.15.1"));
 });
 
 test("a pre-transition dry run uses the frozen legacy channel", () => {
   assert.deepEqual(desktopReleaseChannel("0.15.0", { dryRun: true }), desktopReleaseChannel("0.15.1"));
-  assert.throws(() => desktopReleaseChannel("0.15.0"), /frozen at 0\.15\.1/);
-  assert.throws(() => desktopReleaseChannel("0.15.2", { dryRun: true }), /frozen at 0\.15\.1/);
+  assert.throws(() => desktopReleaseChannel("0.15.0"), /0\.15\.2 pitstop/);
+  assert.throws(() => desktopReleaseChannel("0.15.3", { dryRun: true }), /0\.15\.2 pitstop/);
 });
 
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));

@@ -4377,7 +4377,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "chrono",
  "k8s-openapi",
@@ -4429,7 +4429,7 @@ dependencies = [
 
 [[package]]
 name = "kubecove-gpui"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "base64 0.23.1",
  "chrono",

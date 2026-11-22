@@ -7,6 +7,8 @@ import {
 
 const tagName = process.env.TAG_NAME ?? "";
 const refType = process.env.REF_TYPE ?? "";
+// Main no longer builds Tauri, so the 0.15.x pitstop ships from the head of its maintenance branch.
+const RELEASE_BRANCH = tagName === "app-v0.15.2" ? "release/0.15.x" : "main";
 
 try {
 	const versions = readWorkspaceReleaseVersions();
@@ -31,7 +33,7 @@ try {
 		);
 	}
 
-	assertTagTargetsOriginMain(tagName);
+	assertTagTargetsReleaseBranch(tagName);
 } catch (error) {
 	fail(error instanceof Error ? error.message : String(error));
 }
@@ -41,21 +43,21 @@ function fail(message: string): never {
 	process.exit(1);
 }
 
-function assertTagTargetsOriginMain(tagName: string): void {
-	run("git", ["fetch", "--quiet", "--no-tags", "origin", "main:refs/remotes/origin/main"]);
+function assertTagTargetsReleaseBranch(tagName: string): void {
+	run("git", ["fetch", "--quiet", "--no-tags", "origin", `${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}`]);
 
 	const tagCommit = run("git", ["rev-parse", `${tagName}^{commit}`]).trim();
-	const originMainCommit = run("git", ["rev-parse", "origin/main^{commit}"]).trim();
+	const branchCommit = run("git", ["rev-parse", `origin/${RELEASE_BRANCH}^{commit}`]).trim();
 
 	console.log(`release tag commit: ${shortSha(tagCommit)}`);
-	console.log(`origin/main commit: ${shortSha(originMainCommit)}`);
+	console.log(`origin/${RELEASE_BRANCH} commit: ${shortSha(branchCommit)}`);
 
-	if (tagCommit === originMainCommit) return;
+	if (tagCommit === branchCommit) return;
 
 	fail(
 		[
-			`Release tag ${tagName} must point to the current origin/main commit.`,
-			`Found tag commit ${tagCommit}, but origin/main is ${originMainCommit}.`,
+			`Release tag ${tagName} must point to the current origin/${RELEASE_BRANCH} commit.`,
+			`Found tag commit ${tagCommit}, but origin/${RELEASE_BRANCH} is ${branchCommit}.`,
 			"Create releases through the reviewed release PR flow so branch protection remains the publication gate.",
 		].join("\n"),
 	);

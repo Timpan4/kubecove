@@ -532,10 +532,10 @@ test("latest-gpui.json lists every platform with its release URL and signature, 
   assert.throws(() => build(Object.keys(files), { tag: "feat/branch" }), /does not match app version/);
 });
 
-test("only the consolidated product gets new manifests after 0.15.1", async () => {
+test("only the consolidated product gets new manifests after the 0.15.2 pitstop", async () => {
   const { desktopReleaseChannel } = await import("./desktop-release-channel.mjs");
-  assert.equal(desktopReleaseChannel("0.15.1").manifest, "latest-gpui.json");
-  assert.throws(() => desktopReleaseChannel("0.15.2"), /frozen/);
+  assert.equal(desktopReleaseChannel("0.15.2").manifest, "latest-gpui.json");
+  assert.throws(() => desktopReleaseChannel("0.15.3"), /pitstop/);
   for (const version of ["0.16.0", "1.0.0"]) {
     assert.equal(desktopReleaseChannel(version).manifest, "latest-desktop.json");
     assert.equal(gpuiUpdaterAssets(version)["linux-x86_64"], `kubecove_${version}_x86_64.AppImage`);
