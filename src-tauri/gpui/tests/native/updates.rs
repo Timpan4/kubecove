@@ -430,12 +430,18 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         staged.write(payload)?;
         staged.install("0.15.1")
     };
+    let consolidated_info = include_str!("../../../test-fixtures/side-by-side-info.plist")
+        .replace("com.timpan.kubecove.gpui", "com.timpan.kubecove");
+    let consolidated = archive(&[
+        ("KubeCove.app/Contents/MacOS/kubecove-gpui", b"consolidated"),
+        (
+            "KubeCove.app/Contents/Info.plist",
+            consolidated_info.as_bytes(),
+        ),
+    ]);
     for (case, payload) in [
         ("no bundle", archive(&[("README", b"no app here")])),
-        (
-            "consolidated bundle",
-            archive(&[("KubeCove.app/Contents/MacOS/kubecove", b"another product")]),
-        ),
+        ("consolidated bundle", consolidated.clone()),
         (
             "two bundles",
             archive(&[
@@ -488,6 +494,15 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
             "the app binary lost its executable bits"
         );
     }
+
+    let relaunch = install_unsigned(&target, &consolidated).unwrap();
+    let installed = directory.join("KubeCove.app");
+    assert_eq!(names(&directory), ["KubeCove.app"]);
+    assert_eq!(
+        std::fs::read(installed.join("Contents/MacOS/kubecove-gpui")).unwrap(),
+        b"consolidated"
+    );
+    assert_eq!(relaunch.args, ["-n".into(), installed.into_os_string()]);
 }
 
 #[test]
