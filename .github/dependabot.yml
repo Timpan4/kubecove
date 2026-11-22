@@ -22,7 +22,12 @@ updates:
           - "patch"
 
   - package-ecosystem: "cargo"
-    directory: "/rust"
+    # Each host is its own Cargo workspace with exact pins that must move
+    # together, so one grouped PR updates all three lockfiles.
+    directories:
+      - "/rust"
+      - "/rust/gpui"
+      - "/rust/server"
     schedule:
       interval: "daily"
       time: "07:00"
