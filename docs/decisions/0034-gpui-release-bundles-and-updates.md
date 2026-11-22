@@ -16,19 +16,19 @@ The release workflow (`.github/workflows/gpui-release.yml`, called from `release
 
 | Platform | Asset | How the client installs it |
 | --- | --- | --- |
-| Linux x64 | `kubecove-gpui_<version>_x86_64.AppImage` | Replaces the file at `$APPIMAGE` |
-| macOS, Apple silicon | `kubecove-gpui_<version>_aarch64.app.tar.gz` with `KubeCove GPUI.app` at the archive root | Swaps the bundle that holds the running executable |
-| Windows x64 | `kubecove-gpui_<version>_x64-setup.exe` (NSIS, per-user install) | Runs the installer in passive mode on relaunch |
+| Linux x64 | `kubecove_<version>_x86_64.AppImage` | Replaces the file at `$APPIMAGE` |
+| macOS, Apple silicon | `kubecove_<version>_aarch64.app.tar.gz` with `KubeCove.app` at the archive root | Swaps the bundle that holds the running executable |
+| Windows x64 | `kubecove_<version>_x64-setup.exe` (NSIS, per-user install) | Runs the installer in passive mode on relaunch |
 
-On Linux and Windows the updater asset is also the first-install download. On macOS the release also ships `kubecove-gpui_<version>_aarch64.dmg`, built by cargo-packager from the same bundle. It is outside the updater feed and has no `.sig`, as the Tauri DMG has none.
+On Linux and Windows the updater asset is also the first-install download. On macOS the release also ships `kubecove_<version>_aarch64.dmg`, built by cargo-packager from the same bundle. It is outside the updater feed and has no `.sig`.
 
 The Linux release ships an AppImage. Debian and RPM installers are available only from the legacy Tauri build.
 
 The native client has no Intel macOS build; the owner dropped it after 0.14.1, which shipped a universal bundle. An Intel Mac running 0.14.1 finds no `darwin-x86_64` entry and reports that the newer release has no build for its platform.
 
-One Linux job signs all three assets, so the updater key reaches one runner. The signing job decodes the existing base64-wrapped minisign key (`TAURI_SIGNING_PRIVATE_KEY`) and passes its optional password to standalone `minisign` on stdin. Each `.sig` contains the base64-encoded minisign signature text. Its trusted comment binds the timestamp, file name and version as tab-separated fields. `latest-gpui.json` lists the assets in the Tauri updater's static format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`. The Tauri feed `latest.json` is unchanged, so neither client can be offered the other's artifact by its own feed.
+One Linux job signs all three assets, so the updater key reaches one runner. The signing job decodes the existing base64-wrapped minisign key (`TAURI_SIGNING_PRIVATE_KEY`) and passes its optional password to standalone `minisign` on stdin. Each `.sig` contains the base64-encoded minisign signature text. Its trusted comment binds the timestamp, file name and version as tab-separated fields. `latest-desktop.json` lists the assets in the static updater format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`.
 
-The product is named KubeCove GPUI with the bundle identifier `com.timpan.kubecove.gpui`, so it installs beside the Tauri app. It keeps reading settings from the `com.timpan.kubecove` config directory (ADR 0030). The GPUI crate version follows the app version, because the client compares its own version with the manifest's.
+Starting with 0.16.0, the consolidated desktop product is named `KubeCove` with the bundle identifier `com.timpan.kubecove`, matching the `com.timpan.kubecove` config directory (ADR 0030). Through 0.15.1, it shipped side by side as `KubeCove GPUI` (`com.timpan.kubecove.gpui`) on `latest-gpui.json`. The GPUI crate version follows the app version, because the client compares its own version with the manifest's.
 
 A manual run of `release.yml` with the `gpui-dry-run` input builds, bundles, signs and verifies all three platforms and keeps the results as workflow artifacts. It creates no release, tag or draft.
 
@@ -37,18 +37,18 @@ A manual run of `release.yml` with the `gpui-dry-run` input builds, bundles, sig
 The client trusts one thing: the public key in `src-tauri/gpui/updater.json`, compiled into the binary. The manifest and the download are untrusted. Until the download has ended and passed these checks, its bytes go only to a staged file that is never executed, renamed or unpacked, and every failure removes that file:
 
 1. The downloaded bytes must carry a valid signature from that key. Unhashed legacy signatures are refused, because the signing job uses prehashed minisign signatures.
-2. The signature's trusted comment must hold `version:<version>` equal to the version the manifest announced. The trusted comment is covered by the signature. Without this check a tampered manifest could pair a new version number with an older signed build. The Tauri plugin calls the same rule `requireSignedVersion`; the native client always applies it, since it has no older unsigned-version releases to stay compatible with.
-3. The trusted comment's `file:` field, which the signer sets to the signed file's name, must start with `kubecove-gpui_`. Both clients are signed with one key and both sign their version, so without this check a tampered manifest could point the native client at the Tauri artifact of the same version.
+2. The signature's trusted comment must hold `version:<version>` equal to the version the manifest announced. The trusted comment is covered by the signature. Without this check a tampered manifest could pair a new version number with an older signed build.
+3. The trusted comment's `file:` field, which the signer sets to the signed file's name, must equal the exact expected consolidated asset name (`kubecove_<version>_...` for this platform). Legacy Tauri (`KubeCove_<version>_...`) and side-by-side GPUI (`kubecove-gpui_<version>_...`) artifacts were signed with the same key and are refused.
 
-`src-tauri/gpui/updater.json` also supplies the compiled `latest-gpui.json` URL. The release verifier reads its public key from the same file.
+`src-tauri/gpui/updater.json` also supplies the compiled `latest-desktop.json` URL. The release verifier reads its public key from the same file.
 
 ### Install and relaunch
 
 The client streams the artifact. Each chunk goes to the staged file and to minisign's streaming verifier, then is dropped, so memory use stays flat however large the response is. No trusted size exists to cap the download: the manifest and `Content-Length` are untrusted and the signature carries no size. File writes, hashing and the install run off the UI thread and off the async workers. A download that fails or ends before its announced length never installs.
 
 - **Linux.** The staged file is a new hidden file beside the AppImage. After verification the payload must be an ELF file. The client copies the AppImage's permissions to the staged file, syncs it and renames it over the AppImage. The path always holds a complete AppImage. Relaunch starts the AppImage.
-- **macOS.** The staged file is a hidden file beside the bundle that holds the downloaded `.app.tar.gz`, and it is removed once the install ends. After verification the client unpacks it into a hidden directory beside the bundle, requires exactly one `.app` directory in it, moves the installed bundle aside, moves the new one into its place, and deletes the old one. If the second move fails it moves the installed bundle back. If that move fails too, the installed bundle stays under its hidden name beside the install path; it is deleted only after the new bundle is in place. Relaunch runs `open -n` on the bundle.
-- **Windows.** The staged file is a hidden file in the user's temporary directory whose name does not end in `.exe`. After verification the payload must be a PE file, and the client renames it to `KubeCove-GPUI-<version>-setup.exe`, so an unverified file never sits at an installer's name. Relaunch runs it with `/P` (passive) and `/R` (restart the app), and the app quits so the installer can replace its files.
+- **macOS.** The staged file is a hidden file beside the bundle that holds the downloaded `.app.tar.gz`, and it is removed once the install ends. After verification the client unpacks it into a hidden directory beside the bundle, requires a single `KubeCove.app` bundle declaring `CFBundleIdentifier` as `com.timpan.kubecove` (matching the installed bundle), moves the installed bundle aside, moves the new one into its place, and deletes the old one. If the second move fails it moves the installed bundle back. If that move fails too, the installed bundle stays under its hidden name beside the install path; it is deleted only after the new bundle is in place. Relaunch runs `open -n` on the bundle.
+- **Windows.** The staged file is a hidden file in the user's temporary directory whose name does not end in `.exe`. After verification the payload must be a PE file, and the client renames it to `KubeCove-<version>-setup.exe`, so an unverified file never sits at an installer's name. Relaunch runs it with `/P` (passive) and `/R` (restart the app), and the app quits so the installer can replace its files.
 
 Work files are created with `create_new`, so the client never writes through a link placed at a predictable path. A stale work file from an interrupted install is removed first, without following links.
 

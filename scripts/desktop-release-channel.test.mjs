@@ -9,14 +9,15 @@ import { parse } from "yaml";
 import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 test("historical release tags cannot publish a latest feed", () => {
-  for (const version of ["0.14.9", "0.15.0", "0.15.2"]) {
+  for (const version of ["0.14.9", "0.15.0", "0.15.1", "0.15.2"]) {
     assert.throws(() => desktopReleaseChannel(version), /frozen/);
   }
 });
 
-test("a pre-transition dry run uses the frozen legacy channel", () => {
-  assert.deepEqual(desktopReleaseChannel("0.15.0", { dryRun: true }), desktopReleaseChannel("0.15.1"));
-  assert.throws(() => desktopReleaseChannel("0.15.0"), /frozen at 0\.15\.1/);
+test("a pre-0.16.0 dry run on 0.15.1 uses the consolidated channel while other legacy versions stay frozen", () => {
+  assert.deepEqual(desktopReleaseChannel("0.15.1", { dryRun: true }), desktopReleaseChannel("0.16.0"));
+  assert.throws(() => desktopReleaseChannel("0.15.0", { dryRun: true }), /frozen at 0\.15\.1/);
+  assert.throws(() => desktopReleaseChannel("0.15.1"), /frozen at 0\.15\.1/);
   assert.throws(() => desktopReleaseChannel("0.15.2", { dryRun: true }), /frozen at 0\.15\.1/);
 });
 
@@ -28,8 +29,7 @@ test("the bundle step stages cargo-packager outputs under the public channel nam
   const bundles = parse(readFileSync(new URL("../.github/workflows/gpui-release.yml", import.meta.url), "utf8"));
   const step = bundles.jobs.bundle.steps.find(step => step.name === "Bundle GPUI client");
   for (const [version, releaseTag, prefix, product, identifier] of [
-    ["0.15.0", "", "kubecove-gpui", "KubeCove GPUI", "com.timpan.kubecove.gpui"],
-    ["0.15.1", "app-v0.15.1", "kubecove-gpui", "KubeCove GPUI", "com.timpan.kubecove.gpui"],
+    ["0.15.1", "", "kubecove", "KubeCove", "com.timpan.kubecove"],
     ["0.16.0", "app-v0.16.0", "kubecove", "KubeCove", "com.timpan.kubecove"],
   ]) {
     const directory = mkdtempSync(join(tmpdir(), "kubecove-bundle-"));

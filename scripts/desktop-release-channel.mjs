@@ -1,17 +1,30 @@
 import { pathToFileURL } from "node:url";
 
 const FROZEN_LEGACY_VERSION = "0.15.1";
-const [legacyMajor, legacyMinor, legacyPatch] = FROZEN_LEGACY_VERSION.split(".").map(Number);
+const MIN_CONSOLIDATED_VERSION = "0.16.0";
+const CONSOLIDATED = {
+  prefix: "kubecove",
+  product: "KubeCove",
+  identifier: "com.timpan.kubecove",
+  manifest: "latest-desktop.json",
+};
 
 export function desktopReleaseChannel(version, { dryRun = false } = {}) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) throw new Error("Expected a stable desktop release version");
-  const [major, minor, patch] = version.split(".").map(Number);
-  const preTransition = major === legacyMajor && (minor < legacyMinor || (minor === legacyMinor && patch < legacyPatch));
-  if (version === FROZEN_LEGACY_VERSION || (dryRun && preTransition)) {
-    return { prefix: "kubecove-gpui", product: "KubeCove GPUI", identifier: "com.timpan.kubecove.gpui", manifest: "latest-gpui.json" };
+  if (compareVersions(version, MIN_CONSOLIDATED_VERSION) < 0) {
+    if (dryRun && version === FROZEN_LEGACY_VERSION) return { ...CONSOLIDATED };
+    throw new Error(`Both legacy feeds are frozen at ${FROZEN_LEGACY_VERSION}`);
   }
-  if (major === 0 && minor < 16) throw new Error(`Both legacy feeds are frozen at ${FROZEN_LEGACY_VERSION}`);
-  return { prefix: "kubecove", product: "KubeCove", identifier: "com.timpan.kubecove", manifest: "latest-desktop.json" };
+  return { ...CONSOLIDATED };
+}
+
+function compareVersions(left, right) {
+  const a = left.split(".").map(Number);
+  const b = right.split(".").map(Number);
+  for (let index = 0; index < 3; index++) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

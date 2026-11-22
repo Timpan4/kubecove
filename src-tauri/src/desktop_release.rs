@@ -1,6 +1,5 @@
-//! Release feed validation for the GPUI updater.
+//! Release feed validation for the desktop updater.
 use crate::models::{AppError, AppErrorKind};
-use reqwest::{Client, StatusCode};
 use semver::Version;
 use serde_json::Value;
 
@@ -8,8 +7,8 @@ use serde_json::Value;
 mod tests;
 
 pub const RELEASES_URL: &str = "https://github.com/Timpan4/kubecove/releases";
-pub const LEGACY_MAX: Version = Version::new(0, 15, 1);
-// ADR 0036 uses the same 2 MiB budget as remote GitOps JSON reads.
+pub const CONSOLIDATED_MIN: Version = Version::new(0, 16, 0);
+// Same 2 MiB budget as remote GitOps JSON reads.
 pub const MANIFEST_BYTES: usize = 2 * 1024 * 1024;
 
 fn invalid(message: &str) -> AppError {
@@ -48,7 +47,7 @@ pub fn version(manifest: &Value) -> Result<Version, AppError> {
         .ok_or_else(|| invalid("Invalid release version"))
 }
 
-/// Legacy static manifests have no identity fields. If a producer supplies them,
+/// Static manifests have no identity fields by default. If a producer supplies them,
 /// they must agree with the channel, including on a per-platform override.
 pub fn validate_product(
     manifest: &Value,
@@ -81,59 +80,4 @@ pub fn matches_asset(url: &str, name: &str) -> bool {
     reqwest::Url::parse(url).is_ok_and(|url| {
         url.scheme() == "https" && url.path_segments().and_then(Iterator::last) == Some(name)
     })
-}
-
-/// A fixed release page is the only action derived from this unsigned manifest.
-pub async fn consolidated(
-    client: &Client,
-    legacy_endpoint: &str,
-    platform: &str,
-) -> Result<Option<Version>, AppError> {
-    let base = legacy_endpoint
-        .strip_suffix("latest-gpui.json")
-        .ok_or_else(|| invalid("Invalid compiled GPUI feed"))?;
-    let response = client
-        .get(format!("{base}latest-desktop.json"))
-        .send()
-        .await
-        .map_err(|_| {
-            AppError::new(
-                "Could not check for a desktop release",
-                AppErrorKind::Network,
-            )
-        })?;
-    if matches!(
-        response.status(),
-        StatusCode::NOT_FOUND | StatusCode::NO_CONTENT
-    ) {
-        return Ok(None);
-    }
-    let response = response
-        .error_for_status()
-        .map_err(|_| AppError::new("Desktop release check failed", AppErrorKind::Network))?;
-    consolidated_version(&read_manifest(response).await?, platform)
-}
-
-pub fn consolidated_version(manifest: &Value, platform: &str) -> Result<Option<Version>, AppError> {
-    validate_product(manifest, platform, "KubeCove", "com.timpan.kubecove")?;
-    let version = version(manifest)?;
-    if version < Version::new(0, 16, 0) {
-        return Err(invalid("Unexpected version on the consolidated feed"));
-    }
-    let platforms = manifest["platforms"]
-        .as_object()
-        .ok_or_else(|| invalid("Invalid release platforms"))?;
-    let Some(build) = platforms.get(platform) else {
-        return Ok(None);
-    };
-    let name = asset_name("kubecove", &version, platform)
-        .ok_or_else(|| invalid("Unknown desktop platform"))?;
-    if !build["url"]
-        .as_str()
-        .is_some_and(|url| matches_asset(url, &name))
-        || build["signature"].as_str().is_none_or(str::is_empty)
-    {
-        return Err(invalid("Unexpected consolidated desktop asset"));
-    }
-    Ok(Some(version))
 }

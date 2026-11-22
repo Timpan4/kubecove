@@ -15,12 +15,10 @@ rust-version = "1.99"
 license = "AGPL-3.0-or-later"
 publish = false
 
-# Release bundles built by `cargo packager` in .github/workflows/gpui-release.yml. The
-# product name and identifier differ from the Tauri app's so both install side by side;
-# settings still live in the `com.timpan.kubecove` config directory.
+# Release bundles built by `cargo packager` in .github/workflows/gpui-release.yml.
 [package.metadata.packager]
-productName = "KubeCove GPUI"
-identifier = "com.timpan.kubecove.gpui"
+productName = "KubeCove"
+identifier = "com.timpan.kubecove"
 description = "Native KubeCove Kubernetes workspace"
 category = "DeveloperTool"
 # cargo-packager selects the checked-in binary for --target and installs it beside GPUI.

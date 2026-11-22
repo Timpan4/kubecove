@@ -84,7 +84,6 @@ impl Inspector {
     fn available_version(&self) -> Option<String> {
         match &self.updates.status {
             UpdateStatus::Available(update) => Some(update.version.clone()),
-            UpdateStatus::Consolidated(version) => Some(version.clone()),
             _ => None,
         }
     }
@@ -384,7 +383,7 @@ impl Inspector {
                         ),
                 )
             }
-            status @ (UpdateStatus::Consolidated(_) | UpdateStatus::Unpublished) => {
+            status @ UpdateStatus::Unpublished => {
                 let title = status.release_page_message().expect("release page status");
                 body.child(labelled(ui::sm(title.clone()), &title)).child(
                     button(Variant::Default, 28., false)

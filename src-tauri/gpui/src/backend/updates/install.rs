@@ -79,7 +79,7 @@ impl InstallTarget {
             // The name holds no version, because the version is not verified yet, and it does
             // not end in `.exe`, so an unverified file never sits at an installer's name.
             Self::Installer(directory) => {
-                sibling(&directory.join("KubeCove-GPUI-setup.exe"), "download")
+                sibling(&directory.join("KubeCove-setup.exe"), "download")
             }
         }
     }
@@ -124,7 +124,7 @@ impl Staged {
                     })
             }
             InstallTarget::Installer(directory) => {
-                let installer = directory.join(format!("KubeCove-GPUI-{version}-setup.exe"));
+                let installer = directory.join(format!("KubeCove-{version}-setup.exe"));
                 save_installer(&installer, &self.path, &mut self.file)
                     .map_err(|error| failed("Could not save the installer", &error))?;
                 self.moved = true;
@@ -212,10 +212,10 @@ fn verify_bundle_identity(bundle: &Path) -> io::Result<()> {
         .as_dictionary()
         .and_then(|p| p.get("CFBundleIdentifier"))
         .and_then(plist::Value::as_string)
-        != Some("com.timpan.kubecove.gpui")
+        != Some("com.timpan.kubecove")
     {
         return Err(invalid_data(
-            "The bundle identifier is not com.timpan.kubecove.gpui",
+            "The bundle identifier is not com.timpan.kubecove",
         ));
     }
     Ok(())
@@ -230,13 +230,8 @@ fn replace_bundle(
     archive: &mut fs::File,
     rename: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> io::Result<()> {
-    if bundle
-        .file_name()
-        .is_none_or(|name| name != "KubeCove GPUI.app")
-    {
-        return Err(invalid_data(
-            "The installed bundle is not KubeCove GPUI.app",
-        ));
+    if bundle.file_name().is_none_or(|name| name != "KubeCove.app") {
+        return Err(invalid_data("The installed bundle is not KubeCove.app"));
     }
     fs::symlink_metadata(bundle)?;
     verify_bundle_identity(bundle)?;
@@ -277,14 +272,10 @@ fn unpack_bundle(archive: impl io::Read, staging: &Path) -> io::Result<PathBuf> 
         }
     }
     match <[PathBuf; 1]>::try_from(bundles) {
-        Ok([bundle])
-            if bundle
-                .file_name()
-                .is_some_and(|name| name == "KubeCove GPUI.app") =>
-        {
+        Ok([bundle]) if bundle.file_name().is_some_and(|name| name == "KubeCove.app") => {
             Ok(bundle)
         }
-        _ => Err(invalid_data("Expected a single KubeCove GPUI.app bundle")),
+        _ => Err(invalid_data("Expected a single KubeCove.app bundle")),
     }
 }
 
@@ -345,9 +336,9 @@ mod tests {
         );
         let _ = fs::remove_dir_all(&root.0);
         let apps = root.0.join("apps");
-        let bundle = apps.join("KubeCove GPUI.app");
+        let bundle = apps.join("KubeCove.app");
         fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();
-        let info = include_bytes!("../../../../test-fixtures/side-by-side-info.plist");
+        let info = include_bytes!("../../../../test-fixtures/consolidated-info.plist");
         fs::write(bundle.join("Contents/Info.plist"), info).unwrap();
         fs::write(bundle.join(BINARY), b"installed version").unwrap();
 
@@ -364,11 +355,7 @@ mod tests {
             header.set_size(contents.len() as u64);
             header.set_mode(0o755);
             builder
-                .append_data(
-                    &mut header,
-                    Path::new("KubeCove GPUI.app").join(path),
-                    contents,
-                )
+                .append_data(&mut header, Path::new("KubeCove.app").join(path), contents)
                 .unwrap();
         }
         let archive = builder.into_inner().unwrap().finish().unwrap();
@@ -401,7 +388,7 @@ mod tests {
         });
         assert!(result.is_err());
         assert_eq!(fs::read(bundle.join(BINARY)).unwrap(), b"installed version");
-        assert_eq!(names(&apps), ["KubeCove GPUI.app"]);
+        assert_eq!(names(&apps), ["KubeCove.app"]);
     }
 
     #[test]
@@ -421,6 +408,6 @@ mod tests {
             fs::read(previous.join(BINARY)).unwrap(),
             b"installed version"
         );
-        assert_eq!(names(&apps), [".KubeCove GPUI.app.previous"]);
+        assert_eq!(names(&apps), [".KubeCove.app.previous"]);
     }
 }
