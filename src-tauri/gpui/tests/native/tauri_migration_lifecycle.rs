@@ -90,12 +90,15 @@ fn tauri_migration_skips_and_reports_presets_without_a_kubeconfig_source() {
     assert!(imported.preferences.show_exact_timestamps);
     assert!(imported.tauri_migration_imported.is_some());
     assert!(imported.saved_forward_presets.is_empty());
-    let report = "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved (kubeconfig settings unreadable).";
+    let report = "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved";
     assert_eq!(
         importer.last_migration_diagnostic().as_deref(),
-        Some(report)
+        Some(format!("{report} (kubeconfig settings unreadable).").as_str())
     );
     // The report is stored with the import, so Settings shows it after restart.
+    // The kubeconfig error text can quote file contents and is not stored.
+    let report = format!("{report}.");
+    let report = report.as_str();
     assert_eq!(imported.tauri_migration_notice.as_deref(), Some(report));
 
     // The import finished in that one write. A resolvable source later does
@@ -110,7 +113,7 @@ fn tauri_migration_skips_and_reports_presets_without_a_kubeconfig_source() {
 }
 
 /// Failure mode: the report of what the import skipped never reaches the user,
-/// or comes back after they dismissed it.
+/// vanishes when dismissing it fails to save, or comes back after a dismissal.
 #[gpui_kit::test]
 fn settings_shows_the_tauri_import_notice_until_dismissed(cx: &mut gpui_kit::TestAppContext) {
     use crate::*;
@@ -132,6 +135,24 @@ fn settings_shows_the_tauri_import_notice_until_dismissed(cx: &mut gpui_kit::Tes
         assert!(window.try_find("settings-notice:tauri-import").is_some());
     })
     .unwrap();
+    let next_save = backend.argo.saves.load(Ordering::SeqCst) + 1;
+    backend.argo.fail_save.store(next_save, Ordering::SeqCst);
+    click(cx, "settings-button:Dismiss Tauri import notice");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("settings-notice:tauri-import").is_some());
+    })
+    .unwrap();
+    assert_eq!(
+        backend
+            .argo
+            .document
+            .lock()
+            .unwrap()
+            .tauri_migration_notice
+            .as_deref(),
+        Some(report)
+    );
     click(cx, "settings-button:Dismiss Tauri import notice");
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);

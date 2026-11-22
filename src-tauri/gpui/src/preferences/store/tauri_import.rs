@@ -89,18 +89,14 @@ impl Store {
                 return document;
             }
         };
-        // The error text comes from kubeconfig handling, so it is persisted
-        // only when it has no credential syntax.
-        let source_error = source_key
-            .err()
-            .map(|error| error.message)
-            .filter(|message| tauri_migration::is_safe_text(message));
-        let summary = import_summary(&report, source_error.as_deref());
         candidate.tauri_migration_imported = Some(report.exported_at.clone());
-        candidate.tauri_migration_notice = summary.clone();
+        // The kubeconfig error text can quote file contents, so only the
+        // process diagnostic carries it; the stored notice omits it.
+        candidate.tauri_migration_notice = import_summary(&report, None);
         match self.commit(candidate) {
             Some(committed) => {
-                self.set_migration_diagnostic(summary);
+                let source_error = source_key.err().map(|error| error.message);
+                self.set_migration_diagnostic(import_summary(&report, source_error.as_deref()));
                 committed
             }
             None => document,

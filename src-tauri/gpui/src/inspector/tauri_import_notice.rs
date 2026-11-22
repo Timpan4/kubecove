@@ -50,8 +50,12 @@ impl Inspector {
                         .aria_label(DISMISS)
                         .child("Dismiss")
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.persisted.tauri_migration_notice = None;
+                            let notice = this.persisted.tauri_migration_notice.take();
                             this.save_preferences(cx);
+                            // A failed save keeps the notice, so a later dismissal can retry.
+                            if this.persistence_error.is_some() {
+                                this.persisted.tauri_migration_notice = notice;
+                            }
                         })),
                 )
                 .into_any_element(),
