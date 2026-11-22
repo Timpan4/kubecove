@@ -363,6 +363,7 @@ test("publishing can read build artifacts and waits for all release gates", () =
   assert.deepEqual(job("verify").needs, ["metadata", "frontend", "server-packaging"]);
   assert.deepEqual(job("draft").needs, ["prepare", "metadata", "verify"]);
   assert.equal(job("verify-tauri").needs, "build");
+  assert.equal(job("verify-tauri").permissions?.contents, "write", "The draft release requires contents: write");
   assert.deepEqual(job("build").needs, ["metadata", "rust", "e2e", "draft"]);
   assert.equal(step(job("build"), "Build and upload release assets").with.releaseId, "${{ needs.draft.outputs.release-id }}");
   for (const name of ["rust", "e2e", "build"]) {
