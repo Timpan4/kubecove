@@ -340,8 +340,8 @@ test("change detection selects every required task without duplicate jobs", asyn
   assert.match(job("check"), /needs:\n {6}- changes\n {6}- frontend\n {6}- checks\n {6}- nix/);
   assert.deepEqual([...workflow.slice(workflow.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["changes", "frontend", "checks", "nix", "check"]);
 });
-function step(name) {
-  const source = job("checks");
+function step(name, jobName = "checks") {
+  const source = job(jobName);
   const start = source.search(new RegExp(`^ {6}- name: ${name}\\n`, "m"));
   assert.notEqual(start, -1, `Missing step: ${name}`);
   const end = source.indexOf("\n      - name: ", start + 1);
@@ -575,7 +575,6 @@ test("each existing check remains in its selected task", () => {
   assert.ok(checks.indexOf(step("Lint headless server")) < checks.indexOf("      - wait-all:"));
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
-    frontend: ["node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs", "node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs", ...["audit", "docs:check", "typecheck", "typecheck:bench", "svelte:check", "lint", "lint:anti-slop", "test:bench-groups", "test:svelte"].map((name) => `bun run ${name}`), "bun test"],
     "frontend-e2e": ["bun run e2e:fast"],
     rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
@@ -591,13 +590,12 @@ test("each existing check remains in its selected task", () => {
     ],
   };
   for (const [task, expected] of Object.entries(commands)) {
-    const source = job(task === "frontend" ? "frontend" : "checks");
-    const steps = source.split(/(?=^      - name: )/m);
+    const steps = checks.split(/(?=^      - name: )/m);
     for (const command of expected) {
       const found = steps.find((source) => source.split("\n").some((line) => line.trim() === `run: ${command}` || line.trim() === command));
       assert.ok(found, `Missing command: ${command}`);
-      assert.equal(source.split("\n").filter((line) => line.trim() === `run: ${command}` || line.trim() === command).length, 1, `Duplicate command: ${command}`);
-      assert.ok(task === "frontend" || found.includes(`matrix.task == '${task}'`), `Wrong task for ${command}`);
+      assert.equal(checks.split("\n").filter((line) => line.trim() === `run: ${command}` || line.trim() === command).length, 1, `Duplicate command: ${command}`);
+      assert.ok(found.includes(`matrix.task == '${task}'`), `Wrong task for ${command}`);
     }
   }
   // A missing task condition runs frontend commands in Rust-only jobs without Bun.
@@ -620,11 +618,22 @@ test("lightweight tasks avoid Rust and package setup; CI regressions precede ins
   assert.doesNotMatch(job("changes"), /actions\/checkout|git diff|fetch-depth/);
   assert.match(job("changes"), /actions\/github-script@[a-f0-9]{40}/);
   assert.ok(step("Install frontend dependencies").includes("matrix.task == 'frontend-e2e' || matrix.task == 'server'"));
-  assert.ok(job("frontend").indexOf("- name: Test CI orchestration") < job("frontend").indexOf("- name: Install frontend dependencies"));
+  const frontend = job("frontend");
+  assert.ok(frontend.indexOf(step("Test CI orchestration", "frontend")) < frontend.indexOf(step("Install frontend dependencies", "frontend")));
   assert.ok(step("Setup Rust").includes("matrix.workspace"));
   assert.ok(step("Check documentation").includes("matrix.task == 'docs'"));
   assert.match(step("Install GPUI build dependencies"), /uses: \.\/\.github\/actions\/setup-linux-native-deps/);
   assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
+});
+test("frontend CI and the local check use the same verification commands", () => {
+  const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const frontend = job("frontend");
+  for (const command of ["bun run test:ci", "bun run check:frontend"]) {
+    assert.ok(frontend.includes(`\n        run: ${command}\n`), `Frontend CI must run ${command}`);
+    assert.ok(scripts.check.split(" && ").includes(command), `The local check must run ${command}`);
+  }
+  assert.match(step("Audit frontend dependencies", "frontend"), /run: bun run audit\b/);
+  assert.ok(frontend.indexOf(step("Install frontend dependencies", "frontend")) < frontend.indexOf(step("Check frontend", "frontend")));
 });
 test("native dependencies are installed only if GPUI cannot link or Playwright cannot launch Chromium", () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replaceAll("\r\n", "\n");

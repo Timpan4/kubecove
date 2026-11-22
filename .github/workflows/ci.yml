@@ -147,54 +147,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Test CI orchestration
-        run: node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
+      - name: Test CI orchestration
+        run: bun run test:ci
+
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsparallel
-      - parallel:
-          - name: Test release orchestration
-            run: node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs
+      - name: Check frontend
+        run: bun run check:frontend
 
-          - name: Audit frontend dependencies
-            run: bun run audit
-
-          - name: Check documentation
-            run: bun run docs:check
-
-          - name: Typecheck frontend
-            run: bun run typecheck
-
-          - name: Typecheck benchmark fixtures
-            run: bun run typecheck:bench
-
-          - name: Check Svelte frontend
-            run: bun run svelte:check
-
-          - name: Lint frontend
-            run: bun run lint
-
-          - name: Lint frontend anti-slop rules
-            run: bun run lint:anti-slop
-
-          # Vitest collects the real benchmark names here, because the CodSpeed
-          # detection job that runs the other benchmark checks installs nothing.
-          - name: Test frontend benchmark groups
-            run: bun run test:bench-groups
-
-      # Svelte compilation tests need the runner after the parallel checks finish.
-      - name: Test frontend
-        run: bun test
-
-      - name: Test Svelte compiler integration
-        run: bun run test:svelte
+      - name: Audit frontend dependencies
+        run: bun run audit
 
   checks:
     name: CI ${{ matrix.task }}

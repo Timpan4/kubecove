@@ -417,6 +417,12 @@ Removed benchmarks remain skipped until archived in CodSpeed.
 
 ## Verification Before Completion
 
+`bun run check` runs the CI orchestration tests, the shared frontend gate, and the
+shared Rust workspace checks. CI runs `bun run test:ci` before installing frontend
+dependencies and uses `bun run check:frontend` for the deterministic frontend
+checks and production build. Dependency audits, native host builds, and E2E jobs
+run separately in CI.
+
 Run the smallest checks that cover the work:
 
 - docs-only: `bun run docs:check` and `git diff --check`
