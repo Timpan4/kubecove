@@ -21,7 +21,6 @@ pub(super) fn merge_workspaces(
     document: &mut Document,
     source_key: Option<&str>,
     workspace_id_map: &mut HashMap<String, String>,
-    presets: &mut usize,
     skipped: &mut usize,
 ) {
     let Some(raw_workspaces) = state.get("workspaces") else {
@@ -52,22 +51,39 @@ pub(super) fn merge_workspaces(
             .find(|w| w.name.eq_ignore_ascii_case(&parsed.name) && w.context == parsed.context)
         {
             merge_reviews(&mut existing.reviews, parsed.reviews);
-            // Shortcuts live only in the retained document. Without one, file
-            // the incoming shortcuts under the winning GPUI workspace's scope.
-            if !document.workspace_documents.contains_key(&existing.id)
-                && let Some(retained) = item.as_object().and_then(|raw| {
-                    build_retained_document(
-                        raw,
-                        &existing.name,
-                        &existing.context,
-                        &existing.group,
-                        existing.group_name.as_deref(),
-                        &existing.namespaces,
-                        &existing.kinds,
-                    )
-                })
-            {
-                document.workspace_documents.insert(existing.id, retained);
+            // Shortcuts live only in the retained document. GPUI's shortcuts win;
+            // an empty or missing slot takes the incoming ones.
+            match document.workspace_documents.get_mut(&existing.id) {
+                None => {
+                    if let Some(retained) = item.as_object().and_then(|raw| {
+                        build_retained_document(
+                            raw,
+                            &existing.name,
+                            &existing.context,
+                            &existing.group,
+                            existing.group_name.as_deref(),
+                            &existing.namespaces,
+                            &existing.kinds,
+                        )
+                    }) {
+                        document.workspace_documents.insert(existing.id, retained);
+                    }
+                }
+                Some(retained)
+                    if retained["spec"]["shortcuts"]
+                        .as_array()
+                        .is_none_or(Vec::is_empty) =>
+                {
+                    let shortcuts = item.get("shortcuts").map_or_else(Vec::new, sanitize_shortcuts);
+                    if !shortcuts.is_empty() {
+                        let mut updated = retained.clone();
+                        updated["spec"]["shortcuts"] = Value::Array(shortcuts);
+                        if transfer::parse(&updated.to_string()).is_ok() {
+                            *retained = updated;
+                        }
+                    }
+                }
+                Some(_) => {}
             }
             (existing.id, existing.name.clone())
         } else {
@@ -107,53 +123,42 @@ pub(super) fn merge_workspaces(
             merge_entries(slot, parsed.entries);
         }
 
-        // Without a source the presets wait for `merge_pending_presets`.
-        *presets += parsed.port_forwards.len();
-        if let Some(source_key) = source_key {
-            file_presets(
+        match source_key {
+            Some(source_key) => file_presets(
                 document,
                 source_key,
                 &parsed.context,
                 &target_name,
                 parsed.port_forwards,
-            );
+            ),
+            // Without a source the presets wait in the document, keyed by the
+            // GPUI workspace ID so a later rename does not lose them.
+            None if !parsed.port_forwards.is_empty() => merge_port_forwards(
+                document
+                    .tauri_migration_pending_presets
+                    .entry(target_id)
+                    .or_default(),
+                parsed.port_forwards,
+            ),
+            None => {}
         }
     }
 }
 
-/// Files the snapshot's presets under `source_key` for workspaces GPUI still
-/// holds. A workspace the user deleted since the import gets none.
-pub(super) fn merge_pending_presets(
-    state: &serde_json::Map<String, Value>,
-    document: &mut Document,
-    source_key: &str,
-) -> usize {
-    let Some(items) = state.get("workspaces").and_then(Value::as_array) else {
-        return 0;
-    };
-    let mut merged = 0;
-    for item in items {
-        let Some(parsed) = parse_workspace(item, &mut 0) else {
-            continue;
-        };
-        let Some(name) = document
+/// Files presets that waited for a kubeconfig source under `source_key`, for
+/// the workspaces GPUI still holds, by their current context and name.
+pub(super) fn file_pending_presets(document: &mut Document, source_key: &str) {
+    for (id, forwards) in std::mem::take(&mut document.tauri_migration_pending_presets) {
+        let Some((context, name)) = document
             .workspaces
             .iter()
-            .find(|w| w.name.eq_ignore_ascii_case(&parsed.name) && w.context == parsed.context)
-            .map(|w| w.name.clone())
+            .find(|w| w.id == id)
+            .map(|w| (w.context.clone(), w.name.clone()))
         else {
             continue;
         };
-        merged += parsed.port_forwards.len();
-        file_presets(
-            document,
-            source_key,
-            &parsed.context,
-            &name,
-            parsed.port_forwards,
-        );
+        file_presets(document, source_key, &context, &name, forwards);
     }
-    merged
 }
 
 fn file_presets(
