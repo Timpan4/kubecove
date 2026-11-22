@@ -74,7 +74,9 @@ pub(super) fn merge_workspaces(
                         .as_array()
                         .is_none_or(Vec::is_empty) =>
                 {
-                    let shortcuts = item.get("shortcuts").map_or_else(Vec::new, sanitize_shortcuts);
+                    let shortcuts = item
+                        .get("shortcuts")
+                        .map_or_else(Vec::new, sanitize_shortcuts);
                     if !shortcuts.is_empty() {
                         let mut updated = retained.clone();
                         updated["spec"]["shortcuts"] = Value::Array(shortcuts);
@@ -486,11 +488,7 @@ fn build_retained_document(
     namespaces: &[String],
     kinds: &[SavedKind],
 ) -> Option<Value> {
-    let raw_shortcuts = workspace.get("shortcuts")?.as_array()?;
-    if raw_shortcuts.is_empty() {
-        return None;
-    }
-    let shortcuts: Vec<Value> = raw_shortcuts.iter().filter_map(sanitize_shortcut).collect();
+    let shortcuts = sanitize_shortcuts(workspace.get("shortcuts")?);
     if shortcuts.is_empty() {
         return None;
     }
@@ -550,6 +548,12 @@ fn build_retained_document(
     });
     transfer::parse(&doc.to_string()).ok()?;
     Some(doc)
+}
+
+fn sanitize_shortcuts(value: &Value) -> Vec<Value> {
+    value.as_array().map_or_else(Vec::new, |items| {
+        items.iter().filter_map(sanitize_shortcut).collect()
+    })
 }
 
 fn sanitize_shortcut(value: &Value) -> Option<Value> {

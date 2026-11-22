@@ -171,7 +171,6 @@ fn tauri_migration_fresh_import_and_idempotency() {
         }
     });
     let migration_path = directory.join("tauri-migration.json");
-    let imported_path = directory.join("tauri-migration.imported.json");
     std::fs::write(&migration_path, snapshot.to_string()).unwrap();
 
     let store = Store::file(directory.clone()).with_source_resolver(fixed_source);
@@ -182,8 +181,11 @@ fn tauri_migration_fresh_import_and_idempotency() {
         store.last_migration_diagnostic().as_deref(),
         Some("Imported tauri-migration.json with 1 invalid or unsafe field(s) skipped.")
     );
-    assert!(!migration_path.exists());
-    assert!(imported_path.exists());
+    // Tauri's file is read-only input.
+    assert_eq!(
+        std::fs::read_to_string(&migration_path).unwrap(),
+        snapshot.to_string()
+    );
     assert!(directory.join("live-sessions.json").exists());
     #[cfg(unix)]
     {
@@ -241,7 +243,7 @@ fn tauri_migration_fresh_import_and_idempotency() {
         "Payments API"
     );
 
-    // Idempotency: editing GPUI preferences and reloading never re-imports the renamed file.
+    // Idempotency: editing GPUI preferences and reloading never re-imports the snapshot.
     let mut edited = loaded;
     edited.preferences.show_exact_timestamps = false;
     let saved = store.save(edited).unwrap();
@@ -470,7 +472,6 @@ fn tauri_migration_corrupt_and_partial_handling() {
     let root = Scratch::new("preferences-tests", "tauri-corrupt");
     let directory = root.to_path_buf();
     let migration_path = directory.join("tauri-migration.json");
-    let imported_path = directory.join("tauri-migration.imported.json");
 
     for raw in [
         "{not-json",
@@ -484,8 +485,8 @@ fn tauri_migration_corrupt_and_partial_handling() {
         let doc = store.load().unwrap();
         assert_eq!(doc.version, 2);
         assert!(store.last_migration_diagnostic().is_some());
+        assert_eq!(doc.tauri_migration_imported, None);
         assert_eq!(std::fs::read_to_string(&migration_path).unwrap(), raw);
-        assert!(!imported_path.exists());
     }
 
     let partial = json!({
@@ -519,8 +520,7 @@ fn tauri_migration_corrupt_and_partial_handling() {
     assert_eq!(doc.workspaces.len(), 1);
     assert_eq!(doc.workspaces[0].name, "Valid");
     assert!(store.last_migration_diagnostic().is_some());
-    assert!(!migration_path.exists());
-    assert!(imported_path.exists());
+    assert!(doc.tauri_migration_imported.is_some());
 }
 
 #[test]

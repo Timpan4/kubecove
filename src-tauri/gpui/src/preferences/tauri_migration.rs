@@ -1,5 +1,5 @@
 //! Defensive one-time import of Tauri 0.15.1's `tauri-migration.json` (ADR 0036)
-//! into GPUI's `live-sessions.json` (ADR 0030).
+//! into GPUI's `live-sessions.json` (ADR 0030). The snapshot is read-only input.
 //!
 //! Every field is projected and validated individually; raw source objects are
 //! never cloned into the persisted document. Existing GPUI entries win on conflict.
@@ -18,7 +18,6 @@ use std::{
 };
 
 pub(super) const MIGRATION_FILE: &str = "tauri-migration.json";
-pub(super) const IMPORTED_FILE: &str = "tauri-migration.imported.json";
 
 /// Mirrors `app-v0.15.1`'s `commands/migration/sanitize.rs` credential detector so
 /// secrets cannot enter `live-sessions.json` even if the migration file was edited.
@@ -34,23 +33,31 @@ static SENSITIVE: LazyLock<Regex> = LazyLock::new(|| {
     .expect("valid credential patterns")
 });
 
+#[derive(Default)]
 pub(super) struct MergeReport {
-    /// The snapshot's `exportedAt`, which identifies it for the import marker.
-    pub identity: String,
+    /// The snapshot's `exportedAt`, recorded as the import marker.
+    pub exported_at: String,
+    /// Fields rejected as invalid or unsafe.
     pub skipped: usize,
-    /// Port-forward presets in the snapshot. They are merged only with a
-    /// `source_key`, which scopes them.
-    pub presets: usize,
+    /// Valid Tauri entries that lost to an existing GPUI entry.
+    pub kept_existing: usize,
 }
 
-/// Validates the top level of a schema-v1 snapshot and returns its identity,
-/// the `exportedAt` time. Tauri rewrites the file only when its entries
-/// change, and every rewrite carries a new export time (ADR 0036).
-pub(super) fn snapshot_identity(bytes: &[u8]) -> Result<String, String> {
-    snapshot_root(bytes).map(|(identity, _)| identity)
-}
-
-fn snapshot_root(bytes: &[u8]) -> Result<(String, serde_json::Map<String, Value>), String> {
+/// Parses `bytes` as a schema-v1 Tauri migration snapshot and merges valid
+/// non-conflicting state into `document`. Returns `Err(reason)` when the
+/// top-level document is corrupt or uses an unsupported schema version, so
+/// startup continues without importing.
+///
+/// `existing_preference_keys` names the preference keys already stored by GPUI;
+/// those keep their value. `source_key` is the active kubeconfig source, which
+/// scopes migrated port-forward presets the way the inspector looks them up.
+/// Without one, presets wait in `Document::tauri_migration_pending_presets`.
+pub(super) fn merge_bytes(
+    bytes: &[u8],
+    document: &mut Document,
+    existing_preference_keys: &HashSet<String>,
+    source_key: Option<&str>,
+) -> Result<MergeReport, String> {
     let root: Value =
         serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON ({error})"))?;
     let Value::Object(object) = root else {
@@ -59,36 +66,20 @@ fn snapshot_root(bytes: &[u8]) -> Result<(String, serde_json::Map<String, Value>
     if object.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
         return Err("unsupported or missing schemaVersion (expected 1)".into());
     }
-    let identity = object
+    let exported_at = object
         .get("exportedAt")
         .and_then(Value::as_str)
         .filter(|text| chrono::DateTime::parse_from_rfc3339(text).is_ok())
         .ok_or("missing or invalid exportedAt")?
         .to_owned();
-    Ok((identity, object))
-}
-
-/// Parses `bytes` as a schema-v1 Tauri migration snapshot and merges valid
-/// non-conflicting state into `document`. Returns `Err(reason)` when the
-/// top-level document is corrupt or uses an unsupported schema version so the
-/// caller preserves `tauri-migration.json` without failing startup.
-///
-/// `existing_preference_keys` names the preference keys already stored by GPUI;
-/// those keep their value. `source_key` is the active kubeconfig source, which
-/// scopes migrated port-forward presets the way the inspector looks them up.
-pub(super) fn merge_bytes(
-    bytes: &[u8],
-    document: &mut Document,
-    existing_preference_keys: &HashSet<String>,
-    source_key: Option<&str>,
-) -> Result<MergeReport, String> {
-    let (identity, object) = snapshot_root(bytes)?;
     let Some(entries) = object.get("entries").and_then(Value::as_object) else {
         return Err("missing or invalid entries object".into());
     };
 
-    let mut skipped = 0usize;
-    let mut presets = 0usize;
+    let mut report = MergeReport {
+        exported_at,
+        ..MergeReport::default()
+    };
     let mut workspace_id_map = HashMap::new();
 
     if let Some(workspaces_entry) = entries.get("kubecove-workspaces") {
@@ -98,10 +89,9 @@ pub(super) fn merge_bytes(
                 document,
                 source_key,
                 &mut workspace_id_map,
-                &mut presets,
-                &mut skipped,
+                &mut report.skipped,
             ),
-            None => skipped += 1,
+            None => report.skipped += 1,
         }
     }
 
@@ -112,34 +102,18 @@ pub(super) fn merge_bytes(
                 &mut document.preferences,
                 existing_preference_keys,
                 &workspace_id_map,
-                &mut skipped,
+                &mut report,
             ),
-            None => skipped += 1,
+            None => report.skipped += 1,
         }
     }
 
-    Ok(MergeReport {
-        identity,
-        skipped,
-        presets,
-    })
+    Ok(report)
 }
 
-/// Files the presets an earlier import left pending once `source_key` resolves.
-/// Returns how many presets the snapshot held for workspaces GPUI still has.
-pub(super) fn merge_pending_presets(
-    bytes: &[u8],
-    document: &mut Document,
-    source_key: &str,
-) -> Result<usize, String> {
-    let (_, object) = snapshot_root(bytes)?;
-    Ok(object
-        .get("entries")
-        .and_then(|entries| entries.get("kubecove-workspaces"))
-        .and_then(entry_state)
-        .map_or(0, |state| {
-            workspaces::merge_pending_presets(state, document, source_key)
-        }))
+/// Files presets that waited for a kubeconfig source. See `merge_bytes`.
+pub(super) fn file_pending_presets(document: &mut Document, source_key: &str) {
+    workspaces::file_pending_presets(document, source_key);
 }
 
 fn entry_state(entry: &Value) -> Option<&serde_json::Map<String, Value>> {
@@ -193,14 +167,16 @@ fn merge_settings(
     prefs: &mut Preferences,
     existing_preference_keys: &HashSet<String>,
     workspace_id_map: &HashMap<String, String>,
-    skipped: &mut usize,
+    report: &mut MergeReport,
 ) {
+    let skipped = &mut report.skipped;
     apply_scalar_preferences(state, prefs, existing_preference_keys, skipped);
 
     // Incoming profiles a migrated selection may name: imported ones, and ones
     // equal to the GPUI profile that already holds the ID. A different GPUI
     // profile with the same ID is not the endpoint the user selected in Tauri.
     let mut selectable = HashSet::new();
+    let mut kept_existing = HashSet::new();
     if let Some(raw_profiles) = state.get("argoProfiles") {
         match raw_profiles.as_array() {
             Some(items) => {
@@ -213,7 +189,9 @@ fn merge_settings(
                         Some(existing) if *existing == profile => {
                             selectable.insert(profile.id);
                         }
-                        Some(_) => *skipped += 1,
+                        Some(_) => {
+                            kept_existing.insert(profile.id);
+                        }
                         None => {
                             selectable.insert(profile.id.clone());
                             prefs.argo_profiles.push(profile);
@@ -247,7 +225,11 @@ fn merge_settings(
                     if let ConnectionPreference::Connected { profile_id } = &parsed
                         && !selectable.contains(profile_id)
                     {
-                        *skipped += 1;
+                        if kept_existing.contains(profile_id) {
+                            report.kept_existing += 1;
+                        } else {
+                            *skipped += 1;
+                        }
                         continue;
                     }
                     prefs
@@ -259,6 +241,7 @@ fn merge_settings(
             None => *skipped += 1,
         }
     }
+    report.kept_existing += kept_existing.len();
 }
 
 fn apply_scalar_preferences(
