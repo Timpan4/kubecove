@@ -953,10 +953,29 @@ test("the required gate checks code-only diffs, including shallow pull request m
         assert.equal(result.status === 0, succeeds, `base=${from}, head=${to}: ${result.stderr}`);
       }
     }
+    writeFileSync(join(root, "README.md"), "Clean last commit.\n");
+    git("add", "README.md"); git("commit", "-qm", "clean tip with earlier whitespace");
+    const tip = git("rev-parse", "HEAD");
+    const missingMain = verify("", tip);
+    assert.equal(missingMain.status, 2, missingMain.stdout);
+    assert.match(missingMain.stdout, /src\/App\.css:2: new blank line at EOF/);
+
+    const unrelated = git("commit-tree", `${clean}^{tree}`, "-m", "unrelated history");
+    git("update-ref", "refs/remotes/origin/main", unrelated);
+    const unrelatedMain = verify("", tip);
+    assert.equal(unrelatedMain.status, 2, unrelatedMain.stdout);
+    assert.match(unrelatedMain.stdout, /src\/App\.css:2: new blank line at EOF/);
+
     git("update-ref", "refs/remotes/origin/main", bad);
     const dispatched = verify("", bad);
     assert.equal(dispatched.status, 2, dispatched.stdout);
     assert.match(dispatched.stdout, /src\/App\.css:2: new blank line at EOF/);
+    const rootCommit = git("commit-tree", `${bad}^{tree}`, "-m", "root with whitespace");
+    git("update-ref", "refs/remotes/origin/main", rootCommit);
+    const dispatchedRoot = verify("", rootCommit);
+    assert.equal(dispatchedRoot.status, 2, dispatchedRoot.stdout);
+    assert.match(dispatchedRoot.stdout, /src\/App\.css:2: new blank line at EOF/);
+
     const merge = git("commit-tree", `${bad}^{tree}`, "-p", clean, "-p", bad, "-m", "pull request merge");
     git("checkout", "--quiet", "--detach", merge);
     git("clone", "--quiet", "--no-local", "--depth", "2", root, "checkout");

@@ -593,13 +593,16 @@ jobs:
           set -euo pipefail
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
             # Dispatched runs have no base, so compare with main when available.
-            if BASE_SHA=$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null) && [[ "${BASE_SHA}" != "${HEAD_SHA}" ]]; then
-              echo "No available base commit; checking changes since main for whitespace."
-            elif BASE_SHA=$(git rev-parse --verify "${HEAD_SHA}^1" 2>/dev/null); then
-              echo "No available base commit; checking the checked-out commit for whitespace."
-            else
+            if ! BASE_SHA=$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null); then
+              BASE_SHA=""
+            elif [[ "${BASE_SHA}" == "${HEAD_SHA}" ]]; then
+              BASE_SHA=$(git rev-parse --verify "${HEAD_SHA}^1" 2>/dev/null || true)
+            fi
+            if [[ -z "${BASE_SHA}" ]]; then
               echo "No available base commit; checking the entire tree for whitespace."
               BASE_SHA=$(git hash-object -w -t tree /dev/null)
+            else
+              echo "No available base commit; checking whitespace against ${BASE_SHA}."
             fi
           fi
           git diff --check "${BASE_SHA}" "${HEAD_SHA}"
