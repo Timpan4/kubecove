@@ -28,7 +28,7 @@ web-ui = ["dep:rust-embed", "dep:mime_guess", "dep:brotli", "dep:flate2"]
 kubecove = { path = "..", default-features = false }
 kubecove-mcp = { path = "../crates/mcp" }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio", "tracing", "ws"] }
-axum-server = { version = "=0.8.0", features = ["tls-rustls-no-provider"] }
+axum-server = { version = "=0.9.2", features = ["tls-rustls-no-provider"] }
 tokio = { version = "=1.54.1", features = ["io-util", "macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
