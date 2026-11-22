@@ -435,10 +435,13 @@ fn a_bundle_install_swaps_the_app_and_refuses_an_archive_without_one() {
         ("no bundle", archive(&[("README", b"no app here")])),
         (
             "side-by-side bundle",
-            archive(&[(
-                "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui",
-                b"another product",
-            )]),
+            archive(&[
+                (
+                    "KubeCove GPUI.app/Contents/MacOS/kubecove-gpui",
+                    b"another product",
+                ),
+                ("KubeCove GPUI.app/Contents/Info.plist", info),
+            ]),
         ),
         (
             "two bundles",

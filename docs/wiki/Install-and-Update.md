@@ -4,19 +4,19 @@
 
 1. Open the [latest release installers](https://github.com/Timpan4/kubecove/releases/latest).
 2. Download the artifact for your platform:
-   - macOS: `KubeCove_*_universal.dmg`
-   - Windows: `KubeCove_*_x64-setup.exe` (NSIS)
-   - Linux x64: `.AppImage`, `.deb`, or `.rpm`
+   - macOS on Apple silicon: `kubecove_*_aarch64.dmg`
+   - Windows x64: `kubecove_*_x64-setup.exe`
+   - Linux x64: `kubecove_*_x86_64.AppImage`
 3. Install and launch the app.
 
-Releases also include the opt-in native client, **KubeCove GPUI**, as `kubecove-gpui_*` files: an AppImage for Linux x64, a DMG for macOS on Apple silicon, and a setup executable for Windows x64. There is no Intel macOS build. It installs beside the main app and updates from its own feed.
+There is no Intel macOS build. Release 0.15.1 was the last with separate Tauri installers and the side-by-side **KubeCove GPUI** client. Those installs stay on 0.15.1 and do not update to 0.16.0, so install 0.16.0 from the release page.
 
 KubeCove is tested against Kubernetes 1.34 through 1.37.
 
 Beta installers are not OS-signed. macOS may require **Open** from the contextual menu or approval in System Settings. Windows SmartScreen may require **More info** then **Run anyway**. An AppImage may need:
 
 ```sh
-chmod +x KubeCove_*.AppImage
+chmod +x kubecove_*.AppImage
 ```
 
 To run KubeCove on a remote host instead, see [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation).

@@ -20,7 +20,7 @@ fi
 
 # Reuse a window this script already opened instead of starting a second one.
 if [ -f "$feel/unit.txt" ] && systemctl --user is-active --quiet "$(cat "$feel/unit.txt")"; then
-  echo "KubeCove GPUI is already running as $(cat "$feel/unit.txt"). Stop that unit first to relaunch."
+  echo "KubeCove is already running as $(cat "$feel/unit.txt"). Stop that unit first to relaunch."
   exit 1
 fi
 
