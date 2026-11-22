@@ -7,7 +7,7 @@ Run before PR or completion.
 - [ ] Docs touched: `bun run docs:check` passes.
 - [ ] Frontend touched: `bun run typecheck` passes.
 - [ ] Frontend behavior touched: nearest `bun test` passes.
-- [ ] Backend touched: `bun run rust:check` passes.
+- [ ] Rust touched: use the checks for each affected [Cargo workspace](../development-workflow.md#rust-workspace-checks).
 - [ ] Backend behavior touched: nearest `bun run rust:test` passes.
 - [ ] Host integration touched: the affected client starts and the changed path works.
 - [ ] Release flow touched: `bun run release:dry-run` passes.

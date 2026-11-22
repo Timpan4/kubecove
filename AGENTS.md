@@ -168,7 +168,7 @@ Write an ADR before changing:
 - Enable repo hooks with `git config core.hooksPath .githooks`.
 - Run the relevant checks before claiming work is complete.
 - Frontend changes should pass `bun run typecheck` and `bun run lint` (Biome).
-- Rust backend changes should pass `cargo check --manifest-path src-tauri/Cargo.toml`.
+- Rust changes follow the checks for each affected [Cargo workspace](docs/development-workflow.md#rust-workspace-checks).
 - Kubernetes 1.34–1.37 is the tested rolling support window. ADR 0011 and the E2E/release workflow matrices are authoritative.
 - If a check cannot run, state the exact blocker and what remains unverified.
 - When completing scoped work, update the matching GitHub Issue. `docs/milestones.md` no longer holds a checklist.

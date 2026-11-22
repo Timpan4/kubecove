@@ -57,10 +57,10 @@ mod map_panels;
 mod mcp;
 #[path = "parity/multi_context.rs"]
 mod multi_context;
-#[path = "parity/overlay_motion.rs"]
-mod overlay_motion;
 #[path = "parity/navigation.rs"]
 mod navigation;
+#[path = "parity/overlay_motion.rs"]
+mod overlay_motion;
 #[path = "parity/overview.rs"]
 mod overview;
 #[path = "parity/resource_filters.rs"]

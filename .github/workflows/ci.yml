@@ -75,7 +75,7 @@ jobs:
                 for (const path of [file.filename, file.previous_filename].filter((value) => value !== undefined)) {
                   if (typeof path !== 'string' || !path) throw new Error('Invalid changed path.');
                   // Workflow and shared action changes must validate the pipeline itself.
-                  if (path.startsWith('.github/') || path === 'scripts/ci-mbx-cargo.mjs' || path === 'scripts/ci-rust-cache-key.mjs' || path === 'scripts/ci-rust-pass.mjs') { all(); continue; }
+                  if (path.startsWith('.github/') || path === 'scripts/ci-mbx-cargo.mjs' || path === 'scripts/ci-rust-cache-key.mjs' || path === 'scripts/ci-rust-pass.mjs' || path === 'scripts/check-rust-format.mjs') { all(); continue; }
                   const scope = {
                     docs: /\.md$|^docs\//i.test(path),
                     frontend: /\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|\/)bun\.lock$|^(src|public|e2e|scripts)\//i.test(path),
@@ -147,54 +147,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Test CI orchestration
-        run: node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.4"
 
+      - name: Test CI orchestration
+        run: bun run test:ci
+
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsparallel
       - parallel:
-          - name: Test release orchestration
-            run: node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs
+          - name: Check frontend
+            run: bun run check:frontend
 
           - name: Audit frontend dependencies
             run: bun run audit
-
-          - name: Check documentation
-            run: bun run docs:check
-
-          - name: Typecheck frontend
-            run: bun run typecheck
-
-          - name: Typecheck benchmark fixtures
-            run: bun run typecheck:bench
-
-          - name: Check Svelte frontend
-            run: bun run svelte:check
-
-          - name: Lint frontend
-            run: bun run lint
-
-          - name: Lint frontend anti-slop rules
-            run: bun run lint:anti-slop
-
-          # Vitest collects the real benchmark names here, because the CodSpeed
-          # detection job that runs the other benchmark checks installs nothing.
-          - name: Test frontend benchmark groups
-            run: bun run test:bench-groups
-
-      # Svelte compilation tests need the runner after the parallel checks finish.
-      - name: Test frontend
-        run: bun test
-
-      - name: Test Svelte compiler integration
-        run: bun run test:svelte
 
   checks:
     name: CI ${{ matrix.task }}
@@ -220,7 +189,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: ${{ matrix.task == 'docs' && '0' || '1' }}
 
       - name: Verify Rust audit coverage
         id: audit-coverage
@@ -232,7 +200,11 @@ jobs:
         if: ${{ matrix.workspace }}
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+
+      - name: Check Rust formatting
+        if: ${{ matrix.task == 'rust' }}
+        run: node scripts/check-rust-format.mjs
 
       # An unchanged build restores its exact cache and skips the save, which took up to
       # 200 s per job when every run saved (scripts/ci-rust-cache-key.mjs). Only pushes to
@@ -295,24 +267,6 @@ jobs:
       - name: Check documentation
         if: ${{ matrix.task == 'docs' }}
         run: bun run docs:check
-
-      - name: Check diff whitespace
-        if: ${{ matrix.task == 'docs' }}
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            # Dispatched runs have no base; compare with main when it is available.
-            if BASE_SHA=$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null); then
-              echo "No available base commit; checking changes since main for whitespace."
-            else
-              echo "No available base commit; checking the entire tree for whitespace."
-              BASE_SHA=$(git hash-object -w -t tree /dev/null)
-            fi
-          fi
-          git diff --check "${BASE_SHA}" "${HEAD_SHA}"
 
       - name: Install GPUI build dependencies
         id: setup-gpui-native
@@ -623,3 +577,32 @@ jobs:
           verify_result "${FRONTEND_REQUIRED}" "${FRONTEND_RESULT}"
           verify_result "${checks_required}" "${CHECKS_RESULT}"
           verify_result "${NIX_REQUIRED}" "${NIX_RESULT}"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ github.event_name == 'pull_request' && '2' || '0' }}
+
+      - name: Check diff whitespace
+        env:
+          # The first parent of GitHub's PR merge commit is the base it merged into.
+          BASE_SHA: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            # Dispatched runs have no base, so compare with main when available.
+            if ! BASE_SHA=$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null); then
+              BASE_SHA=""
+            elif [[ "${BASE_SHA}" == "${HEAD_SHA}" ]]; then
+              BASE_SHA=$(git rev-parse --verify "${HEAD_SHA}^1" 2>/dev/null || true)
+            fi
+            if [[ -z "${BASE_SHA}" ]]; then
+              echo "No available base commit; checking the entire tree for whitespace."
+              BASE_SHA=$(git hash-object -w -t tree /dev/null)
+            else
+              echo "No available base commit; checking whitespace against ${BASE_SHA}."
+            fi
+          fi
+          git diff --check "${BASE_SHA}" "${HEAD_SHA}"

@@ -272,7 +272,11 @@ fn unpack_bundle(archive: impl io::Read, staging: &Path) -> io::Result<PathBuf> 
         }
     }
     match <[PathBuf; 1]>::try_from(bundles) {
-        Ok([bundle]) if bundle.file_name().is_some_and(|name| name == "KubeCove.app") => {
+        Ok([bundle])
+            if bundle
+                .file_name()
+                .is_some_and(|name| name == "KubeCove.app") =>
+        {
             Ok(bundle)
         }
         _ => Err(invalid_data("Expected a single KubeCove.app bundle")),
