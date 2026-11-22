@@ -34,13 +34,13 @@ A manual run of `release.yml` with the `gpui-dry-run` input builds, bundles, sig
 
 ### Trust
 
-The client trusts one thing: the public key in `src-tauri/gpui/updater.json`, compiled into the binary. The manifest and the download are untrusted. Until the download has ended and passed these checks, its bytes go only to a staged file that is never executed, renamed or unpacked, and every failure removes that file:
+The client trusts one thing: the public key in `rust/gpui/updater.json`, compiled into the binary. The manifest and the download are untrusted. Until the download has ended and passed these checks, its bytes go only to a staged file that is never executed, renamed or unpacked, and every failure removes that file:
 
 1. The downloaded bytes must carry a valid signature from that key. Unhashed legacy signatures are refused, because the signing job uses prehashed minisign signatures.
 2. The signature's trusted comment must hold `version:<version>` equal to the version the manifest announced. The trusted comment is covered by the signature. Without this check a tampered manifest could pair a new version number with an older signed build.
 3. The trusted comment's `file:` field, which the signer sets to the signed file's name, must equal the exact expected consolidated asset name (`kubecove_<version>_...` for this platform). Legacy Tauri (`KubeCove_<version>_...`) and side-by-side GPUI (`kubecove-gpui_<version>_...`) artifacts were signed with the same key and are refused.
 
-`src-tauri/gpui/updater.json` also supplies the compiled `latest-desktop.json` URL. The release verifier reads its public key from the same file.
+`rust/gpui/updater.json` also supplies the compiled `latest-desktop.json` URL. The release verifier reads its public key from the same file.
 
 ### Install and relaunch
 
@@ -80,7 +80,7 @@ Legacy clients already request assets under `releases/latest/download/`. Every s
 
 ## Verification
 
-- Native tests (`src-tauri/gpui/tests/native/updates.rs`) list the failure modes first and cover manifest reading, the signature, signed-version and signed-file-name checks with signatures made by the Tauri signer, a download from a local server through to the replaced AppImage, a download that stalls, and the bundle and installer paths. Library tests in `src-tauri/gpui/src/backend/updates/install.rs` inject a failure at the second bundle move and at the move back. The macOS and Windows file operations run on Linux in those tests; only the platform's own launch command is not exercised.
+- Native tests (`rust/gpui/tests/native/updates.rs`) list the failure modes first and cover manifest reading, the signature, signed-version and signed-file-name checks with signatures made by the Tauri signer, a download from a local server through to the replaced AppImage, a download that stalls, and the bundle and installer paths. Library tests in `rust/gpui/src/backend/updates/install.rs` inject a failure at the second bundle move and at the move back. The macOS and Windows file operations run on Linux in those tests; only the platform's own launch command is not exercised.
 - Shared scenarios `settings-updates.*` cover the install, progress, relaunch and failure states in both clients with scripted results.
 - The signing job generates a disposable key and verifies newly signed artifacts before using the release key. The release dry run proves that each platform builds, bundles and signs, and that each signature verifies against the public key and names the version.
 - Not covered by any automated check: installing a real update on macOS and Windows, and the relaunch on all three platforms.

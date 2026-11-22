@@ -75,21 +75,21 @@ for (const [path, frontend, rust] of [
   ["bun.lock", true, false],
   ["vitest.config.ts", true, false],
   ["tsconfig.json", true, false],
-  ["src-tauri/src/lib.rs", false, true],
-  ["src-tauri/crates/models/src/lib.rs", false, true],
-  ["src-tauri/crates/kube/src/commands/discovery.rs", false, true],
-  ["src-tauri/crates/inspection/src/commands/resources/kubeconform.rs", false, true],
-  ["src-tauri/crates/live/src/commands/streams.rs", false, true],
-  ["src-tauri/crates/gitops/src/commands/argo/connected.rs", false, true],
-  ["src-tauri/crates/host/src/commands/usage.rs", false, true],
-  ["src-tauri/crates/inspection/Cargo.toml", false, true],
-  ["src-tauri/Cargo.toml", false, true],
-  ["src-tauri/Cargo.lock", false, true],
-  ["src-tauri/crates/models/src/command_contract.rs", false, true],
-  ["src-tauri/gpui/src/model.rs", false, false],
-  ["src-tauri/gpui/Cargo.lock", false, false],
-  ["src-tauri/server/src/main.rs", false, false],
-  ["src-tauri/server/Cargo.toml", false, false],
+  ["rust/src/lib.rs", false, true],
+  ["rust/crates/models/src/lib.rs", false, true],
+  ["rust/crates/kube/src/commands/discovery.rs", false, true],
+  ["rust/crates/inspection/src/commands/resources/kubeconform.rs", false, true],
+  ["rust/crates/live/src/commands/streams.rs", false, true],
+  ["rust/crates/gitops/src/commands/argo/connected.rs", false, true],
+  ["rust/crates/host/src/commands/usage.rs", false, true],
+  ["rust/crates/inspection/Cargo.toml", false, true],
+  ["rust/Cargo.toml", false, true],
+  ["rust/Cargo.lock", false, true],
+  ["rust/crates/models/src/command_contract.rs", false, true],
+  ["rust/gpui/src/model.rs", false, false],
+  ["rust/gpui/Cargo.lock", false, false],
+  ["rust/server/src/main.rs", false, false],
+  ["rust/server/Cargo.toml", false, false],
   [".cargo/config.toml", false, true],
   ["rust-toolchain.toml", false, true],
   [".github/workflows/codspeed.yml", true, true],
@@ -120,7 +120,7 @@ for (const [path, frontend, rust] of [
 }
 
 test("combines frontend and Rust changes, including removed paths", () => {
-  assert.deepEqual(detect(["src/lib/yamlFormat.ts", "src-tauri/src/removed.rs"]), { frontend: "true", rust: "true" });
+  assert.deepEqual(detect(["src/lib/yamlFormat.ts", "rust/src/removed.rs"]), { frontend: "true", rust: "true" });
 });
 
 for (const overrides of [{ EVENT_NAME: "push" }, { EVENT_NAME: "workflow_dispatch" }, { BASE_SHA: "" }, { BASE_SHA: "0".repeat(40) }, { DEPENDENCIES_RESULT: "failure" }, { SELECTION_CHECK_RESULT: "failure" }, { GIT_FAILURE: "true" }, { NODE_FAILURE: "true" }]) {
@@ -194,7 +194,7 @@ test("a failed selector setup step still reaches the detection step", () => {
 });
 
 test("release metadata cannot skip benchmarks selected by the diff", () => {
-  const paths = ["package.json", "src-tauri/Cargo.toml", "CHANGELOG.md"];
+  const paths = ["package.json", "rust/Cargo.toml", "CHANGELOG.md"];
   assert.deepEqual(detect(paths, { RELEASE_PR: "true" }), { frontend: "true", rust: "true" });
 });
 
@@ -284,7 +284,7 @@ test("one Rust job builds on the existing runner and each shard verifies its art
   assert.match(build, /CARGO_CODSPEED_SHA256: df4b2618fda2aa19f8b92e8d745548a49d9ce20785472eeb584fdc2c99624395/);
   assert.match(build, /download\/v5\.0\.1\/cargo-codspeed-x86_64-unknown-linux-musl/);
   assert.doesNotMatch(build, /id-token: write|apt-get|webkit/);
-  assert.match(build, /codspeed-backend \.github\/workflows\/codspeed\.yml scripts\/codspeed-rust-artifact\.mjs src-tauri/);
+  assert.match(build, /codspeed-backend \.github\/workflows\/codspeed\.yml scripts\/codspeed-rust-artifact\.mjs rust/);
   assert.match(build, /artifact-id: \$\{\{ steps\.upload\.outputs\.artifact-id \}\}/);
   assert.match(build, /if-no-files-found: error/);
   assert.match(shards, /artifact-ids: \$\{\{ needs\.rust-build\.outputs\.artifact-id \}\}/);
@@ -301,7 +301,7 @@ test("one Rust job builds on the existing runner and each shard verifies its art
   inOrder(build, ["dtolnay/rust-toolchain@", "node scripts/ci-rust-cache-key.mjs", "jdx/mr-boxington-action@", "node scripts/ci-mbx-cargo.mjs", "node scripts/codspeed-rust-artifact.mjs build", "actions/upload-artifact@"]);
   inOrder(shards, ["Require the build artifact identity", "actions/download-artifact@", "node scripts/codspeed-rust-artifact.mjs install", "./.github/actions/codspeed-run"]);
   for (const manifest of ["", "crates/kube/", "crates/inspection/", "crates/live/", "crates/gitops/", "crates/host/"]) {
-    const features = /^bench-support = \[[^\]]*\]/m.exec(readFileSync(new URL(`../src-tauri/${manifest}Cargo.toml`, import.meta.url), "utf8"))?.[0];
+    const features = /^bench-support = \[[^\]]*\]/m.exec(readFileSync(new URL(`../rust/${manifest}Cargo.toml`, import.meta.url), "utf8"))?.[0];
     assert.ok(features, `${manifest}Cargo.toml has no bench-support feature`);
     assert.doesNotMatch(features, /"desktop"/, `${manifest}Cargo.toml`);
   }
@@ -315,7 +315,7 @@ test("Rust shards reject missing or tampered artifacts before installing the exe
   const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-artifact-"));
   const artifact = join(root, "artifact");
   const benchmark = "backend_hot_paths";
-  const installed = join(root, "src-tauri", "target", "codspeed", "analysis", "kubecove", benchmark);
+  const installed = join(root, "rust", "target", "codspeed", "analysis", "kubecove", benchmark);
   const lock = "test lockfile\n";
   const executable = "test executable\n";
   const toolchain = `1.100.0/${"b".repeat(40)}`;
@@ -327,10 +327,10 @@ test("Rust shards reject missing or tampered artifacts before installing the exe
   };
   try {
     mkdirSync(artifact);
-    mkdirSync(join(root, "src-tauri"));
-    writeFileSync(join(root, "src-tauri", "Cargo.lock"), lock);
+    mkdirSync(join(root, "rust"));
+    writeFileSync(join(root, "rust", "Cargo.lock"), lock);
     git("init", "-q");
-    git("add", "src-tauri/Cargo.lock");
+    git("add", "rust/Cargo.lock");
     git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture");
     const commit = git("rev-parse", "HEAD");
     const metadata = {

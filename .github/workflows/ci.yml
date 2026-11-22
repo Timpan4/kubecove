@@ -79,7 +79,7 @@ jobs:
                   const scope = {
                     docs: /\.md$|^docs\//i.test(path),
                     frontend: /\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|\/)bun\.lock$|^(src|public|e2e|scripts)\//i.test(path),
-                    rust: /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^src-tauri\/|^tests\/|^src\/lib\/[^/]+-workspace\.json$/i.test(path),
+                    rust: /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^rust\/|^tests\/|^src\/lib\/[^/]+-workspace\.json$/i.test(path),
                     nix: /\.nix$|(^|\/)(Cargo\.(lock|toml)|flake\.lock|bun\.lock|package\.json|vite\.config\.ts|svelte\.config\.js)$/i.test(path),
                   };
                   // Unknown paths fail toward more coverage, never a silently green gate.
@@ -93,15 +93,15 @@ jobs:
             }
             for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
             // These tasks share one matrix; frontend checks keep their own job.
-            const desktop = 'src-tauri :!src-tauri/gpui :!src-tauri/server';
+            const desktop = 'rust :!rust/gpui :!rust/server';
             // The GPUI tests compile in the workspace fixtures the web client uses.
-            const gpui = 'src-tauri :!src-tauri/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile';
+            const gpui = 'rust :!rust/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile';
             // The server also embeds the browser build. The frontend tree is left out on
             // purpose: with it, every frontend push to main would upload the server cache
             // again (896 MB after run 43325597142). Without it, a build recompiles the
             // crates that embed the assets: each Cargo step of the server task finished
             // in under 20 s that way in run 43393348258.
-            const server = 'src-tauri :!src-tauri/gpui';
+            const server = 'rust :!rust/gpui';
             // Pass reuse covers verification inputs separately from compiler bundles.
             // Root .c* trees cover .cargo/.config, without unrelated .github workflows.
             // CI workflow and the local native setup it calls are explicit key inputs.
@@ -122,12 +122,12 @@ jobs:
               // settings share a job, so they share one setup and one build cache.
               // `inputs` are the Git pathspecs the build reads; the GPUI and server crates
               // are separate workspaces that both depend on the desktop crates.
-              { task: 'rust', scope: 'rust', workspace: 'src-tauri', inputs: desktop, passInputs: desktopPass },
-              { task: 'gpui-clippy', scope: 'rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiPass },
+              { task: 'rust', scope: 'rust', workspace: 'rust', inputs: desktop, passInputs: desktopPass },
+              { task: 'gpui-clippy', scope: 'rust', workspace: 'rust/gpui', inputs: gpui, passInputs: gpuiPass },
               // Frontend changes select gpui-test too: text_fit reads the browser-mock fixture.
-              { task: 'gpui-test', scope: 'frontend-or-rust', workspace: 'src-tauri/gpui', inputs: gpui, passInputs: gpuiTestPass },
-              { task: 'server-backend', scope: 'frontend-or-rust', workspace: 'src-tauri', inputs: desktop, passInputs: backendPass },
-              { task: 'server', scope: 'frontend-or-rust', workspace: 'src-tauri/server', inputs: server, passInputs: serverPass },
+              { task: 'gpui-test', scope: 'frontend-or-rust', workspace: 'rust/gpui', inputs: gpui, passInputs: gpuiTestPass },
+              { task: 'server-backend', scope: 'frontend-or-rust', workspace: 'rust', inputs: desktop, passInputs: backendPass },
+              { task: 'server', scope: 'frontend-or-rust', workspace: 'rust/server', inputs: server, passInputs: serverPass },
             ];
             const include = tasks.filter(({ scope }) => scope === 'frontend-or-rust'
               ? required.frontend || required.rust : required[scope]);
@@ -309,19 +309,19 @@ jobs:
       - name: Audit desktop Rust dependencies
         id: audit-desktop
         if: ${{ matrix.task == 'rust' }}
-        run: cargo-audit audit --file src-tauri/Cargo.lock
+        run: cargo-audit audit --file rust/Cargo.lock
 
       - name: Audit GPUI Rust dependencies
         id: audit-gpui
         if: ${{ matrix.task == 'rust' }}
-        run: cargo-audit audit --file src-tauri/gpui/Cargo.lock
+        run: cargo-audit audit --file rust/gpui/Cargo.lock
 
       - name: Audit server Rust dependencies
         id: audit-server
         if: ${{ matrix.task == 'rust' }}
         # Owner: @Timpan4. Production uses this chain only for public-signature verification.
         # Remove after jsonwebtoken supports rsa >=0.10 and crypto-bigint >=0.7.6.
-        run: cargo-audit audit --file src-tauri/server/Cargo.lock --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387
+        run: cargo-audit audit --file rust/server/Cargo.lock --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387
 
       - name: Run fast end-to-end suite
         if: ${{ matrix.task == 'frontend-e2e' }}
@@ -330,20 +330,20 @@ jobs:
       - name: Test Rust
         id: test-rust
         if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release
+        run: mbx test --workspace --manifest-path rust/Cargo.toml --features desktop-release
 
       - name: Lint Rust
         id: lint-rust
         if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: mbx clippy --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Lint GPUI
         id: lint-gpui
         if: ${{ (matrix.task == 'gpui-clippy') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
-          mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings
+          mbx clippy --manifest-path rust/gpui/Cargo.toml --locked --all-targets -- -D warnings
           # The E2E flavor with the agent automation endpoint (ADR 0035).
-          mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --features e2e --all-targets -- -D warnings
+          mbx clippy --manifest-path rust/gpui/Cargo.toml --locked --features e2e --all-targets -- -D warnings
 
       - name: Export the GPUI text-fit fixture
         id: export-gpui-fixture
@@ -359,15 +359,15 @@ jobs:
         env:
           # Keep all three phases in the same target and mbx action store. The action
           # exports their shared group after this job and clears the managed target.
-          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/gpui/target
-          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/src-tauri/gpui/target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rust/gpui/target
+          CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/rust/gpui/target
         run: |
           set -euo pipefail
           printf '## GPUI tests\n\n' >> "$GITHUB_STEP_SUMMARY"
           run_phase() {
             local label=$1 log=$2 started=$SECONDS status=0
             shift 2
-            mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked "$@" 2>&1 | tee "$log" || status=$?
+            mbx test --manifest-path rust/gpui/Cargo.toml --locked "$@" 2>&1 | tee "$log" || status=$?
             {
               printf '\n**%s** (%ss, exit %s)\n\n' "$label" "$((SECONDS - started))" "$status"
               grep -F 'mbx[cache]: object cache:' "$log" || echo "No mbx object cache summary."
@@ -386,8 +386,8 @@ jobs:
         id: api-only
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
-          mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features
-          mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
+          mbx test --manifest-path rust/server/Cargo.toml --locked --no-default-features
+          mbx clippy --manifest-path rust/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings
 
       - name: Build browser UI
         id: browser-build
@@ -401,7 +401,7 @@ jobs:
         if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
         run: |
           set -euo pipefail
-          cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt
+          cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt
           if grep -E '^(tauri |tauri-|gtk |gtk-sys |webkit2gtk |wry )' server-dependencies.txt; then
             exit 1
           fi
@@ -409,12 +409,12 @@ jobs:
       - name: Test GUI-free backend crates
         id: test-backend
         if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml
+        run: mbx test --locked --workspace --no-default-features --manifest-path rust/Cargo.toml
 
       - name: Build headless server
         id: build-server
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx build --manifest-path src-tauri/server/Cargo.toml --locked
+        run: mbx build --manifest-path rust/server/Cargo.toml --locked
 
       # Use the runner's installed Chrome and the same embedded dist/ as the protocol smoke.
       # Both checks overlap the existing server tests and Clippy, including on Rust-only PRs.
@@ -436,12 +436,12 @@ jobs:
       - name: Test headless server
         id: test-server
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --manifest-path src-tauri/server/Cargo.toml --locked
+        run: mbx test --manifest-path rust/server/Cargo.toml --locked
 
       - name: Lint headless server
         id: lint-server
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings
+        run: mbx clippy --manifest-path rust/server/Cargo.toml --all-targets --locked -- -D warnings
 
       - wait-all:
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-The desktop package now composes six private backend crates: models, Kubernetes/session infrastructure, resource inspection, live sessions, GitOps and host support. See [the crate map](../src-tauri/crates/README.md). Inspection, live sessions and host support can compile independently after their common prerequisites. GitOps depends on live forwarding, but not on resource inspection. The split changes compilation boundaries, not command payloads or runtime behavior.
+The desktop package now composes six private backend crates: models, Kubernetes/session infrastructure, resource inspection, live sessions, GitOps and host support. See [the crate map](../rust/crates/README.md). Inspection, live sessions and host support can compile independently after their common prerequisites. GitOps depends on live forwarding, but not on resource inspection. The split changes compilation boundaries, not command payloads or runtime behavior.
 
 The server remains a standalone workspace with a separate lockfile and target directory. Its normal/build dependency tree must remain free of Tauri and webview packages.
 
@@ -26,10 +26,10 @@ Baseline (`d54282f`) and split use Windows x64 on an AMD Ryzen 7 9800X3D, Rust/C
 Workload:
 
 ```sh
-cargo build --locked --manifest-path src-tauri/Cargo.toml --no-default-features
+cargo build --locked --manifest-path rust/Cargo.toml --no-default-features
 # After warmup, invalidate one representative source timestamp, then rebuild.
 touch <source>
-time cargo build --locked --manifest-path src-tauri/Cargo.toml --no-default-features
+time cargo build --locked --manifest-path rust/Cargo.toml --no-default-features
 ```
 
 Three samples per source were collected. Sources are usage monitoring, typed core-resource summaries, and Argo Application summaries. After extraction, the corresponding files are under `crates/host/src/usage.rs`, `crates/inspection/src/commands/resources/summary_core.rs`, and `crates/gitops/src/commands/argo/applications.rs`.
@@ -59,9 +59,9 @@ Other domain crates were reused. The root still generates the original `staticli
 The split also makes domain-only builds possible. After warmup:
 
 ```sh
-cargo build --locked --manifest-path src-tauri/Cargo.toml --no-default-features -p kubecove-host
-cargo check --locked --manifest-path src-tauri/Cargo.toml -p kubecove-inspection
-cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features -p kubecove-live
+cargo build --locked --manifest-path rust/Cargo.toml --no-default-features -p kubecove-host
+cargo check --locked --manifest-path rust/Cargo.toml -p kubecove-inspection
+cargo test --locked --manifest-path rust/Cargo.toml --no-default-features -p kubecove-live
 ```
 
 A timestamp-invalidated host-only build took **4.717, 2.500, 4.530 seconds**, and compiled only `kubecove-host`. This is a smaller workload that skips the final application artifacts, **not an apples-to-apples speedup for the full app**. Use focused package checks while iterating, then the workspace gates before completion.
@@ -82,7 +82,7 @@ No cluster resources were deployed or modified. Native desktop launch/cluster E2
 
 ## GPUI client edit loop
 
-Measured 2026-11-10 on main at `1b278cc`: Linux x64, 16 threads, 30 GiB RAM, rustc 1.99.1, Cargo through mbx 1.29.2, per-checkout target and build directories, `nice -n 10`. The crate `kubecove-gpui` held 71,696 lines in 254 files. Each row is one sample taken after a one-line comment edit in `src-tauri/gpui/src/inspector/helm_page.rs` unless the row says otherwise. CPU time is user plus system time. Other work held the load average between 1 and 11, so treat differences of a few seconds as noise.
+Measured 2026-11-10 on main at `1b278cc`: Linux x64, 16 threads, 30 GiB RAM, rustc 1.99.1, Cargo through mbx 1.29.2, per-checkout target and build directories, `nice -n 10`. The crate `kubecove-gpui` held 71,696 lines in 254 files. Each row is one sample taken after a one-line comment edit in `rust/gpui/src/inspector/helm_page.rs` unless the row says otherwise. CPU time is user plus system time. Other work held the load average between 1 and 11, so treat differences of a few seconds as noise.
 
 | Loop | 1 job | 14 jobs |
 | --- | --- | --- |
@@ -108,4 +108,4 @@ What the samples show:
 - Type checking the whole library after an edit took 1.9 to 4.6 seconds, so splitting the crate would save a few seconds per edit at most.
 - At 14 jobs the release rebuild's compilers held at most 3.4 GiB of resident memory in total, and the machine's available memory stayed above 20 GiB. The largest single process in the debug builds held 3.0 GB at both job counts.
 
-Limits: the edits were comments, so a change to a function body may regenerate more code. A dependency build without a warm mbx cache was not measured, and that is the case in which parallel compilers and linkers once exhausted memory, before dependency debug info was turned off. Windows and macOS were not measured. Logs and Cargo timing data stay under the ignored `src-tauri/gpui/target/study/` of the checkout that ran them.
+Limits: the edits were comments, so a change to a function body may regenerate more code. A dependency build without a warm mbx cache was not measured, and that is the case in which parallel compilers and linkers once exhausted memory, before dependency debug info was turned off. Windows and macOS were not measured. Logs and Cargo timing data stay under the ignored `rust/gpui/target/study/` of the checkout that ran them.

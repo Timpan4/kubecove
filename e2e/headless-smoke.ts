@@ -257,7 +257,7 @@ try {
 	if (process.env.KUBECOVE_NATIVE_REMOTE_PROBE) {
 		interrupt.signal.throwIfAborted();
 		const probe = Bun.spawn([
-			process.env.CARGO ?? "cargo", "test", "--locked", "--manifest-path", "src-tauri/Cargo.toml",
+			process.env.CARGO ?? "cargo", "test", "--locked", "--manifest-path", "rust/Cargo.toml",
 			"-p", "kubecove-host", "--features", "remote-client", "native_tunnel_delivers_bytes_and_closes_after_upload_eof", "--", "--ignored",
 		], {
 			cwd: root, detached: process.platform !== "win32",

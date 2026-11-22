@@ -87,7 +87,7 @@ AI agents are a separate, opt-in client type. Each host can serve read-only MCP 
 
 ## Frontend shape
 
-GPUI Kit powers the desktop client on Linux x64, macOS Apple silicon and Windows x64. The desktop and Svelte browser clients share the Rust backend and acceptance scenarios under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md). See the [native client guide](../src-tauri/gpui/README.md) and [release guide](release.md#native-gpui-client).
+GPUI Kit powers the desktop client on Linux x64, macOS Apple silicon and Windows x64. The desktop and Svelte browser clients share the Rust backend and acceptance scenarios under [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md). See the [native client guide](../rust/gpui/README.md) and [release guide](release.md#native-gpui-client).
 
 The Svelte application shell lives under `src/app/svelte/`. Feature code owns domain surfaces; shared components and pure logic remain separate.
 
@@ -133,7 +133,7 @@ The server's data directory stores kubeconfig-source settings, source paths, and
 The Rust backend is a workspace of private crates with a shared library as its entry point. Independent command domains compile separately. Both hosts use the same contracts and session infrastructure.
 
 ```text
-src-tauri/
+rust/
   src/                   shared command exports, cross-domain cancellation, benchmark aggregation
   crates/
     models/              serde contracts, health assessment and typed errors
@@ -146,7 +146,7 @@ src-tauri/
   server/                headless server workspace and transport adapters
 ```
 
-See [private backend crates](../src-tauri/crates/README.md) for dependency direction and workspace checks. Both hosts use `kubecove_lib::{commands, models, runtime}` and have independent lockfiles and build profiles.
+See [private backend crates](../rust/crates/README.md) for dependency direction and workspace checks. Both hosts use `kubecove_lib::{commands, models, runtime}` and have independent lockfiles and build profiles.
 
 Backend rules:
 

@@ -9,30 +9,30 @@ RUN KUBECOVE_PUBLIC_RUNTIME=web bun run build
 FROM rust:1.99.1-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247 AS backend
 ARG TARGETARCH
 WORKDIR /source
-COPY src-tauri/ src-tauri/
+COPY rust/ rust/
 RUN case "$TARGETARCH" in \
       amd64) target=x86_64-unknown-linux-gnu ;; \
       arm64) target=aarch64-unknown-linux-gnu ;; \
       *) exit 1 ;; \
     esac \
-    && cp "src-tauri/bin/kubeconform-$target" /kubeconform \
+    && cp "rust/bin/kubeconform-$target" /kubeconform \
     && install -d -m 0700 /runtime-data/kubecove
 ENV CARGO_PROFILE_RELEASE_STRIP=debuginfo
 
 FROM backend AS backend-slim
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,id=kubecove-server-${TARGETARCH},target=/source/src-tauri/server/target,sharing=locked \
-    cargo build --release --locked --no-default-features --manifest-path src-tauri/server/Cargo.toml \
-    && cp src-tauri/server/target/release/kubecove-server /kubecove-server
+    --mount=type=cache,id=kubecove-server-${TARGETARCH},target=/source/rust/server/target,sharing=locked \
+    cargo build --release --locked --no-default-features --manifest-path rust/server/Cargo.toml \
+    && cp rust/server/target/release/kubecove-server /kubecove-server
 
 FROM backend AS backend-full
 COPY --from=frontend /source/dist/ dist/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,id=kubecove-server-${TARGETARCH},target=/source/src-tauri/server/target,sharing=locked \
-    cargo build --release --locked --manifest-path src-tauri/server/Cargo.toml \
-    && cp src-tauri/server/target/release/kubecove-server /kubecove-server
+    --mount=type=cache,id=kubecove-server-${TARGETARCH},target=/source/rust/server/target,sharing=locked \
+    cargo build --release --locked --manifest-path rust/server/Cargo.toml \
+    && cp rust/server/target/release/kubecove-server /kubecove-server
 
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:e792ab3d241a468a4fd7519ddbbebe66b49b5f365771716ea688ad40b6c6f1c2 AS runtime
 ARG VERSION

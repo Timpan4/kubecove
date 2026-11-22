@@ -11,7 +11,7 @@
 
 ## Source and scope
 
-`src-tauri/crates/kube/src/commands/live_store.rs` defines clean-load joining,
+`rust/crates/kube/src/commands/live_store.rs` defines clean-load joining,
 dirty-load restart and cancellation of previous waiters. `cancellation.rs` defines
 scope cancellation and replacement of a duplicate request ID. `finite_read.rs`
 wraps cancellable finite reads. `src/lib/query-retry.ts` defines transient errors
@@ -94,7 +94,7 @@ their list version.
 Both clients show a read's loading indicator only after the read has been
 pending for 300 ms, and keep it for at least 300 ms once shown. The finished
 data waits until then. `src/lib/loading-delay.svelte.ts` and
-`src-tauri/gpui/src/inspector/loading.rs` hold the timing.
+`rust/gpui/src/inspector/loading.rs` hold the timing.
 
 A scenario that checks an indicator runs `advanceClock` 300 ms before the check,
 and again after the release before it checks the data. The native driver needs
@@ -129,7 +129,7 @@ The existing browser mock's 35 ms delay is unchanged and is not measurement evid
 A map selection moves the viewport to the new fit over 120 ms, and a deselection
 over 260 ms, the durations in `src/features/resources/OwnershipMapViewport.svelte`.
 The GPUI client takes the time from the executor clock
-(`src-tauri/gpui/src/inspector/map/motion.rs`), so in the native driver a
+(`rust/gpui/src/inspector/map/motion.rs`), so in the native driver a
 transition stays at its start until a step advances the clock.
 
 `coverage-map.selection-pan` pauses the web clock with `controlClock` before it
@@ -145,7 +145,7 @@ inside the window update where step handlers run, because advancing runs tasks.
 
 Popovers fade in and out over tw-animate-css's 150 ms in both clients:
 `PopoverContent.svelte` on the web and
-`src-tauri/gpui/src/inspector/overlay_motion.rs` in the GPUI client, which reads
+`rust/gpui/src/inspector/overlay_motion.rs` in the GPUI client, which reads
 the executor clock. `overlay-motion.popover` checks that.
 
 On the web this is a CSS keyframe animation. It runs on the compositor's clock,
@@ -168,7 +168,7 @@ the Map context select and the detail panel. The web does not: `DialogContent`,
 on `data-open` and `data-closed`, which bits-ui 2.21.0 does not set, and the
 detail panel has no animation classes. The owner chose on 2026-11-17 to leave
 the web wrappers as they are. A shared scenario cannot follow motion the web
-does not have, so `src-tauri/gpui/tests/native/overlay_motion.rs` checks it.
+does not have, so `rust/gpui/tests/native/overlay_motion.rs` checks it.
 The slide a GPUI popover makes in place of the web's zoom is checked there too.
 
 In every other scenario the native driver ends overlay motion before a step
@@ -181,7 +181,7 @@ because this clock moves only when a step advances it.
 
 A sidebar branch opens and closes by height over Tailwind's 150 ms in both
 clients when the user toggles it: Svelte's `slide` transition in
-`SidebarTreeNode.svelte` and `src-tauri/gpui/src/inspector/sidebar_fold.rs`,
+`SidebarTreeNode.svelte` and `rust/gpui/src/inspector/sidebar_fold.rs`,
 which reads the executor clock. `control-motion.sidebar-unfold` checks that. The
 web runs the fold as a Web Animation, which the driver pauses and seeks.
 

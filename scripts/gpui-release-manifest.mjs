@@ -92,7 +92,7 @@ export function writeGpuiManifest(dir, options) {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { ASSETS_DIR: dir, GH_REPO: repository, NOTES_FILE: notesFile, RELEASE_TAG: releaseTag = "" } = process.env;
   if (!dir || !repository || !notesFile) throw new Error("ASSETS_DIR, GH_REPO and NOTES_FILE are required.");
-  const { public_key: publicKey } = JSON.parse(readFileSync(new URL("../src-tauri/gpui/updater.json", import.meta.url), "utf8"));
+  const { public_key: publicKey } = JSON.parse(readFileSync(new URL("../rust/gpui/updater.json", import.meta.url), "utf8"));
   const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const tag = releaseTag || `app-v${version}`;
   if (!releaseTag) console.log(`Dry run: manifest URLs point at ${tag}.`);

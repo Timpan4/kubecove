@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-const workspace = "src-tauri";
+const workspace = "rust";
 const benchmark = "backend_hot_paths";
 const target = "x86_64-unknown-linux-gnu";
 // cargo-codspeed 5.0.1 copies the analysis executable here. Simulation uses

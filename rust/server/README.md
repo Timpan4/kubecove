@@ -12,8 +12,8 @@ Build from the repository root. The web build must precede Cargo because the ser
 ```sh
 bun install --frozen-lockfile
 KUBECOVE_PUBLIC_RUNTIME=web bun --bun vite build
-cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml
-src-tauri/server/target/release/kubecove-server --listen 127.0.0.1:8080
+cargo build --locked --release --manifest-path rust/server/Cargo.toml
+rust/server/target/release/kubecove-server --listen 127.0.0.1:8080
 ```
 
 The server reads Kubernetes configuration on its own host. It uses exactly one authentication mode: a per-start token (default), Cloudflare Access, or OIDC. Browsers support all three; the desktop remote client supports token and OIDC ([ADR 0031](../../docs/decisions/0031-gpui-remote-sign-in.md)). In token mode, startup prints a login URL containing a fresh token. Open that URL in a browser, or enter the token in the connection screen. The browser removes the token fragment after loading. The token also lives in the server data directory as `server-token`, with Unix mode `0600`. Treat startup output as a credential.
@@ -91,9 +91,9 @@ The server uses native credential storage when available. Unix hosts without it 
 Local transport verification uses an isolated Kubernetes WebSocket echo fixture. It creates no cluster resources.
 
 ```sh
-cargo test --locked --manifest-path src-tauri/server/Cargo.toml
-cargo clippy --locked --manifest-path src-tauri/server/Cargo.toml --all-targets -- -D warnings
-cargo build --locked --manifest-path src-tauri/server/Cargo.toml
+cargo test --locked --manifest-path rust/server/Cargo.toml
+cargo clippy --locked --manifest-path rust/server/Cargo.toml --all-targets -- -D warnings
+cargo build --locked --manifest-path rust/server/Cargo.toml
 bun e2e/headless-smoke.ts
 ```
 

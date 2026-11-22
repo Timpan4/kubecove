@@ -10,12 +10,12 @@ case "$target" in
 esac
 case "$variant" in full) suffix="" ;; slim) suffix="-slim" ;; *) exit 1 ;; esac
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
-binary="src-tauri/server/target/$target/release/kubecove-server"
+binary="rust/server/target/$target/release/kubecove-server"
 sidecar="kubeconform-$target"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 install -m 0755 "$binary" "$temporary/kubecove-server"
-install -m 0755 "src-tauri/bin/$sidecar" "$temporary/$sidecar"
+install -m 0755 "rust/bin/$sidecar" "$temporary/$sidecar"
 install -m 0644 LICENSE "$temporary/LICENSE"
 install -m 0644 deploy/systemd/kubecove.service "$temporary/kubecove.service"
 # Each release job runs on this target, so execute the packaged files too.

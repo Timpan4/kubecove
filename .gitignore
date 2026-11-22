@@ -3,8 +3,8 @@ node_modules/
 
 # Tauri / Rust
 target/
-src-tauri/target/
-src-tauri/server/target/
+rust/target/
+rust/server/target/
 
 # Frontend build output
 dist/

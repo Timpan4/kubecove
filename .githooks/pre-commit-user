@@ -30,7 +30,7 @@ if [ -n "$staged_files" ]; then
 
     scan_content=$(git show ":$file" 2>/dev/null || true)
     case "$file" in
-      src-tauri/crates/kube/src/commands/mod.rs)
+      rust/crates/kube/src/commands/mod.rs)
         scan_content=$(printf '%s\n' "$scan_content" | grep -Ev '^[[:space:]]*pub use contexts::' || true)
         ;;
       e2e/lifecycle.ts)
@@ -105,7 +105,7 @@ is_size_exempt() {
   case "$1" in
     *.test.*|*.spec.*|*.gen.*|*.d.ts)
       return 0 ;;
-    bun.lock|node_modules/*|src-tauri/target/*|target/*)
+    bun.lock|node_modules/*|rust/target/*|target/*)
       return 0 ;;
   esac
   for legacy in $LEGACY_OVERSIZED_FILES; do
@@ -166,12 +166,12 @@ if [ -f package.json ]; then
   fi
 fi
 
-if [ -f src-tauri/Cargo.toml ]; then
-  # The workspace excludes gpui and server, so only staged paths elsewhere under src-tauri/ can break it.
+if [ -f rust/Cargo.toml ]; then
+  # The workspace excludes gpui and server, so only staged paths elsewhere under rust/ can break it.
   all_staged=$(git diff --cached --name-only)
-  workspace_paths=$(printf '%s\n' "$all_staged" | grep -E '^src-tauri/' | grep -Ev '^src-tauri/(gpui|server)/' || true)
+  workspace_paths=$(printf '%s\n' "$all_staged" | grep -E '^rust/' | grep -Ev '^rust/(gpui|server)/' || true)
   if [ -n "$workspace_paths" ]; then
-    cargo check --workspace --manifest-path src-tauri/Cargo.toml
+    cargo check --workspace --manifest-path rust/Cargo.toml
   fi
 elif [ -f Cargo.toml ]; then
   cargo check

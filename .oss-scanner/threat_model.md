@@ -16,10 +16,10 @@ Protect Kubernetes and connected Argo CD credentials, server authentication and 
 
 Prioritize these areas:
 
-1. `src-tauri/server/src/`: token, Cloudflare Access and OIDC authentication, including the desktop sign-in routes `/api/v1/oidc/native/start` and `/api/v1/oidc/native/token`; Host and Origin checks; cookies, logout, expiry and refresh; command dispatch and WebSocket admission; session ownership and cleanup. With OIDC Kubernetes credential forwarding enabled, a user's requests must not fall back to the operator's credentials.
-2. `src-tauri/crates/` and `src-tauri/src/`: frontend command boundaries and secret redaction; bounded YAML/base64/gzip and API payload processing; connected Argo TLS, destinations and credential use; local credential files; desktop remote adapters; cancellation and retained sessions.
+1. `rust/server/src/`: token, Cloudflare Access and OIDC authentication, including the desktop sign-in routes `/api/v1/oidc/native/start` and `/api/v1/oidc/native/token`; Host and Origin checks; cookies, logout, expiry and refresh; command dispatch and WebSocket admission; session ownership and cleanup. With OIDC Kubernetes credential forwarding enabled, a user's requests must not fall back to the operator's credentials.
+2. `rust/crates/` and `rust/src/`: frontend command boundaries and secret redaction; bounded YAML/base64/gzip and API payload processing; connected Argo TLS, destinations and credential use; local credential files; desktop remote adapters; cancellation and retained sessions.
 3. Guarded Kubernetes and Argo operations: exact target scope, permission checks, dry-run and confirmation requirements, UID/resourceVersion preconditions, and single-use transport-bound Argo operation reviews. Inspect current contracts in ADRs 0003, 0004, 0005, 0006, 0013, 0014, 0017, 0021 and 0024.
-4. `src/` and `src-tauri/capabilities/`: cluster-data injection into Svelte, YAML and terminal surfaces; navigation or link handling; unintended command or filesystem capability exposure.
+4. `src/` and `rust/capabilities/`: cluster-data injection into Svelte, YAML and terminal surfaces; navigation or link handling; unintended command or filesystem capability exposure.
 
 The frontend must not acquire arbitrary host shell execution or unrestricted filesystem access. Typed Pod exec intentionally runs a command in the selected Pod; this must not become execution on the KubeCove host. Invoking kubeconform for YAML validation is also intentional and must retain its constrained arguments and input handling.
 
@@ -35,15 +35,15 @@ The `e2e` Cargo feature and development browser mocks are not production interfa
 
 ## Exercise the code offline
 
-The image starts in `/src`. It retains `node_modules`, Cargo registries, desktop `src-tauri/target/` and server `src-tauri/server/target/` artifacts. `CARGO_NET_OFFLINE=true` makes missing dependencies explicit.
+The image starts in `/src`. It retains `node_modules`, Cargo registries, desktop `rust/target/` and server `rust/server/target/` artifacts. `CARGO_NET_OFFLINE=true` makes missing dependencies explicit.
 
 ```sh
 bun test
-cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
-cargo test --locked --manifest-path src-tauri/server/Cargo.toml
+cargo test --locked --workspace --manifest-path rust/Cargo.toml
+cargo test --locked --manifest-path rust/server/Cargo.toml
 ```
 
-The server tests include local HTTP/WebSocket and OIDC fixtures. Network isolation still permits loopback. Extend these fixtures or create synthetic Kubernetes/Argo responses to reproduce defects without a real cluster. The debug server binary is `src-tauri/server/target/debug/kubecove-server`; `--help` documents startup flags. Use only temporary data directories and synthetic credentials. Desktop code is compiled, but this environment does not establish GUI or other operating-system behavior.
+The server tests include local HTTP/WebSocket and OIDC fixtures. Network isolation still permits loopback. Extend these fixtures or create synthetic Kubernetes/Argo responses to reproduce defects without a real cluster. The debug server binary is `rust/server/target/debug/kubecove-server`; `--help` documents startup flags. Use only temporary data directories and synthetic credentials. Desktop code is compiled, but this environment does not establish GUI or other operating-system behavior.
 
 Do not run the Kind lab, deploy Kubernetes resources, read a host kubeconfig, contact a real Argo instance, or mount credentials. Live-cluster and native GUI E2E need the repository's separate isolated workflows. kubeconform's remote schema downloads are unavailable offline; supply local synthetic schemas when needed. Dependency auditing and release/update downloads also need a network and are not offline checks.
 

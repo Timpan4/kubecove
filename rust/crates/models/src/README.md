@@ -1,4 +1,4 @@
-# `src-tauri/crates/models/src/`
+# `rust/crates/models/src/`
 
 Serde contracts shared with the frontend live here. Frontend mirrors live in `src/lib/types.ts` and the domain type files it re-exports, such as `src/lib/gitops-types.ts` for Argo CD, Flux and Helm.
 

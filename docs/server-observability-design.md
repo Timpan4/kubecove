@@ -106,7 +106,7 @@ Two pull requests, in order. Steps 2 and 3 below shipped together, because the c
 2. **Monotonic cache totals.** In `crates/kube`, switch Clear to baselines and add `cache_totals()`. The existing diagnostics tests must still pass unchanged, which shows the desktop sees the same behavior.
 3. **Metrics (#523).** Add `--metrics-listen`, the registry, the scrape handler, `CacheTotals`, the command histogram in `invoke()`, and the label and listener-isolation tests. Update `deploy/kubernetes/kubecove.yaml` with a commented metrics port, plus `docs/wiki/Remote-Server.md`, `server/README.md` and `--help`.
 
-Checks per PR: `cargo test`, `cargo clippy` and `cargo fmt --check` with `--manifest-path src-tauri/server/Cargo.toml`, and `cargo check --manifest-path src-tauri/Cargo.toml` to confirm the desktop build is unchanged. A manual run checks `--log-format json` output with `jq` and scrapes `/metrics` with `curl`.
+Checks per PR: `cargo test`, `cargo clippy` and `cargo fmt --check` with `--manifest-path rust/server/Cargo.toml`, and `cargo check --manifest-path rust/Cargo.toml` to confirm the desktop build is unchanged. A manual run checks `--log-format json` output with `jq` and scrapes `/metrics` with `curl`.
 
 Out of scope: OpenTelemetry export, per-request Kubernetes API client metrics (they need a tower layer in `crates/kube`, which the desktop shares), and log shipping.
 

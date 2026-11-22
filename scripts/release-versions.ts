@@ -44,10 +44,10 @@ export function readReleaseVersions(read: (path: string) => string | undefined, 
 	};
 	// SAFETY: release metadata only reads optional `version`, validated by `requireVersion` before use.
 	const packageJson = JSON.parse(required("package.json")) as { version?: string };
-	const cargoPath = "src-tauri/Cargo.toml";
+	const cargoPath = "rust/Cargo.toml";
 	const cargoVersion = parseCargoPackageVersion(required(cargoPath), source + cargoPath);
 	for (const { directory, label } of SIDE_WORKSPACES) {
-		const path = `src-tauri/${directory}/Cargo.toml`;
+		const path = `rust/${directory}/Cargo.toml`;
 		const manifest = read(path);
 		if (manifest === undefined) continue;
 		const version = parseCargoPackageVersion(manifest, source + path);
@@ -103,7 +103,7 @@ export function assertMatchingReleaseVersions(versions: ReleaseVersions): void {
 		[
 			"Release versions must match:",
 			`  package.json: ${packageVersion}`,
-			`  src-tauri/Cargo.toml: ${cargoVersion}`,
+			`  rust/Cargo.toml: ${cargoVersion}`,
 		].join("\n"),
 	);
 }
@@ -169,10 +169,10 @@ export function updateWorkspaceReleaseVersions(
 ): ReleaseVersions {
 	const targetVersion = requireVersion("target version", version);
 	const packagePath = join(root, "package.json");
-	const cargoPath = join(root, "src-tauri", "Cargo.toml");
-	const cargoLockPath = join(root, "src-tauri", "Cargo.lock");
+	const cargoPath = join(root, "rust", "Cargo.toml");
+	const cargoLockPath = join(root, "rust", "Cargo.lock");
 
-	const channel = existsSync(join(root, "src-tauri", "gpui", "Cargo.toml"))
+	const channel = existsSync(join(root, "rust", "gpui", "Cargo.toml"))
 		? desktopReleaseChannel(targetVersion)
 		: undefined;
 	const parsed: unknown = JSON.parse(readFileSync(packagePath, "utf8"));
@@ -195,7 +195,7 @@ export function updateWorkspaceReleaseVersions(
 		updates.push({ path: cargoLockPath, contents: replaceCargoLockPackageVersion(cargoLock, targetVersion) });
 	}
 	for (const { directory, packageName } of SIDE_WORKSPACES) {
-		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
+		const manifestPath = join(root, "rust", directory, "Cargo.toml");
 		if (!existsSync(manifestPath)) continue;
 		let contents = replaceCargoField(readFileSync(manifestPath, "utf8"), "package", "version", targetVersion, manifestPath);
 		if (directory === "gpui" && channel) {
@@ -204,7 +204,7 @@ export function updateWorkspaceReleaseVersions(
 			contents = replaceCargoField(contents, section, "identifier", channel.identifier, manifestPath);
 		}
 		updates.push({ path: manifestPath, contents });
-		const lockPath = join(root, "src-tauri", directory, "Cargo.lock");
+		const lockPath = join(root, "rust", directory, "Cargo.lock");
 		if (existsSync(lockPath)) {
 			const lock = replaceCargoLockPackageVersion(readFileSync(lockPath, "utf8"), targetVersion, "kubecove", lockPath);
 			updates.push({ path: lockPath, contents: replaceCargoLockPackageVersion(lock, targetVersion, packageName, lockPath) });
@@ -242,7 +242,7 @@ function replaceCargoLockPackageVersion(
 	contents: string,
 	version: string,
 	packageName = "kubecove",
-	source = "src-tauri/Cargo.lock",
+	source = "rust/Cargo.lock",
 ): string {
 	const packageHeader = `name = "${packageName}"`;
 	const lines = contents.split(/(\r?\n)/);

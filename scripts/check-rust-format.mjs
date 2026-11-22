@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-const workspaces = ["src-tauri", "src-tauri/gpui", "src-tauri/server"];
+const workspaces = ["rust", "rust/gpui", "rust/server"];
 for (const workspace of workspaces) {
   const result = spawnSync("cargo", ["fmt", "--manifest-path", `${workspace}/Cargo.toml`, "--all", "--", "--check"], {
     cwd: new URL("../", import.meta.url),

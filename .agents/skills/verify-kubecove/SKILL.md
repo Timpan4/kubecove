@@ -101,7 +101,7 @@ Build the browser runtime and the server once. Use a per-workspace cargo build d
 
 ```sh
 KUBECOVE_PUBLIC_RUNTIME=web nice bun --bun vite build
-(cd src-tauri/server && CARGO_BUILD_BUILD_DIR="$PWD/target" nice cargo build --locked)
+(cd rust/server && CARGO_BUILD_BUILD_DIR="$PWD/target" nice cargo build --locked)
 .agents/skills/verify-kubecove/scripts/kubecove-verify-server.ts
 ```
 

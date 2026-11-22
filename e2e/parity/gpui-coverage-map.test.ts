@@ -16,7 +16,7 @@ test("gives each GPUI worker and build separate exit profiles outside the scenar
 test("parallel conversion preserves serial line and function coverage without merging scenario counters", async () => {
 	await mkdir("e2e/artifacts", { recursive: true });
 	const temporary = await mkdtemp(resolve("e2e/artifacts/coverage-test-"));
-	const file = "src-tauri/gpui/src/lib.rs";
+	const file = "rust/gpui/src/lib.rs";
 	const root = resolve(".");
 	try {
 		const capture = async (jobs: number) => {

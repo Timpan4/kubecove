@@ -159,7 +159,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           shared-key: kubecove-codspeed-registry
-          workspaces: "./src-tauri -> target"
+          workspaces: "./rust -> target"
           prefix-key: dependency-rust
           cache-targets: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -170,14 +170,14 @@ jobs:
       # restores that 2.2 GB cache for objects this build cannot use.
       - name: Key the Rust cache by its inputs
         id: rust-cache
-        run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml scripts/codspeed-rust-artifact.mjs src-tauri ':!src-tauri/gpui' ':!src-tauri/server'
+        run: node scripts/ci-rust-cache-key.mjs codspeed-backend .github/workflows/codspeed.yml scripts/codspeed-rust-artifact.mjs rust ':!rust/gpui' ':!rust/server'
 
       # The build job is the only writer. PRs restore main's content-keyed objects.
       - name: Setup Mr Boxington for CodSpeed builds
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
           version: "1.30.0"
-          working-directory: src-tauri
+          working-directory: rust
           cache-key: ${{ steps.rust-cache.outputs.key }}
           restore-keys: ${{ steps.rust-cache.outputs.prefix }}
           github-cache-mode: objects
@@ -266,7 +266,7 @@ jobs:
         uses: ./.github/actions/codspeed-run
         with:
           # Equivalent to cargo-codspeed 5.0.1's simulation launch after cargo metadata.
-          run: cd src-tauri && CODSPEED_CARGO_WORKSPACE_ROOT="$PWD" exec ./target/codspeed/analysis/kubecove/backend_hot_paths '${{ matrix.filter }}'
+          run: cd rust && CODSPEED_CARGO_WORKSPACE_ROOT="$PWD" exec ./target/codspeed/analysis/kubecove/backend_hot_paths '${{ matrix.filter }}'
 
   rust-saver:
     name: Run Rust benchmarks (${{ matrix.shard }})

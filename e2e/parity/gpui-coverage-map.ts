@@ -28,7 +28,7 @@ async function llvmTools(signal: AbortSignal): Promise<CoverageTools> {
 	const { LLVM_COV, LLVM_PROFDATA } = process.env;
 	const invoke = (command: string[], abort: AbortSignal) => output(command, abort);
 	if (LLVM_COV && LLVM_PROFDATA) return { cov: LLVM_COV, profdata: LLVM_PROFDATA, invoke };
-	const workspace = resolve("src-tauri/gpui");
+	const workspace = resolve("rust/gpui");
 	const rustc = process.env.RUSTC ?? process.env.CARGO_BUILD_RUSTC ?? "rustc";
 	const [sysroot, version] = await Promise.all([
 		output([rustc, "--print", "sysroot"], signal, workspace),

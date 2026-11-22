@@ -15,11 +15,11 @@ Extends [ADR 0020](0020-headless-server-mode.md), [ADR 0022](0022-oidc-server-si
 
 ## Context
 
-The desktop remote client lives in `kubecove_host::remote` (`src-tauri/crates/host/src/remote/`). The GPUI client calls it through `DesktopBackend` in `src-tauri/gpui/src/backend/remote.rs`, and the Tauri desktop client calls the same crate through `src/lib/remote-runtime.ts`. It supports only startup-token servers:
+The desktop remote client lives in `kubecove_host::remote` (`rust/crates/host/src/remote/`). The GPUI client calls it through `DesktopBackend` in `rust/gpui/src/backend/remote.rs`, and the Tauri desktop client calls the same crate through `src/lib/remote-runtime.ts`. It supports only startup-token servers:
 
 - `connect` posts `/api/v1/session` with `Authorization: Bearer <startup token>`. Every later invoke, channel close, session close and WebSocket upgrade sends the same bearer plus the resume token.
 - `RemoteCredentials` holds the server URL, bearer and resume token in Rust memory for the life of the connection. Nothing is persisted, so an app restart needs the token again.
-- The client sends no Origin header. The server accepts that only because `SecurityPolicy::check` lets a request omit Origin when its bearer equals the startup token (`src-tauri/server/src/security.rs`).
+- The client sends no Origin header. The server accepts that only because `SecurityPolicy::check` lets a request omit Origin when its bearer equals the startup token (`rust/server/src/security.rs`).
 - A `session_moved` frame or an expired reconnect window ends the connection. Settings > Remote then says the server "is selected but disconnected". There is no takeover action, no expiry notice and no sign-in path.
 
 OIDC and Access servers refuse this client. In OIDC mode the guard authenticates only the `__Host-kubecove_oidc` cookie, and the cookie is issued only to the browser that completed the callback. In OIDC and Access modes the guard refuses any POST or WebSocket upgrade without an Origin header. In Access mode Cloudflare's edge redirects a request without an Access token to a browser login page before it reaches the server.
@@ -77,7 +77,7 @@ The Origin check protects requests that a browser authenticates with a cookie. A
 
 The sign-in credential, the resume token, the Access access and refresh tokens, the PKCE verifier and the state value live only in Rust memory inside `kubecove_host::remote`, in the connection's `RemoteCredentials` and in the pending sign-in. They are never copied into GPUI view state, Svelte state, Tauri command results, preference documents (ADR 0030), logs, diagnostics or error messages. Error text keeps the existing redaction. Server error text reaches the desktop through `AppError` messages, so the host crate replaces the bearer and resume token values in it before the error leaves the crate. The code exchange and Sign out never forward server text. `RemoteConnectionSummary` gains only typed, non-secret fields: the authentication mode and the session state below.
 
-The sign-in credential is persisted so it survives an app restart. It goes through the existing `SecureStore` adapter (`src-tauri/crates/gitops/src/commands/argo/credential_store.rs`), keyed by the normalized server URL under a new service name. The resume token, PKCE verifier and state value are never persisted. The desktop keeps ADR 0013's rule: native credential storage or nothing, with no file fallback. When native storage is unavailable, the credential stays in memory only and the client says so. ADR 0021's file store stays server-only.
+The sign-in credential is persisted so it survives an app restart. It goes through the existing `SecureStore` adapter (`rust/crates/gitops/src/commands/argo/credential_store.rs`), keyed by the normalized server URL under a new service name. The resume token, PKCE verifier and state value are never persisted. The desktop keeps ADR 0013's rule: native credential storage or nothing, with no file fallback. When native storage is unavailable, the credential stays in memory only and the client says so. ADR 0021's file store stays server-only.
 
 The server keeps sign-ins only in memory, so a stored credential stops working at every server restart and at its server-side expiry. The client then shows "Sign-in expired" and deletes the stored credential. A stored credential is read only when the client connects to that server URL, and it is deleted on Sign out and on revocation.
 
@@ -136,7 +136,7 @@ Server boundary tests, using the existing deterministic provider in `oidc_mock.r
 
 Host crate tests against a local fake server: loopback listener state mismatch, wrong path, provider denial, cancel, IPv6 fallback, credential redaction in every error, memory cleanup on sign-out and disconnect, and each session-state transition in the table.
 
-Shared parity scenarios in `e2e/parity/scenarios/` drive each notice and action through both drivers with mocked responses. GPUI native tests in `src-tauri/gpui/tests/native.rs` cover what the mocks cannot express, such as revocation arriving during a read. No test contacts a real identity provider, Cloudflare, cluster or server, or reads the user's settings, keyring or kubeconfig.
+Shared parity scenarios in `e2e/parity/scenarios/` drive each notice and action through both drivers with mocked responses. GPUI native tests in `rust/gpui/tests/native.rs` cover what the mocks cannot express, such as revocation arriving during a read. No test contacts a real identity provider, Cloudflare, cluster or server, or reads the user's settings, keyring or kubeconfig.
 
 ## Access servers
 

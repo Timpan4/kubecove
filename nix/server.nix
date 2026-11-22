@@ -7,7 +7,7 @@
 }:
 
 let
-  version = (builtins.fromTOML (builtins.readFile ../src-tauri/server/Cargo.toml)).package.version;
+  version = (builtins.fromTOML (builtins.readFile ../rust/server/Cargo.toml)).package.version;
 in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "kubecove-server";
@@ -17,12 +17,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
   # nixpkgs' kubeconform instead.
   src = lib.fileset.toSource {
     root = ../.;
-    fileset = lib.fileset.difference ../src-tauri ../src-tauri/bin;
+    fileset = lib.fileset.difference ../rust ../rust/bin;
   };
 
-  cargoRoot = "src-tauri/server";
+  cargoRoot = "rust/server";
   buildAndTestSubdir = finalAttrs.cargoRoot;
-  cargoLock.lockFile = ../src-tauri/server/Cargo.lock;
+  cargoLock.lockFile = ../rust/server/Cargo.lock;
   doCheck = false;
 
   nativeBuildInputs = [ makeBinaryWrapper ];

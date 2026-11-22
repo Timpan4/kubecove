@@ -39,7 +39,7 @@ export function createBrowserBuild(stateDir: string, execute: Execute) {
 				KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profiling),
 				KUBECOVE_FRONTEND_BUNDLE_REPORT: profiling ? join(artifacts, "frontend-bundle.json") : process.env.KUBECOVE_FRONTEND_BUNDLE_REPORT,
 			});
-			await execute("cargo", ["build", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml", "--target-dir", target, ...(profiling ? ["--release"] : [])], {
+			await execute("cargo", ["build", "--locked", "--manifest-path", "rust/server/Cargo.toml", "--target-dir", target, ...(profiling ? ["--release"] : [])], {
 				CARGO_BUILD_BUILD_DIR: target, KUBECOVE_WEB_ASSET_DIR: assets,
 			}, false, join(artifacts, "build.log"));
 			return serverBinary(profiling, target);

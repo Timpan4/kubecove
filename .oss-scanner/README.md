@@ -9,8 +9,8 @@ Run from the repository root with Docker and BuildKit available:
 ```sh
 docker build --progress=plain -f .oss-scanner/Dockerfile -t kubecove:oss-scanner .
 docker run --rm --network=none kubecove:oss-scanner bun test
-docker run --rm --network=none kubecove:oss-scanner cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
-docker run --rm --network=none kubecove:oss-scanner cargo test --locked --manifest-path src-tauri/server/Cargo.toml
+docker run --rm --network=none kubecove:oss-scanner cargo test --locked --workspace --manifest-path rust/Cargo.toml
+docker run --rm --network=none kubecove:oss-scanner cargo test --locked --manifest-path rust/server/Cargo.toml
 ```
 
 The image keeps the checkout at `/src`, with Bun, Rust, Linux desktop libraries, both Cargo dependency caches, and debug build/test artifacts. It builds the native frontend and desktop binary, then the browser frontend and headless server. The compile steps run with networking disabled. Source and compiler caches stay in the image so the scanner can change and rebuild reproducers offline. The final image retains `apt` for Anthropic's tools layer. It is an audit environment, not a deployment image.

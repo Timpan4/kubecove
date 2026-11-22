@@ -178,10 +178,10 @@ the same input. The full reference only counts objects, so it excludes the
 old catalog-construction cost and is a conservative speed comparison.
 
 ```sh
-cargo test --locked --manifest-path src-tauri/Cargo.toml commands::discovery::tests --lib
-cargo check --locked --manifest-path src-tauri/Cargo.toml
-cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo bench --locked --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- decode_
+cargo test --locked --manifest-path rust/Cargo.toml commands::discovery::tests --lib
+cargo check --locked --manifest-path rust/Cargo.toml
+cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
+cargo bench --locked --manifest-path rust/Cargo.toml --features bench-support --bench backend_hot_paths -- decode_
 ```
 
 The authenticated optimized browser was checked against wall-e: workspace

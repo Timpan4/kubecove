@@ -107,13 +107,13 @@ fixture and produces the same 51 latest summaries.
 Baseline Helm and initial Pod comparison:
 
 ```sh
-cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- 'pod_list_decode|helm_storage_records_to_latest_releases'
+cargo bench --manifest-path rust/Cargo.toml --features bench-support --bench backend_hot_paths -- 'pod_list_decode|helm_storage_records_to_latest_releases'
 ```
 
 Final comparison, including the added decoder variants:
 
 ```sh
-cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- 'list_decode|helm_storage_records_to_latest_releases'
+cargo bench --manifest-path rust/Cargo.toml --features bench-support --bench backend_hot_paths -- 'list_decode|helm_storage_records_to_latest_releases'
 ```
 
 The initial Pod comparison measured 12.33 ms full and 3.209 ms projected. The table
@@ -125,7 +125,7 @@ case includes the previous cache-hit copies; the shared case serializes borrowed
 rows. Rows that need Flux changes retain the ownership-copy path, covered by tests.
 
 ```sh
-CARGO_BUILD_JOBS=2 nice -n 19 cargo bench --manifest-path src-tauri/Cargo.toml --features bench-support --bench backend_hot_paths -- scope_cached_rows
+CARGO_BUILD_JOBS=2 nice -n 19 cargo bench --manifest-path rust/Cargo.toml --features bench-support --bench backend_hot_paths -- scope_cached_rows
 ```
 
 ## Verification
@@ -133,10 +133,10 @@ CARGO_BUILD_JOBS=2 nice -n 19 cargo bench --manifest-path src-tauri/Cargo.toml -
 All requested checks pass:
 
 ```sh
-cargo check --workspace --manifest-path src-tauri/Cargo.toml
-cargo clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --workspace --manifest-path src-tauri/Cargo.toml
-cargo check --manifest-path src-tauri/server/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+cargo clippy --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --workspace --manifest-path rust/Cargo.toml
+cargo check --manifest-path rust/server/Cargo.toml
 ```
 
 Workspace tests: 388 passed, two existing ignored tests. Projection tests compare
@@ -150,7 +150,7 @@ compare full serialized response bytes with the previous owned assembly, check
 ordering and duplicate precedence, and prove that unchanged cached rows are not
 copied or mutated. Flux tests compare copy admission with actual enrichment.
 
-`cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`,
+`cargo fmt --manifest-path rust/Cargo.toml --all -- --check`,
 `bun run docs:check` and `git diff --check` pass. The default server check initially
 failed because this worktree lacked `dist/`; generating it with the documented
 `KUBECOVE_PUBLIC_RUNTIME=web bun --bun vite build` resolved that prerequisite.

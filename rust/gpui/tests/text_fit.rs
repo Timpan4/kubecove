@@ -8,7 +8,7 @@
 //! ```sh
 //! bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json
 //! KUBECOVE_PARITY_FIXTURE="$PWD/e2e/artifacts/text-fit/fixture.json" \
-//!   cargo test --manifest-path src-tauri/gpui/Cargo.toml --test text_fit
+//!   cargo test --manifest-path rust/gpui/Cargo.toml --test text_fit
 //! ```
 
 fn main() {

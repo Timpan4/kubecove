@@ -19,7 +19,7 @@ test("publishes a manifest and verifies its binary and compiled source inventory
 	try {
 		const input = join(directory, "input");
 		await writeFile(input, "test binary");
-		const compiled = ["src-tauri/gpui/src/lib.rs"];
+		const compiled = ["rust/gpui/src/lib.rs"];
 		const path = await writePrebuiltParity(directory, input, build, compiled);
 		const prebuilt = await verifyPrebuiltParity(path, build);
 		expect(prebuilt.compiled).toEqual(compiled);

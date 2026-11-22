@@ -28,7 +28,7 @@ test.skipIf(process.platform === "win32")("GPUI export only publishes host artif
 	const host = "x86_64-unknown-linux-gnu";
 	const cross = "aarch64-unknown-linux-gnu";
 	try {
-		await mkdir(join(directory, "src-tauri", "gpui"), { recursive: true });
+		await mkdir(join(directory, "rust", "gpui"), { recursive: true });
 		await Promise.all([
 			writeFile(join(directory, "git"), `#!/bin/sh
 if [ "$1" = rev-parse ]; then echo ${"a".repeat(40)}; fi

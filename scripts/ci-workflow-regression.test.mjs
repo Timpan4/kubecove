@@ -224,16 +224,16 @@ for (const [path, selected] of [
   ["scripts/ci-rust-cache-key.mjs", domains],
   ["scripts/check-rust-format.mjs", domains],
   ["bun.lock", ["frontend", "nix"]],
-  ["src-tauri/src/lib.rs", ["rust"]],
-  ["src-tauri/crates/models/src/lib.rs", ["rust"]],
-  ["src-tauri/crates/kube/src/commands/discovery.rs", ["rust"]],
-  ["src-tauri/crates/inspection/src/commands/resources/kubeconform.rs", ["rust"]],
-  ["src-tauri/crates/live/src/commands/streams.rs", ["rust"]],
-  ["src-tauri/crates/gitops/src/commands/argo/connected.rs", ["rust"]],
-  ["src-tauri/crates/host/src/commands/usage.rs", ["rust"]],
-  ["src-tauri/crates/inspection/Cargo.toml", ["nix", "rust"]],
-  ["src-tauri/gpui/updater.json", ["frontend", "rust"]],
-  ["src-tauri/Cargo.lock", ["nix", "rust"]],
+  ["rust/src/lib.rs", ["rust"]],
+  ["rust/crates/models/src/lib.rs", ["rust"]],
+  ["rust/crates/kube/src/commands/discovery.rs", ["rust"]],
+  ["rust/crates/inspection/src/commands/resources/kubeconform.rs", ["rust"]],
+  ["rust/crates/live/src/commands/streams.rs", ["rust"]],
+  ["rust/crates/gitops/src/commands/argo/connected.rs", ["rust"]],
+  ["rust/crates/host/src/commands/usage.rs", ["rust"]],
+  ["rust/crates/inspection/Cargo.toml", ["nix", "rust"]],
+  ["rust/gpui/updater.json", ["frontend", "rust"]],
+  ["rust/Cargo.lock", ["nix", "rust"]],
   ["tools/new-cli/Cargo.lock", ["nix", "rust"]],
   ["Cargo.toml", ["nix", "rust"]],
   [".cargo/config.toml", ["rust"]],
@@ -251,7 +251,7 @@ test("combines scopes and both sides of a cross-domain rename", async () => {
   assert.deepEqual(result.output, flags("docs", "frontend"));
 });
 test("removed files still select their checks", async () => {
-  assert.deepEqual((await detect([], { data: { files: [{ filename: "src-tauri/src/removed.rs", status: "removed" }] } })).output, flags("rust"));
+  assert.deepEqual((await detect([], { data: { files: [{ filename: "rust/src/removed.rs", status: "removed" }] } })).output, flags("rust"));
 });
 test("filenames are data, including newlines and shell metacharacters", async () => {
   assert.deepEqual((await detect(["public/odd\n$(echo bad).svg"])).output, flags("frontend"));
@@ -321,11 +321,11 @@ const tasksByScope = {
 };
 test("change detection selects every required task without duplicate jobs", async () => {
   for (const selected of [[], ["docs"], ["frontend"], ["rust"], ["nix"], domains]) {
-    const paths = selected.map((scope) => ({ docs: "README.md", frontend: "src/App.svelte", rust: "src-tauri/src/lib.rs", nix: "flake.nix" })[scope]);
+    const paths = selected.map((scope) => ({ docs: "README.md", frontend: "src/App.svelte", rust: "rust/src/lib.rs", nix: "flake.nix" })[scope]);
     const { matrix } = await detect(paths);
     assert.deepEqual(matrix.include.map(({ task }) => task).sort(), [...new Set(selected.flatMap((scope) => tasksByScope[scope]))].sort());
     for (const task of matrix.include) {
-      if (task.workspace) assert.ok(["src-tauri", "src-tauri/server", "src-tauri/gpui"].includes(task.workspace));
+      if (task.workspace) assert.ok(["rust", "rust/server", "rust/gpui"].includes(task.workspace));
     }
   }
   // text_fit reads the fixture exported from the browser mocks, so changes to either run it.
@@ -458,14 +458,14 @@ test("every Rust task rejects a missing, failed or cancelled verification step b
 });
 test("Rust task keys cover the audited inputs outside each workspace", async () => {
   const { matrix } = await detect([".github/workflows/ci.yml"]);
-  const shared = ["tests/fixtures/kubernetes/pod-running.json", "package.json", "bun.lock", "scripts/ci-rust-pass.mjs", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock"];
+  const shared = ["tests/fixtures/kubernetes/pod-running.json", "package.json", "bun.lock", "scripts/ci-rust-pass.mjs", "rust/Cargo.toml", "rust/Cargo.lock"];
   const expected = {
     rust: shared,
-    "gpui-clippy": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
-    // text_fit reads the fonts under src-tauri/gpui and the fixture exported from the browser mocks.
-    "gpui-test": [...shared, "src-tauri/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "src-tauri/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "e2e/fixtures/exec-credential-plugin.mjs", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
-    "server-backend": [...shared, "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock"],
-    server: [...shared, "src-tauri/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", "e2e/harness/server-process.ts", "e2e/harness/server-session.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
+    "gpui-clippy": [...shared, "rust/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
+    // text_fit reads the fonts under rust/gpui and the fixture exported from the browser mocks.
+    "gpui-test": [...shared, "rust/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "rust/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "e2e/fixtures/exec-credential-plugin.mjs", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
+    "server-backend": [...shared, "rust/server/Cargo.toml", "rust/server/Cargo.lock"],
+    server: [...shared, "rust/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", "e2e/harness/server-process.ts", "e2e/harness/server-session.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
   };
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     // Exercise the exact shell pathspec arguments supplied to the key writer.
@@ -498,9 +498,9 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
 // invalidate passes, and images must not compete for an immutable pass entry.
 test("compiler bundles keep the original inputs while pass keys use the full audit", async () => {
   const { matrix } = await detect([".github/workflows/ci.yml"]);
-  const desktop = "src-tauri :!src-tauri/gpui :!src-tauri/server";
-  const gpui = "src-tauri :!src-tauri/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile";
-  const server = "src-tauri :!src-tauri/gpui";
+  const desktop = "rust :!rust/gpui :!rust/server";
+  const gpui = "rust :!rust/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile";
+  const server = "rust :!rust/gpui";
   assert.deepEqual(Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, inputs }) => [task, inputs])), {
     rust: desktop, "gpui-clippy": gpui, "gpui-test": gpui, "server-backend": desktop, server,
   });
@@ -577,17 +577,17 @@ test("each existing check remains in its selected task", () => {
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
     "frontend-e2e": ["bun run e2e:fast"],
-    rust: ["node scripts/check-rust-format.mjs", "mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
-    "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
+    rust: ["node scripts/check-rust-format.mjs", "mbx test --workspace --manifest-path rust/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings"],
+    "gpui-clippy": ["mbx clippy --manifest-path rust/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
     "gpui-test": [
       "bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json",
       "if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi",
     ],
-    "server-backend": ["cargo tree --manifest-path src-tauri/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path src-tauri/Cargo.toml"],
+    "server-backend": ["cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path rust/Cargo.toml"],
     server: [
-      "mbx test --manifest-path src-tauri/server/Cargo.toml --locked", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --all-targets --locked -- -D warnings",
-      "mbx test --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path src-tauri/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings",
-      "bun run build", "mbx build --manifest-path src-tauri/server/Cargo.toml --locked", "bun test tests/server-command-contract.test.ts", "bun e2e/headless-smoke.ts --browser",
+      "mbx test --manifest-path rust/server/Cargo.toml --locked", "mbx clippy --manifest-path rust/server/Cargo.toml --all-targets --locked -- -D warnings",
+      "mbx test --manifest-path rust/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path rust/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings",
+      "bun run build", "mbx build --manifest-path rust/server/Cargo.toml --locked", "bun test tests/server-command-contract.test.ts", "bun e2e/headless-smoke.ts --browser",
     ],
   };
   for (const [task, expected] of Object.entries(commands)) {
@@ -698,8 +698,8 @@ test("GPUI tests keep all three phases in one mbx export and reject a skipped te
   try {
     mkdirSync(join(root, outputDir), { recursive: true });
     assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
-    assert.match(gpui, /CARGO_TARGET_DIR: .+\/src-tauri\/gpui\/target/);
-    assert.match(gpui, /CARGO_BUILD_BUILD_DIR: .+\/src-tauri\/gpui\/target/);
+    assert.match(gpui, /CARGO_TARGET_DIR: .+\/rust\/gpui\/target/);
+    assert.match(gpui, /CARGO_BUILD_BUILD_DIR: .+\/rust\/gpui\/target/);
     for (const mode of ["ready", "skipped", "failed"]) {
       writeFileSync(summary, "");
       const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", mock + block(gpui, "run", 8)], {
@@ -707,7 +707,7 @@ test("GPUI tests keep all three phases in one mbx export and reject a skipped te
         env: { ...process.env, GITHUB_STEP_SUMMARY: summary, RUNNER_TEMP: root, MBX_CACHE_EXPORT_GROUP: "shared", MODE: mode },
       });
       assert.equal(result.status, { ready: 0, skipped: 1, failed: 7 }[mode], result.stderr);
-      const common = "mbx test --manifest-path src-tauri/gpui/Cargo.toml --locked";
+      const common = "mbx test --manifest-path rust/gpui/Cargo.toml --locked";
       assert.ok(result.stdout.includes(`${common} --lib --test native, export group shared, fixture none`));
       assert.match(result.stdout, /--test text_fit, export group shared, fixture .+\/e2e\/artifacts\/text-fit\/fixture\.json/);
       assert.equal(result.stdout.includes(`${common} --features e2e --test native -- automation:: e2e_interlock::, export group shared, fixture none`), mode === "ready");
@@ -777,8 +777,8 @@ test("Rust verification selects all workspace members despite root-only default-
   const hook = readFileSync(new URL("../.githooks/pre-commit-user", import.meta.url), "utf8");
   const commands = [
     ...["rust:test", "rust:check", "rust:lint"].map((name) => scripts[name]),
-    ...[...job("checks").matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/g)].map((match) => match[1]),
-    ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path src-tauri\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
+    ...[...job("checks").matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]*--manifest-path rust\/Cargo.toml[^\n]*)/g)].map((match) => match[1]),
+    ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path rust\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
   ];
   // Three package scripts, three CI checks (including the API-only server lane), and the hook.
   assert.equal(commands.length, 7);
@@ -786,7 +786,7 @@ test("Rust verification selects all workspace members despite root-only default-
     const args = command.trim().split(/\s+/);
     const cargoArgs = args.slice(0, args.indexOf("--") === -1 ? args.length : args.indexOf("--"));
     assert.ok(cargoArgs.includes("--workspace"), command);
-    assert.equal(cargoArgs[cargoArgs.indexOf("--manifest-path") + 1], "src-tauri/Cargo.toml", command);
+    assert.equal(cargoArgs[cargoArgs.indexOf("--manifest-path") + 1], "rust/Cargo.toml", command);
   }
 });
 test("Rust dependency audits cover every checked-in lockfile with narrow exceptions", () => {
@@ -804,18 +804,18 @@ test("Rust dependency audits cover every checked-in lockfile with narrow excepti
     return [dirname(/--file (\S+)/.exec(command)[1]), [...command.matchAll(/--ignore (\S+)/g)].map((match) => match[1])];
   }).sort(([left], [right]) => left.localeCompare(right));
   assert.deepEqual(audits.map(([directory]) => directory), lockfileDirectories);
-  assert.deepEqual(audits, [["src-tauri", []], ["src-tauri/gpui", []], ["src-tauri/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]]]);
+  assert.deepEqual(audits, [["rust", []], ["rust/gpui", []], ["rust/server", ["RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]]]);
   assert.match(step("Audit server Rust dependencies"), /public-signature verification/);
 });
 test("server packaging follows the relocated kubeconform source without changing its standalone build", () => {
   const packaging = readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8");
-  assert.match(packaging, /^      - src-tauri\/crates\/inspection\/src\/commands\/resources\/kubeconform\.rs\r?$/m);
-  assert.doesNotMatch(packaging, /src-tauri\/src\/commands\/resources\/kubeconform\.rs/);
-  assert.match(packaging, /cargo build --locked --release --manifest-path src-tauri\/server\/Cargo.toml --target "\$TARGET"/);
+  assert.match(packaging, /^      - rust\/crates\/inspection\/src\/commands\/resources\/kubeconform\.rs\r?$/m);
+  assert.doesNotMatch(packaging, /rust\/src\/commands\/resources\/kubeconform\.rs/);
+  assert.match(packaging, /cargo build --locked --release --manifest-path rust\/server\/Cargo.toml --target "\$TARGET"/);
   assert.doesNotMatch(packaging, /--workspace|--all-features/);
   const dockerIgnore = readFileSync(new URL("../.dockerignore", import.meta.url), "utf8");
-  assert.match(dockerIgnore, /^!src-tauri\/crates\/\r?$/m, "Docker must reopen the crate directory");
-  assert.match(dockerIgnore, /^!src-tauri\/crates\/\*\*\r?$/m, "Docker must include crate sources and manifests");
+  assert.match(dockerIgnore, /^!rust\/crates\/\r?$/m, "Docker must reopen the crate directory");
+  assert.match(dockerIgnore, /^!rust\/crates\/\*\*\r?$/m, "Docker must include crate sources and manifests");
   assert.match(dockerIgnore, /^\*\*\/target\r?$/m, "Rust build caches must stay out of the context");
 });
 // Failure mode: vite.config.ts imports a scripts/ module that the container context or the Nix
@@ -860,8 +860,8 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
   // The GPUI and server crates are separate workspaces that both build the desktop crates.
   assert.deepEqual(Object.fromEntries(Object.entries(workspaces).map(([task, [workspace]]) => [task, workspace])), {
-    rust: "src-tauri", "gpui-clippy": "src-tauri/gpui", "gpui-test": "src-tauri/gpui",
-    "server-backend": "src-tauri", server: "src-tauri/server",
+    rust: "rust", "gpui-clippy": "rust/gpui", "gpui-test": "rust/gpui",
+    "server-backend": "rust", server: "rust/server",
   });
   assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
   assert.doesNotMatch(job("checks"), /swatinem\/rust-cache|save-on-(?:protected-branch|workflow-dispatch)/i);
@@ -885,7 +885,7 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     writeFileSync(join(root, path), text);
     assert.equal(spawnSync("git", ["add", "--", path], { cwd: root, env }).status, 0);
   };
-  const run = (overrides, pathspecs = ["workflow.yml", "src-tauri", ":!src-tauri/gpui"]) => spawnSync(
+  const run = (overrides, pathspecs = ["workflow.yml", "rust", ":!rust/gpui"]) => spawnSync(
     process.execPath, [fileURLToPath(new URL("./ci-rust-cache-key.mjs", import.meta.url)), "ci-rust", ...pathspecs],
     { cwd: root, env: { ...env, ...overrides }, encoding: "utf8" },
   );
@@ -902,16 +902,16 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     mkdirSync(join(root, "bin"));
     writeFileSync(join(root, "bin", "rustc"), "#!/bin/sh\necho \"rustc $RUSTC_VERSION\"\n");
     chmodSync(join(root, "bin", "rustc"), 0o755);
-    write("workflow.yml", "one\n"); write("src-tauri/src/lib.rs", "one\n"); write("src-tauri/gpui/src/main.rs", "one\n"); write("README.md", "one\n");
+    write("workflow.yml", "one\n"); write("rust/src/lib.rs", "one\n"); write("rust/gpui/src/main.rs", "one\n"); write("README.md", "one\n");
     // The real checkout always tracks the two scripts the key includes, so the fixture does too.
     write("scripts/ci-rust-cache-key.mjs", "one\n"); write("scripts/ci-mbx-cargo.mjs", "one\n");
     const first = key();
     assert.deepEqual(key(), first);
     // The cleanup finds the caches it may delete by this key shape.
     assert.equal(cacheName(first.key), "ci-rust");
-    write("src-tauri/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
+    write("rust/gpui/src/main.rs", "two\n"); write("README.md", "two\n");
     assert.deepEqual(key(), first);
-    write("src-tauri/src/lib.rs", "two\n");
+    write("rust/src/lib.rs", "two\n");
     const source = key();
     assert.notEqual(source.key, first.key);
     assert.equal(source.prefix, first.prefix);
@@ -920,8 +920,8 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     assert.deepEqual(key({ ImageVersion: "2" }), key());
     assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
     assert.notEqual(run({}, ["missing"]).status, 0);
-    assert.notEqual(run({}, ["workflow.yml", "src-tauri", "missing"]).status, 0);
-    assert.equal(run({}, ["workflow.yml", "src-tauri", ":!missing"]).status, 0);
+    assert.notEqual(run({}, ["workflow.yml", "rust", "missing"]).status, 0);
+    assert.equal(run({}, ["workflow.yml", "rust", ":!missing"]).status, 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("the required gate checks code-only diffs, including shallow pull request merges", async () => {
@@ -1242,14 +1242,14 @@ test("parity builds each GPUI binary once and runs shards from the matching arti
   assert.match(step("Install GPUI Linux dependencies"), /if: \$\{\{ inputs.driver != 'web' \}\}\n {8}uses: \.\/\.github\/actions\/setup-linux-native-deps/);
   assert.match(step("Key the Rust cache by its inputs"), /parity\$\{\{ inputs.coverage && '-coverage' \|\| '' \}\} \.github\/workflows\/parity-suite\.yml/);
   assert.match(step("Cache Rust builds"), /uses: jdx\/mr-boxington-action@[a-f0-9]{40} # v1\n/);
-  for (const line of ['version: "1.30.0"', "working-directory: src-tauri/gpui", `cache-key: \${{ steps.rust-cache.outputs.key }}`, `restore-keys: \${{ steps.rust-cache.outputs.prefix }}`, "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true"]) {
+  for (const line of ['version: "1.30.0"', "working-directory: rust/gpui", `cache-key: \${{ steps.rust-cache.outputs.key }}`, `restore-keys: \${{ steps.rust-cache.outputs.prefix }}`, "github-cache-mode: objects", "isolate-objects-cache: true", "clean-target-before-export: true"]) {
     assert.ok(step("Cache Rust builds").includes(`\n          ${line}\n`), `Missing cache setting: ${line}`);
   }
   assert.match(step("Activate Cargo caching"), /run: node scripts\/ci-mbx-cargo\.mjs/);
   assert.doesNotMatch(suite, /swatinem\/rust-cache|^ *cache-mode:|ACTIONS_CACHE_MODE: /im);
   const seedStep = step("Seed the uninstrumented GPUI cache");
   assert.ok(seedStep.includes(`if: \${{ inputs.build == 'cache' }}`));
-  assert.match(seedStep, /cargo test --manifest-path src-tauri\/gpui\/Cargo\.toml --test parity --no-run --message-format=json-render-diagnostics$/m);
+  assert.match(seedStep, /cargo test --manifest-path rust\/gpui\/Cargo\.toml --test parity --no-run --message-format=json-render-diagnostics$/m);
 
   const build = step("Export the GPUI parity binary");
   const run = step("Run parity suite");

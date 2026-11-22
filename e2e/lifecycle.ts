@@ -545,9 +545,9 @@ async function desktopSmoke() {
 				KUBECOVE_MEMORY_FIXTURE_ROWS: fixture && String(fixture.rows) }, artifacts, cancellation.signal, runWdio);
 		} else {
 			const binary = os === "windows" ? undefined : await browserBuild.build(artifacts, false);
-			const target = join(root, "src-tauri/gpui/target");
-			const buildEnv = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: join(root, "src-tauri/gpui/build"), RUSTC_WRAPPER: "" };
-			const cargo = ["cargo", "build", "--locked", "--manifest-path", "src-tauri/gpui/Cargo.toml", "--features", "e2e"];
+			const target = join(root, "rust/gpui/target");
+			const buildEnv = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: join(root, "rust/gpui/build"), RUSTC_WRAPPER: "" };
+			const cargo = ["cargo", "build", "--locked", "--manifest-path", "rust/gpui/Cargo.toml", "--features", "e2e"];
 			if (os === "linux") {
 				await mkdir(target, { recursive: true });
 				await execute("flock", [join(target, "heavy.lock"), "nice", "-n", "10", ...cargo], buildEnv);

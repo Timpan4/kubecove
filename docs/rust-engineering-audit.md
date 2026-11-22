@@ -39,15 +39,15 @@ Helm compatibility was checked against [Helm's storage decoder](https://github.c
 
 - Baseline full Rust tests: 340 passed, 1 ignored.
 - Final full debug Rust tests: 338 unit tests and 26 integration tests passed; 2 ignored. The kubeconform child fixture is ignored as a standalone test but explicitly exercised by its passing parent test. The other ignored test requires a live cluster.
-- `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings`: passed after correcting the reported lints.
-- `cargo fmt --manifest-path src-tauri/Cargo.toml`: completed.
+- `cargo clippy --manifest-path rust/Cargo.toml --all-targets --all-features --locked -- -D warnings`: passed after correcting the reported lints.
+- `cargo fmt --manifest-path rust/Cargo.toml`: completed.
 - `bun run typecheck`: passed.
 - `bun run svelte:check`: passed with zero errors and warnings.
 - `bun run lint`: passed with five existing `App.css` warnings. New terminal-test lint notices were corrected; targeted Biome check passed.
 - `bun test src/features/resource-detail/execInput.test.ts`: 4 passed.
 - `git diff --check`: passed.
 - Release numeric tests: all 9 metric tests and the restart-count boundary test passed.
-- `cargo check --manifest-path src-tauri/Cargo.toml --locked`: passed on the final tree.
+- `cargo check --manifest-path rust/Cargo.toml --locked`: passed on the final tree.
 - `bun run docs:check`: passed.
 
 The independent reviewer checked errors, Helm decoding, exec admission, port-forward ownership, URI validation, Secret redaction, and changed log reads. It found no actionable issue in that scope. Aggregate-log cleanup and kubeconform's final parser changes were reviewed locally and tested separately.
@@ -68,139 +68,139 @@ Red-before-green proof was run for the demonstrated parser, permission, numeric,
 
 ## File coverage
 
-Paths below are relative to `src-tauri` at the reviewed baseline; link destinations follow the later crate relocation. "Updated" includes typed-error migrations and adjusted tests. The findings and verification limits above apply to the reviewed tree as a whole.
+Paths below are relative to `rust` at the reviewed baseline; link destinations follow the later crate relocation. "Updated" includes typed-error migrations and adjusted tests. The findings and verification limits above apply to the reviewed tree as a whole.
 
 | File | Review result |
 | --- | --- |
-| [benches/backend_hot_paths.rs](../src-tauri/benches/backend_hot_paths.rs) | Read; unchanged |
-| [build.rs](../src-tauri/build.rs) | Read; unchanged |
-| [src/commands/argo/applications.rs](../src-tauri/crates/gitops/src/commands/argo/applications.rs) | Read; updated |
-| [src/commands/argo/appprojects.rs](../src-tauri/crates/gitops/src/commands/argo/appprojects.rs) | Read; updated |
-| [src/commands/argo/appsets.rs](../src-tauri/crates/gitops/src/commands/argo/appsets.rs) | Read; updated |
-| [src/commands/argo/comparison.rs](../src-tauri/crates/gitops/src/commands/argo/comparison.rs) | Read; updated |
-| [src/commands/argo/connected.rs](../src-tauri/crates/gitops/src/commands/argo/connected.rs) | Read; updated |
-| [src/commands/argo/mod.rs](../src-tauri/crates/gitops/src/commands/argo/mod.rs) | Read; unchanged |
-| [src/commands/argo/operations.rs](../src-tauri/crates/gitops/src/commands/argo/operations.rs) | Read; updated |
-| [src/commands/argo/scope.rs](../src-tauri/crates/gitops/src/commands/argo/scope.rs) | Read; updated |
-| [src/commands/argo/session.rs](../src-tauri/crates/gitops/src/commands/argo/session.rs) | Read; updated |
-| [src/commands/argo/transport.rs](../src-tauri/crates/gitops/src/commands/argo/transport.rs) | Read; updated |
-| [src/commands/argo/tunnel.rs](../src-tauri/crates/gitops/src/commands/argo/tunnel.rs) | Read; updated |
-| [src/commands/bench_support.rs](../src-tauri/src/commands/bench_support.rs) | Read; unchanged |
-| [src/commands/cancellation.rs](../src-tauri/crates/kube/src/commands/cancellation.rs) | Read; updated |
-| [src/commands/contexts.rs](../src-tauri/crates/kube/src/commands/contexts.rs) | Read; updated |
-| [src/commands/diagnostics.rs](../src-tauri/crates/kube/src/commands/diagnostics.rs) | Read; updated |
-| [src/commands/discovery.rs](../src-tauri/crates/inspection/src/commands/discovery.rs) | Read; updated |
-| [src/commands/events.rs](../src-tauri/crates/inspection/src/commands/events.rs) | Read; updated |
-| [src/commands/flux/mod.rs](../src-tauri/crates/gitops/src/commands/flux/mod.rs) | Read; updated |
-| [src/commands/gitops_crd.rs](../src-tauri/crates/gitops/src/commands/gitops_crd.rs) | Read; updated |
-| [src/commands/helm/manifest.rs](../src-tauri/crates/gitops/src/commands/helm/manifest.rs) | Read; unchanged |
-| [src/commands/helm/mod.rs](../src-tauri/crates/gitops/src/commands/helm/mod.rs) | Read; unchanged |
-| [src/commands/helm/reconciliation.rs](../src-tauri/crates/gitops/src/commands/helm/reconciliation.rs) | Read; updated |
-| [src/commands/helm/reconciliation_tests.rs](../src-tauri/crates/gitops/src/commands/helm/reconciliation_tests.rs) | Read; unchanged |
-| [src/commands/helm/redaction.rs](../src-tauri/crates/gitops/src/commands/helm/redaction.rs) | Read; unchanged |
-| [src/commands/helm/storage.rs](../src-tauri/crates/gitops/src/commands/helm/storage.rs) | Read; updated |
-| [src/commands/helm/storage_tests.rs](../src-tauri/crates/gitops/src/commands/helm/storage_tests.rs) | Read; updated |
-| [src/commands/helm/time.rs](../src-tauri/crates/gitops/src/commands/helm/time.rs) | Read; unchanged |
-| [src/commands/helm/values.rs](../src-tauri/crates/gitops/src/commands/helm/values.rs) | Read; unchanged |
-| [src/commands/helpers.rs](../src-tauri/crates/kube/src/commands/helpers.rs) | Read; updated |
-| [src/commands/helpers/client_cache.rs](../src-tauri/crates/kube/src/commands/helpers/client_cache.rs) | Read; unchanged |
-| [src/commands/helpers/client_cache_tests.rs](../src-tauri/crates/kube/src/commands/helpers/client_cache_tests.rs) | Read; unchanged |
-| [src/commands/helpers/client_cancellation.rs](../src-tauri/crates/kube/src/commands/helpers/client_cancellation.rs) | Read; updated |
-| [src/commands/helpers/health.rs](../src-tauri/crates/kube/src/commands/helpers/health.rs) | Read; updated |
-| [src/commands/helpers/metadata.rs](../src-tauri/crates/kube/src/commands/helpers/metadata.rs) | Read; updated |
-| [src/commands/helpers/metadata/flux_inventory.rs](../src-tauri/crates/kube/src/commands/helpers/metadata/flux_inventory.rs) | Read; updated |
-| [src/commands/helpers/metadata/ownership.rs](../src-tauri/crates/kube/src/commands/helpers/metadata/ownership.rs) | Read; unchanged |
-| [src/commands/helpers/serialization.rs](../src-tauri/crates/kube/src/commands/helpers/serialization.rs) | Read; updated |
-| [src/commands/helpers/time.rs](../src-tauri/crates/kube/src/commands/helpers/time.rs) | Read; unchanged |
-| [src/commands/helpers/validation.rs](../src-tauri/crates/kube/src/commands/helpers/validation.rs) | Added; reviewed |
-| [src/commands/incidents.rs](../src-tauri/crates/inspection/src/commands/incidents.rs) | Read; updated |
-| [src/commands/incidents/health.rs](../src-tauri/crates/inspection/src/commands/incidents/health.rs) | Read; unchanged |
-| [src/commands/incidents/restarts.rs](../src-tauri/crates/inspection/src/commands/incidents/restarts.rs) | Read; unchanged |
-| [src/commands/kubeconfig.rs](../src-tauri/crates/kube/src/commands/kubeconfig.rs) | Read; updated |
-| [src/commands/kubeconfig_clients.rs, now cluster_access/clients.rs](../src-tauri/crates/kube/src/commands/cluster_access/clients.rs) | Read; updated |
-| [src/commands/kubeconfig_tests.rs](../src-tauri/crates/kube/src/commands/kubeconfig_tests.rs) | Read; updated |
-| [src/commands/live_sessions.rs](../src-tauri/crates/live/src/commands/live_sessions.rs) | Read; updated |
-| [src/commands/live_store.rs](../src-tauri/crates/kube/src/commands/live_store.rs) | Read; updated |
-| [src/commands/live_store_tests.rs](../src-tauri/crates/kube/src/commands/live_store_tests.rs) | Read; updated |
-| [src/commands/metrics.rs](../src-tauri/crates/inspection/src/commands/metrics.rs) | Read; updated |
-| [src/commands/metrics_tests.rs](../src-tauri/crates/inspection/src/commands/metrics_tests.rs) | Added; reviewed |
-| [src/commands/mod.rs](../src-tauri/src/commands/mod.rs) | Read; unchanged |
-| [src/commands/namespaces.rs](../src-tauri/crates/inspection/src/commands/namespaces.rs) | Read; updated |
-| [src/commands/operations.rs](../src-tauri/crates/inspection/src/commands/operations.rs) | Read; updated |
-| [src/commands/pod_exec.rs](../src-tauri/crates/live/src/commands/pod_exec.rs) | Read; updated |
-| [src/commands/pod_exec/registry.rs](../src-tauri/crates/live/src/commands/pod_exec/registry.rs) | Read; updated |
-| [src/commands/pod_exec/runner.rs](../src-tauri/crates/live/src/commands/pod_exec/runner.rs) | Read; updated |
-| [src/commands/pod_exec/tests.rs](../src-tauri/crates/live/src/commands/pod_exec/tests.rs) | Read; updated |
-| [src/commands/pod_exec/validation.rs](../src-tauri/crates/live/src/commands/pod_exec/validation.rs) | Read; updated |
-| [src/commands/rbac.rs](../src-tauri/crates/inspection/src/commands/rbac.rs) | Read; unchanged |
-| [src/commands/rbac_inventory.rs](../src-tauri/crates/inspection/src/commands/rbac_inventory.rs) | Read; updated |
-| [src/commands/rbac_review.rs](../src-tauri/crates/inspection/src/commands/rbac_review.rs) | Read; updated |
-| [src/commands/rbac_risk.rs](../src-tauri/crates/inspection/src/commands/rbac_risk.rs) | Read; unchanged |
-| [src/commands/rbac_tests.rs](../src-tauri/crates/inspection/src/commands/rbac_tests.rs) | Read; unchanged |
-| [src/commands/resources.rs](../src-tauri/crates/inspection/src/commands/resources.rs) | Read; unchanged |
-| [src/commands/resources/apply.rs](../src-tauri/crates/inspection/src/commands/resources/apply.rs) | Read; unchanged |
-| [src/commands/resources/apply/execution.rs](../src-tauri/crates/inspection/src/commands/resources/apply/execution.rs) | Read; updated |
-| [src/commands/resources/apply/linting.rs](../src-tauri/crates/inspection/src/commands/resources/apply/linting.rs) | Read; unchanged |
-| [src/commands/resources/apply/validation.rs](../src-tauri/crates/inspection/src/commands/resources/apply/validation.rs) | Read; updated |
-| [src/commands/resources/apply_client_tests.rs](../src-tauri/crates/inspection/src/commands/resources/apply_client_tests.rs) | Read; updated |
-| [src/commands/resources/details.rs](../src-tauri/crates/inspection/src/commands/resources/details.rs) | Read; updated |
+| [benches/backend_hot_paths.rs](../rust/benches/backend_hot_paths.rs) | Read; unchanged |
+| [build.rs](../rust/build.rs) | Read; unchanged |
+| [src/commands/argo/applications.rs](../rust/crates/gitops/src/commands/argo/applications.rs) | Read; updated |
+| [src/commands/argo/appprojects.rs](../rust/crates/gitops/src/commands/argo/appprojects.rs) | Read; updated |
+| [src/commands/argo/appsets.rs](../rust/crates/gitops/src/commands/argo/appsets.rs) | Read; updated |
+| [src/commands/argo/comparison.rs](../rust/crates/gitops/src/commands/argo/comparison.rs) | Read; updated |
+| [src/commands/argo/connected.rs](../rust/crates/gitops/src/commands/argo/connected.rs) | Read; updated |
+| [src/commands/argo/mod.rs](../rust/crates/gitops/src/commands/argo/mod.rs) | Read; unchanged |
+| [src/commands/argo/operations.rs](../rust/crates/gitops/src/commands/argo/operations.rs) | Read; updated |
+| [src/commands/argo/scope.rs](../rust/crates/gitops/src/commands/argo/scope.rs) | Read; updated |
+| [src/commands/argo/session.rs](../rust/crates/gitops/src/commands/argo/session.rs) | Read; updated |
+| [src/commands/argo/transport.rs](../rust/crates/gitops/src/commands/argo/transport.rs) | Read; updated |
+| [src/commands/argo/tunnel.rs](../rust/crates/gitops/src/commands/argo/tunnel.rs) | Read; updated |
+| [src/commands/bench_support.rs](../rust/src/commands/bench_support.rs) | Read; unchanged |
+| [src/commands/cancellation.rs](../rust/crates/kube/src/commands/cancellation.rs) | Read; updated |
+| [src/commands/contexts.rs](../rust/crates/kube/src/commands/contexts.rs) | Read; updated |
+| [src/commands/diagnostics.rs](../rust/crates/kube/src/commands/diagnostics.rs) | Read; updated |
+| [src/commands/discovery.rs](../rust/crates/inspection/src/commands/discovery.rs) | Read; updated |
+| [src/commands/events.rs](../rust/crates/inspection/src/commands/events.rs) | Read; updated |
+| [src/commands/flux/mod.rs](../rust/crates/gitops/src/commands/flux/mod.rs) | Read; updated |
+| [src/commands/gitops_crd.rs](../rust/crates/gitops/src/commands/gitops_crd.rs) | Read; updated |
+| [src/commands/helm/manifest.rs](../rust/crates/gitops/src/commands/helm/manifest.rs) | Read; unchanged |
+| [src/commands/helm/mod.rs](../rust/crates/gitops/src/commands/helm/mod.rs) | Read; unchanged |
+| [src/commands/helm/reconciliation.rs](../rust/crates/gitops/src/commands/helm/reconciliation.rs) | Read; updated |
+| [src/commands/helm/reconciliation_tests.rs](../rust/crates/gitops/src/commands/helm/reconciliation_tests.rs) | Read; unchanged |
+| [src/commands/helm/redaction.rs](../rust/crates/gitops/src/commands/helm/redaction.rs) | Read; unchanged |
+| [src/commands/helm/storage.rs](../rust/crates/gitops/src/commands/helm/storage.rs) | Read; updated |
+| [src/commands/helm/storage_tests.rs](../rust/crates/gitops/src/commands/helm/storage_tests.rs) | Read; updated |
+| [src/commands/helm/time.rs](../rust/crates/gitops/src/commands/helm/time.rs) | Read; unchanged |
+| [src/commands/helm/values.rs](../rust/crates/gitops/src/commands/helm/values.rs) | Read; unchanged |
+| [src/commands/helpers.rs](../rust/crates/kube/src/commands/helpers.rs) | Read; updated |
+| [src/commands/helpers/client_cache.rs](../rust/crates/kube/src/commands/helpers/client_cache.rs) | Read; unchanged |
+| [src/commands/helpers/client_cache_tests.rs](../rust/crates/kube/src/commands/helpers/client_cache_tests.rs) | Read; unchanged |
+| [src/commands/helpers/client_cancellation.rs](../rust/crates/kube/src/commands/helpers/client_cancellation.rs) | Read; updated |
+| [src/commands/helpers/health.rs](../rust/crates/kube/src/commands/helpers/health.rs) | Read; updated |
+| [src/commands/helpers/metadata.rs](../rust/crates/kube/src/commands/helpers/metadata.rs) | Read; updated |
+| [src/commands/helpers/metadata/flux_inventory.rs](../rust/crates/kube/src/commands/helpers/metadata/flux_inventory.rs) | Read; updated |
+| [src/commands/helpers/metadata/ownership.rs](../rust/crates/kube/src/commands/helpers/metadata/ownership.rs) | Read; unchanged |
+| [src/commands/helpers/serialization.rs](../rust/crates/kube/src/commands/helpers/serialization.rs) | Read; updated |
+| [src/commands/helpers/time.rs](../rust/crates/kube/src/commands/helpers/time.rs) | Read; unchanged |
+| [src/commands/helpers/validation.rs](../rust/crates/kube/src/commands/helpers/validation.rs) | Added; reviewed |
+| [src/commands/incidents.rs](../rust/crates/inspection/src/commands/incidents.rs) | Read; updated |
+| [src/commands/incidents/health.rs](../rust/crates/inspection/src/commands/incidents/health.rs) | Read; unchanged |
+| [src/commands/incidents/restarts.rs](../rust/crates/inspection/src/commands/incidents/restarts.rs) | Read; unchanged |
+| [src/commands/kubeconfig.rs](../rust/crates/kube/src/commands/kubeconfig.rs) | Read; updated |
+| [src/commands/kubeconfig_clients.rs, now cluster_access/clients.rs](../rust/crates/kube/src/commands/cluster_access/clients.rs) | Read; updated |
+| [src/commands/kubeconfig_tests.rs](../rust/crates/kube/src/commands/kubeconfig_tests.rs) | Read; updated |
+| [src/commands/live_sessions.rs](../rust/crates/live/src/commands/live_sessions.rs) | Read; updated |
+| [src/commands/live_store.rs](../rust/crates/kube/src/commands/live_store.rs) | Read; updated |
+| [src/commands/live_store_tests.rs](../rust/crates/kube/src/commands/live_store_tests.rs) | Read; updated |
+| [src/commands/metrics.rs](../rust/crates/inspection/src/commands/metrics.rs) | Read; updated |
+| [src/commands/metrics_tests.rs](../rust/crates/inspection/src/commands/metrics_tests.rs) | Added; reviewed |
+| [src/commands/mod.rs](../rust/src/commands/mod.rs) | Read; unchanged |
+| [src/commands/namespaces.rs](../rust/crates/inspection/src/commands/namespaces.rs) | Read; updated |
+| [src/commands/operations.rs](../rust/crates/inspection/src/commands/operations.rs) | Read; updated |
+| [src/commands/pod_exec.rs](../rust/crates/live/src/commands/pod_exec.rs) | Read; updated |
+| [src/commands/pod_exec/registry.rs](../rust/crates/live/src/commands/pod_exec/registry.rs) | Read; updated |
+| [src/commands/pod_exec/runner.rs](../rust/crates/live/src/commands/pod_exec/runner.rs) | Read; updated |
+| [src/commands/pod_exec/tests.rs](../rust/crates/live/src/commands/pod_exec/tests.rs) | Read; updated |
+| [src/commands/pod_exec/validation.rs](../rust/crates/live/src/commands/pod_exec/validation.rs) | Read; updated |
+| [src/commands/rbac.rs](../rust/crates/inspection/src/commands/rbac.rs) | Read; unchanged |
+| [src/commands/rbac_inventory.rs](../rust/crates/inspection/src/commands/rbac_inventory.rs) | Read; updated |
+| [src/commands/rbac_review.rs](../rust/crates/inspection/src/commands/rbac_review.rs) | Read; updated |
+| [src/commands/rbac_risk.rs](../rust/crates/inspection/src/commands/rbac_risk.rs) | Read; unchanged |
+| [src/commands/rbac_tests.rs](../rust/crates/inspection/src/commands/rbac_tests.rs) | Read; unchanged |
+| [src/commands/resources.rs](../rust/crates/inspection/src/commands/resources.rs) | Read; unchanged |
+| [src/commands/resources/apply.rs](../rust/crates/inspection/src/commands/resources/apply.rs) | Read; unchanged |
+| [src/commands/resources/apply/execution.rs](../rust/crates/inspection/src/commands/resources/apply/execution.rs) | Read; updated |
+| [src/commands/resources/apply/linting.rs](../rust/crates/inspection/src/commands/resources/apply/linting.rs) | Read; unchanged |
+| [src/commands/resources/apply/validation.rs](../rust/crates/inspection/src/commands/resources/apply/validation.rs) | Read; updated |
+| [src/commands/resources/apply_client_tests.rs](../rust/crates/inspection/src/commands/resources/apply_client_tests.rs) | Read; updated |
+| [src/commands/resources/details.rs](../rust/crates/inspection/src/commands/resources/details.rs) | Read; updated |
 | src/commands/resources/details/cluster.rs | Read; updated; later merged into the shared summary projection |
 | src/commands/resources/details/core.rs | Read; updated; later merged into the shared summary projection |
 | src/commands/resources/details/workloads.rs | Read; updated; later merged into the shared summary projection |
-| [src/commands/resources/dynamic.rs](../src-tauri/crates/inspection/src/commands/resources/dynamic.rs) | Read; updated |
-| [src/commands/resources/ingress_status.rs](../src-tauri/crates/inspection/src/commands/resources/ingress_status.rs) | Read; unchanged |
-| [src/commands/resources/kubeconform.rs](../src-tauri/crates/inspection/src/commands/resources/kubeconform.rs) | Read; updated |
-| [src/commands/resources/revisions.rs](../src-tauri/crates/inspection/src/commands/resources/revisions.rs) | Read; updated |
-| [src/commands/resources/scope.rs](../src-tauri/crates/inspection/src/commands/resources/scope.rs) | Read; updated |
-| [src/commands/resources/summary.rs](../src-tauri/crates/inspection/src/commands/resources/summary.rs) | Read; updated |
-| [src/commands/resources/summary_cluster.rs](../src-tauri/crates/inspection/src/commands/resources/summary_cluster.rs) | Read; updated |
-| [src/commands/resources/summary_core.rs](../src-tauri/crates/inspection/src/commands/resources/summary_core.rs) | Read; updated |
-| [src/commands/resources/summary_workloads.rs](../src-tauri/crates/inspection/src/commands/resources/summary_workloads.rs) | Read; updated |
-| [src/commands/resources/topology.rs](../src-tauri/crates/inspection/src/commands/resources/topology.rs) | Read; updated |
-| [src/commands/resources/topology_collection.rs](../src-tauri/crates/inspection/src/commands/resources/topology_collection.rs) | Read; updated |
-| [src/commands/resources/topology_dynamic.rs](../src-tauri/crates/inspection/src/commands/resources/topology_dynamic.rs) | Read; updated |
-| [src/commands/resources/topology_network.rs](../src-tauri/crates/inspection/src/commands/resources/topology_network.rs) | Read; unchanged |
-| [src/commands/resources/topology_tests.rs](../src-tauri/crates/inspection/src/commands/resources/topology_tests.rs) | Read; unchanged |
-| [src/commands/resources/yaml.rs](../src-tauri/crates/inspection/src/commands/resources/yaml.rs) | Read; updated |
-| [src/commands/sessions.rs](../src-tauri/crates/live/src/commands/sessions.rs) | Read; updated |
-| [src/commands/sessions/lifecycle.rs](../src-tauri/crates/live/src/commands/sessions/lifecycle.rs) | Read; updated |
-| [src/commands/sessions/runner.rs](../src-tauri/crates/live/src/commands/sessions/runner.rs) | Read; updated |
-| [src/commands/sessions/service.rs](../src-tauri/crates/live/src/commands/sessions/service.rs) | Read; updated |
-| [src/commands/sessions/target.rs](../src-tauri/crates/live/src/commands/sessions/target.rs) | Read; updated |
-| [src/commands/sessions/tests.rs](../src-tauri/crates/live/src/commands/sessions/tests.rs) | Read; updated |
-| [src/commands/streams.rs](../src-tauri/crates/live/src/commands/streams.rs) | Read; updated |
-| [src/commands/streams/aggregate_logs.rs](../src-tauri/crates/live/src/commands/streams/aggregate_logs.rs) | Read; updated |
-| [src/commands/streams/kinds.rs](../src-tauri/crates/live/src/commands/streams/kinds.rs) | Read; updated |
-| [src/commands/streams/logs.rs](../src-tauri/crates/live/src/commands/streams/logs.rs) | Read; updated |
-| [src/commands/streams/registry.rs](../src-tauri/crates/live/src/commands/streams/registry.rs) | Read; updated |
-| [src/commands/streams/watch.rs](../src-tauri/crates/live/src/commands/streams/watch.rs) | Read; updated |
-| [src/commands/usage.rs](../src-tauri/crates/host/src/usage.rs) | Read; updated |
-| [src/commands/usage_webview.rs](../src-tauri/crates/host/src/usage_webview.rs) | Read; unchanged |
+| [src/commands/resources/dynamic.rs](../rust/crates/inspection/src/commands/resources/dynamic.rs) | Read; updated |
+| [src/commands/resources/ingress_status.rs](../rust/crates/inspection/src/commands/resources/ingress_status.rs) | Read; unchanged |
+| [src/commands/resources/kubeconform.rs](../rust/crates/inspection/src/commands/resources/kubeconform.rs) | Read; updated |
+| [src/commands/resources/revisions.rs](../rust/crates/inspection/src/commands/resources/revisions.rs) | Read; updated |
+| [src/commands/resources/scope.rs](../rust/crates/inspection/src/commands/resources/scope.rs) | Read; updated |
+| [src/commands/resources/summary.rs](../rust/crates/inspection/src/commands/resources/summary.rs) | Read; updated |
+| [src/commands/resources/summary_cluster.rs](../rust/crates/inspection/src/commands/resources/summary_cluster.rs) | Read; updated |
+| [src/commands/resources/summary_core.rs](../rust/crates/inspection/src/commands/resources/summary_core.rs) | Read; updated |
+| [src/commands/resources/summary_workloads.rs](../rust/crates/inspection/src/commands/resources/summary_workloads.rs) | Read; updated |
+| [src/commands/resources/topology.rs](../rust/crates/inspection/src/commands/resources/topology.rs) | Read; updated |
+| [src/commands/resources/topology_collection.rs](../rust/crates/inspection/src/commands/resources/topology_collection.rs) | Read; updated |
+| [src/commands/resources/topology_dynamic.rs](../rust/crates/inspection/src/commands/resources/topology_dynamic.rs) | Read; updated |
+| [src/commands/resources/topology_network.rs](../rust/crates/inspection/src/commands/resources/topology_network.rs) | Read; unchanged |
+| [src/commands/resources/topology_tests.rs](../rust/crates/inspection/src/commands/resources/topology_tests.rs) | Read; unchanged |
+| [src/commands/resources/yaml.rs](../rust/crates/inspection/src/commands/resources/yaml.rs) | Read; updated |
+| [src/commands/sessions.rs](../rust/crates/live/src/commands/sessions.rs) | Read; updated |
+| [src/commands/sessions/lifecycle.rs](../rust/crates/live/src/commands/sessions/lifecycle.rs) | Read; updated |
+| [src/commands/sessions/runner.rs](../rust/crates/live/src/commands/sessions/runner.rs) | Read; updated |
+| [src/commands/sessions/service.rs](../rust/crates/live/src/commands/sessions/service.rs) | Read; updated |
+| [src/commands/sessions/target.rs](../rust/crates/live/src/commands/sessions/target.rs) | Read; updated |
+| [src/commands/sessions/tests.rs](../rust/crates/live/src/commands/sessions/tests.rs) | Read; updated |
+| [src/commands/streams.rs](../rust/crates/live/src/commands/streams.rs) | Read; updated |
+| [src/commands/streams/aggregate_logs.rs](../rust/crates/live/src/commands/streams/aggregate_logs.rs) | Read; updated |
+| [src/commands/streams/kinds.rs](../rust/crates/live/src/commands/streams/kinds.rs) | Read; updated |
+| [src/commands/streams/logs.rs](../rust/crates/live/src/commands/streams/logs.rs) | Read; updated |
+| [src/commands/streams/registry.rs](../rust/crates/live/src/commands/streams/registry.rs) | Read; updated |
+| [src/commands/streams/watch.rs](../rust/crates/live/src/commands/streams/watch.rs) | Read; updated |
+| [src/commands/usage.rs](../rust/crates/host/src/usage.rs) | Read; updated |
+| [src/commands/usage_webview.rs](../rust/crates/host/src/usage_webview.rs) | Read; unchanged |
 | `src/commands/workspace_files.rs` | Read; updated |
-| [src/e2e.rs](../src-tauri/crates/kube/src/e2e.rs) | Read; updated |
-| [src/lib.rs](../src-tauri/src/lib.rs) | Read; unchanged |
+| [src/e2e.rs](../rust/crates/kube/src/e2e.rs) | Read; updated |
+| [src/lib.rs](../rust/src/lib.rs) | Read; unchanged |
 | `src/main.rs` | Read; unchanged |
-| [src/models/argo.rs](../src-tauri/crates/models/src/argo.rs) | Read; updated |
-| [src/models/cancellation.rs](../src-tauri/crates/models/src/cancellation.rs) | Read; unchanged |
-| [src/models/cluster.rs](../src-tauri/crates/models/src/cluster.rs) | Read; unchanged |
-| [src/models/diagnostics.rs](../src-tauri/crates/models/src/diagnostics.rs) | Read; unchanged |
-| [src/models/discovery.rs](../src-tauri/crates/models/src/discovery.rs) | Read; unchanged |
-| [src/models/error.rs](../src-tauri/crates/models/src/error.rs) | Read; updated |
-| [src/models/events.rs](../src-tauri/crates/models/src/events.rs) | Read; unchanged |
-| [src/models/flux.rs](../src-tauri/crates/models/src/flux.rs) | Read; unchanged |
-| [src/models/health.rs](../src-tauri/crates/models/src/health.rs) | Read; unchanged |
-| [src/models/helm.rs](../src-tauri/crates/models/src/helm.rs) | Read; unchanged |
-| [src/models/incidents.rs](../src-tauri/crates/models/src/incidents.rs) | Read; unchanged |
-| [src/models/metrics.rs](../src-tauri/crates/models/src/metrics.rs) | Read; unchanged |
-| [src/models/mod.rs](../src-tauri/crates/models/src/lib.rs) | Read; updated |
-| [src/models/namespace.rs](../src-tauri/crates/models/src/namespace.rs) | Read; unchanged |
-| [src/models/operations.rs](../src-tauri/crates/models/src/operations.rs) | Read; unchanged |
-| [src/models/rbac.rs](../src-tauri/crates/models/src/rbac.rs) | Read; unchanged |
-| [src/models/resource.rs](../src-tauri/crates/models/src/resource.rs) | Read; unchanged |
-| [src/models/sessions.rs](../src-tauri/crates/models/src/sessions.rs) | Read; unchanged |
-| [src/models/streams.rs](../src-tauri/crates/models/src/streams.rs) | Read; unchanged |
-| [src/models/usage.rs](../src-tauri/crates/models/src/usage.rs) | Read; unchanged |
+| [src/models/argo.rs](../rust/crates/models/src/argo.rs) | Read; updated |
+| [src/models/cancellation.rs](../rust/crates/models/src/cancellation.rs) | Read; unchanged |
+| [src/models/cluster.rs](../rust/crates/models/src/cluster.rs) | Read; unchanged |
+| [src/models/diagnostics.rs](../rust/crates/models/src/diagnostics.rs) | Read; unchanged |
+| [src/models/discovery.rs](../rust/crates/models/src/discovery.rs) | Read; unchanged |
+| [src/models/error.rs](../rust/crates/models/src/error.rs) | Read; updated |
+| [src/models/events.rs](../rust/crates/models/src/events.rs) | Read; unchanged |
+| [src/models/flux.rs](../rust/crates/models/src/flux.rs) | Read; unchanged |
+| [src/models/health.rs](../rust/crates/models/src/health.rs) | Read; unchanged |
+| [src/models/helm.rs](../rust/crates/models/src/helm.rs) | Read; unchanged |
+| [src/models/incidents.rs](../rust/crates/models/src/incidents.rs) | Read; unchanged |
+| [src/models/metrics.rs](../rust/crates/models/src/metrics.rs) | Read; unchanged |
+| [src/models/mod.rs](../rust/crates/models/src/lib.rs) | Read; updated |
+| [src/models/namespace.rs](../rust/crates/models/src/namespace.rs) | Read; unchanged |
+| [src/models/operations.rs](../rust/crates/models/src/operations.rs) | Read; unchanged |
+| [src/models/rbac.rs](../rust/crates/models/src/rbac.rs) | Read; unchanged |
+| [src/models/resource.rs](../rust/crates/models/src/resource.rs) | Read; unchanged |
+| [src/models/sessions.rs](../rust/crates/models/src/sessions.rs) | Read; unchanged |
+| [src/models/streams.rs](../rust/crates/models/src/streams.rs) | Read; unchanged |
+| [src/models/usage.rs](../rust/crates/models/src/usage.rs) | Read; unchanged |
 | tests/list_kube_contexts.rs | Read; updated; later deleted as low-signal |
 | tests/resource_models.rs | Read; updated; later deleted as low-signal |
 
-Also reviewed [Cargo.toml](../src-tauri/Cargo.toml), the changed [ExecTab.svelte](../src/features/resource-detail/ExecTab.svelte), and the added [execInput.ts](../src/features/resource-detail/execInput.ts) and [execInput.test.ts](../src/features/resource-detail/execInput.test.ts).
+Also reviewed [Cargo.toml](../rust/Cargo.toml), the changed [ExecTab.svelte](../src/features/resource-detail/ExecTab.svelte), and the added [execInput.ts](../src/features/resource-detail/execInput.ts) and [execInput.test.ts](../src/features/resource-detail/execInput.test.ts).

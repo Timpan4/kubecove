@@ -28,7 +28,7 @@ if pkgs == null || bun2nix == null then
           "result"
           "target"
         ]
-        && path != toString ./src-tauri/gpui/build
+        && path != toString ./rust/gpui/build
         && builtins.match "\\.nix-.*\\.log" name == null;
     };
     compat = import flakeCompatSrc {

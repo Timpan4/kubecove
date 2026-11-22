@@ -54,7 +54,7 @@ test("import closures select dependants and conservatively retain unknown depend
     assert.deepEqual(baseline.selected, files);
     const irrelevant = await selectBenchmarks([".github/workflows/ci.yml"], { root, files: [] });
     assert.equal(irrelevant.rust, false);
-    for (const path of ["src-tauri/src/lib.rs", "scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs", ".github/actions/codspeed-run/action.yml"]) {
+    for (const path of ["rust/src/lib.rs", "scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs", ".github/actions/codspeed-run/action.yml"]) {
       assert.equal((await selectBenchmarks([path], { root, files: [] })).rust, true, path);
     }
   } finally {

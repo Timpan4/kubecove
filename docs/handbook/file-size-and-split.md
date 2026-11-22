@@ -20,7 +20,7 @@ Exempt:
 - `**/*.d.ts`
 - `bun.lock`
 - `node_modules/**`
-- `src-tauri/target/**`
+- `rust/target/**`
 - `target/**`
 
 ## Meaning
@@ -42,9 +42,9 @@ Rules:
 
 Rust:
 
-- Move command handlers into `commands/<domain>.rs` or `commands/<domain>/` inside the owning crate under `src-tauri/crates/`.
+- Move command handlers into `commands/<domain>.rs` or `commands/<domain>/` inside the owning crate under `rust/crates/`.
 - Move shared helpers into a helper submodule of that crate.
-- Re-export through the crate's `commands/mod.rs`. `src-tauri/src/commands/mod.rs` re-exports the crates' commands.
+- Re-export through the crate's `commands/mod.rs`. `rust/src/commands/mod.rs` re-exports the crates' commands.
 - Run `bun run rust:check` after each coherent move.
 
 TypeScript and Svelte:

@@ -18,7 +18,7 @@
 // until an input changes on main and the next run saves a fresh bundle.
 //
 // Usage: node scripts/ci-rust-cache-key.mjs <name> <pathspec>...
-// Pathspecs are Git pathspecs, so ":!src-tauri/gpui" leaves a tree out. Pass the calling
+// Pathspecs are Git pathspecs, so ":!rust/gpui" leaves a tree out. Pass the calling
 // workflow as one of them: its build settings decide what the compiler produces.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

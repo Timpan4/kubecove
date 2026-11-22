@@ -25,7 +25,7 @@ After upgrading either checker, run `bun run test:svelte` plus the project TypeS
 
 ## Linux native dependencies
 
-See the [GPUI development prerequisites](../src-tauri/gpui/README.md) and the
+See the [GPUI development prerequisites](../rust/gpui/README.md) and the
 [Linux CI dependency setup](../.github/actions/setup-linux-native-deps/action.yml)
 for native builds. The Svelte development server needs Bun and a browser.
 
@@ -44,27 +44,27 @@ bun run lint:anti-slop
 
 ## Rust workspace checks
 
-The shared Rust workspace contains private backend crates under `src-tauri/crates/`. Use `bun run rust:test`, `bun run rust:check` and `bun run rust:lint` for workspace-wide checks.
+The shared Rust workspace contains private backend crates under `rust/crates/`. Use `bun run rust:test`, `bun run rust:check` and `bun run rust:lint` for workspace-wide checks.
 
 `bun run rust:fmt` checks formatting across the shared, GPUI, and headless server
 workspaces. Fix drift with `cargo fmt --all --manifest-path <workspace>/Cargo.toml`.
 
 ```sh
-cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
-cargo check --locked --workspace --manifest-path src-tauri/Cargo.toml
-cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --locked --workspace --manifest-path rust/Cargo.toml
+cargo check --locked --workspace --manifest-path rust/Cargo.toml
+cargo clippy --locked --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
 ```
 
-The workspace builds the shared `kubecove_lib` library. Build and test the GPUI desktop client and headless server from their own manifests. See [the crate map](../src-tauri/crates/README.md).
+The workspace builds the shared `kubecove_lib` library. Build and test the GPUI desktop client and headless server from their own manifests. See [the crate map](../rust/crates/README.md).
 
 ## GPUI native client development
 
-The native client is a separate Cargo workspace under `src-tauri/gpui/`. It uses GPUI Kit and calls the shared backend directly. See [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md) and the [native client guide](../src-tauri/gpui/README.md).
+The native client is a separate Cargo workspace under `rust/gpui/`. It uses GPUI Kit and calls the shared backend directly. See [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md) and the [native client guide](../rust/gpui/README.md).
 
 ```sh
-cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml
-cargo check --locked --manifest-path src-tauri/gpui/Cargo.toml
-cargo clippy --locked --manifest-path src-tauri/gpui/Cargo.toml --all-targets -- -D warnings
+cargo run --locked --manifest-path rust/gpui/Cargo.toml
+cargo check --locked --manifest-path rust/gpui/Cargo.toml
+cargo clippy --locked --manifest-path rust/gpui/Cargo.toml --all-targets -- -D warnings
 bun run e2e:parity
 ```
 
@@ -76,18 +76,18 @@ When a user-level Cargo configuration sets a shared build directory, override bo
 
 ## Headless Server Development
 
-The server is a separate Rust binary under `src-tauri/server` and uses the shared backend. Build the browser runtime before compiling the server so the binary embeds the generated `dist/` assets:
+The server is a separate Rust binary under `rust/server` and uses the shared backend. Build the browser runtime before compiling the server so the binary embeds the generated `dist/` assets:
 
 ```sh
 KUBECOVE_PUBLIC_RUNTIME=web bun --bun vite build
-cargo build --locked --release --manifest-path src-tauri/server/Cargo.toml
+cargo build --locked --release --manifest-path rust/server/Cargo.toml
 ```
 
 The headless build does not require Tauri, a webview, or Linux desktop GUI development packages. Its supported release targets are Linux x64 and Linux arm64. It also builds from source on macOS, but releases do not publish macOS server archives. The release workflow builds and archives each target separately.
 
-For an API-only server, run `cargo build --locked --release --no-default-features --manifest-path src-tauri/server/Cargo.toml`. This disables the default `web-ui` feature and needs neither Bun nor `dist/`. Run server tests and Clippy with `--no-default-features` to check this variant. The release workflow also builds and smoke-tests the full and slim Linux x64 container images, then publishes those tested artifacts to GHCR after the release gates pass. See [the container guide](../deploy/README.md) for targets and version tags.
+For an API-only server, run `cargo build --locked --release --no-default-features --manifest-path rust/server/Cargo.toml`. This disables the default `web-ui` feature and needs neither Bun nor `dist/`. Run server tests and Clippy with `--no-default-features` to check this variant. The release workflow also builds and smoke-tests the full and slim Linux x64 container images, then publishes those tested artifacts to GHCR after the release gates pass. See [the container guide](../deploy/README.md) for targets and version tags.
 
-Run isolated server checks with `cargo test --locked --manifest-path src-tauri/server/Cargo.toml` and `cargo clippy --locked --manifest-path src-tauri/server/Cargo.toml --all-targets -- -D warnings`. The server verification contract and runtime E2E evidence are maintained separately from this packaging guide; building or testing the binary alone does not prove browser or desktop remote E2E behavior. See [the remote-host operations guide](wiki/Remote-Server.md) for listener, SSH, token, and data-directory use.
+Run isolated server checks with `cargo test --locked --manifest-path rust/server/Cargo.toml` and `cargo clippy --locked --manifest-path rust/server/Cargo.toml --all-targets -- -D warnings`. The server verification contract and runtime E2E evidence are maintained separately from this packaging guide; building or testing the binary alone does not prove browser or desktop remote E2E behavior. See [the remote-host operations guide](wiki/Remote-Server.md) for listener, SSH, token, and data-directory use.
 
 ## Browser Dev Mock Mode
 
@@ -170,7 +170,7 @@ CI uses standard GitHub-hosted Ubuntu runners. The main CI workflow uses
 [Mr Boxington](https://mr-boxington.jdx.dev/github-action) for Rust tests, Clippy,
 and headless server builds. The action and mbx version are pinned in the workflow.
 Each task has its own cache and an explicit Cargo workspace, covering
-`src-tauri`, `src-tauri/server` and `src-tauri/gpui`. The Parity and CodSpeed
+`rust`, `rust/server` and `rust/gpui`. The Parity and CodSpeed
 workflows cache their Rust builds the same way.
 
 CI uses the action's `objects` payload with one isolated store per job.
@@ -239,11 +239,11 @@ inputs, which the workflow regression checks enforce.
 
 | Task | Compiler-bundle inputs | Pass inputs |
 | --- | --- | --- |
-| rust | `src-tauri :!src-tauri/gpui :!src-tauri/server` | Compiler inputs plus `shared` |
-| gpui-clippy | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
-| gpui-test | `src-tauri :!src-tauri/server src/lib/*-workspace.json` | Compiler inputs plus `shared src e2e/parity/visual` |
-| server-backend | `src-tauri :!src-tauri/gpui :!src-tauri/server` | `src-tauri :!src-tauri/gpui` plus `shared` |
-| server | `src-tauri :!src-tauri/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
+| rust | `rust :!rust/gpui :!rust/server` | Compiler inputs plus `shared` |
+| gpui-clippy | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
+| gpui-test | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared src e2e/parity/visual` |
+| server-backend | `rust :!rust/gpui :!rust/server` | `rust :!rust/gpui` plus `shared` |
+| server | `rust :!rust/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
 
 The server's generated `dist/` comes from its audited browser inputs. The
 backend pass includes the server manifest and lockfile that `cargo tree` reads.
@@ -309,7 +309,7 @@ one cache:
   integration tests in the `Frontend checks` job;
 - `rust`: desktop Rust tests, Clippy and dependency audits;
 - `gpui-clippy` and `gpui-test`: GPUI Clippy, and library, native and text-fit
-  tests. Text fit (`src-tauri/gpui/tests/text_fit.rs`) lays out the browser-mock
+  tests. Text fit (`rust/gpui/tests/text_fit.rs`) lays out the browser-mock
   fixture with the bundled fonts, so `gpui-test` installs Bun, exports the
   fixture, and keys its pass on `src` and `e2e/parity/visual` too. Frontend
   changes select `gpui-test` as well as Rust changes, as they do for the server
@@ -320,7 +320,7 @@ one cache:
   lifecycle verification.
 
 The default-feature server checks build the real browser assets that
-`src-tauri/server/build.rs` embeds. The API-only checks run before that build,
+`rust/server/build.rs` embeds. The API-only checks run before that build,
 and the GUI-free backend task never builds it, so both prove they need neither
 those assets nor GUI packages. Native build prerequisites are installed
 only when `pkg-config` cannot resolve them. Caching compiler outputs does not

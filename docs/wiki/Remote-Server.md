@@ -33,7 +33,7 @@ Cloudflare Access and OIDC modes create no startup token and ignore an old `serv
 
 ## Install and prepare the host
 
-1. Install `kubecove-server` from a native archive, a container image or a systemd service. [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation) compares the methods and gives step-by-step instructions. The archive is not a desktop installer and does not self-update. To build from source, see the [server README](https://github.com/Timpan4/kubecove/tree/main/src-tauri/server).
+1. Install `kubecove-server` from a native archive, a container image or a systemd service. [Install the server](https://github.com/Timpan4/kubecove/wiki/Server-Installation) compares the methods and gives step-by-step instructions. The archive is not a desktop installer and does not self-update. To build from source, see the [server README](https://github.com/Timpan4/kubecove/tree/main/rust/server).
 2. Run it as the OS user whose kubeconfig and cluster access KubeCove should use. Kubeconfig discovery uses that user's `KUBECONFIG`, then the standard kubeconfig path. Kubeconfig paths entered in the UI refer to files on the server, not on the laptop.
 3. Keep the listener on loopback. The default is `127.0.0.1:0`, where the OS picks a free port. For a predictable SSH target, set a port:
 

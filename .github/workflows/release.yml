@@ -175,10 +175,10 @@ jobs:
           components: clippy
 
       - name: Test shared backend
-        run: cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release
+        run: cargo test --locked --workspace --manifest-path rust/Cargo.toml --features desktop-release
 
       - name: Lint shared backend
-        run: cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
 
   kubernetes-compatibility:
     name: Kubernetes compatibility release checks

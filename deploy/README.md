@@ -136,6 +136,6 @@ The desktop app signs in to token and OIDC servers. It does not sign in to Cloud
 
 ## Recorded deployment evidence
 
-Operator deployments of locally built images ran in k0s between 2026-10-10 and 2026-10-11, before the first published image. They used native loopback TLS behind a Cloudflare Tunnel sidecar, first with Cloudflare Access sign-in and then with Authentik OIDC. Live Authentik sign-in reached the workspace launcher and loaded cluster contexts and namespaces. Unauthenticated session creation returned 401 and cross-origin login returned 403. See [server verification](../src-tauri/server/verification.md) for image digests, earlier read-only RBAC checks and remaining gaps.
+Operator deployments of locally built images ran in k0s between 2026-10-10 and 2026-10-11, before the first published image. They used native loopback TLS behind a Cloudflare Tunnel sidecar, first with Cloudflare Access sign-in and then with Authentik OIDC. Live Authentik sign-in reached the workspace launcher and loaded cluster contexts and namespaces. Unauthenticated session creation returned 401 and cross-origin login returned 403. See [server verification](../rust/server/verification.md) for image digests, earlier read-only RBAC checks and remaining gaps.
 
 The full isolated Kubernetes E2E suite did not run against those locally built images. Published images pass the release workflow's container smoke checks before they reach GHCR.

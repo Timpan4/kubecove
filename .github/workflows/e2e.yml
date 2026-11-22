@@ -49,13 +49,13 @@ jobs:
       # Linux Kind jobs share the server build cache. Only the main push job saves it.
       - name: Key the Rust cache by its inputs
         id: rust-cache
-        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
+        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts rust ':!rust/gpui'
 
       - name: Setup Mr Boxington
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
           version: "1.30.0"
-          working-directory: src-tauri
+          working-directory: rust
           cache-key: ${{ steps.rust-cache.outputs.key }}
           restore-keys: ${{ steps.rust-cache.outputs.prefix }}
           github-cache-mode: objects
@@ -111,13 +111,13 @@ jobs:
       # Linux Kind jobs share the server build cache. Only the main push job saves it.
       - name: Key the Rust cache by its inputs
         id: rust-cache
-        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
+        run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts rust ':!rust/gpui'
 
       - name: Setup Mr Boxington
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
           version: "1.30.0"
-          working-directory: src-tauri
+          working-directory: rust
           cache-key: ${{ steps.rust-cache.outputs.key }}
           restore-keys: ${{ steps.rust-cache.outputs.prefix }}
           github-cache-mode: objects

@@ -100,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           # cargo-packager reads the binary from target/<bundle target>/release.
-          cargo build --locked --release --manifest-path src-tauri/gpui/Cargo.toml --bin kubecove-gpui --target "$BUNDLE_TARGET"
+          cargo build --locked --release --manifest-path rust/gpui/Cargo.toml --bin kubecove-gpui --target "$BUNDLE_TARGET"
 
       # ADR 0035: a release build has no E2E automation, so it refuses KUBECOVE_E2E=1 and
       # exits before it opens storage or a window.
@@ -110,7 +110,7 @@ jobs:
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
         run: |
           set -uo pipefail
-          binary="src-tauri/gpui/target/$BUNDLE_TARGET/release/kubecove-gpui"
+          binary="rust/gpui/target/$BUNDLE_TARGET/release/kubecove-gpui"
           if [ "$RUNNER_OS" = "Windows" ]; then binary="$binary.exe"; fi
           # The step's shell runs with errexit, which an `if` condition suspends, so the
           # expected nonzero exit is captured instead of ending the step.
@@ -120,13 +120,13 @@ jobs:
             exit 1
           fi
 
-      # The bundle settings live in `[package.metadata.packager]` of src-tauri/gpui/Cargo.toml.
+      # The bundle settings live in `[package.metadata.packager]` of rust/gpui/Cargo.toml.
       - name: Verify the target kubeconform sidecar
         env:
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
         run: |
           set -euo pipefail
-          sidecar="src-tauri/bin/kubeconform-$BUNDLE_TARGET"
+          sidecar="rust/bin/kubeconform-$BUNDLE_TARGET"
           if [ "$RUNNER_OS" = "Windows" ]; then sidecar="$sidecar.exe"; fi
           "$sidecar" -v
 
@@ -146,15 +146,15 @@ jobs:
           EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product "$channel_mode")"
           EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier "$channel_mode")"
           export EXPECTED_PRODUCT EXPECTED_ID
-          cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/gpui/Cargo.toml |
+          cargo metadata --no-deps --format-version 1 --manifest-path rust/gpui/Cargo.toml |
             node -e 'const packages = JSON.parse(require("node:fs").readFileSync(0)).packages;
               const bundle = packages.find(p => p.name === "kubecove-gpui").metadata.packager;
               if (bundle.identifier !== process.env.EXPECTED_ID || bundle.productName !== process.env.EXPECTED_PRODUCT)
                 throw Error("Package identity does not match the release channel");'
           # cargo-packager resolves an existing --out-dir before it changes to the crate directory.
-          out=src-tauri/gpui/target/gpui-bundle
+          out=rust/gpui/target/gpui-bundle
           mkdir -p "$out" gpui-updater
-          cargo packager --manifest-path src-tauri/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
+          cargo packager --manifest-path rust/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
             --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
           prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix "$channel_mode")"
           product="$EXPECTED_PRODUCT"
