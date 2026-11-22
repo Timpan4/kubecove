@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.15.1 - 2026-11-22
+### Improved
+
+- Decouple GPUI release, signing, update feed, and Nix from Tauri (#799).
+
 ## 0.15.0 - 2026-11-21
 ### Added
 
