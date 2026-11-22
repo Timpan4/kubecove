@@ -21,7 +21,7 @@ export const tauriAppUpdateApi: AppUpdateApi = {
 			update = await check();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(NO_TARGET.test(message) ? NO_TARGET_MESSAGE : message);
+			throw NO_TARGET.test(message) ? new Error(NO_TARGET_MESSAGE) : error;
 		}
 		if (!update) return null;
 
