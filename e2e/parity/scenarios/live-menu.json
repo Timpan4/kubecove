@@ -19,18 +19,30 @@
     },
     {
       "id": "live-menu.notice-delay",
-      "title": "The stale-data notice appears after 300 ms and stays for at least 300 ms",
+      "title": "A short reconnect stays hidden and a visible stale-data notice lasts at least 300 ms",
       "steps": [
         { "action": "openResources" },
         { "action": "expectLiveState", "label": "Live" },
         { "action": "controlClock" },
         { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "advanceClock", "ms": 100 },
         { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
-        { "action": "advanceClock", "ms": 300 },
+        { "action": "replayLiveData", "script": "connected" },
+        { "action": "advanceClock", "ms": 500 },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover." },
+        { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "advanceClock", "ms": 499 },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover." },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Table activity indicators are paused until live updates recover." },
+        { "action": "advanceClock", "ms": 1 },
         { "action": "expectPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
         { "action": "replayLiveData", "script": "connected" },
         { "action": "expectPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
-        { "action": "advanceClock", "ms": 1000 },
+        { "action": "advanceClock", "ms": 299 },
+        { "action": "expectPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
+        { "action": "advanceClock", "ms": 1 },
         { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." }
       ]
     }

@@ -62,8 +62,8 @@ impl Episode {
     }
 
     /// The phase at `now` and the instant it next changes.
-    fn phase(self, now: Instant) -> (Phase, Option<Instant>) {
-        let shown_at = self.started + SHOW_DELAY;
+    fn phase(self, now: Instant, show_delay: Duration) -> (Phase, Option<Instant>) {
+        let shown_at = self.started + show_delay;
         match (self.shown, self.finished) {
             // Settled before any frame rendered its indicator.
             (None, Some(_)) => (Phase::Ready, None),
@@ -105,6 +105,10 @@ impl LoadingDelays {
     /// while the read it reports has not settled. Keys name one indicator,
     /// such as `"resources"` or `"sidebar-namespace-kinds:default"`.
     pub fn phase(&self, key: &str, pending: bool) -> Phase {
+        self.phase_after(key, pending, SHOW_DELAY)
+    }
+
+    pub fn phase_after(&self, key: &str, pending: bool, show_delay: Duration) -> Phase {
         let mut frame = self.frame.borrow_mut();
         let Some(now) = frame.now else {
             return if pending {
@@ -119,7 +123,7 @@ impl LoadingDelays {
             (None, true) => Episode::new(now),
             // A new read during the minimum visible time keeps the indicator.
             (Some(episode), true) if episode.finished.is_some() => {
-                if episode.phase(now).0.shown() {
+                if episode.phase(now, show_delay).0.shown() {
                     Episode {
                         finished: None,
                         ..episode
@@ -134,7 +138,7 @@ impl LoadingDelays {
             },
             (Some(episode), _) => episode,
         };
-        let (phase, next) = episode.phase(now);
+        let (phase, next) = episode.phase(now, show_delay);
         if phase.shown() && episode.shown.is_none() {
             episode.shown = Some(now);
         }

@@ -19,7 +19,10 @@ class LoadingTimer {
 	private shownAt = 0;
 	private timer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(private readonly changed: () => void) {}
+	constructor(
+		private readonly changed: () => void,
+		private readonly showDelayMs = LOADING_SHOW_DELAY_MS,
+	) {}
 
 	update(pending: boolean): void {
 		if (pending) {
@@ -31,7 +34,7 @@ class LoadingTimer {
 					this.timer = undefined;
 					this.shownAt = performance.now();
 					this.set("shown");
-				}, LOADING_SHOW_DELAY_MS);
+				}, this.showDelayMs);
 			}
 		} else if (this.phase === "waiting") {
 			this.dispose();
@@ -63,9 +66,9 @@ class LoadingTimer {
  * starts at once; only the indicator and the content it replaces wait. Call during
  * component initialization.
  */
-export function loadingDelay(pending: () => boolean): LoadingIndicator {
+export function loadingDelay(pending: () => boolean, showDelayMs = LOADING_SHOW_DELAY_MS): LoadingIndicator {
 	let version = $state(0);
-	const timer = new LoadingTimer(() => version++);
+	const timer = new LoadingTimer(() => version++, showDelayMs);
 	$effect(() => {
 		const isPending = pending();
 		untrack(() => timer.update(isPending));

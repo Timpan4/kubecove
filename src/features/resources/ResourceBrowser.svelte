@@ -470,19 +470,18 @@
 	const contextsLoading = loadingDelay(() => resourcesQuery.loadingContexts.length > 0);
 	const contextsLoadingText = $derived(contextsLoadingNotice(resourcesQuery.loadingContexts));
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
+	const staleNoticeDelayMs = 500;
 	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
 	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
-		&& notice.table.status !== "partial" && notice.table.status !== "polling");
+		&& notice.table.status !== "partial" && notice.table.status !== "polling", staleNoticeDelayMs);
 	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
 		&& (!notice.map.sharesTableError || notice.map.status === "reconnecting" || notice.map.status === "connecting")
-		&& notice.map.status !== "partial" && notice.map.status !== "polling");
+		&& notice.map.status !== "partial" && notice.map.status !== "polling", staleNoticeDelayMs);
 	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
-	// Keep the minimum display time after combined recovery. During split recovery, name the panel still stale.
-	const allCurrent = $derived(notice.table?.current !== false && notice.map?.current !== false);
 	const tableNotice = $derived(notice.table && (notice.table.error
 		? "refreshFailed"
-		: watchNotice(notice.table.status, (allCurrent || !notice.table.current) && tableStale.shown)));
-	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, (allCurrent || !notice.map.current) && mapStale.shown));
+		: watchNotice(notice.table.status, tableStale.shown)));
+	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, mapStale.shown));
 	const mapNotice = $derived.by((): NoticeKind | null => {
 		if (!notice.map) return null;
 		if (notice.map.failed) return "topologyFailed";
