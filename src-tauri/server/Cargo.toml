@@ -14,7 +14,7 @@ opt-level = 3
 
 [package]
 name = "kubecove-server"
-version = "0.15.0"
+version = "0.15.1"
 edition = "2024"
 rust-version = "1.99"
 license = "AGPL-3.0-or-later"

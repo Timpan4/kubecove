@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 export const RELEASE_TAG_PREFIX = "app-v";
 
@@ -161,6 +162,9 @@ export function updateWorkspaceReleaseVersions(
 	const cargoPath = join(root, "src-tauri", "Cargo.toml");
 	const cargoLockPath = join(root, "src-tauri", "Cargo.lock");
 
+	const channel = existsSync(join(root, "src-tauri", "gpui", "Cargo.toml"))
+		? desktopReleaseChannel(targetVersion)
+		: undefined;
 	const parsed: unknown = JSON.parse(readFileSync(packagePath, "utf8"));
 	if (Object.prototype.toString.call(parsed) !== "[object Object]") {
 		throw new Error(`${packagePath} must contain a JSON object.`);
@@ -168,30 +172,37 @@ export function updateWorkspaceReleaseVersions(
 	// SAFETY: the check above verified a JSON object; the writer only sets version.
 	const packageJson = parsed as { version?: string };
 	packageJson.version = targetVersion;
-	writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+	const updates = [{ path: packagePath, contents: `${JSON.stringify(packageJson, null, 2)}\n` }];
 
 	const cargoToml = readFileSync(cargoPath, "utf8");
-	writeFileSync(
-		cargoPath,
-		replaceCargoPackageVersion(cargoToml, targetVersion, cargoPath),
-	);
+	updates.push({
+		path: cargoPath,
+		contents: replaceCargoField(cargoToml, "package", "version", targetVersion, cargoPath),
+	});
 
 	if (existsSync(cargoLockPath)) {
 		const cargoLock = readFileSync(cargoLockPath, "utf8");
-		writeFileSync(
-			cargoLockPath,
-			replaceCargoLockPackageVersion(cargoLock, targetVersion),
-		);
+		updates.push({ path: cargoLockPath, contents: replaceCargoLockPackageVersion(cargoLock, targetVersion) });
 	}
 	for (const { directory, packageName } of SIDE_WORKSPACES) {
 		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
 		if (!existsSync(manifestPath)) continue;
-		writeFileSync(manifestPath, replaceCargoPackageVersion(readFileSync(manifestPath, "utf8"), targetVersion, manifestPath));
+		let contents = replaceCargoField(readFileSync(manifestPath, "utf8"), "package", "version", targetVersion, manifestPath);
+		if (directory === "gpui" && channel) {
+			const section = "package.metadata.packager";
+			contents = replaceCargoField(contents, section, "productName", channel.product, manifestPath);
+			contents = replaceCargoField(contents, section, "identifier", channel.identifier, manifestPath);
+		}
+		updates.push({ path: manifestPath, contents });
 		const lockPath = join(root, "src-tauri", directory, "Cargo.lock");
 		if (existsSync(lockPath)) {
 			const lock = replaceCargoLockPackageVersion(readFileSync(lockPath, "utf8"), targetVersion, "kubecove", lockPath);
-			writeFileSync(lockPath, replaceCargoLockPackageVersion(lock, targetVersion, packageName, lockPath));
+			updates.push({ path: lockPath, contents: replaceCargoLockPackageVersion(lock, targetVersion, packageName, lockPath) });
 		}
+	}
+
+	for (const { path, contents } of updates) {
+		writeFileSync(path, contents);
 	}
 
 	return {
@@ -200,36 +211,21 @@ export function updateWorkspaceReleaseVersions(
 	};
 }
 
-function replaceCargoPackageVersion(
-	contents: string,
-	version: string,
-	source = "Cargo.toml",
-): string {
-	let inPackageSection = false;
+function replaceCargoField(contents: string, section: string, field: string, value: string, source: string): string {
 	const lines = contents.split(/(\r?\n)/);
-
+	let active = false;
 	for (let index = 0; index < lines.length; index += 2) {
 		const line = lines[index] ?? "";
-		const trimmed = line.trim();
-		const section = trimmed.match(/^\[([^\]]+)\]$/);
-
-		if (section) {
-			inPackageSection = section[1] === "package";
-			continue;
-		}
-
-		if (!inPackageSection) continue;
-
-		if (/^\s*version\s*=\s*"[^"]+"/.test(line)) {
-			lines[index] = line.replace(
-				/^(\s*version\s*=\s*)"[^"]+"/,
-				`$1"${version}"`,
-			);
+		const header = line.trim().match(/^\[([^\]]+)\]$/);
+		if (header) active = header[1] === section;
+		if (!active) continue;
+		const assignment = line.match(/^(\s*(\w+)\s*=\s*)"[^"]*"(.*)$/);
+		if (assignment?.[2] === field) {
+			lines[index] = assignment[1] + JSON.stringify(value) + assignment[3];
 			return lines.join("");
 		}
 	}
-
-	throw new Error(`${source} is missing package version.`);
+	throw new Error(source + " is missing " + section + "." + field);
 }
 
 function replaceCargoLockPackageVersion(

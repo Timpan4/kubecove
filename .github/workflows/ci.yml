@@ -161,7 +161,7 @@ jobs:
       # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsparallel
       - parallel:
           - name: Test release orchestration
-            run: node --test scripts/release-workflow-regression.test.mjs
+            run: node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs
 
           - name: Audit frontend dependencies
             run: bun run audit

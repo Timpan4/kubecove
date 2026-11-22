@@ -84,6 +84,7 @@ impl Inspector {
     fn available_version(&self) -> Option<String> {
         match &self.updates.status {
             UpdateStatus::Available(update) => Some(update.version.clone()),
+            UpdateStatus::Consolidated(version) => Some(version.clone()),
             _ => None,
         }
     }
@@ -381,6 +382,19 @@ impl Inspector {
                                     this.install_update(window, cx)
                                 })),
                         ),
+                )
+            }
+            status @ (UpdateStatus::Consolidated(_) | UpdateStatus::Unpublished) => {
+                let title = status.release_page_message().expect("release page status");
+                body.child(labelled(ui::sm(title.clone()), &title)).child(
+                    button(Variant::Default, 28., false)
+                        .id("header-open-releases")
+                        .test_support()
+                        .aria_label("Open GitHub Releases")
+                        .child("Open GitHub Releases")
+                        .on_click(|_, _, cx| {
+                            cx.open_url(kubecove_lib::desktop_release::RELEASES_URL)
+                        }),
                 )
             }
             UpdateStatus::UpToDate => body.child(labelled(

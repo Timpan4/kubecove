@@ -20,6 +20,8 @@
 )]
 
 pub mod commands;
+#[cfg(feature = "desktop-release")]
+pub mod desktop_release;
 #[cfg(feature = "mcp-host")]
 pub mod mcp;
 #[cfg(feature = "pinned-kubeconfig")]

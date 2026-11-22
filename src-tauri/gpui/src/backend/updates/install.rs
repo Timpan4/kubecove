@@ -205,6 +205,22 @@ fn replace_appimage(path: &Path, staged: &Path, file: &mut fs::File) -> io::Resu
     fs::rename(staged, path)
 }
 
+fn verify_bundle_identity(bundle: &Path) -> io::Result<()> {
+    let info = plist::Value::from_file(bundle.join("Contents/Info.plist"))
+        .map_err(|_| invalid_data("Cannot read the macOS bundle identity"))?;
+    if info
+        .as_dictionary()
+        .and_then(|p| p.get("CFBundleIdentifier"))
+        .and_then(plist::Value::as_string)
+        != Some("com.timpan.kubecove.gpui")
+    {
+        return Err(invalid_data(
+            "The bundle identifier is not com.timpan.kubecove.gpui",
+        ));
+    }
+    Ok(())
+}
+
 /// Unpacks the staged `.app.tar.gz` beside the installed bundle, then moves the installed bundle
 /// aside and the new one into its place. A failed move puts the installed bundle back. The
 /// previous bundle is deleted only once the new one is in place, so if putting it back also
@@ -214,7 +230,16 @@ fn replace_bundle(
     archive: &mut fs::File,
     rename: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> io::Result<()> {
+    if bundle
+        .file_name()
+        .is_none_or(|name| name != "KubeCove GPUI.app")
+    {
+        return Err(invalid_data(
+            "The installed bundle is not KubeCove GPUI.app",
+        ));
+    }
     fs::symlink_metadata(bundle)?;
+    verify_bundle_identity(bundle)?;
     let staging = sibling(bundle, "update")?;
     let previous = sibling(bundle, "previous")?;
     remove_stale(&staging)?;
@@ -224,6 +249,7 @@ fn replace_bundle(
         .rewind()
         .and_then(|()| unpack_bundle(archive, &staging))
         .and_then(|unpacked| {
+            verify_bundle_identity(&unpacked)?;
             rename(bundle, &previous)?;
             rename(&unpacked, bundle).inspect_err(|_| {
                 let _ = rename(&previous, bundle);
@@ -251,8 +277,14 @@ fn unpack_bundle(archive: impl io::Read, staging: &Path) -> io::Result<PathBuf> 
         }
     }
     match <[PathBuf; 1]>::try_from(bundles) {
-        Ok([bundle]) => Ok(bundle),
-        Err(_) => Err(invalid_data("The update does not hold one app bundle")),
+        Ok([bundle])
+            if bundle
+                .file_name()
+                .is_some_and(|name| name == "KubeCove GPUI.app") =>
+        {
+            Ok(bundle)
+        }
+        _ => Err(invalid_data("Expected a single KubeCove GPUI.app bundle")),
     }
 }
 
@@ -315,6 +347,8 @@ mod tests {
         let apps = root.0.join("apps");
         let bundle = apps.join("KubeCove GPUI.app");
         fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();
+        let info = include_bytes!("../../../../test-fixtures/side-by-side-info.plist");
+        fs::write(bundle.join("Contents/Info.plist"), info).unwrap();
         fs::write(bundle.join(BINARY), b"installed version").unwrap();
 
         let encoder = flate2::write::GzEncoder::new(
@@ -322,17 +356,21 @@ mod tests {
             flate2::Compression::default(),
         );
         let mut builder = tar::Builder::new(encoder);
-        let contents: &[u8] = b"new version";
-        let mut header = tar::Header::new_gnu();
-        header.set_size(contents.len() as u64);
-        header.set_mode(0o755);
-        builder
-            .append_data(
-                &mut header,
-                Path::new("KubeCove GPUI.app").join(BINARY),
-                contents,
-            )
-            .unwrap();
+        for (path, contents) in [
+            (BINARY, b"new version".as_slice()),
+            ("Contents/Info.plist", info.as_slice()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o755);
+            builder
+                .append_data(
+                    &mut header,
+                    Path::new("KubeCove GPUI.app").join(path),
+                    contents,
+                )
+                .unwrap();
+        }
         let archive = builder.into_inner().unwrap().finish().unwrap();
         (root, apps, bundle, archive)
     }

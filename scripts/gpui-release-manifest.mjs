@@ -1,4 +1,4 @@
-// Verifies the signed GPUI updater artifacts and writes `latest-gpui.json` beside them.
+// Verify the signed desktop artifacts and write their release channel's manifest.
 //
 // Each .sig contains base64-encoded minisign text with a prehashed signature.
 // The GPUI client and this verifier read the same release public key.
@@ -11,14 +11,15 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const MANIFEST_NAME = "latest-gpui.json";
+import { desktopReleaseChannel } from "./desktop-release-channel.mjs";
 
 // macOS ships for Apple silicon only, so there is no darwin-x86_64 entry.
-export function gpuiUpdaterAssets(version) {
+export function gpuiUpdaterAssets(version, { dryRun = false } = {}) {
+  const { prefix } = desktopReleaseChannel(version, { dryRun });
   return {
-    "linux-x86_64": `kubecove-gpui_${version}_x86_64.AppImage`,
-    "darwin-aarch64": `kubecove-gpui_${version}_aarch64.app.tar.gz`,
-    "windows-x86_64": `kubecove-gpui_${version}_x64-setup.exe`,
+    "linux-x86_64": `${prefix}_${version}_x86_64.AppImage`,
+    "darwin-aarch64": `${prefix}_${version}_aarch64.app.tar.gz`,
+    "windows-x86_64": `${prefix}_${version}_x64-setup.exe`,
   };
 }
 
@@ -59,17 +60,16 @@ export function verifyUpdaterSignature({ publicKey, signature, data, version, na
   // that does not name the manifest version.
   const fields = trusted.split("\t");
   if (!fields.includes(`version:${version}`)) fail(label, `the trusted comment does not carry version:${version}`);
-  // The Tauri app is signed with the same key, so the GPUI client also requires a signed file
-  // name that starts with `kubecove-gpui_`. An asset renamed after signing would be refused.
+  // Both desktop products use the same key. The signed file name binds the product and platform.
   if (!fields.includes(`file:${name}`)) fail(label, `the trusted comment does not carry file:${name}`);
 }
 
 // `read(name)` returns a file's bytes from the assets directory, or throws when it is missing.
-export function buildGpuiManifest({ version, tag, repository, notes, publicKey, pubDate, names, read }) {
+export function buildGpuiManifest({ version, tag, repository, notes, publicKey, pubDate, names, read, dryRun = false }) {
   if (tag !== `app-v${version}`) throw new Error(`Release tag ${tag} does not match app version ${version}.`);
   const present = new Set(names);
   const platforms = {};
-  for (const [platform, name] of Object.entries(gpuiUpdaterAssets(version))) {
+  for (const [platform, name] of Object.entries(gpuiUpdaterAssets(version, { dryRun }))) {
     for (const required of [name, `${name}.sig`]) {
       if (!present.has(required)) throw new Error(`Missing ${required}. Found: ${[...present].sort().join(", ") || "nothing"}.`);
     }
@@ -80,6 +80,15 @@ export function buildGpuiManifest({ version, tag, repository, notes, publicKey, 
   return { version, notes, pub_date: pubDate, platforms };
 }
 
+export function writeGpuiManifest(dir, options) {
+  const manifest = buildGpuiManifest({
+    ...options, names: readdirSync(dir), read: (name) => readFileSync(join(dir, name)),
+  });
+  const filename = desktopReleaseChannel(options.version, { dryRun: options.dryRun }).manifest;
+  writeFileSync(join(dir, filename), `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${filename}.`);
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { ASSETS_DIR: dir, GH_REPO: repository, NOTES_FILE: notesFile, RELEASE_TAG: releaseTag = "" } = process.env;
   if (!dir || !repository || !notesFile) throw new Error("ASSETS_DIR, GH_REPO and NOTES_FILE are required.");
@@ -87,16 +96,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const tag = releaseTag || `app-v${version}`;
   if (!releaseTag) console.log(`Dry run: manifest URLs point at ${tag}.`);
-  const manifest = buildGpuiManifest({
+  writeGpuiManifest(dir, {
     version,
     tag,
+    dryRun: !releaseTag,
     repository,
     notes: readFileSync(notesFile, "utf8").trim(),
     publicKey,
     pubDate: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-    names: readdirSync(dir),
-    read: (name) => readFileSync(join(dir, name)),
   });
-  writeFileSync(join(dir, MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`Verified ${Object.keys(manifest.platforms).join(", ")} and wrote ${MANIFEST_NAME}.`);
 }

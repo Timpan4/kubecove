@@ -65,10 +65,16 @@ The update check and the download fail when the server sends nothing for 30 seco
 - On Linux the client updates only an AppImage. A binary started outside an AppImage, such as a Nix or development build, reports that it cannot install updates.
 - There are no proxy, header, timeout or downgrade settings. The Tauri updater sets no timeout by default; the native client always applies the 30-second stall limit.
 
+## Transition after 0.15.1
+
+Version 0.15.1 is the last release of Tauri KubeCove and side-by-side KubeCove GPUI. Both clients check `latest-desktop.json` for the consolidated KubeCove 0.16.0 or later. A compatible release offers a manual download from the project's GitHub Releases page. HTTP 404 or 204 falls back to the side-by-side feed. Its updater accepts only versions through 0.15.1 and requires the signed side-by-side artifact identity. Before a macOS swap, both the installed and downloaded bundles must be named `KubeCove GPUI.app` and declare `CFBundleIdentifier` as `com.timpan.kubecove.gpui`.
+
+Legacy clients already request assets under `releases/latest/download/`. Every subsequent latest release must carry forward the original `latest.json` and `latest-gpui.json` from tag `app-v0.15.1`, including their version-specific download URLs and signatures. Only `latest-desktop.json` advances. Its installers use `kubecove_<version>_...` and its macOS archive holds `KubeCove.app`.
+
 ## Risks accepted
 
 - The manifest is not signed. Whoever can replace release assets can withhold updates or announce a version with no valid build, which fails verification. They cannot make the client install a build the key did not sign as a native client build of that version.
-- The signed file name does not name the platform's install kind beyond its extension, and the client does not compare it with the platform. A tampered manifest could point one platform at another platform's native build of the same version. The payload check (ELF, PE or an archive with one app bundle) then refuses it.
+- Before 0.15.1, signed file names identified the GPUI product but did not bind the platform. The transition client checks the complete signed platform file name before installation.
 - The bundles carry no Apple or Windows code signature, as the Tauri artifacts do not. Operating system warnings on first launch are the same as for the Tauri app.
 - A signed installer saved in the temporary directory can be replaced by another process of the same user before Relaunch runs it. That process already runs with the user's rights.
 

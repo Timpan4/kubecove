@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -173,7 +173,8 @@ example = "9.9.9"
 		).not.toThrow();
 	});
 
-	test("updates all release workspaces", () => {
+	test("updates all release workspaces and selects the consolidated GPUI identity", () => {
+		const version = "0.16.0";
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
 		mkdirSync(join(root, "src-tauri"), { recursive: true });
 		writeFileSync(
@@ -193,22 +194,25 @@ example = "9.9.9"
 		writeFileSync(join(root, "src-tauri", "server", "Cargo.toml"), '[package]\nname = "kubecove-server"\nversion = "0.1.0"\n');
 		writeFileSync(join(root, "src-tauri", "server", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.1.0"\n');
 		mkdirSync(join(root, "src-tauri", "gpui"), { recursive: true });
-		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[workspace]\nresolver = "2"\n\n[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
+		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[workspace]\nresolver = "2"\n\n[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\nidentifier = "com.timpan.kubecove.gpui"\n');
 		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), '[[package]]\nname = "kubecove"\nversion = "0.1.0"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 
-		const updated = updateWorkspaceReleaseVersions("0.2.0", root);
+		const updated = updateWorkspaceReleaseVersions(version, root);
+		const packager = Bun.TOML.parse(readFileSync(join(root, "src-tauri/gpui/Cargo.toml"), "utf8")).package.metadata.packager;
+		expect(packager.productName).toBe("KubeCove");
+		expect(packager.identifier).toBe("com.timpan.kubecove");
 		expect(updated).toEqual(readWorkspaceReleaseVersions(root));
 		assertMatchingReleaseVersions(updated);
 
-		expect(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version).toBe("0.2.0");
-		expect(readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
-		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain('version = "0.2.0"');
-		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
+		expect(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version).toBe(version);
+		expect(readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
+		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain(`version = "${version}"`);
+		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
 		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
 		// The GPUI updater compares its crate version with the release manifest.
-		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), "utf8")).toContain('version = "0.2.0"');
+		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
 		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
-		expect(readWorkspaceReleaseVersions(root).cargoVersion).toBe("0.2.0");
+		expect(readWorkspaceReleaseVersions(root).cargoVersion).toBe(version);
 		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
 		expect(() => readWorkspaceReleaseVersions(root)).toThrow("Backend and GPUI client package versions must match.");
 	});
@@ -248,6 +252,33 @@ example = "9.9.9"
 			"must contain a JSON object.",
 		);
 		expect(readFileSync(join(root, "package.json"), "utf8")).toBe(originalPackage);
+	});
+
+	test("rejects missing packager identifier before changing any release file", () => {
+		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
+		const files = {
+			"package.json": '{"version":"0.15.1"}\n',
+			"src-tauri/Cargo.toml": '[package]\nname = "kubecove"\nversion = "0.15.1"\n',
+			"src-tauri/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n',
+			"src-tauri/server/Cargo.toml": '[package]\nname = "kubecove-server"\nversion = "0.15.1"\n',
+			"src-tauri/server/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-server"\nversion = "0.15.1"\n',
+			"src-tauri/gpui/Cargo.toml": '[package]\nname = "kubecove-gpui"\nversion = "0.15.1"\n\n[package.metadata.packager]\nproductName = "KubeCove GPUI"\n',
+			"src-tauri/gpui/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n\n[[package]]\nname = "kubecove-gpui"\nversion = "0.15.1"\n',
+		};
+		try {
+			for (const directory of ["src-tauri/server", "src-tauri/gpui"]) {
+				mkdirSync(join(root, directory), { recursive: true });
+			}
+			for (const [path, contents] of Object.entries(files)) {
+				writeFileSync(join(root, path), contents);
+			}
+			expect(() => updateWorkspaceReleaseVersions("0.16.0", root)).toThrow("is missing package.metadata.packager.identifier");
+			for (const [path, contents] of Object.entries(files)) {
+				expect(readFileSync(join(root, path), "utf8")).toBe(contents);
+			}
+		} finally {
+			rmSync(root, { recursive: true });
+		}
 	});
 
 	test("classifies release notes from existing commit prefixes", () => {

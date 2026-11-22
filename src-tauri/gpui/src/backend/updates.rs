@@ -10,6 +10,8 @@ use minisign_verify::{PublicKey, Signature, StreamVerifier};
 use std::{ffi::OsString, io, path::PathBuf, time::Duration};
 use tokio::sync::{mpsc, watch};
 
+#[cfg(test)]
+mod feed_tests;
 mod install;
 
 pub use install::{InstallTarget, Staged, bundle_of};
@@ -19,7 +21,21 @@ pub enum UpdateStatus {
     #[default]
     Idle,
     UpToDate,
+    Unpublished,
     Available(AvailableUpdate),
+    Consolidated(String),
+}
+
+impl UpdateStatus {
+    pub(crate) fn release_page_message(&self) -> Option<String> {
+        match self {
+            Self::Consolidated(version) => Some(format!(
+                "KubeCove {version} requires a separate installation."
+            )),
+            Self::Unpublished => Some("No desktop update has been published yet.".into()),
+            _ => None,
+        }
+    }
 }
 
 /// A newer release from the update manifest. `notes` is the manifest's `notes`
@@ -87,7 +103,7 @@ pub struct Feed {
 
 /// Every release asset of this client starts with this, and the signer records the asset's
 /// file name in the signature.
-const ARTIFACT_PREFIX: &str = "kubecove-gpui_";
+const ARTIFACT_PREFIX: &str = "kubecove-gpui";
 
 impl Feed {
     pub fn release() -> Result<Self, AppError> {
@@ -124,37 +140,86 @@ fn client() -> reqwest::Result<reqwest::Client> {
 pub(super) async fn check() -> Result<UpdateStatus, AppError> {
     let failed = || AppError::new("Could not check for updates", AppErrorKind::Network);
     let endpoint = Feed::release()?.endpoint;
-    let response = client()
-        .map_err(|_| failed())?
+    let client = client().map_err(|_| failed())?;
+    let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("valid package version");
+    check_feeds(&client, &endpoint, &platform(), &current).await
+}
+
+async fn check_feeds(
+    client: &reqwest::Client,
+    endpoint: &str,
+    target: &str,
+    current: &semver::Version,
+) -> Result<UpdateStatus, AppError> {
+    let consolidated_error =
+        match kubecove_lib::desktop_release::consolidated(client, endpoint, target).await {
+            Ok(Some(version)) => {
+                return Ok(if version.cmp_precedence(current).is_gt() {
+                    UpdateStatus::Consolidated(version.to_string())
+                } else {
+                    UpdateStatus::UpToDate
+                });
+            }
+            result => result.err(),
+        };
+    match (
+        check_legacy(client, endpoint, target, current).await,
+        consolidated_error,
+    ) {
+        (Ok(status @ UpdateStatus::Available(_)), _) => Ok(status),
+        (_, Some(error)) => Err(error),
+        (result, None) => result,
+    }
+}
+
+async fn check_legacy(
+    client: &reqwest::Client,
+    endpoint: &str,
+    target: &str,
+    current: &semver::Version,
+) -> Result<UpdateStatus, AppError> {
+    let response = client
         .get(endpoint)
         .send()
         .await
-        .map_err(|_| failed())?;
+        .map_err(|_| AppError::new("Could not check for updates", AppErrorKind::Network))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(UpdateStatus::Unpublished);
+    }
     if response.status() == reqwest::StatusCode::NO_CONTENT {
         return Ok(UpdateStatus::UpToDate);
     }
-    let manifest: serde_json::Value = response
+    let manifest = response
         .error_for_status()
-        .map_err(|_| AppError::new("Update check failed", AppErrorKind::Network))?
-        .json()
-        .await
-        .map_err(|_| AppError::new("Invalid update manifest", AppErrorKind::Validation))?;
-    release(&manifest, &platform())
+        .map_err(|_| AppError::new("Update check failed", AppErrorKind::Network))?;
+    let manifest = kubecove_lib::desktop_release::read_manifest(manifest).await?;
+    release_for_version(&manifest, target, current)
 }
 
 /// Reads the manifest. A newer version is offered only with a build for `platform`.
 pub fn release(manifest: &serde_json::Value, platform: &str) -> Result<UpdateStatus, AppError> {
-    let invalid = |message: &str| AppError::new(message, AppErrorKind::Validation);
-    let version = manifest["version"]
-        .as_str()
-        .ok_or_else(|| invalid("Missing update version"))?;
-    let version = semver::Version::parse(version.trim_start_matches('v'))
-        .map_err(|_| invalid("Invalid update version"))?;
     let current =
         semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("Cargo package version is semver");
-    if version <= current {
+    release_for_version(manifest, platform, &current)
+}
+
+pub fn release_for_version(
+    manifest: &serde_json::Value,
+    platform: &str,
+    current: &semver::Version,
+) -> Result<UpdateStatus, AppError> {
+    let invalid = |message: &str| AppError::new(message, AppErrorKind::Validation);
+    let version = kubecove_lib::desktop_release::version(manifest)?;
+    if !version.cmp_precedence(current).is_gt() {
         return Ok(UpdateStatus::UpToDate);
     }
+    legacy_version(&version)?;
+    kubecove_lib::desktop_release::validate_product(
+        manifest,
+        platform,
+        "KubeCove GPUI",
+        "com.timpan.kubecove.gpui",
+    )?;
     let build = &manifest["platforms"][platform];
     let field = |name: &str| {
         build[name]
@@ -168,6 +233,11 @@ pub fn release(manifest: &serde_json::Value, platform: &str) -> Result<UpdateSta
                 )
             })
     };
+    let url = field("url")?;
+    let expected = kubecove_lib::desktop_release::asset_name(ARTIFACT_PREFIX, &version, platform);
+    if !expected.is_some_and(|name| kubecove_lib::desktop_release::matches_asset(&url, &name)) {
+        return Err(invalid("Unexpected side-by-side update artifact"));
+    }
     Ok(UpdateStatus::Available(AvailableUpdate {
         version: version.to_string(),
         notes: manifest["notes"]
@@ -176,10 +246,23 @@ pub fn release(manifest: &serde_json::Value, platform: &str) -> Result<UpdateSta
             .filter(|notes| !notes.is_empty())
             .map(str::to_owned),
         artifact: Artifact {
-            url: field("url")?,
+            url,
             signature: field("signature")?,
         },
     }))
+}
+
+fn legacy_version(version: &semver::Version) -> Result<(), AppError> {
+    if version
+        .cmp_precedence(&kubecove_lib::desktop_release::LEGACY_MAX)
+        .is_gt()
+    {
+        return Err(AppError::new(
+            "This release requires a separate KubeCove installer",
+            AppErrorKind::Validation,
+        ));
+    }
+    Ok(())
 }
 
 /// Accepts `bytes` only when `signature` is a signature of them by `public_key` and it was made
@@ -189,11 +272,12 @@ pub fn verify(
     signature: &str,
     public_key: &str,
     version: &str,
+    platform: &str,
 ) -> Result<(), AppError> {
     let signed = Signed::decode(signature, public_key)?;
     let mut verifier = signed.stream()?;
     verifier.update(bytes);
-    signed.check(verifier, version)
+    signed.check(verifier, version, platform)
 }
 
 /// The release key and a build's signature, decoded.
@@ -233,7 +317,12 @@ impl Signed {
     /// manifest is not signed, so its version alone does not prove which release the URL and
     /// signature point at: without the second check a tampered manifest could pair a new
     /// version number with an older signed build.
-    fn check(&self, mut verifier: StreamVerifier<'_>, version: &str) -> Result<(), AppError> {
+    fn check(
+        &self,
+        mut verifier: StreamVerifier<'_>,
+        version: &str,
+        platform: &str,
+    ) -> Result<(), AppError> {
         verifier.finalize().map_err(|_| invalid_signature())?;
         // The trusted comment is covered by the signature, so it is read only after `finalize`.
         // The signer writes it as tab-separated `key:value` fields.
@@ -251,7 +340,10 @@ impl Signed {
         }
         // The Tauri desktop app is signed with the same key and names its version too. The
         // signed file name tells the two products apart.
-        if !signed("file:").is_some_and(|file| file.starts_with(ARTIFACT_PREFIX)) {
+        let parsed = semver::Version::parse(version).map_err(|_| invalid_signature())?;
+        let name = kubecove_lib::desktop_release::asset_name(ARTIFACT_PREFIX, &parsed, platform)
+            .ok_or_else(invalid_signature)?;
+        if signed("file:") != Some(name.as_str()) {
             return Err(AppError::new(
                 "The update is not a KubeCove GPUI build",
                 AppErrorKind::Validation,
@@ -270,6 +362,8 @@ pub async fn install(
     target: InstallTarget,
     progress: watch::Sender<DownloadProgress>,
 ) -> Result<Relaunch, AppError> {
+    let version = semver::Version::parse(&update.version).map_err(|_| invalid_signature())?;
+    legacy_version(&version)?;
     let signed = Signed::decode(&update.artifact.signature, &public_key)?;
     // 1 is the least capacity tokio allows, so at most one chunk waits between the two sides.
     let (sender, chunks) = mpsc::channel(1);
@@ -314,7 +408,12 @@ fn receive(
             None => return Err(download_failed()),
         }
     }
-    signed.check(verifier, version)?;
+    let platform = match target {
+        InstallTarget::AppImage(_) => "linux-x86_64",
+        InstallTarget::AppBundle(_) => "darwin-aarch64",
+        InstallTarget::Installer(_) => "windows-x86_64",
+    };
+    signed.check(verifier, version, platform)?;
     staged.install(version)
 }
 

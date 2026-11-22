@@ -208,6 +208,20 @@ impl Inspector {
         if !enabled {
             return section;
         }
+        if let Some(message) = state.status.release_page_message() {
+            section = section.child(
+                settings_row(
+                    "Download KubeCove",
+                    message,
+                    action("Open GitHub Releases", false)
+                        .on_click(|_, _, cx| {
+                            cx.open_url(kubecove_lib::desktop_release::RELEASES_URL)
+                        })
+                        .into_any_element(),
+                )
+                .aria_label("Download KubeCove"),
+            );
+        }
         if let Some(update) = state.offered() {
             section = section.child(
                 settings_row(

@@ -134,32 +134,47 @@ jobs:
         env:
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
           FORMAT: ${{ matrix.format }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
         # Leave APPIMAGE_EXTRACT_AND_RUN unset: with it, the extracted appimage plugin runs
         # appimagetool from another directory and it cannot find the AppDir.
         run: |
           set -euo pipefail
+          # Verify the declared installer identity before signing artifacts for this feed.
+          version="$(node -p 'require("./package.json").version')"
+          channel_mode=""
+          if [[ -z "$RELEASE_TAG" ]]; then channel_mode=--dry-run; fi
+          EXPECTED_PRODUCT="$(node scripts/desktop-release-channel.mjs "$version" product "$channel_mode")"
+          EXPECTED_ID="$(node scripts/desktop-release-channel.mjs "$version" identifier "$channel_mode")"
+          export EXPECTED_PRODUCT EXPECTED_ID
+          cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/gpui/Cargo.toml |
+            node -e 'const packages = JSON.parse(require("node:fs").readFileSync(0)).packages;
+              const bundle = packages.find(p => p.name === "kubecove-gpui").metadata.packager;
+              if (bundle.identifier !== process.env.EXPECTED_ID || bundle.productName !== process.env.EXPECTED_PRODUCT)
+                throw Error("Package identity does not match the release channel");'
           # cargo-packager resolves an existing --out-dir before it changes to the crate directory.
           out=src-tauri/gpui/target/gpui-bundle
           mkdir -p "$out" gpui-updater
           cargo packager --manifest-path src-tauri/gpui/Cargo.toml --release --target "$BUNDLE_TARGET" \
             --packages kubecove-gpui --formats "$FORMAT" --out-dir "$out"
-          version="$(node -p 'require("./package.json").version')"
+          prefix="$(node scripts/desktop-release-channel.mjs "$version" prefix "$channel_mode")"
+          product="$EXPECTED_PRODUCT"
           case "$FORMAT" in
+            # AppImage and NSIS use the main executable name, even when the product changes.
             appimage)
               image="kubecove-gpui_${version}_x86_64.AppImage"
               (cd "$out" && "./$image" --appimage-extract usr/bin/kubeconform && squashfs-root/usr/bin/kubeconform -v)
-              cp "$out/$image" gpui-updater/
+              cp "$out/$image" "gpui-updater/${prefix}_${version}_x86_64.AppImage"
               ;;
             nsis)
               installer="kubecove-gpui_${version}_x64-setup.exe"
-              cp "$out/$installer" gpui-updater/
+              cp "$out/$installer" "gpui-updater/${prefix}_${version}_x64-setup.exe"
               ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
             # cargo-packager names the DMG after the product; rename it to match the other GPUI assets.
             app,dmg)
-              "$out/KubeCove GPUI.app/Contents/MacOS/kubeconform" -v
-              tar -czf "gpui-updater/kubecove-gpui_${version}_aarch64.app.tar.gz" -C "$out" "KubeCove GPUI.app"
-              cp "$out/KubeCove GPUI_${version}_aarch64.dmg" "gpui-updater/kubecove-gpui_${version}_aarch64.dmg"
+              "$out/$product.app/Contents/MacOS/kubeconform" -v
+              tar -czf "gpui-updater/${prefix}_${version}_aarch64.app.tar.gz" -C "$out" "$product.app"
+              cp "$out/${product}_${version}_aarch64.dmg" "gpui-updater/${prefix}_${version}_aarch64.dmg"
               ;;
           esac
           ls -l gpui-updater
@@ -167,9 +182,15 @@ jobs:
       - name: Verify the installed Windows kubeconform sidecar
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
           $version = node -p 'require("./package.json").version'
-          $installer = Resolve-Path "gpui-updater/kubecove-gpui_${version}_x64-setup.exe"
+          $channelMode = @()
+          if (!$env:RELEASE_TAG) { $channelMode = @("--dry-run") }
+          $prefix = node scripts/desktop-release-channel.mjs $version prefix @channelMode
+          if ($LASTEXITCODE -ne 0) { throw "Could not select the desktop artifact prefix" }
+          $installer = Resolve-Path "gpui-updater/${prefix}_${version}_x64-setup.exe"
           $installDir = Join-Path $env:RUNNER_TEMP ("kubecove-gpui-" + [guid]::NewGuid())
           # NSIS requires /D last and unquoted, even when the path contains spaces.
           $install = Start-Process -FilePath $installer.Path -ArgumentList "/S /D=$installDir" -Wait -PassThru
@@ -230,12 +251,15 @@ jobs:
 
       - name: Sign GPUI bundles
         env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           version="$(node -p 'require("./package.json").version')"
-          bash scripts/sign-gpui-release.sh gpui-release "$version"
+          channel_mode=""
+          if [[ -z "$RELEASE_TAG" ]]; then channel_mode=--dry-run; fi
+          bash scripts/sign-gpui-release.sh gpui-release "$version" "$channel_mode"
 
       - name: Verify signatures and write latest-gpui.json
         env:

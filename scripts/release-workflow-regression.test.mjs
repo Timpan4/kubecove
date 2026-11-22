@@ -190,7 +190,7 @@ test("parallel frontend checks retain coverage and finish before compilation-hea
   const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"));
   const common = [
     "bun run docs:check",
-    "node --test scripts/release-workflow-regression.test.mjs",
+    "node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs",
     "bun run typecheck",
     "bun run lint",
   ];
@@ -469,7 +469,7 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
   assert.equal(signing.env.TAURI_SIGNING_PRIVATE_KEY, "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}");
   assert.match(signing.run, /bash scripts\/sign-gpui-release.sh gpui-release "\$version"/);
   assert.doesNotMatch(JSON.stringify(gpuiRelease), /tauri\.conf\.json|bun x tauri|bun install/);
-  assert.match(step(bundle, "Bundle GPUI client").run, /cp "\$out\/KubeCove GPUI_\$\{version\}_aarch64\.dmg" "gpui-updater\/kubecove-gpui_\$\{version\}_aarch64\.dmg"/);
+  assert.match(step(bundle, "Bundle GPUI client").run, /cp "\$out\/\$\{product\}_\$\{version\}_aarch64\.dmg" "gpui-updater\/\$\{prefix\}_\$\{version\}_aarch64\.dmg"/);
   assert.match(step(job("sign", gpuiRelease), "Verify signatures and write latest-gpui.json").run, /node scripts\/gpui-release-manifest\.mjs/);
   for (const gpuiJob of Object.values(gpuiRelease.jobs)) {
     for (const { uses } of gpuiJob.steps.filter(({ uses }) => uses)) {
@@ -501,41 +501,43 @@ test("GPUI packages check out and bundle kubeconform for each installer target",
   assert.equal(windowsInstall.if, "runner.os == 'Windows'");
   assert.equal(windowsInstall.shell, "pwsh");
   assert.match(windowsInstall.run, /Start-Process .* -ArgumentList "\/S \/D=\$installDir" -Wait -PassThru/);
+  assert.match(windowsInstall.run, /desktop-release-channel\.mjs \$version prefix/);
+  assert.match(windowsInstall.run, /gpui-updater\/\$\{prefix\}_\$\{version\}_x64-setup\.exe/);
   assert.match(windowsInstall.run, /Test-Path -LiteralPath \(Join-Path \$installDir "kubecove-gpui\.exe"\) -PathType Leaf/);
   assert.match(windowsInstall.run, /\$sidecar = Join-Path \$installDir "kubeconform\.exe"/);
   assert.match(windowsInstall.run, /& \$sidecar -v/);
 });
 
-// Produced by `tauri signer sign --app-version 1.2.3` with a throwaway key generated for these
+// Produced by `tauri signer sign --app-version 0.15.1` with a throwaway key generated for these
 // tests. The signer records the signed file's name, so each asset name has its own signature
 // over a file of that name holding `fixtureData`.
-const fixtureKey = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0MTIwMzA0Mjc2RjdCREMKUldUY2UyOG5CQU1TZEkveUVLZWVLU3pwUlRZTzRiTVMrRk94Q0V2U3ZTcm01TkRteEV1ZFY4b04K";
+const fixtureKey = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERERkIxOUMyOTM3Qjg3N0YKUldSL2gzdVR3aG43M2JpNFRPRWh4MWRhdFQ4WXlzNisya1A2VkRCUmdicXJSNHY3MCs2NjZsdjAK";
 const fixtureSignatures = {
-  "kubecove-gpui_1.2.3_x86_64.AppImage": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUY2UyOG5CQU1TZEhtdnJwZng2cG1LdU9sZDFsUFFSVUVZb0xmYTY2UE5OZzVLaW95Sm5FRlBxRHB2VWVoNEd6ZnlLTU12TlZxUDMzSnA1RWdIZlI0WDRWTnFZejdLMXdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Nzk0CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM194ODZfNjQuQXBwSW1hZ2UJdmVyc2lvbjoxLjIuMwpwWk1BNExYc3RFN203eWJtMkphanl1djg2Wk9xTHZsVys2UC85MGppQWJ3cE4wSGRRdHRVcGIwUDY5QnBaemVSQy9RbnExK3oxeXJNMFBxK0kwQlhCUT09Cg==",
-  "kubecove-gpui_1.2.3_aarch64.app.tar.gz": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUY2UyOG5CQU1TZE50ZFkyQU10bXlmY1B5Yy9jTFhoVEdYTVF0M1FMcEFGQzFWdmwwMkI2MXdRbmNlaW9PbEw4aFhidTZVbkdkNURzODFyc2hmYTVSRVBXL0FLdmN6endZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Nzk1CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM19hYXJjaDY0LmFwcC50YXIuZ3oJdmVyc2lvbjoxLjIuMwpmdXdYWVdtalFZMm9VTFJZdDZUVGdkQVVrQ3BmWUovdkFOTTU4TlBCTjJWSHcvWnFDZHU3MUJSTGlqV3ExcnF5SEwwcitHSkhRNzgxWHRwelRmV2lBZz09Cg==",
-  "kubecove-gpui_1.2.3_x64-setup.exe": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUY2UyOG5CQU1TZERRUGV1ekNCY0M4L0Q5U1NwbnJ4djhFTmdFZTVkYmJYS0gzZ1duNXdhOXVKWEJXR2sxWmU5eU1ybkRkanB4YXRyWnNaSllIeGlVb09pME0xMlpwT3c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY4Nzk1CWZpbGU6a3ViZWNvdmUtZ3B1aV8xLjIuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MS4yLjMKTkdSUG9GUUhYai9Ud3YxSU0ySnZCRjcyTjVsd0ZhYW41QmxhRGY4TjhOaTJ6a0hwN0xpUkw0OWdCZm9yQUxTUXY1Z0NyeEQ2dDZxN3hSMDJsREY4QlE9PQo=",
+  "kubecove-gpui_0.15.1_x86_64.AppImage": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSL2gzdVR3aG43M2NoUFZyZkZQNTJrYWYzb2dvM0ZjdXVRZ0FsQnJIZUNLeWRBa2hTeXUwTmFrWFAvZE5wUVJJUHVUWE1DUnBRdGtrV2lPS3VGUWlTQ1RjdGNiSUtzYWdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjkwMTgxCWZpbGU6a3ViZWNvdmUtZ3B1aV8wLjE1LjFfeDg2XzY0LkFwcEltYWdlCXZlcnNpb246MC4xNS4xCnZuTm9QSjNlNnJ1ZDY2SWk3L2tIM1RxaE5tWDJMcTI0WUMzN0ttSG1ONnZiT2d0WVQ2Y29QZDEva21uNnFZUlEyMFJHTFdJSEtvMENmbzNGYnpHM0FnPT0K",
+  "kubecove-gpui_0.15.1_aarch64.app.tar.gz": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSL2gzdVR3aG43M1JISi8vOXk3OWhlQlNicm9lNmZscHFYNFcrNTdBa2FhNWFRYjNVOGFMZ3pCNXduYzh0N1UwMGthSHRjcmxsSm9yRFh4MUpyMzRqUWIyalh1Rjg4bFFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjkwMTgyCWZpbGU6a3ViZWNvdmUtZ3B1aV8wLjE1LjFfYWFyY2g2NC5hcHAudGFyLmd6CXZlcnNpb246MC4xNS4xCk1RUVJkajFBRFM5VEhqTnVBU1NMU0pOSkZ1MFVQOUJtM0VqcXR1cUhmeUhCY0dBMTFFSS9HNytFZzliWHlJZXVwWlZrYjFUWVl1UlJXUjlwNEZYekF3PT0K",
+  "kubecove-gpui_0.15.1_x64-setup.exe": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSL2gzdVR3aG43M2Y3bUdrYzYvY01MYVIxeUZsSVJybzQyNFJCTWF2WFcrN3BmcVk4aGRBNFhHeUpoWlllVE41bjM4WXpjRHBLamZOcUFhMEdvQnZtcm5NT1ZLdWJaUVFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjkwMTgyCWZpbGU6a3ViZWNvdmUtZ3B1aV8wLjE1LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMTUuMQpmWXZ3YVFmWDArdU1YSTF2R3dDVkdyUk9CcWF4NFV3cGJsR01MSWo5KytES3lDdWQyeHlXeGdpdUJHNDd2ZnNrQ0JRckhPdVJqMllNNUs1K3dqV3VDdz09Cg==",
 };
-const fixtureName = "kubecove-gpui_1.2.3_x86_64.AppImage";
+const fixtureName = "kubecove-gpui_0.15.1_x86_64.AppImage";
 const fixtureSignature = fixtureSignatures[fixtureName];
 const fixtureData = Buffer.from("kubecove gpui fixture\n");
 
 test("GPUI signature verification accepts only the updater key, the exact bytes, the signed version and the signed file name", () => {
-  const signature = { publicKey: fixtureKey, signature: fixtureSignature, data: fixtureData, version: "1.2.3", name: fixtureName };
+  const signature = { publicKey: fixtureKey, signature: fixtureSignature, data: fixtureData, version: "0.15.1", name: fixtureName };
   assert.doesNotThrow(() => verifyUpdaterSignature(signature));
   // A signature made for another asset is refused, as the client refuses the Tauri app's.
-  assert.throws(() => verifyUpdaterSignature({ ...signature, name: "kubecove-gpui_1.2.3_x64-setup.exe" }), /file:kubecove-gpui_1\.2\.3_x64-setup\.exe/);
+  assert.throws(() => verifyUpdaterSignature({ ...signature, name: "kubecove-gpui_0.15.1_x64-setup.exe" }), /file:kubecove-gpui_0\.15\.1_x64-setup\.exe/);
   const productionKey = JSON.parse(readFileSync(new URL("../src-tauri/gpui/updater.json", import.meta.url), "utf8")).public_key;
   assert.throws(() => verifyUpdaterSignature({ ...signature, publicKey: productionKey }), /different key/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, data: Buffer.from("kubecove gpui fixture!\n") }), /does not match the file/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, version: "1.2.4" }), /version:1\.2\.4/);
   // Rewriting the version inside the trusted comment breaks the global signature.
-  const forged = Buffer.from(Buffer.from(fixtureSignature, "base64").toString("utf8").replace("version:1.2.3", "version:1.2.4")).toString("base64");
+  const forged = Buffer.from(Buffer.from(fixtureSignature, "base64").toString("utf8").replace("version:0.15.1", "version:1.2.4")).toString("base64");
   assert.throws(() => verifyUpdaterSignature({ ...signature, signature: forged, version: "1.2.4" }), /trusted comment signature/);
   assert.throws(() => verifyUpdaterSignature({ ...signature, signature: Buffer.from("not a signature").toString("base64") }), /not a minisign signature/);
 });
 
 test("latest-gpui.json lists every platform with its release URL and signature, or fails", () => {
-  const version = "1.2.3";
+  const version = "0.15.1";
   const files = Object.fromEntries([...new Set(Object.values(gpuiUpdaterAssets(version)))]
     .flatMap((name) => [[name, fixtureData], [`${name}.sig`, Buffer.from(fixtureSignatures[name])]]));
   const build = (names, overrides = {}) => buildGpuiManifest({
@@ -545,37 +547,47 @@ test("latest-gpui.json lists every platform with its release URL and signature, 
   const manifest = build(Object.keys(files));
   assert.deepEqual(Object.keys(manifest), ["version", "notes", "pub_date", "platforms"]);
   assert.deepEqual(Object.keys(manifest.platforms).sort(), ["darwin-aarch64", "linux-x86_64", "windows-x86_64"]);
-  assert.equal(manifest.platforms["linux-x86_64"].url, "https://github.com/owner/repo/releases/download/app-v1.2.3/kubecove-gpui_1.2.3_x86_64.AppImage");
-  assert.equal(manifest.platforms["darwin-aarch64"].url, "https://github.com/owner/repo/releases/download/app-v1.2.3/kubecove-gpui_1.2.3_aarch64.app.tar.gz");
-  assert.equal(manifest.platforms["windows-x86_64"].signature, fixtureSignatures["kubecove-gpui_1.2.3_x64-setup.exe"]);
+  assert.equal(manifest.platforms["linux-x86_64"].url, "https://github.com/owner/repo/releases/download/app-v0.15.1/kubecove-gpui_0.15.1_x86_64.AppImage");
+  assert.equal(manifest.platforms["darwin-aarch64"].url, "https://github.com/owner/repo/releases/download/app-v0.15.1/kubecove-gpui_0.15.1_aarch64.app.tar.gz");
+  assert.equal(manifest.platforms["windows-x86_64"].signature, fixtureSignatures["kubecove-gpui_0.15.1_x64-setup.exe"]);
   for (const missing of Object.keys(files)) {
     assert.throws(() => build(Object.keys(files).filter((name) => name !== missing)), new RegExp(`Missing ${missing.replaceAll(".", "\\.")}\\.`));
   }
   assert.throws(() => build(Object.keys(files), { tag: "feat/branch" }), /does not match app version/);
 });
 
+test("only the consolidated product gets new manifests after 0.15.1", async () => {
+  const { desktopReleaseChannel } = await import("./desktop-release-channel.mjs");
+  assert.equal(desktopReleaseChannel("0.15.1").manifest, "latest-gpui.json");
+  assert.throws(() => desktopReleaseChannel("0.15.2"), /frozen/);
+  for (const version of ["0.16.0", "1.0.0"]) {
+    assert.equal(desktopReleaseChannel(version).manifest, "latest-desktop.json");
+    assert.equal(gpuiUpdaterAssets(version)["linux-x86_64"], `kubecove_${version}_x86_64.AppImage`);
+  }
+});
+
 test("final verification rejects every missing archive, checksum, installer or updater platform", () => {
   const verification = step(job("stage-release-assets"), "Verify final updater platform coverage");
   const code = verification.run.match(/node <<'EOF'\n([\s\S]+)\nEOF/)[1];
-  const version = "1.2.3";
+  const version = "0.16.0";
   const assets = [
     ...targets.flatMap((target) => ["", "-slim"].flatMap((suffix) => {
       const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
       return [archive, `${archive}.sha256`];
     })),
     ...[...new Set(Object.values(gpuiUpdaterAssets(version)))].flatMap((bundle) => [bundle, `${bundle}.sig`]),
-    `kubecove-gpui_${version}_aarch64.dmg`,
-    "latest-gpui.json",
+    `kubecove_${version}_aarch64.dmg`,
+    "latest-desktop.json",
   ];
   const gpuiPlatforms = Object.fromEntries(Object.entries(gpuiUpdaterAssets(version)).map(([key, name]) =>
     [key, { signature: "sig", url: `https://github.com/owner/repo/releases/download/app-v${version}/${name}` }]));
   const validate = (names, gpui = { version, platforms: gpuiPlatforms }) => runInNewContext(code, {
-    process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version } },
+    process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version, MANIFEST: "latest-desktop.json", PREFIX: "kubecove" } },
     require: (name) => {
       assert.equal(name, "node:fs");
       return { readFileSync: (path) => {
         if (path === "/check/assets.txt") return names.join("\n");
-        assert.equal(path, "/check/latest-gpui.json");
+        assert.equal(path, "/check/latest-desktop.json");
         return JSON.stringify(gpui);
       } };
     },
