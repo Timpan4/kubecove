@@ -1,7 +1,7 @@
 //! Workspace, RBAC review, entry-point and port-forward merging for Tauri
 //! migration snapshots. Existing GPUI entries win on conflict.
 
-use super::{is_safe_text, parse_port, safe_nonempty, safe_optional};
+use super::{MergeReport, is_safe_text, parse_port, safe_nonempty, safe_optional};
 use crate::{
     model::WORKSPACE_KINDS,
     preferences::{Document, SavedForward},
@@ -21,8 +21,9 @@ pub(super) fn merge_workspaces(
     document: &mut Document,
     source_key: Option<&str>,
     workspace_id_map: &mut HashMap<String, String>,
-    skipped: &mut usize,
+    report: &mut MergeReport,
 ) {
+    let skipped = &mut report.skipped;
     let Some(raw_workspaces) = state.get("workspaces") else {
         return;
     };
@@ -69,23 +70,7 @@ pub(super) fn merge_workspaces(
                         document.workspace_documents.insert(existing.id, retained);
                     }
                 }
-                Some(retained)
-                    if retained["spec"]["shortcuts"]
-                        .as_array()
-                        .is_none_or(Vec::is_empty) =>
-                {
-                    let shortcuts = item
-                        .get("shortcuts")
-                        .map_or_else(Vec::new, sanitize_shortcuts);
-                    if !shortcuts.is_empty() {
-                        let mut updated = retained.clone();
-                        updated["spec"]["shortcuts"] = Value::Array(shortcuts);
-                        if transfer::parse(&updated.to_string()).is_ok() {
-                            *retained = updated;
-                        }
-                    }
-                }
-                Some(_) => {}
+                Some(retained) => fill_empty_shortcuts(retained, item),
             }
             (existing.id, existing.name.clone())
         } else {
@@ -133,33 +118,40 @@ pub(super) fn merge_workspaces(
                 &target_name,
                 parsed.port_forwards,
             ),
-            // Without a source the presets wait in the document, keyed by the
-            // GPUI workspace ID so a later rename does not lose them.
-            None if !parsed.port_forwards.is_empty() => merge_port_forwards(
-                document
-                    .tauri_migration_pending_presets
-                    .entry(target_id)
-                    .or_default(),
-                parsed.port_forwards,
-            ),
-            None => {}
+            None => report.unscoped_presets += parsed.port_forwards.len(),
         }
     }
 }
 
-/// Files presets that waited for a kubeconfig source under `source_key`, for
-/// the workspaces GPUI still holds, by their current context and name.
-pub(super) fn file_pending_presets(document: &mut Document, source_key: &str) {
-    for (id, forwards) in std::mem::take(&mut document.tauri_migration_pending_presets) {
-        let Some((context, name)) = document
-            .workspaces
-            .iter()
-            .find(|w| w.id == id)
-            .map(|w| (w.context.clone(), w.name.clone()))
-        else {
-            continue;
-        };
-        file_presets(document, source_key, &context, &name, forwards);
+/// Gives a retained GPUI workspace document the incoming shortcuts when its
+/// own list is missing or empty. GPUI's shortcuts win; a retained document
+/// that is not a single `Workspace` with an object `spec` is left unchanged.
+fn fill_empty_shortcuts(retained: &mut Value, item: &Value) {
+    if retained.get("kind").and_then(Value::as_str) != Some("Workspace") {
+        return;
+    }
+    let Some(spec) = retained.get("spec").and_then(Value::as_object) else {
+        return;
+    };
+    if spec
+        .get("shortcuts")
+        .and_then(Value::as_array)
+        .is_some_and(|shortcuts| !shortcuts.is_empty())
+    {
+        return;
+    }
+    let shortcuts = item
+        .get("shortcuts")
+        .map_or_else(Vec::new, sanitize_shortcuts);
+    if shortcuts.is_empty() {
+        return;
+    }
+    let mut updated = retained.clone();
+    if let Some(spec) = updated.get_mut("spec").and_then(Value::as_object_mut) {
+        spec.insert("shortcuts".into(), Value::Array(shortcuts));
+    }
+    if transfer::parse(&updated.to_string()).is_ok() {
+        *retained = updated;
     }
 }
 

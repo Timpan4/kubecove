@@ -41,6 +41,8 @@ pub(super) struct MergeReport {
     pub skipped: usize,
     /// Valid Tauri entries that lost to an existing GPUI entry.
     pub kept_existing: usize,
+    /// Port-forward presets dropped because no kubeconfig source resolved.
+    pub unscoped_presets: usize,
 }
 
 /// Parses `bytes` as a schema-v1 Tauri migration snapshot and merges valid
@@ -51,7 +53,7 @@ pub(super) struct MergeReport {
 /// `existing_preference_keys` names the preference keys already stored by GPUI;
 /// those keep their value. `source_key` is the active kubeconfig source, which
 /// scopes migrated port-forward presets the way the inspector looks them up.
-/// Without one, presets wait in `Document::tauri_migration_pending_presets`.
+/// Without one, presets are skipped and counted in `unscoped_presets`.
 pub(super) fn merge_bytes(
     bytes: &[u8],
     document: &mut Document,
@@ -89,7 +91,7 @@ pub(super) fn merge_bytes(
                 document,
                 source_key,
                 &mut workspace_id_map,
-                &mut report.skipped,
+                &mut report,
             ),
             None => report.skipped += 1,
         }
@@ -109,11 +111,6 @@ pub(super) fn merge_bytes(
     }
 
     Ok(report)
-}
-
-/// Files presets that waited for a kubeconfig source. See `merge_bytes`.
-pub(super) fn file_pending_presets(document: &mut Document, source_key: &str) {
-    workspaces::file_pending_presets(document, source_key);
 }
 
 fn entry_state(entry: &Value) -> Option<&serde_json::Map<String, Value>> {
@@ -176,7 +173,7 @@ fn merge_settings(
     // equal to the GPUI profile that already holds the ID. A different GPUI
     // profile with the same ID is not the endpoint the user selected in Tauri.
     let mut selectable = HashSet::new();
-    let mut kept_existing = HashSet::new();
+    let mut conflicting = HashSet::new();
     if let Some(raw_profiles) = state.get("argoProfiles") {
         match raw_profiles.as_array() {
             Some(items) => {
@@ -190,7 +187,8 @@ fn merge_settings(
                             selectable.insert(profile.id);
                         }
                         Some(_) => {
-                            kept_existing.insert(profile.id);
+                            report.kept_existing += 1;
+                            conflicting.insert(profile.id);
                         }
                         None => {
                             selectable.insert(profile.id.clone());
@@ -225,7 +223,7 @@ fn merge_settings(
                     if let ConnectionPreference::Connected { profile_id } = &parsed
                         && !selectable.contains(profile_id)
                     {
-                        if kept_existing.contains(profile_id) {
+                        if conflicting.contains(profile_id) {
                             report.kept_existing += 1;
                         } else {
                             *skipped += 1;
@@ -241,7 +239,6 @@ fn merge_settings(
             None => *skipped += 1,
         }
     }
-    report.kept_existing += kept_existing.len();
 }
 
 fn apply_scalar_preferences(

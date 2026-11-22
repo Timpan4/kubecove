@@ -14,12 +14,8 @@ use kubecove_lib::models::AppError;
 use std::{collections::HashSet, fs, path::Path};
 
 impl Store {
-    /// Whether loading has import work: a snapshot GPUI has not imported, or
-    /// presets an import left waiting for a kubeconfig source.
+    /// Whether loading has import work: a snapshot GPUI has not imported.
     pub(super) fn has_import_work(&self, directory: &Path, document: &Document) -> bool {
-        if !document.tauri_migration_pending_presets.is_empty() {
-            return true;
-        }
         if document.tauri_migration_imported.is_some() {
             return false;
         }
@@ -54,13 +50,8 @@ impl Store {
         };
         // Re-read under the lock: another instance may have imported meanwhile.
         let (mut document, existing_preference_keys) = self.load_unlocked(directory)?;
-        let source_key = (self.source)();
         if document.tauri_migration_imported.is_none() {
-            document =
-                self.import_snapshot(directory, document, &existing_preference_keys, &source_key);
-        }
-        if !document.tauri_migration_pending_presets.is_empty() {
-            document = self.file_pending_presets(document, &source_key);
+            document = self.import_snapshot(directory, document, &existing_preference_keys);
         }
         *memory = document.clone();
         Ok(document)
@@ -71,7 +62,6 @@ impl Store {
         directory: &Path,
         document: Document,
         existing_preference_keys: &HashSet<String>,
-        source_key: &Result<String, AppError>,
     ) -> Document {
         let bytes = match fs::read(directory.join(MIGRATION_FILE)) {
             Ok(bytes) => bytes,
@@ -83,6 +73,7 @@ impl Store {
                 return document;
             }
         };
+        let source_key = (self.source)();
         let mut candidate = document.clone();
         let report = match tauri_migration::merge_bytes(
             &bytes,
@@ -101,37 +92,12 @@ impl Store {
         candidate.tauri_migration_imported = Some(report.exported_at.clone());
         match self.commit(candidate) {
             Some(committed) => {
-                self.set_migration_diagnostic(import_summary(&report));
+                let source_error = source_key.err().map(|error| error.message);
+                self.set_migration_diagnostic(import_summary(&report, source_error.as_deref()));
                 committed
             }
             None => document,
         }
-    }
-
-    /// Files presets that waited for a kubeconfig source once it resolves.
-    fn file_pending_presets(
-        &self,
-        document: Document,
-        source_key: &Result<String, AppError>,
-    ) -> Document {
-        let source_key = match source_key {
-            Ok(source_key) => source_key,
-            Err(error) => {
-                let waiting: usize = document
-                    .tauri_migration_pending_presets
-                    .values()
-                    .map(Vec::len)
-                    .sum();
-                self.set_migration_diagnostic(Some(format!(
-                    "{waiting} saved port forward(s) from the Tauri import wait for the active kubeconfig source, which could not be resolved ({}).",
-                    error.message
-                )));
-                return document;
-            }
-        };
-        let mut candidate = document.clone();
-        tauri_migration::file_pending_presets(&mut candidate, source_key);
-        self.commit(candidate).unwrap_or(document)
     }
 
     /// Validates and writes an import result with the next revision. On failure
@@ -166,22 +132,32 @@ impl Store {
     }
 }
 
-fn import_summary(report: &MergeReport) -> Option<String> {
-    let skipped = (report.skipped > 0)
-        .then(|| format!("{} invalid or unsafe field(s) skipped", report.skipped));
-    let kept = (report.kept_existing > 0).then(|| {
-        format!(
+fn import_summary(report: &MergeReport, source_error: Option<&str>) -> Option<String> {
+    let mut parts = Vec::new();
+    if report.skipped > 0 {
+        parts.push(format!(
+            "{} invalid or unsafe field(s) skipped",
+            report.skipped
+        ));
+    }
+    if report.kept_existing > 0 {
+        parts.push(format!(
             "{} Argo CD entr(ies) kept the existing GPUI version",
             report.kept_existing
-        )
-    });
-    match (skipped, kept) {
-        (None, None) => None,
-        (Some(one), None) | (None, Some(one)) => {
-            Some(format!("Imported {MIGRATION_FILE} with {one}."))
-        }
-        (Some(skipped), Some(kept)) => Some(format!(
-            "Imported {MIGRATION_FILE} with {skipped} and {kept}."
-        )),
+        ));
     }
+    if report.unscoped_presets > 0 {
+        let reason = source_error.unwrap_or("unknown error");
+        parts.push(format!(
+            "{} saved port forward(s) skipped because the active kubeconfig source could not be resolved ({reason})",
+            report.unscoped_presets
+        ));
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Imported {MIGRATION_FILE} with {}.",
+        parts.join(" and ")
+    ))
 }

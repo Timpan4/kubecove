@@ -1,11 +1,11 @@
 //! Failure modes across starts: a later Tauri snapshot re-merges and restores
-//! entries the user deleted; GPUI modifies Tauri's file; presets are filed
-//! under no kubeconfig source, keep the import open, or are lost when their
-//! workspace is renamed before the source resolves; shortcuts vanish when a
-//! workspace merges into a GPUI one.
+//! entries the user deleted; GPUI modifies Tauri's file; presets with no
+//! kubeconfig source keep the import open or vanish without a report;
+//! shortcuts vanish when a workspace merges into a GPUI one, or a retained
+//! document that is not a single `Workspace` crashes the merge.
 
 use crate::scratch::Scratch;
-use crate::tauri_migration::{fixed_source, scoped_preset_key, unresolved_source};
+use crate::tauri_migration::{fixed_source, unresolved_source};
 use kubecove_gpui::{preferences::Store, workspaces::transfer::API_VERSION};
 use serde_json::json;
 
@@ -65,7 +65,7 @@ fn tauri_migration_imports_once_and_never_modifies_the_snapshot() {
 }
 
 #[test]
-fn tauri_migration_keeps_presets_in_gpui_state_until_the_source_resolves() {
+fn tauri_migration_skips_and_reports_presets_without_a_kubeconfig_source() {
     let root = Scratch::new("preferences-tests", "tauri-source");
     let directory = root.to_path_buf();
     let migration_path = directory.join("tauri-migration.json");
@@ -84,46 +84,27 @@ fn tauri_migration_keeps_presets_in_gpui_state_until_the_source_resolves() {
     );
     std::fs::write(&migration_path, &snapshot).unwrap();
 
-    let waiting = Store::file(directory.clone()).with_source_resolver(unresolved_source);
-    let first = waiting.load().unwrap();
-    assert_eq!(first.workspaces.len(), 2);
-    assert!(first.preferences.show_exact_timestamps);
-    assert!(first.tauri_migration_imported.is_some());
-    assert_eq!(first.tauri_migration_pending_presets.len(), 2);
-    assert!(first.saved_forward_presets.is_empty());
-    assert!(
-        waiting
-            .last_migration_diagnostic()
-            .unwrap()
-            .contains("kubeconfig settings unreadable")
-    );
-
-    // Tauri's file can change or go away; the pending presets live in GPUI's
-    // own document, keyed by workspace ID. The user renames one workspace,
-    // deletes the other and changes a setting before the source resolves.
-    std::fs::remove_file(&migration_path).unwrap();
-    let mut edited = first;
-    edited.preferences.show_exact_timestamps = false;
-    edited.workspaces.retain(|w| w.name != "Beta");
-    edited.workspaces[0].name = "Alpha renamed".into();
-    let saved = waiting.save(edited).unwrap();
-    assert_eq!(waiting.load().unwrap().revision, saved.revision);
-
-    let resolved = Store::file(directory.clone()).with_source_resolver(fixed_source);
-    let finished = resolved.load().unwrap();
-    assert!(finished.tauri_migration_pending_presets.is_empty());
-    assert!(!finished.preferences.show_exact_timestamps);
-    assert_eq!(finished.saved_forward_presets.len(), 1);
+    let importer = Store::file(directory.clone()).with_source_resolver(unresolved_source);
+    let imported = importer.load().unwrap();
+    assert_eq!(imported.workspaces.len(), 2);
+    assert!(imported.preferences.show_exact_timestamps);
+    assert!(imported.tauri_migration_imported.is_some());
+    assert!(imported.saved_forward_presets.is_empty());
     assert_eq!(
-        finished.saved_forward_presets[&scoped_preset_key("dev", "Alpha renamed")].len(),
-        1
+        importer.last_migration_diagnostic().as_deref(),
+        Some(
+            "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved (kubeconfig settings unreadable)."
+        )
     );
+
+    // The import finished in that one write. A resolvable source later does
+    // not reopen it, and nothing is written.
+    let resolved = Store::file(directory).with_source_resolver(fixed_source);
+    let reloaded = resolved.load().unwrap();
+    assert_eq!(reloaded.revision, imported.revision);
+    assert!(reloaded.saved_forward_presets.is_empty());
     assert_eq!(resolved.last_migration_diagnostic(), None);
-    // Filing is done once; the next load has no import work.
-    assert_eq!(
-        Store::file(directory).load().unwrap().revision,
-        finished.revision
-    );
+    assert_eq!(std::fs::read_to_string(&migration_path).unwrap(), snapshot);
 }
 
 #[test]
@@ -132,7 +113,7 @@ fn tauri_migration_fills_only_empty_shortcut_slots_of_existing_workspaces() {
     let directory = root.to_path_buf();
     let store = Store::file(directory.clone());
     let mut existing = store.load().unwrap();
-    for (id, name) in [(1, "Alpha"), (2, "Beta"), (3, "Gamma")] {
+    for (id, name) in [(1, "Alpha"), (2, "Beta"), (3, "Gamma"), (4, "Delta")] {
         existing.workspaces.push(
             kubecove_gpui::workspaces::Draft {
                 name,
@@ -163,9 +144,17 @@ fn tauri_migration_fills_only_empty_shortcut_slots_of_existing_workspaces() {
         3,
         retained(json!([{ "id": "gpui", "label": "GPUI wins", "kind": "resources" }])),
     );
+    // A valid retained list document has no top-level `spec` to fill.
+    let list = json!({
+        "apiVersion": API_VERSION,
+        "kind": "WorkspaceList",
+        "metadata": { "name": "kubecove-workspaces" },
+        "items": [retained(json!([]))]
+    });
+    existing.workspace_documents.insert(4, list.clone());
     store.save(existing).unwrap();
     let shortcut = json!([{ "id": "sc-1", "label": "Pods", "kind": "resources" }]);
-    let workspaces: Vec<_> = ["ALPHA", "Beta", "Gamma"]
+    let workspaces: Vec<_> = ["ALPHA", "Beta", "Gamma", "Delta"]
         .iter()
         .map(|name| {
             json!({
@@ -183,7 +172,9 @@ fn tauri_migration_fills_only_empty_shortcut_slots_of_existing_workspaces() {
     .unwrap();
 
     let merged = Store::file(directory).load().unwrap();
-    assert_eq!(merged.workspaces.len(), 3);
+    assert!(merged.tauri_migration_imported.is_some());
+    assert_eq!(merged.workspaces.len(), 4);
+    assert_eq!(merged.workspace_documents[&4], list);
     assert_eq!(merged.workspaces[0].namespaces, vec!["web"]);
     let alpha = &merged.workspace_documents[&1];
     assert_eq!(alpha["spec"]["displayName"], "Alpha");

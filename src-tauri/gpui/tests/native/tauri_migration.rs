@@ -317,6 +317,11 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                             "endpoint": { "kind": "externalHttps", "url": "https://tauri-loses.example.test" }
                         },
                         {
+                            "id": "shared-profile",
+                            "transport": "connected",
+                            "endpoint": { "kind": "externalHttps", "url": "https://tauri-loses-again.example.test" }
+                        },
+                        {
                             "id": "new-profile",
                             "transport": "connected",
                             "workspaceId": "tauri-unknown",
@@ -394,10 +399,16 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
     });
     std::fs::write(directory.join("tauri-migration.json"), snapshot.to_string()).unwrap();
 
-    let merged = Store::file(directory)
-        .with_source_resolver(fixed_source)
-        .load()
-        .unwrap();
+    let importer = Store::file(directory).with_source_resolver(fixed_source);
+    let merged = importer.load().unwrap();
+    // Each losing entry counts: two "shared-profile" definitions and the two
+    // selections of it (Production and QA).
+    assert!(
+        importer
+            .last_migration_diagnostic()
+            .unwrap()
+            .contains("4 Argo CD entr(ies) kept the existing GPUI version")
+    );
     assert!(merged.preferences.show_exact_timestamps);
     assert!(!merged.preferences.show_usage_footer);
     assert_eq!(merged.preferences.argo_profiles.len(), 2);
