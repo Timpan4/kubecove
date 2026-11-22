@@ -630,11 +630,23 @@ test("frontend CI and the local check use the same verification commands", () =>
   const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const frontend = job("frontend");
   for (const command of ["bun run test:ci", "bun run check:frontend"]) {
-    assert.ok(frontend.includes(`\n        run: ${command}\n`), `Frontend CI must run ${command}`);
+    assert.match(frontend, new RegExp(`^ +run: ${command}$`, "m"));
     assert.ok(scripts.check.split(" && ").includes(command), `The local check must run ${command}`);
   }
-  assert.match(step("Audit frontend dependencies", "frontend"), /run: bun run audit\b/);
-  assert.ok(frontend.indexOf(step("Install frontend dependencies", "frontend")) < frontend.indexOf(step("Check frontend", "frontend")));
+  const parallel = frontend.indexOf("\n      - parallel:\n");
+  assert.ok(parallel > frontend.indexOf(step("Install frontend dependencies", "frontend")));
+  const independent = frontend.slice(parallel);
+  assert.match(independent, /^ {12}run: bun run check:frontend$/m);
+  assert.match(independent, /^ {12}run: bun run audit$/m);
+  assert.doesNotMatch(independent, /^ +(if|continue-on-error):/m);
+
+  const [preflight, ...compilation] = scripts["check:frontend"].split(" && ");
+  const tasks = preflight.split(" ");
+  assert.deepEqual(tasks.slice(0, 3), ["bun", "run", "--parallel"]);
+  for (const check of ["docs:check", "lint", "lint:anti-slop", "typecheck", "typecheck:bench", "svelte:check", "test:release", "test:bench-groups"]) {
+    assert.ok(tasks.includes(check), `The shared frontend check must run ${check}`);
+  }
+  assert.deepEqual(compilation, ["bun test", "bun run test:svelte", "bun run build:bundle"]);
 });
 test("native dependencies are installed only if GPUI cannot link or Playwright cannot launch Chromium", () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replaceAll("\r\n", "\n");
@@ -941,6 +953,10 @@ test("the required gate checks code-only diffs, including shallow pull request m
         assert.equal(result.status === 0, succeeds, `base=${from}, head=${to}: ${result.stderr}`);
       }
     }
+    git("update-ref", "refs/remotes/origin/main", bad);
+    const dispatched = verify("", bad);
+    assert.equal(dispatched.status, 2, dispatched.stdout);
+    assert.match(dispatched.stdout, /src\/App\.css:2: new blank line at EOF/);
     const merge = git("commit-tree", `${bad}^{tree}`, "-p", clean, "-p", bad, "-m", "pull request merge");
     git("checkout", "--quiet", "--detach", merge);
     git("clone", "--quiet", "--no-local", "--depth", "2", root, "checkout");

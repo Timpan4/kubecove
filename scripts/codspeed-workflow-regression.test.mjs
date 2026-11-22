@@ -398,8 +398,6 @@ test("frontend group jobs select every benchmark file within the measured projec
 	assert.match(job("frontend"), /KUBECOVE_BENCHMARK_SELECTION: \$\{\{ matrix.selection \}\}/);
 	const selections = matrix.map(({ selection }) => benchmarkSelection({ KUBECOVE_BENCHMARK_SELECTION: selection }));
 	assert.deepEqual([...new Set(selections.flatMap((selection) => selection.include))].sort(), files);
-	const scripts = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts;
-	assert.ok(scripts["check:frontend"].split(/\s+/).includes("test:bench-groups"));
 	const durations = groups.map((group) => benchmarkGroups(files, count)[group].seconds);
 	t.diagnostic(`Predicted Run benchmarks seconds by group: ${durations.map((seconds) => seconds.toFixed(3)).join(", ")}`);
 	assert.equal(count, 8);
