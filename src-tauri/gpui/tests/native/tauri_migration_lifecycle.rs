@@ -90,15 +90,14 @@ fn tauri_migration_skips_and_reports_presets_without_a_kubeconfig_source() {
     assert!(imported.preferences.show_exact_timestamps);
     assert!(imported.tauri_migration_imported.is_some());
     assert!(imported.saved_forward_presets.is_empty());
-    let report = "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved";
+    // The resolver's error text ("kubeconfig settings unreadable") can quote
+    // kubeconfig contents, so neither stderr nor the stored notice repeats it.
+    let report = "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved.";
     assert_eq!(
         importer.last_migration_diagnostic().as_deref(),
-        Some(format!("{report} (kubeconfig settings unreadable).").as_str())
+        Some(report)
     );
     // The report is stored with the import, so Settings shows it after restart.
-    // The kubeconfig error text can quote file contents and is not stored.
-    let report = format!("{report}.");
-    let report = report.as_str();
     assert_eq!(imported.tauri_migration_notice.as_deref(), Some(report));
 
     // The import finished in that one write. A resolvable source later does

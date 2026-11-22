@@ -90,13 +90,11 @@ impl Store {
             }
         };
         candidate.tauri_migration_imported = Some(report.exported_at.clone());
-        // The kubeconfig error text can quote file contents, so only the
-        // process diagnostic carries it; the stored notice omits it.
-        candidate.tauri_migration_notice = import_summary(&report, None);
+        let summary = import_summary(&report);
+        candidate.tauri_migration_notice = summary.clone();
         match self.commit(candidate) {
             Some(committed) => {
-                let source_error = source_key.err().map(|error| error.message);
-                self.set_migration_diagnostic(import_summary(&report, source_error.as_deref()));
+                self.set_migration_diagnostic(summary);
                 committed
             }
             None => document,
@@ -135,7 +133,9 @@ impl Store {
     }
 }
 
-fn import_summary(report: &MergeReport, source_error: Option<&str>) -> Option<String> {
+/// The import report for stderr and Settings. It names no error text: kubeconfig
+/// errors can quote file contents.
+fn import_summary(report: &MergeReport) -> Option<String> {
     let mut parts = Vec::new();
     if report.skipped > 0 {
         parts.push(format!(
@@ -150,9 +150,8 @@ fn import_summary(report: &MergeReport, source_error: Option<&str>) -> Option<St
         ));
     }
     if report.unscoped_presets > 0 {
-        let reason = source_error.map_or_else(String::new, |reason| format!(" ({reason})"));
         parts.push(format!(
-            "{} saved port forward(s) skipped because the active kubeconfig source could not be resolved{reason}",
+            "{} saved port forward(s) skipped because the active kubeconfig source could not be resolved",
             report.unscoped_presets
         ));
     }
