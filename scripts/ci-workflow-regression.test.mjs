@@ -967,6 +967,8 @@ test("the required gate checks code-only diffs, including shallow pull request m
     assert.match(unrelatedMain.stdout, /src\/App\.css:2: new blank line at EOF/);
 
     git("update-ref", "refs/remotes/origin/main", bad);
+    const fromMain = verify("", tip);
+    assert.equal(fromMain.status, 0, fromMain.stdout);
     const dispatched = verify("", bad);
     assert.equal(dispatched.status, 2, dispatched.stdout);
     assert.match(dispatched.stdout, /src\/App\.css:2: new blank line at EOF/);
