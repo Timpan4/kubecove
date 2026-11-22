@@ -36,6 +36,16 @@ fn tauri_migration_imports_once_and_never_modifies_the_snapshot() {
     let snapshot = snapshot_at("2026-11-21T00:00:00Z", named(&["Alpha", "Beta"]));
     std::fs::write(&migration_path, &snapshot).unwrap();
 
+    // A failed write persists neither the data nor the marker, and the next
+    // start imports again.
+    let staging = directory.join(format!("live-sessions.{}.tmp", std::process::id()));
+    std::fs::create_dir(&staging).unwrap();
+    let failed = Store::file(directory.clone()).load().unwrap();
+    assert!(failed.workspaces.is_empty());
+    assert_eq!(failed.tauri_migration_imported, None);
+    assert!(!directory.join("live-sessions.json").exists());
+    std::fs::remove_dir(&staging).unwrap();
+
     let store = Store::file(directory.clone());
     let imported = store.load().unwrap();
     assert_eq!(imported.workspaces.len(), 2);
@@ -118,7 +128,12 @@ fn settings_shows_the_tauri_import_notice_until_dismissed(cx: &mut gpui_kit::Tes
     use crate::*;
     let backend = std::sync::Arc::new(crate::Controlled::default());
     let report = "Imported tauri-migration.json with 1 saved port forward(s) skipped.";
-    backend.argo.document.lock().unwrap().tauri_migration_notice = Some(report.into());
+    let marker = Some("2026-11-21T00:00:00Z".to_owned());
+    {
+        let mut document = backend.argo.document.lock().unwrap();
+        document.tauri_migration_imported = marker.clone();
+        document.tauri_migration_notice = Some(report.into());
+    }
     let handle = crate::open(cx, backend.clone());
     let click = |cx: &mut gpui_kit::TestAppContext, id: &'static str| {
         cx.update_window(handle, |_, window, cx| {
@@ -158,9 +173,81 @@ fn settings_shows_the_tauri_import_notice_until_dismissed(cx: &mut gpui_kit::Tes
         assert!(window.try_find("settings-notice:tauri-import").is_none());
     })
     .unwrap();
+    let document = backend.argo.document.lock().unwrap();
+    assert_eq!(document.tauri_migration_notice, None);
+    // Dismissing never reopens the import.
+    assert_eq!(document.tauri_migration_imported, marker);
+}
+
+/// Failure modes: a Tauri ID shared by workspaces that land in different GPUI
+/// workspaces attaches a profile or selection to whichever came last; a
+/// selection survives a later conflicting definition of its profile; dropped
+/// shortcuts go unreported.
+#[test]
+fn tauri_migration_rejects_ambiguous_references_and_counts_dropped_shortcuts() {
+    let root = Scratch::new("preferences-tests", "tauri-ambiguous");
+    let directory = root.to_path_buf();
+    let profile = |id: &str, workspace: &str, url: &str| {
+        json!({
+            "id": id,
+            "transport": "connected",
+            "workspaceId": workspace,
+            "endpoint": { "kind": "externalHttps", "url": url }
+        })
+    };
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "exportedAt": "2026-11-21T00:00:00Z",
+        "entries": {
+            "kubecove-settings": { "version": 0, "state": {
+                "argoProfiles": [
+                    profile("first", "ok", "https://first.example.test"),
+                    profile("first", "ok", "https://other.example.test"),
+                    profile("shared", "dup", "https://shared.example.test")
+                ],
+                "argoConnectionPreferences": {
+                    "ok": { "kind": "connected", "profileId": "first" },
+                    "dup": { "kind": "kubernetes" }
+                }
+            } },
+            "kubecove-workspaces": { "version": 0, "state": { "workspaces": [
+                { "id": "dup", "name": "Alpha", "scope": { "clusterContext": "dev" } },
+                { "id": "dup", "name": "Beta", "scope": { "clusterContext": "dev" } },
+                {
+                    "id": "ok",
+                    "name": "Gamma",
+                    "scope": { "clusterContext": "dev" },
+                    "shortcuts": [
+                        { "id": "sc-1", "label": "Pods", "kind": "resources" },
+                        { "id": "sc-2", "label": "Bad", "kind": "unknown" }
+                    ]
+                }
+            ] } }
+        }
+    });
+    std::fs::write(directory.join("tauri-migration.json"), snapshot.to_string()).unwrap();
+
+    let store = Store::file(directory);
+    let merged = store.load().unwrap();
+    assert_eq!(merged.workspaces.len(), 3);
+    // "shared" names the ambiguous "dup", so it is skipped, as is the "dup"
+    // selection. The second "first" conflicts, so the "ok" selection is dropped.
+    let ids: Vec<_> = merged
+        .preferences
+        .argo_profiles
+        .iter()
+        .map(|profile| profile.id.as_str())
+        .collect();
+    assert_eq!(ids, ["first"]);
+    assert!(merged.preferences.argo_connection_preferences.is_empty());
+    let gamma = merged.workspaces[2].id;
+    let shortcuts = &merged.workspace_documents[&gamma]["spec"]["shortcuts"];
+    assert_eq!(shortcuts.as_array().unwrap().len(), 1);
     assert_eq!(
-        backend.argo.document.lock().unwrap().tauri_migration_notice,
-        None
+        store.last_migration_diagnostic().as_deref(),
+        Some(
+            "Imported tauri-migration.json with 3 invalid or unsafe field(s) skipped and 2 Argo CD entr(ies) kept the existing GPUI version."
+        )
     );
 }
 

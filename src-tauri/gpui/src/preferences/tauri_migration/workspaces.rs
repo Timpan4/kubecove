@@ -14,7 +14,7 @@ use crate::{
 };
 use kubecove_lib::models::PortForwardRequest;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub(super) fn merge_workspaces(
     state: &serde_json::Map<String, Value>,
@@ -40,6 +40,7 @@ pub(super) fn merge_workspaces(
         .unwrap_or(0)
         .saturating_add(1);
 
+    let mut ambiguous = HashSet::new();
     for item in items {
         let Some(parsed) = parse_workspace(item, skipped) else {
             *skipped += 1;
@@ -99,7 +100,17 @@ pub(super) fn merge_workspaces(
         };
 
         if let Some(source_id) = parsed.source_id {
-            workspace_id_map.insert(source_id, target_id.to_string());
+            // A Tauri ID shared by workspaces that land in different GPUI ones
+            // is ambiguous, so nothing may reference it.
+            let target = target_id.to_string();
+            match workspace_id_map.get(&source_id) {
+                Some(mapped) if *mapped != target => {
+                    ambiguous.insert(source_id);
+                }
+                _ => {
+                    workspace_id_map.insert(source_id, target);
+                }
+            }
         }
 
         if !parsed.entries.pinned.is_empty() || !parsed.entries.recent.is_empty() {
@@ -120,6 +131,9 @@ pub(super) fn merge_workspaces(
             ),
             None => report.unscoped_presets += parsed.port_forwards.len(),
         }
+    }
+    for source_id in ambiguous {
+        workspace_id_map.remove(&source_id);
     }
 }
 
@@ -278,6 +292,13 @@ fn parse_workspace(value: &Value, skipped: &mut usize) -> Option<ParsedWorkspace
         }
     }
 
+    // Shortcuts live only in the retained document, so count every one that
+    // does not reach it.
+    let kept_shortcuts = obj.get("shortcuts").map_or(0, |raw| {
+        let kept = sanitize_shortcuts(raw).len();
+        *skipped += raw.as_array().map_or(1, |items| items.len() - kept);
+        kept
+    });
     let retained_document = build_retained_document(
         obj,
         &name,
@@ -287,6 +308,9 @@ fn parse_workspace(value: &Value, skipped: &mut usize) -> Option<ParsedWorkspace
         &namespaces,
         &kinds,
     );
+    if retained_document.is_none() && kept_shortcuts > 0 {
+        *skipped += kept_shortcuts;
+    }
 
     Some(ParsedWorkspace {
         source_id,

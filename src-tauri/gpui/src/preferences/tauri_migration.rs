@@ -19,8 +19,10 @@ use std::{
 
 pub(super) const MIGRATION_FILE: &str = "tauri-migration.json";
 
-/// Mirrors `app-v0.15.1`'s `commands/migration/sanitize.rs` credential detector so
-/// secrets cannot enter `live-sessions.json` even if the migration file was edited.
+/// Mirrors `app-v0.15.1`'s `commands/migration/sanitize.rs` credential detector, so
+/// recognizable credential syntax stays out of `live-sessions.json` even if the
+/// migration file was edited. It is best-effort: a secret typed as ordinary text
+/// in a name or note is indistinguishable from other text (ADR 0036).
 static SENSITIVE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r#"(?ix)-----BEGIN[^\r\n]*(?:PRIVATE\sKEY|CERTIFICATE)-----|\b(?:bearer|basic)\s+\S+|"#,
@@ -169,10 +171,11 @@ fn merge_settings(
     let skipped = &mut report.skipped;
     apply_scalar_preferences(state, prefs, existing_preference_keys, skipped);
 
-    // Incoming profiles a migrated selection may name: imported ones, and ones
-    // equal to the GPUI profile that already holds the ID. A different GPUI
-    // profile with the same ID is not the endpoint the user selected in Tauri.
-    let mut selectable = HashSet::new();
+    // Incoming profiles a migrated selection may name, with their GPUI workspace:
+    // imported ones, and ones equal to the GPUI profile that already holds the
+    // ID. A different profile with the same ID, from GPUI or from an earlier
+    // entry of the snapshot, is not the endpoint the user selected in Tauri.
+    let mut selectable = HashMap::new();
     let mut conflicting = HashSet::new();
     if let Some(raw_profiles) = state.get("argoProfiles") {
         match raw_profiles.as_array() {
@@ -184,14 +187,14 @@ fn merge_settings(
                     };
                     match prefs.argo_profiles.iter().find(|p| p.id == profile.id) {
                         Some(existing) if *existing == profile => {
-                            selectable.insert(profile.id);
+                            selectable.insert(profile.id, profile.workspace_id);
                         }
                         Some(_) => {
                             report.kept_existing += 1;
                             conflicting.insert(profile.id);
                         }
                         None => {
-                            selectable.insert(profile.id.clone());
+                            selectable.insert(profile.id.clone(), profile.workspace_id.clone());
                             prefs.argo_profiles.push(profile);
                         }
                     }
@@ -220,8 +223,11 @@ fn merge_settings(
                         *skipped += 1;
                         continue;
                     };
+                    // GPUI connects a selection only to a profile of that workspace.
                     if let ConnectionPreference::Connected { profile_id } = &parsed
-                        && !selectable.contains(profile_id)
+                        && (conflicting.contains(profile_id)
+                            || selectable.get(profile_id).and_then(Option::as_deref)
+                                != Some(key.as_str()))
                     {
                         if conflicting.contains(profile_id) {
                             report.kept_existing += 1;
@@ -398,8 +404,12 @@ fn parse_argo_profile(
     let id = safe_nonempty(obj.get("id"))?;
     let endpoint = parse_argo_endpoint(obj.get("endpoint"), obj.get("url"))?;
     let cluster_context = safe_optional(obj.get("clusterContext"))?;
-    let workspace_id =
-        safe_optional(obj.get("workspaceId"))?.and_then(|raw| workspace_id_map.get(&raw).cloned());
+    // A profile bound to a Tauri workspace that did not map to one GPUI
+    // workspace could never be selected, so it is skipped.
+    let workspace_id = match safe_optional(obj.get("workspaceId"))? {
+        Some(raw) => Some(workspace_id_map.get(&raw)?.clone()),
+        None => None,
+    };
     let kubeconfig_source_key = safe_optional(obj.get("kubeconfigSourceKey"))?;
     let remember_credential = obj
         .get("rememberCredential")

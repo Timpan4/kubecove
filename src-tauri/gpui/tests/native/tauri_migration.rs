@@ -210,14 +210,27 @@ fn tauri_migration_fresh_import_and_idempotency() {
         loaded.preferences.argo_profiles[0].workspace_id.as_deref(),
         Some("1")
     );
+    assert_eq!(
+        loaded.preferences.argo_profiles[1].endpoint,
+        Endpoint::ServiceTunnel {
+            namespace: "argocd".into(),
+            service_name: "argocd-server".into(),
+            service_port: 443,
+            scheme: "https".into(),
+            root_path: Some("/argo".into()),
+            tls_server_name: None,
+        }
+    );
     // GPUI keys connection preferences by its own workspace ID; "staging" names no workspace.
     assert_eq!(
-        loaded
-            .preferences
-            .argo_connection_preferences
-            .keys()
-            .collect::<Vec<_>>(),
-        vec!["1"]
+        loaded.preferences.argo_connection_preferences,
+        [(
+            "1".to_owned(),
+            ConnectionPreference::Connected {
+                profile_id: "argo-ext".into()
+            }
+        )]
+        .into()
     );
 
     assert_eq!(loaded.workspaces.len(), 1);
@@ -322,9 +335,15 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
                             "endpoint": { "kind": "externalHttps", "url": "https://tauri-loses-again.example.test" }
                         },
                         {
-                            "id": "new-profile",
+                            "id": "orphan-profile",
                             "transport": "connected",
                             "workspaceId": "tauri-unknown",
+                            "endpoint": { "kind": "externalHttps", "url": "https://tauri-orphan.example.test" }
+                        },
+                        {
+                            "id": "new-profile",
+                            "transport": "connected",
+                            "workspaceId": "tauri-staging",
                             "endpoint": { "kind": "externalHttps", "url": "https://tauri-new.example.test" }
                         },
                         {
@@ -418,9 +437,13 @@ fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
             url: "https://gpui-wins.example.test".into()
         }
     );
+    // A profile bound to an unmapped Tauri workspace could never be selected,
+    // so only "new-profile" is imported, bound to Staging's GPUI ID.
     assert_eq!(merged.preferences.argo_profiles[1].id, "new-profile");
-    // An unmapped Tauri workspace ID is cleared rather than kept as a GPUI ID.
-    assert_eq!(merged.preferences.argo_profiles[1].workspace_id, None);
+    assert_eq!(
+        merged.preferences.argo_profiles[1].workspace_id.as_deref(),
+        Some("2")
+    );
     // Staging maps to GPUI workspace 2. Dev's profile was rejected, so its
     // selection is dropped. QA selected Tauri's "shared-profile", whose ID GPUI
     // already holds with another endpoint, so that selection is dropped too.
@@ -554,6 +577,7 @@ fn tauri_migration_never_persists_secrets() {
                         {
                             "id": "good-argo",
                             "transport": "connected",
+                            "workspaceId": "ws-1",
                             "rememberCredential": true,
                             "token": "canary-profile-token",
                             "endpoint": {
