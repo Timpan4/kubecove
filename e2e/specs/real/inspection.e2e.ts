@@ -3,6 +3,7 @@ import { get } from "node:http";
 import { promisify } from "node:util";
 import { browser, expect } from "@wdio/globals";
 import { runnerServer } from "../../harness/browser-session";
+import { messageFromError } from "../../../src/lib/error-redaction";
 import { channelMarker, type serverClient } from "../../harness/server-session";
 import { after, before, describe, it } from "mocha";
 import type {
@@ -92,8 +93,9 @@ const execFileAsync = promisify(execFile);
 async function commandResult<Result>(command: string, args: CommandArgs | ChannelArgs): Promise<Result> {
 	const response = await client.invoke(session, command, args);
 	if (!response.ok) {
-		const { kind } = await response.json();
-		throw new Error(`${command} failed (${response.status}, ${kind})`);
+		const error: unknown = await response.json().catch(() => null);
+		const detail = messageFromError(error);
+		throw new Error(`${command} failed (${response.status})${detail === "Unknown error" ? "" : `: ${detail}`}`);
 	}
 	return response.json();
 }

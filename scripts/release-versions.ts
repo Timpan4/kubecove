@@ -30,24 +30,34 @@ export function computeNextReleaseVersion(
 }
 
 export function readWorkspaceReleaseVersions(root = "."): ReleaseVersions {
+	return readReleaseVersions((path) => {
+		const fullPath = join(root, path);
+		return existsSync(fullPath) ? readFileSync(fullPath, "utf8") : undefined;
+	});
+}
+
+export function readReleaseVersions(read: (path: string) => string | undefined, source = ""): ReleaseVersions {
+	const required = (path: string) => {
+		const content = read(path);
+		if (content === undefined) throw new Error(`Missing release manifest ${source}${path}.`);
+		return content;
+	};
 	// SAFETY: release metadata only reads optional `version`, validated by `requireVersion` before use.
-	const packageJson = JSON.parse(
-		readFileSync(join(root, "package.json"), "utf8"),
-	) as { version?: string };
-	const cargoToml = readFileSync(
-		join(root, "src-tauri", "Cargo.toml"),
-		"utf8",
-	);
-	const cargoVersion = parseCargoPackageVersion(cargoToml, "src-tauri/Cargo.toml");
+	const packageJson = JSON.parse(required("package.json")) as { version?: string };
+	const cargoPath = "src-tauri/Cargo.toml";
+	const cargoVersion = parseCargoPackageVersion(required(cargoPath), source + cargoPath);
 	for (const { directory, label } of SIDE_WORKSPACES) {
-		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
-		if (!existsSync(manifestPath)) continue;
-		const version = parseCargoPackageVersion(readFileSync(manifestPath, "utf8"), `src-tauri/${directory}/Cargo.toml`);
-		if (version !== cargoVersion) throw new Error(`Backend and ${label} package versions must match.`);
+		const path = `src-tauri/${directory}/Cargo.toml`;
+		const manifest = read(path);
+		if (manifest === undefined) continue;
+		const version = parseCargoPackageVersion(manifest, source + path);
+		if (version !== cargoVersion) {
+			throw new Error(`Backend and ${label} package versions must match. ${source}${cargoPath}: ${cargoVersion}, ${source}${path}: ${version}.`);
+		}
 	}
 
 	return {
-		packageVersion: requireVersion("package.json", packageJson.version),
+		packageVersion: requireVersion(`${source}package.json`, packageJson.version),
 		cargoVersion,
 	};
 }

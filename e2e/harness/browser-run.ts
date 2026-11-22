@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
+import { browserLoginConfig, storeBrowserSession } from "./browser-login";
 import type { startMemoryFixture } from "./memory-fixture";
 import { serverBinary, startServer } from "./server-process";
 
@@ -24,15 +25,29 @@ export function createWdioRunner(root: string, spec: string | undefined, execute
 	};
 }
 
-export async function buildBrowserServer(root: string, artifacts: string, profiling: boolean, execute: Execute) {
-	const target = join(root, "src-tauri/server/target");
-	await execute("bun", ["--bun", "vite", "build"], {
-		KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profiling),
-		KUBECOVE_FRONTEND_BUNDLE_REPORT: profiling ? join(artifacts, "frontend-bundle.json") : process.env.KUBECOVE_FRONTEND_BUNDLE_REPORT,
-	});
-	await execute("cargo", ["build", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml", "--target-dir", target, ...(profiling ? ["--release"] : [])], {}, false, join(artifacts, "build.log"));
-	await mkdir(artifacts, { recursive: true });
-	return serverBinary(profiling, target);
+export function createBrowserBuild(stateDir: string, execute: Execute) {
+	const directories: string[] = [];
+	return {
+		async build(artifacts: string, profiling: boolean) {
+			await mkdir(stateDir, { recursive: true });
+			const buildDir = await mkdtemp(join(stateDir, "browser-build-"));
+			directories.push(buildDir);
+			const assets = join(buildDir, "dist");
+			const target = join(buildDir, "target");
+			await mkdir(artifacts, { recursive: true });
+			await execute("bun", ["--bun", "vite", "build", "--outDir", assets], {
+				KUBECOVE_PUBLIC_RUNTIME: "web", KUBECOVE_PUBLIC_PROFILE: String(profiling),
+				KUBECOVE_FRONTEND_BUNDLE_REPORT: profiling ? join(artifacts, "frontend-bundle.json") : process.env.KUBECOVE_FRONTEND_BUNDLE_REPORT,
+			});
+			await execute("cargo", ["build", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml", "--target-dir", target, ...(profiling ? ["--release"] : [])], {
+				CARGO_BUILD_BUILD_DIR: target, KUBECOVE_WEB_ASSET_DIR: assets,
+			}, false, join(artifacts, "build.log"));
+			return serverBinary(profiling, target);
+		},
+		async cleanup() {
+			for (const directory of directories) await rm(directory, { recursive: true, force: true });
+		},
+	};
 }
 
 export async function runServerWdio(binary: string, dataDir: string, kubeconfig: string, env: Record<string, string | undefined>, artifacts: string, signal: AbortSignal, runWdio: RunWdio) {
@@ -53,11 +68,9 @@ export async function runDevBrowser(binary: string, sessionsDir: string, kubecon
 				const page = chrome.pages()[0] ?? await chrome.newPage();
 				const token = (await readFile(env.KUBECOVE_SERVER_TOKEN_FILE, "utf8")).trim();
 				await page.goto(`${env.KUBECOVE_SERVER_ORIGIN}/api/v1/auth`);
-				await page.evaluate(async (token) => {
-					const response = await fetch("/api/v1/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
-					if (!response.ok) throw new Error("Dev session login failed");
-					sessionStorage.setItem("kubecove-browser-resume", (await response.json()).resumeToken);
-				}, token);
+				await page.evaluate(storeBrowserSession, browserLoginConfig(token)).catch(() => {
+					throw new Error("Could not start the browser session");
+				});
 				await page.goto(env.KUBECOVE_SERVER_ORIGIN);
 				await page.locator("#workspace-name").waitFor();
 				console.log(`Kind workspace ready at ${env.KUBECOVE_SERVER_ORIGIN}. Login token file: ${env.KUBECOVE_SERVER_TOKEN_FILE}`);

@@ -70,6 +70,8 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 	};
 	// Open Pod watch streams. They stay idle unless a benchmark calls `burst`.
 	const podWatches = new Set<ReadableStreamDefaultController<Uint8Array>>();
+	let activeLogStreams = 0;
+	let cancelledLogStreams = 0;
 	let resourceVersion = 1;
 	const requests: FixtureRequest[] = [];
 	signal?.throwIfAborted();
@@ -87,7 +89,19 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 			if (logPath) {
 				const [, namespace, name] = logPath;
 				if (remoteDesktop && pods.some(({ metadata }) => metadata.namespace === namespace && metadata.name === name)) {
-					return new Response("kubecove-remote-log-marker\n");
+					if (url.searchParams.get("follow") !== "true") {
+						return Response.json({ kind: "Status", status: "Failure", reason: "BadRequest", code: 400, message: "Expected follow=true for live logs" }, { status: 400 });
+					}
+					return new Response(new ReadableStream<Uint8Array>({
+						start(controller) {
+							activeLogStreams++;
+							controller.enqueue(new TextEncoder().encode("kubecove-remote-log-marker\n"));
+						},
+						cancel() {
+							activeLogStreams--;
+							cancelledLogStreams++;
+						},
+					}), { headers: { "content-type": "text/plain" } });
 				}
 				return Response.json({ apiVersion: "v1", kind: "Status", status: "Failure", reason: "NotFound", code: 404 }, { status: 404 });
 			}
@@ -130,5 +144,9 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 		}
 		return { watches: podWatches.size, events: lines.length };
 	}
-	return { url: `https://127.0.0.1:${server.port}`, authority, rows: count, burst, requests, stop: () => server.stop(true) };
+	return {
+		url: `https://127.0.0.1:${server.port}`, authority, rows: count, burst, requests,
+		logStreams: () => ({ active: activeLogStreams, cancelled: cancelledLogStreams }),
+		stop: () => server.stop(true),
+	};
 }

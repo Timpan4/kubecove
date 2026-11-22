@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readinessTimeoutMs, waitFor } from "../../.agents/skills/verify-kubecove/scripts/processes";
 
-type AutomationArgs = { label?: string; ref?: string; text?: string };
+type AutomationArgs = { label?: string; ref?: string; text?: string; key?: string };
 
 export async function mcpCall(endpoint: string, token: string, name: string, args: AutomationArgs = {}, signal = AbortSignal.timeout(readinessTimeoutMs)) {
 	const response = await fetch(endpoint, {
@@ -11,13 +11,21 @@ export async function mcpCall(endpoint: string, token: string, name: string, arg
 		body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
 	});
 	if (!response.ok) throw new Error(`MCP ${name} returned HTTP ${response.status}`);
-	const { result } = await response.json();
-	if (!result || result.isError) {
+	const envelope = await response.json().catch(() => {
+		throw new Error(`MCP tool ${name} returned invalid JSON`);
+	});
+	const result = envelope?.result;
+	const block = Array.isArray(result?.content) ? result.content[0] : undefined;
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Validate MCP content before passing it to JSON.parse.
+	const text = block?.type === "text" && typeof block.text === "string" ? block.text : undefined;
+	if (result?.isError) {
 		// A changed snapshot is rejected before dispatching input, so it is safe to retry.
-		if (/take a new snapshot|changed since the snapshot/.test(result?.content?.[0]?.text ?? "")) throw new StaleSnapshot();
+		if (text && /take a new snapshot|changed since the snapshot/.test(text)) throw new StaleSnapshot();
 		throw new Error(`MCP tool ${name} failed`);
 	}
-	return JSON.parse(result.content[0].text);
+	if (text === undefined) throw new Error(`MCP tool ${name} did not return text content`);
+	try { return JSON.parse(text); }
+	catch { throw new Error(`MCP tool ${name} returned invalid JSON text`); }
 }
 
 class StaleSnapshot extends Error {}

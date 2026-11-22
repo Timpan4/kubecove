@@ -92,6 +92,7 @@ describe("browser OIDC session lifecycle", () => {
 		const requests: { url: string; init?: RequestInit }[] = [];
 		let sessionRequests = 0;
 		let authChecks = 0;
+		let errorKind: string | { toString: null } = "validation";
 		setFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
 			requests.push({ url, init });
@@ -107,7 +108,7 @@ describe("browser OIDC session lifecycle", () => {
 			}
 			if (url.endsWith("/api/v1/oidc/logout")) return jsonResponse({});
 			if (url.endsWith("/api/v1/invoke/list_namespaces")) {
-				return jsonResponse({ kind: "validation", message: "Invalid token=diagnostics-fixture-secret" }, 400);
+				return jsonResponse({ kind: errorKind, message: "Invalid token=diagnostics-fixture-secret" }, 400);
 			}
 			throw new Error(`Unexpected request to ${url}`);
 		});
@@ -129,6 +130,11 @@ describe("browser OIDC session lifecycle", () => {
 			});
 			const event = getDiagnosticsSnapshot().frontendEvents.findLast(({ event }) => event === "tauri.invoke.error");
 			expect(event?.data.error).toBe("Invalid token=[REDACTED]");
+			errorKind = { toString: null };
+			const error: unknown = await createBrowserTauriClient().invoke("list_namespaces").catch((cause) => cause);
+			expect(error).toBeInstanceOf(Error);
+			expect(error).toHaveProperty("message", "Invalid token=[REDACTED]");
+			expect(error).not.toHaveProperty("kind");
 		} finally {
 			setDiagnosticsEnabled(false);
 			clearDiagnostics();

@@ -7,14 +7,14 @@ import { arch, platform, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 import type { ViteDevServer } from "vite";
-import { buildBrowserServer, createWdioRunner, runDevBrowser, runServerWdio, writeSmokeConfig } from "./harness/browser-run";
+import { createBrowserBuild, createWdioRunner, runDevBrowser, runServerWdio, writeSmokeConfig } from "./harness/browser-run";
 import { startMemoryFixture } from "./harness/memory-fixture";
 import { downloadAsset, sha256, verifyAsset } from "./harness/assets";
 import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
-import { captureProcessOutput, cleanEnvironment, type InterruptSignal, processOutput, trackChild } from "./harness/lifecycle-processes";
+import { captureProcessOutput, cleanEnvironment, type InterruptSignal, processOutput, rejectFailedPhases, trackChild } from "./harness/lifecycle-processes";
 import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, type Ownership, ownershipFromDisk, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
@@ -122,6 +122,7 @@ async function attempt(cmd: string, commandArgs: string[], extra: Record<string,
 	try { return await execute(cmd, commandArgs, extra, true); } catch { cancellation.signal.throwIfAborted(); return undefined; }
 }
 const runWdio = createWdioRunner(root, option("--spec"), execute);
+const browserBuild = createBrowserBuild(stateDir, execute);
 async function verified(name: string, url: string, expected: string) {
 	cancellation.signal.throwIfAborted();
 	const target = join(stateDir, "tools", name);
@@ -497,15 +498,12 @@ async function fast() {
 		throw error;
 	}
 }
-function rejectFailedPhases(results: readonly PromiseSettledResult<unknown>[], names: readonly string[]): void {
-	const failures = results.flatMap((result, index) => result.status === "rejected" ? [new Error(`${names[index]}: ${String(result.reason)}`, { cause: result.reason })] : []);
-	if (failures.length) throw new AggregateError(failures, failures.map(({ message }) => message).join("\n"));
-}
+
 async function real() {
 	if (keep && process.env.CI) throw new Error("--keep is forbidden in CI");
 	const artifacts = join(root, "e2e", "artifacts", runId);
 	// Both branches must finish before WDIO starts or teardown can touch the lab.
-	const [lab, build] = await Promise.allSettled([create("run"), buildBrowserServer(root, artifacts, profiling, execute)]);
+	const [lab, build] = await Promise.allSettled([create("run"), browserBuild.build(artifacts, profiling)]);
 	try {
 		rejectFailedPhases([lab, build], ["Kind lab", "Application build"]);
 		if (lab.status !== "fulfilled" || build.status !== "fulfilled") throw new Error("Real E2E prerequisites did not finish");
@@ -539,14 +537,14 @@ async function desktopSmoke() {
 		const kubeconfig = await writeSmokeConfig(dir, cluster, fixture);
 		const env = { KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_DATA_DIR: dataDir };
 		if (profiling) {
-			const binary = await buildBrowserServer(root, artifacts, true, execute);
+			const binary = await browserBuild.build(artifacts, true);
 			const sha = (await execute("git", ["rev-parse", "HEAD"], {}, true)).stdout.trim();
 			const dirty = (await execute("git", ["status", "--porcelain"], {}, true)).stdout.trim();
 			await runServerWdio(binary, dataDir, kubeconfig, { ...env, KUBECOVE_PROFILE: "1", KUBECOVE_PROFILE_SHA: sha,
 				KUBECOVE_PROFILE_DIRTY: String(Boolean(dirty)), KUBECOVE_MEMORY_FIXTURE: memoryFixture,
 				KUBECOVE_MEMORY_FIXTURE_ROWS: fixture && String(fixture.rows) }, artifacts, cancellation.signal, runWdio);
 		} else {
-			const binary = os === "windows" ? undefined : await buildBrowserServer(root, artifacts, false, execute);
+			const binary = os === "windows" ? undefined : await browserBuild.build(artifacts, false);
 			const target = join(root, "src-tauri/gpui/target");
 			const buildEnv = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: join(root, "src-tauri/gpui/build"), RUSTC_WRAPPER: "" };
 			const cargo = ["cargo", "build", "--locked", "--manifest-path", "src-tauri/gpui/Cargo.toml", "--features", "e2e"];
@@ -567,7 +565,7 @@ async function desktopSmoke() {
 async function dev() {
 	try {
 		const record = await create("dev");
-		const binary = await buildBrowserServer(root, join(root, "e2e/artifacts", `dev-${runId}`), profiling, execute);
+		const binary = await browserBuild.build(join(root, "e2e/artifacts", `dev-${runId}`), profiling);
 		await runDevBrowser(binary, join(devDir, "dev-sessions"), record.kubeconfig, cancellation.signal);
 	} finally {
 		await stoppingChildren;
@@ -596,4 +594,5 @@ try {
 	if (interruptedBy) process.exitCode = interruptedBy === "SIGINT" ? 130 : 143;
 	process.off("SIGINT", onInterrupt);
 	process.off("SIGTERM", onTerminate);
+	await browserBuild.cleanup();
 }

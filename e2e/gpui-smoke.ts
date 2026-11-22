@@ -68,15 +68,15 @@ try {
 	await ui.click("Open settings");
 	await ui.clickId("settings-section:AI agents");
 	checks.push("Pinned admin and restricted contexts visible; Settings opened");
-	await ui.find("MCP toggle ready", (el) => el.label === "MCP server" && el.description === "enabled");
-	await ui.click("MCP server");
-	await ui.find("Product MCP listening", (el) => Boolean(el.label?.includes(`Listening at http://127.0.0.1:${port}/mcp`)));
-	const mcp = `http://127.0.0.1:${port}/mcp`;
+	const bindSignal = AbortSignal.any([cancelled.signal, AbortSignal.timeout(readinessTimeoutMs)]);
+	const bindUi = await gpuiDriver(endpoint, data, bindSignal);
+	const productPort = await enableProductMcp(bindUi, port, bindSignal);
+	const mcp = `http://127.0.0.1:${productPort}/mcp`;
 	const productToken = (await readFile(join(data, "mcp-token"), "utf8")).trim();
 	const result = await mcpCall(mcp, productToken, "list_contexts", {}, AbortSignal.any([cancelled.signal, AbortSignal.timeout(readinessTimeoutMs)]));
 	assert.deepEqual(result.contexts.map((context: { name: string }) => context.name).sort(), [`${cluster}-admin`, `${cluster}-restricted`]);
 	await ui.click("MCP server");
-	await waitFor("disabled product listener to close", (signal) => listenerRefused(port, AbortSignal.any([cancelled.signal, signal])), readinessTimeoutMs, { retryErrors: false });
+	await waitFor("disabled product listener to close", (signal) => listenerRefused(productPort, AbortSignal.any([cancelled.signal, signal])), readinessTimeoutMs, { retryErrors: false });
 	checks.push("Enabled product MCP in Settings, read both contexts and closed listener");
 	if (process.platform === "win32") {
 		skipped.push({ check: "Remote server sign-in, Pod log stream, and disconnect", reason: "Windows does not support the private token file required by token-mode server startup." });
@@ -87,7 +87,7 @@ try {
 		const config = await writeSmokeConfig(remoteDir, "remote", fixture);
 		server = startServer(required("KUBECOVE_SERVER_BINARY"), remoteDir, { KUBECONFIG: config, HOME: remoteDir, USERPROFILE: remoteDir,
 			XDG_CONFIG_HOME: remoteDir, KUBECOVE_E2E: undefined, DBUS_SESSION_BUS_ADDRESS: undefined }, cancelled.signal);
-		await checkRemoteDesktop(ui, await server.ready);
+		await checkRemoteDesktop(ui, await server.ready, fixture);
 	}
 } catch (error) {
 	failures.push(String(error));
@@ -108,6 +108,44 @@ try {
 }
 if (failures.length) throw new Error(failures.join("\n"));
 
+async function enableProductMcp(ui: Awaited<ReturnType<typeof gpuiDriver>>, port: number, signal: AbortSignal) {
+	await ui.find("MCP toggle ready", (el) => el.label === "MCP server" && el.description === "enabled");
+	await ui.click("MCP server");
+	let previousError: string | undefined;
+	while (!signal.aborted) {
+		const outcome = await ui.find("Product MCP listener outcome", (el) =>
+			el.label?.startsWith(`Listening at http://127.0.0.1:${port}/mcp `) === true ||
+			(el.path.endsWith("/mcp-error") && el.label !== previousError));
+		if (outcome.label?.startsWith("Listening at ")) return port;
+		if (!outcome.label?.startsWith(`Could not listen on 127.0.0.1:${port}:`) || !portInUse(port)) {
+			throw new Error(outcome.label ?? "Product MCP listener failed");
+		}
+		previousError = outcome.label;
+		let replacement = await freePort();
+		while (replacement === port) {
+			signal.throwIfAborted();
+			replacement = await freePort();
+		}
+		port = replacement;
+		await ui.click("MCP port");
+		await ui.call("press_key", { key: "secondary-a" });
+		await ui.call("type_text", { text: String(port) });
+		await ui.click("Save");
+	}
+	throw signal.reason;
+}
+
+function portInUse(port: number) {
+	try {
+		const listener = Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } });
+		listener.stop(true);
+		return false;
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "EADDRINUSE") return true;
+		throw error;
+	}
+}
+
 function listenerRefused(port: number, signal: AbortSignal): Promise<boolean> {
 	return new Promise((resolve, reject) => {
 		const socket = createConnection({ host: "127.0.0.1", port, signal });
@@ -121,7 +159,7 @@ function listenerRefused(port: number, signal: AbortSignal): Promise<boolean> {
 	});
 }
 
-async function checkRemoteDesktop(ui: Awaited<ReturnType<typeof gpuiDriver>>, remote: { origin: string; token: string }) {
+async function checkRemoteDesktop(ui: Awaited<ReturnType<typeof gpuiDriver>>, remote: { origin: string; token: string }, fixture: Awaited<ReturnType<typeof startMemoryFixture>>) {
 	await ui.click("Remote server");
 	await ui.type("Server URL", remote.origin);
 	await ui.type("Server token", remote.token);
@@ -139,8 +177,16 @@ async function checkRemoteDesktop(ui: Awaited<ReturnType<typeof gpuiDriver>>, re
 	await ui.click("Open resource profile-pod-0");
 	await ui.clickId("show-logs");
 	await ui.find("Remote log line", (el) => Boolean(el.label?.includes("kubecove-remote-log-marker")));
+	assert.deepEqual(fixture.logStreams(), { active: 1, cancelled: 0 });
 	checks.push("Signed into remote server and received real Pod stream feedback");
+	// Opening Settings closes the resource detail and its log stream before Disconnect is visible.
 	await ui.click("Open settings");
+	await waitFor("leaving Pod logs to cancel the upstream stream", async () => {
+		cancelled.signal.throwIfAborted();
+		const logs = fixture.logStreams();
+		return logs.active === 0 && logs.cancelled > 0;
+	}, readinessTimeoutMs, { retryErrors: false });
+	checks.push("Leaving the Pod log view cancelled its live stream at the fixture");
 	await ui.click("Remote server");
 	await ui.click("Disconnect");
 	await ui.label("Connect");

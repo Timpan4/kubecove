@@ -31,6 +31,7 @@ export type SavedArgoProfile = {
 	rememberCredential: boolean;
 };
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
+export const SETTINGS_STORAGE_KEY = "kubecove-settings";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
 export interface SettingsState {
@@ -404,7 +405,7 @@ export const useSettingsState = createStore<SettingsState>()(
 				}),
 		}),
 		{
-			name: "kubecove-settings",
+			name: SETTINGS_STORAGE_KEY,
 			merge: mergePersistedSettings,
 			partialize: partializeSettings,
 		},

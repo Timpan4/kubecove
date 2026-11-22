@@ -3,6 +3,11 @@ import { signalOwnedProcess } from "./desktop-profile";
 
 export type InterruptSignal = "SIGINT" | "SIGTERM";
 
+export function rejectFailedPhases(results: readonly PromiseSettledResult<unknown>[], names: readonly string[]): void {
+	const failures = results.flatMap((result, index) => result.status === "rejected" ? [new Error(`${names[index]}: ${String(result.reason)}`, { cause: result.reason })] : []);
+	if (failures.length) throw new AggregateError(failures, failures.map(({ message }) => message).join("\n"));
+}
+
 export function cleanEnvironment(extra: Record<string, string | undefined>) {
 	const env = { ...process.env };
 	delete env.KUBECONFIG;
@@ -17,16 +22,17 @@ export function processOutput(stream: ReadableStream<Uint8Array>, signal?: Abort
 	return signal ? stream.pipeThrough(new TransformStream(), { signal }) : stream;
 }
 
-export function captureProcessOutput(stream: ReadableStream<Uint8Array> | undefined) {
+export function captureProcessOutput(stream: ReadableStream<Uint8Array> | undefined, maxCharacters = Infinity) {
 	const decoder = new TextDecoder();
 	let text = "";
+	const append = (chunk: string) => { text += chunk.slice(0, maxCharacters - text.length); };
 	return {
 		async drain(signal?: AbortSignal) {
 			if (!stream) return;
-			for await (const chunk of processOutput(stream, signal)) text += decoder.decode(chunk, { stream: true });
+			for await (const chunk of processOutput(stream, signal)) append(decoder.decode(chunk, { stream: true }));
 		},
 		text() {
-			text += decoder.decode();
+			append(decoder.decode());
 			return text;
 		},
 	};

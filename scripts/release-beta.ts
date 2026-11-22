@@ -4,7 +4,7 @@ import {
 	assertMatchingReleaseVersions,
 	compareSemverVersions,
 	latestReleaseTagVersionFromRefs,
-	parseCargoPackageVersion,
+	readReleaseVersions,
 	requireVersion,
 } from "./release-versions";
 
@@ -28,21 +28,7 @@ fetchReleaseRefs();
 
 const originMainSha = run("git", ["rev-parse", "origin/main"]).stdout.trim();
 const latestReleaseTagVersion = readLatestRemoteReleaseTagVersion();
-// SAFETY: remote release metadata only reads optional `version`, validated by `requireVersion` before use.
-const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: string };
-const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
-
-const { packageVersion, cargoVersion } = parseRemoteVersions();
-
-try {
-	assertMatchingReleaseVersions({ packageVersion, cargoVersion });
-} catch {
-	fail([
-		"Release versions on origin/main must match:",
-		`  origin/main:package.json: ${packageVersion}`,
-		`  origin/main:src-tauri/Cargo.toml: ${cargoVersion}`,
-	].join("\n"));
-}
+const { packageVersion } = validateRemoteVersions();
 
 const versionTagState = compareVersionToLatestTag(packageVersion, latestReleaseTagVersion);
 
@@ -99,19 +85,11 @@ function readLatestRemoteReleaseTagVersion(): string | null {
 	return latestReleaseTagVersionFromRefs(refs);
 }
 
-function readRemoteFile(path: string): string {
-	return run("git", ["show", `origin/main:${path}`]).stdout;
-}
-
-function parseRemoteVersions() {
+function validateRemoteVersions() {
 	try {
-		return {
-			packageVersion: requireVersion("origin/main:package.json", packageJson.version),
-			cargoVersion: parseCargoPackageVersion(
-				cargoToml,
-				"origin/main:src-tauri/Cargo.toml",
-			),
-		};
+		const versions = readReleaseVersions((path) => run("git", ["show", `${originMainSha}:${path}`]).stdout, "origin/main:");
+		assertMatchingReleaseVersions(versions);
+		return versions;
 	} catch (error) {
 		fail(error instanceof Error ? error.message : String(error));
 	}

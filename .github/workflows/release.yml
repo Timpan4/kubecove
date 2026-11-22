@@ -171,9 +171,11 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
 
       - name: Test shared backend
-        run: cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release
 
       - name: Lint shared backend
         run: cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings

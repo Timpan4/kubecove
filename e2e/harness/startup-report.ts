@@ -46,7 +46,7 @@ export function startupReport(entries: ProfileEntry[], heapBytes: number | null,
 		memory: {
 			server: memoryGroup("KubeCove"),
 			otherChildren: memoryGroup("Other children"),
-			processTree: usage?.memory ?? null,
+			serverProcessTree: usage?.memory ?? null,
 			jsHeap: { bytes: heapBytes, unavailable: heapBytes === null ? "engine-does-not-expose-heap" : null },
 		},
 	};

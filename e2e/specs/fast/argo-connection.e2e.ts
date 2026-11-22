@@ -1,5 +1,6 @@
 import { $, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
+import { SETTINGS_STORAGE_KEY } from "../../../src/lib/settings";
 
 async function openArgoConnection() {
 	await $('button[aria-label="Open workspace navigation"]').click();
@@ -43,7 +44,8 @@ describe("workspace Argo CD connection", () => {
 		await expect(saved).toHaveText(expect.stringContaining("Connected as mock-user"));
 		await expect(saved).toHaveText(expect.stringContaining("reconnects automatically"));
 		const profiles = await browser.execute(
-			() => JSON.parse(localStorage.getItem("kubecove-settings") ?? "{}").state.argoProfiles,
+			(storageKey) => JSON.parse(localStorage.getItem(storageKey) ?? "{}").state.argoProfiles,
+			SETTINGS_STORAGE_KEY,
 		);
 		expect(profiles).toHaveLength(1);
 		expect(profiles[0]).toMatchObject({

@@ -407,7 +407,8 @@ test("releases publish only after GPUI staging and container publication succeed
 test("release drafts wait for backend checks and every Kubernetes compatibility leg", () => {
   const backend = job("backend-rust");
   const compatibility = job("kubernetes-compatibility");
-  assert.match(step(backend, "Test shared backend").run, /cargo test --locked --workspace --manifest-path src-tauri\/Cargo\.toml/);
+  assert.equal(step(backend, "Setup Rust").with.components, "clippy");
+  assert.match(step(backend, "Test shared backend").run, /cargo test --locked --workspace --manifest-path src-tauri\/Cargo\.toml --features desktop-release/);
   assert.match(step(backend, "Lint shared backend").run, /cargo clippy --locked --workspace --manifest-path src-tauri\/Cargo\.toml .* -D warnings/);
   assert.equal(compatibility.uses, "./.github/workflows/e2e.yml");
   assert.equal(compatibility.with["compatibility-only"], true);

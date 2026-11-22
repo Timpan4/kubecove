@@ -1,4 +1,5 @@
 import "./browser-token-bootstrap";
+import { BROWSER_SESSION_PATH, BROWSER_SESSION_STORAGE_KEY } from "./browser-session-contract";
 import { isDiagnosticsEnabled } from "./diagnostics";
 import { markProfileIpc, markStartup } from "./startup-marks";
 import { writable } from "svelte/store";
@@ -7,7 +8,6 @@ import { createChannel, type StreamChannel } from "./stream-channel";
 import { traceInvoke, type TauriClient } from "./tauri-runtime";
 import type { JsonObject, JsonValue } from "./types";
 
-const SESSION_STORAGE_KEY = "kubecove-browser-resume";
 const CHANNEL_MARKER = "__KUBECOVE_CHANNEL__:";
 
 export type BrowserSessionStatus =
@@ -70,7 +70,7 @@ function publish(patch: Partial<BrowserSessionState>): void {
 
 function readStoredResumeToken(): string | null {
 	try {
-		return window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+		return window.sessionStorage.getItem(BROWSER_SESSION_STORAGE_KEY);
 	} catch {
 		return null;
 	}
@@ -79,7 +79,7 @@ function readStoredResumeToken(): string | null {
 function saveResumeToken(value: string): void {
 	resumeToken = value;
 	try {
-		window.sessionStorage.setItem(SESSION_STORAGE_KEY, value);
+		window.sessionStorage.setItem(BROWSER_SESSION_STORAGE_KEY, value);
 	} catch {
 		// The active page can still resume after a socket drop without sessionStorage.
 	}
@@ -88,7 +88,7 @@ function saveResumeToken(value: string): void {
 function clearResumeToken(): void {
 	resumeToken = null;
 	try {
-		window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+		window.sessionStorage.removeItem(BROWSER_SESSION_STORAGE_KEY);
 	} catch {
 		// Storage can be disabled by browser policy.
 	}
@@ -114,12 +114,13 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
 }
 
 function isString<Value>(value: Value): value is Value & string {
-	return String(value) === value;
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Validate server and WebSocket input without coercion.
+	return typeof value === "string";
 }
 
 async function postSession(body: { token?: string; resumeToken?: string }): Promise<void> {
 	publish({ status: "connecting", error: null });
-	const response = await fetch(apiUrl("/api/v1/session"), {
+	const response = await fetch(apiUrl(BROWSER_SESSION_PATH), {
 		method: "POST",
 		credentials: "same-origin",
 		cache: "no-store",
@@ -502,7 +503,8 @@ export function createBrowserTauriClient(): TauriClient {
 						returnToOidcSignIn();
 					}
 					const error = new Error(parseSessionErrorMessage(result, `Command ${command} failed (${response.status}).`));
-					if (isJsonObject(result) && isString(result.kind)) Object.assign(error, { kind: result.kind });
+					// oxlint-disable-next-line anti-slop/no-runtime-typeof -- The optional HTTP error field is untrusted JSON.
+					if (isJsonObject(result) && typeof result.kind === "string") Object.assign(error, { kind: result.kind });
 					throw error;
 				}
 				succeeded = true;

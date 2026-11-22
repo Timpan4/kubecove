@@ -1,11 +1,23 @@
 use super::scratch::Scratch;
 use kubecove_gpui::backend::{Backend, NativeBackend};
 use kubecove_lib::commands::REQUEST_READ_TIMEOUT;
-use std::{path::Path, process::Command, time::Duration};
+use std::{path::Path, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::Command;
 
 #[tokio::test]
 async fn two_usage_samples_report_platform_memory() {
+    #[cfg(target_os = "linux")]
+    let (pss_available, referenced_available, can_reset) = {
+        let rollup = std::fs::read_to_string("/proc/self/smaps_rollup").unwrap_or_default();
+        let can_reset = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/proc/self/clear_refs")
+            .and_then(|mut file| std::io::Write::write_all(&mut file, b"1"))
+            .is_ok();
+        let contains = |field| rollup.lines().any(|line| line.starts_with(field));
+        (contains("Pss:"), contains("Referenced:"), can_reset)
+    };
     let backend = NativeBackend::new().unwrap();
     let mut samples = Vec::new();
     for _ in 0..2 {
@@ -23,37 +35,52 @@ async fn two_usage_samples_report_platform_memory() {
         assert!(memory.rss_bytes.is_none() && memory.pss_bytes.is_none());
     } else {
         assert!(memory.rss_bytes.is_some_and(|value| value > 0));
-        if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             assert!(samples[0].0.wss_bytes.is_none());
-            assert!(memory.wss_bytes.is_some_and(|value| value > 0) && window.is_some());
-            assert!(memory.pss_bytes.is_some_and(|value| value > 0));
-        } else {
+            assert_eq!(
+                memory.wss_bytes.is_some(),
+                can_reset && referenced_available
+            );
+            assert_eq!(window.is_some(), can_reset);
+            assert_eq!(memory.pss_bytes.is_some(), pss_available);
+            assert!(memory.pss_bytes.is_none_or(|value| value > 0));
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(window.is_none());
             assert!(memory.wss_bytes.is_none() && memory.pss_bytes.is_none());
         }
     }
 }
 
 // Run the real exec credential process in a child test so no other tests see this kubeconfig.
-#[test]
-fn context_reads_and_cancellation_finish_while_exec_credentials_are_pending() {
+#[tokio::test]
+async fn context_reads_and_cancellation_finish_while_exec_credentials_are_pending() {
     const CHILD: &str = "KUBECOVE_TEST_PENDING_PLUGIN";
     if std::env::var_os(CHILD).is_none() {
         let fixture = Scratch::new("credential-plugin-tests", "pending");
-        let status = Command::new(std::env::current_exe().unwrap())
+        let mut child = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "desktop_runtime::context_reads_and_cancellation_finish_while_exec_credentials_are_pending"])
             .env(CHILD, "1")
             .env("KUBECONFIG", fixture.join("config.json"))
             .env_remove("HTTPS_PROXY")
             .env_remove("https_proxy")
-            .status().unwrap();
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let Ok(status) = tokio::time::timeout(REQUEST_READ_TIMEOUT, child.wait()).await else {
+            child
+                .kill()
+                .await
+                .expect("kill and reap the stalled credential test");
+            panic!("desktop runtime credential test exceeded the request deadline");
+        };
+        let status = status.expect("wait for desktop runtime credential test");
         assert!(status.success());
         return;
     }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    runtime.block_on(exercise_pending_read());
+    exercise_pending_read().await;
 }
 
 async fn exercise_pending_read() {

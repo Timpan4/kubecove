@@ -376,7 +376,7 @@ jobs:
       - name: Test Rust
         id: test-rust
         if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
+        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release
 
       - name: Lint Rust
         id: lint-rust

@@ -17,6 +17,15 @@ fn main() -> std::io::Result<()> {
             ),
         )
     })?;
+    if !root.join("index.html").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "Frontend asset directory {} ({ASSET_DIR_ENV}) is missing an index.html file",
+                root.display()
+            ),
+        ));
+    }
     let output = PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo output"));
     let folder = root.to_str().ok_or_else(|| {
         io::Error::new(

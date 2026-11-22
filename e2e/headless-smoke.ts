@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { JsonObject } from "../src/lib/types";
 import { safeDiagnosticText } from "./harness/diagnostics";
+import { captureProcessOutput, trackChild } from "./harness/lifecycle-processes";
 import { serverBinary, startServer } from "./harness/server-process";
 import { channelMarker, serverClient } from "./harness/server-session";
 import { startPortForwardFixture } from "./harness/port-forward-fixture";
@@ -251,18 +252,36 @@ try {
 	if (Bun.argv.includes("--browser")) {
 		const { verifyServerBrowser } = await import("./harness/server-browser");
 		await verifyServerBrowser(origin, token);
-		checks.push("Embedded Svelte sign-in, context invoke, resource watch delivery, server settings and WebSocket session revocation in Chromium");
+		checks.push("Embedded Svelte sign-in, context invoke, workspace JSON upload and download, resource watch delivery, server settings and WebSocket session revocation in Chromium");
 	}
 	if (process.env.KUBECOVE_NATIVE_REMOTE_PROBE) {
+		interrupt.signal.throwIfAborted();
 		const probe = Bun.spawn([
 			process.env.CARGO ?? "cargo", "test", "--locked", "--manifest-path", "src-tauri/Cargo.toml",
 			"-p", "kubecove-host", "--features", "remote-client", "native_tunnel_delivers_bytes_and_closes_after_upload_eof", "--", "--ignored",
 		], {
-			cwd: root,
+			cwd: root, detached: process.platform !== "win32",
 			env: { ...process.env, KUBECOVE_REMOTE_TEST_URL: origin, KUBECOVE_REMOTE_TEST_TOKEN: token },
 			stdout: "pipe", stderr: "pipe",
 		});
-		const [status, stdout, stderr] = await Promise.all([probe.exited, new Response(probe.stdout).text(), new Response(probe.stderr).text()]);
+		const out = captureProcessOutput(probe.stdout);
+		const err = captureProcessOutput(probe.stderr);
+		const tracked = trackChild(probe, async (signal) => {
+			const [status] = await Promise.all([probe.exited, out.drain(signal), err.drain(signal)]);
+			return status;
+		});
+		const stopProbe = () => { void tracked.stop("SIGTERM").catch(() => {}); };
+		interrupt.signal.addEventListener("abort", stopProbe, { once: true });
+		let status: number;
+		try {
+			status = await tracked.done;
+		} finally {
+			interrupt.signal.removeEventListener("abort", stopProbe);
+			await tracked.stop("SIGTERM");
+		}
+		if (interrupt.signal.aborted) throw new Error("Native Rust tunnel probe interrupted");
+		const stdout = out.text();
+		const stderr = err.text();
 		const redact = (output: string) => safeDiagnosticText(output).replaceAll(token, "[redacted]").replace(/([?#&](?:resumeToken|token)=)[^\s&"']+/g, "$1[redacted]");
 		const diagnostic = [redact(stdout), redact(stderr)].filter(Boolean).join("\n");
 		assert.equal(status, 0, `Production native Rust tunnel probe must pass.\n${diagnostic}`);

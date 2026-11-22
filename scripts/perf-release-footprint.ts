@@ -101,7 +101,7 @@ try {
 		await observeReleaseStartup(binary, directory, companion.summary.fonts.bundled.map((font) => font.file));
 		const startup = JSON.parse(await readFile(join(directory, "footprint-startup.json"), "utf8"));
 		observations.push({ name: variant.name, settings, buildMs, executableBytes, elf, production: { sha256: productionHash, ...production.summary },
-			companion: { sha256: companionHash, ...companion.summary }, startup, benchmarkFile: `${variant.name}/benchmarks.txt` });
+			companion: { sha256: companionHash, ...companion.summary }, startup, benchmarkPanic: "unwind", benchmarkFile: `${variant.name}/benchmarks.txt` });
 		await save();
 	}
 	report.passed = true;
