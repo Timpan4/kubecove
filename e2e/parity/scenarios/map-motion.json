@@ -83,7 +83,7 @@
     },
     {
       "id": "map.catch-up-keeps-table-live",
-      "title": "The table resumes activity while the map still waits for its catch-up read",
+      "title": "The stale notice names only the map when the table recovers during the hold",
       "steps": [
         { "action": "openResources" },
         { "action": "setWindowActive", "active": true },
@@ -91,17 +91,22 @@
         { "action": "search", "value": "payments-api" },
         { "action": "replayLiveData", "script": "rollout" },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "controlClock" },
         { "action": "replayLiveData", "script": "reconnecting" },
+        { "action": "advanceClock", "ms": 500 },
         { "action": "expectLiveState", "label": "Reconnecting", "notice": "Showing last observed state. Activity indicators are paused until live updates recover." },
         { "action": "mockTiming", "control": { "operation": "hold", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "replayLiveData", "script": "connected" },
+        { "action": "advanceClock", "ms": 250 },
         { "action": "mockTiming", "control": { "operation": "expectPending", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "expectLiveState", "label": "Live", "notice": "Showing last observed state. Map activity indicators are paused until live updates recover." },
+        { "action": "expectNoPageText", "text": "Showing last observed state. Activity indicators are paused until live updates recover." },
         { "action": "expectResourceActivity", "kind": "Deployment", "namespace": "payments", "name": "payments-api", "state": "active" },
         { "action": "coverageText", "text": "Showing last observed state. Table activity indicators are paused until live updates recover.", "visible": false },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": false },
         { "action": "mockTiming", "control": { "operation": "release", "command": "list_resource_topology", "context": "mock-dev" } },
         { "action": "expectTopologyEdgeMotion", "source": "mock-dev:apps/v1:Deployment:payments:payments-api", "target": "mock-dev:apps/v1:ReplicaSet:payments:payments-api-7d9c9b7f8d", "flow": false, "pulse": true },
+        { "action": "advanceClock", "ms": 50 },
         { "action": "expectLiveState", "label": "Live" },
         { "action": "coverageText", "text": "Showing last observed state. Map activity indicators are paused until live updates recover.", "visible": false }
       ]

@@ -313,6 +313,14 @@ mod visual {
                         cx.run_until_parked();
                         act(&mut cx, handle, |_, _| {});
                         cx.advance_clock(std::time::Duration::from_millis(500));
+                        act(&mut cx, handle, |window, _| {
+                            assert_eq!(
+                                window.find("live-notice").label(),
+                                Some(
+                                    "Showing last observed state. Activity indicators are paused until live updates recover."
+                                )
+                            );
+                        });
                     }
                 }
                 "kind-picker" => {

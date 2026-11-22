@@ -471,17 +471,21 @@
 	const contextsLoadingText = $derived(contextsLoadingNotice(resourcesQuery.loadingContexts));
 	const ownershipMapLoading = loadingDelay(() => !OwnershipMapComponent && !ownershipMapLoadError);
 	const staleNoticeDelayMs = 500;
-	// Watches that connect or recover within the show delay show no notice. Limited and failed states are not transient.
-	const tableStale = loadingDelay(() => notice.table !== null && !notice.table.current && !notice.table.error
-		&& notice.table.status !== "partial" && notice.table.status !== "polling", staleNoticeDelayMs);
-	const mapStale = loadingDelay(() => notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
+	const tableStalePending = $derived(notice.table !== null && !notice.table.current && !notice.table.error
+		&& notice.table.status !== "partial" && notice.table.status !== "polling");
+	const mapStalePending = $derived(notice.map !== null && !notice.map.current && !notice.map.failed && !notice.map.error
 		&& (!notice.map.sharesTableError || notice.map.status === "reconnecting" || notice.map.status === "connecting")
-		&& notice.map.status !== "partial" && notice.map.status !== "polling", staleNoticeDelayMs);
+		&& notice.map.status !== "partial" && notice.map.status !== "polling");
+	const tableStale = loadingDelay(() => tableStalePending, staleNoticeDelayMs);
+	const mapStale = loadingDelay(() => mapStalePending, staleNoticeDelayMs);
+	// Narrow the wording as soon as the panel that is still stale can keep the banner visible.
+	const onlyTableStale = $derived(tableStalePending && tableStale.shown && !mapStalePending);
+	const onlyMapStale = $derived(mapStalePending && mapStale.shown && !tableStalePending);
 	type NoticeKind = "refreshFailed" | "topologyFailed" | "partial" | "polling" | "stale";
 	const tableNotice = $derived(notice.table && (notice.table.error
 		? "refreshFailed"
-		: watchNotice(notice.table.status, tableStale.shown)));
-	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, mapStale.shown));
+		: watchNotice(notice.table.status, tableStale.shown && !onlyMapStale)));
+	const mapWatchNotice = $derived(notice.map && watchNotice(notice.map.status, mapStale.shown && !onlyTableStale));
 	const mapNotice = $derived.by((): NoticeKind | null => {
 		if (!notice.map) return null;
 		if (notice.map.failed) return "topologyFailed";
