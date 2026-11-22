@@ -222,6 +222,7 @@ for (const [path, selected] of [
   ["scripts/check-docs.ts", ["frontend"]],
   ["scripts/ci-mbx-cargo.mjs", domains],
   ["scripts/ci-rust-cache-key.mjs", domains],
+  ["scripts/check-rust-format.mjs", domains],
   ["bun.lock", ["frontend", "nix"]],
   ["src-tauri/src/lib.rs", ["rust"]],
   ["src-tauri/crates/models/src/lib.rs", ["rust"]],
@@ -911,7 +912,11 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     assert.equal(run({}, ["workflow.yml", "src-tauri", ":!missing"]).status, 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-test("whitespace check rejects bad diffs even without an available base", () => {
+test("the required gate checks code-only diffs, including shallow pull request merges", async () => {
+  const { output } = await detect(["src/App.css"]);
+  assert.equal(output.docs, "false");
+  const check = step("Check diff whitespace", "check");
+  assert.doesNotMatch(check, /^ {8}if:/m);
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-whitespace-"));
   const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" };
   const git = (...args) => {
@@ -921,19 +926,29 @@ test("whitespace check rejects bad diffs even without an available base", () => 
   };
   try {
     git("init", "-q");
-    writeFileSync(join(root, "README.md"), "clean\n");
-    git("add", "README.md"); git("commit", "-qm", "clean");
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src/App.css"), "body {}\n");
+    git("add", "src/App.css"); git("commit", "-qm", "clean");
     const clean = git("rev-parse", "HEAD");
-    writeFileSync(join(root, "README.md"), "bad trailing whitespace  \n");
-    git("add", "README.md"); git("commit", "-qm", "bad");
+    writeFileSync(join(root, "src/App.css"), "body {}\n\n");
+    git("add", "src/App.css"); git("commit", "-qm", "bad");
     const bad = git("rev-parse", "HEAD");
-    const script = block(step("Check diff whitespace"), "run", 8);
+    const script = block(check, "run", 8);
+    const verify = (from, to, cwd = root) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], { cwd, env: { ...env, BASE_SHA: from, HEAD_SHA: to }, encoding: "utf8", timeout: 2000 });
     for (const from of [clean, "", "0".repeat(40), "d".repeat(40)]) {
       for (const [to, succeeds] of [[clean, true], [bad, false]]) {
-        const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], { cwd: root, env: { ...env, BASE_SHA: from, HEAD_SHA: to }, encoding: "utf8", timeout: 2000 });
+        const result = verify(from, to);
         assert.equal(result.status === 0, succeeds, `base=${from}, head=${to}: ${result.stderr}`);
       }
     }
+    const merge = git("commit-tree", `${bad}^{tree}`, "-p", clean, "-p", bad, "-m", "pull request merge");
+    git("checkout", "--quiet", "--detach", merge);
+    git("clone", "--quiet", "--no-local", "--depth", "2", root, "checkout");
+    assert.equal(git("-C", "checkout", "rev-parse", "--is-shallow-repository"), "true");
+    const result = verify("HEAD^1", merge, join(root, "checkout"));
+    assert.equal(result.status, 2);
+    assert.match(result.stdout, /src\/App\.css:2: new blank line at EOF/);
+    assert.doesNotMatch(result.stdout, /No available base commit/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 // Failure modes: a matrix that misses a PARITY_SUITE_SHARD index silently drops that share of
