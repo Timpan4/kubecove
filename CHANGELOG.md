@@ -3,6 +3,21 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.16.0 - 2026-11-22
+### Added
+
+- Import Tauri 0.15.1 migration snapshot on startup (#812).
+- Consolidate GPUI desktop app identity to KubeCove for 0.16.0 (#811).
+
+### Improved
+
+- Move src-tauri to rust (#815).
+- Remove Tauri dependency while keeping Svelte web and GPUI desktop (#803).
+
+### Fixed
+
+- Accept absent skipped background steps when reusing a Rust pass (#813).
+
 ## 0.15.1 - 2026-11-22
 ### Improved
 
