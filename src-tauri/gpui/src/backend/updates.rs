@@ -393,15 +393,19 @@ impl Signed {
         }
         // The Tauri desktop app is signed with the same key and names its version too. The
         // signed file name tells the two products apart.
+        // From 0.16.0 the consolidated KubeCove's assets are named `kubecove_*` (ADR 0036).
         let parsed = semver::Version::parse(version).map_err(|_| invalid_signature())?;
-        let prefix = if is_consolidated(&parsed) {
-            "kubecove"
+        let prefixes: &[&str] = if is_consolidated(&parsed) {
+            &[ARTIFACT_PREFIX, "kubecove"]
         } else {
-            ARTIFACT_PREFIX
+            &[ARTIFACT_PREFIX]
         };
-        let name = kubecove_lib::desktop_release::asset_name(prefix, &parsed, platform)
-            .ok_or_else(invalid_signature)?;
-        if signed("file:") != Some(name.as_str()) {
+        let file = signed("file:");
+        let named = prefixes.iter().any(|prefix| {
+            kubecove_lib::desktop_release::asset_name(prefix, &parsed, platform)
+                .is_some_and(|name| file == Some(name.as_str()))
+        });
+        if !named {
             return Err(AppError::new(
                 "The update is not a KubeCove GPUI build",
                 AppErrorKind::Validation,
