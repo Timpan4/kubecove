@@ -90,12 +90,13 @@ fn tauri_migration_skips_and_reports_presets_without_a_kubeconfig_source() {
     assert!(imported.preferences.show_exact_timestamps);
     assert!(imported.tauri_migration_imported.is_some());
     assert!(imported.saved_forward_presets.is_empty());
+    let report = "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved (kubeconfig settings unreadable).";
     assert_eq!(
         importer.last_migration_diagnostic().as_deref(),
-        Some(
-            "Imported tauri-migration.json with 2 saved port forward(s) skipped because the active kubeconfig source could not be resolved (kubeconfig settings unreadable)."
-        )
+        Some(report)
     );
+    // The report is stored with the import, so Settings shows it after restart.
+    assert_eq!(imported.tauri_migration_notice.as_deref(), Some(report));
 
     // The import finished in that one write. A resolvable source later does
     // not reopen it, and nothing is written.
@@ -103,8 +104,44 @@ fn tauri_migration_skips_and_reports_presets_without_a_kubeconfig_source() {
     let reloaded = resolved.load().unwrap();
     assert_eq!(reloaded.revision, imported.revision);
     assert!(reloaded.saved_forward_presets.is_empty());
+    assert_eq!(reloaded.tauri_migration_notice.as_deref(), Some(report));
     assert_eq!(resolved.last_migration_diagnostic(), None);
     assert_eq!(std::fs::read_to_string(&migration_path).unwrap(), snapshot);
+}
+
+/// Failure mode: the report of what the import skipped never reaches the user,
+/// or comes back after they dismissed it.
+#[gpui_kit::test]
+fn settings_shows_the_tauri_import_notice_until_dismissed(cx: &mut gpui_kit::TestAppContext) {
+    use crate::*;
+    let backend = std::sync::Arc::new(crate::Controlled::default());
+    let report = "Imported tauri-migration.json with 1 saved port forward(s) skipped.";
+    backend.argo.document.lock().unwrap().tauri_migration_notice = Some(report.into());
+    let handle = crate::open(cx, backend.clone());
+    let click = |cx: &mut gpui_kit::TestAppContext, id: &'static str| {
+        cx.update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            window.click(id, cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+    };
+    click(cx, "open-settings");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("settings-notice:tauri-import").is_some());
+    })
+    .unwrap();
+    click(cx, "settings-button:Dismiss Tauri import notice");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("settings-notice:tauri-import").is_none());
+    })
+    .unwrap();
+    assert_eq!(
+        backend.argo.document.lock().unwrap().tauri_migration_notice,
+        None
+    );
 }
 
 #[test]

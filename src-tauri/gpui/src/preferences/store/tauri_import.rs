@@ -89,11 +89,18 @@ impl Store {
                 return document;
             }
         };
+        // The error text comes from kubeconfig handling, so it is persisted
+        // only when it has no credential syntax.
+        let source_error = source_key
+            .err()
+            .map(|error| error.message)
+            .filter(|message| tauri_migration::is_safe_text(message));
+        let summary = import_summary(&report, source_error.as_deref());
         candidate.tauri_migration_imported = Some(report.exported_at.clone());
+        candidate.tauri_migration_notice = summary.clone();
         match self.commit(candidate) {
             Some(committed) => {
-                let source_error = source_key.err().map(|error| error.message);
-                self.set_migration_diagnostic(import_summary(&report, source_error.as_deref()));
+                self.set_migration_diagnostic(summary);
                 committed
             }
             None => document,
@@ -147,9 +154,9 @@ fn import_summary(report: &MergeReport, source_error: Option<&str>) -> Option<St
         ));
     }
     if report.unscoped_presets > 0 {
-        let reason = source_error.unwrap_or("unknown error");
+        let reason = source_error.map_or_else(String::new, |reason| format!(" ({reason})"));
         parts.push(format!(
-            "{} saved port forward(s) skipped because the active kubeconfig source could not be resolved ({reason})",
+            "{} saved port forward(s) skipped because the active kubeconfig source could not be resolved{reason}",
             report.unscoped_presets
         ));
     }

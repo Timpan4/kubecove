@@ -102,6 +102,7 @@ mod table;
 mod table_columns;
 mod table_controls;
 mod table_status;
+mod tauri_import_notice;
 mod timeline;
 mod timestamp_text;
 mod update_panel;

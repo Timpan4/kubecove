@@ -266,10 +266,14 @@ impl Inspector {
             return self.kubeconfig_section(cx).into_any_element();
         }
         let remote = self.connected_remote();
+        let notice = (category == Category::General)
+            .then(|| self.tauri_import_notice(cx))
+            .flatten();
         div()
             .flex()
             .flex_col()
             .gap(px(16.))
+            .children(notice)
             .children(settings::rows(category, remote.is_some()).map(|row| {
                 if row.title == "KubeCove documentation" {
                     self.documentation_control(row, cx)
