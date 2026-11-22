@@ -258,6 +258,10 @@ fn replace_bundle(
     let staging = sibling(bundle, "update")?;
     let previous = sibling(&target, "previous")?;
     remove_stale(&staging)?;
+    // A restore that failed in an earlier attempt left the only copy of the app here.
+    if !present(&target)? && present(&previous)? {
+        rename(&previous, &target)?;
+    }
     remove_stale(&previous)?;
     fs::create_dir(&staging)?;
     let replaced = archive
@@ -265,7 +269,7 @@ fn replace_bundle(
         .and_then(|()| unpack_bundle(archive, &staging, new_name))
         .and_then(|unpacked| {
             verify_bundle_identity(&unpacked, new_identifier)?;
-            let existing = fs::symlink_metadata(&target).is_ok();
+            let existing = present(&target)?;
             if existing {
                 verify_bundle_identity(&target, new_identifier)?;
                 rename(&target, &previous)?;
@@ -284,6 +288,15 @@ fn replace_bundle(
         }
     }
     replaced.map(|()| target)
+}
+
+/// Only `NotFound` means nothing is at `path`; any other error stops the swap.
+fn present(path: &Path) -> io::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 /// Unpacks the archive into `staging` and returns its one `.app` directory. `Archive::unpack`

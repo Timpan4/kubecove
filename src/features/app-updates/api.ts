@@ -9,22 +9,20 @@ function mapDownloadEvent(event: DownloadEvent): AppUpdateDownloadEvent {
 }
 
 // The feed has no GPUI build for .deb, .rpm or Intel Mac installs (ADR 0036).
-function describeCheckError(error: unknown): Error {
-	const message = error instanceof Error ? error.message : String(error);
-	if (/was not found in the response `platforms` object|None of the fallback platforms/.test(message)) {
-		return new Error(
-			"The new KubeCove has no update for this install type. Download the AppImage, DMG or Windows installer from GitHub Releases.",
-		);
-	}
-	return error instanceof Error ? error : new Error(message);
-}
+const NO_TARGET = /was not found in the response `platforms` object|None of the fallback platforms/;
+const NO_TARGET_MESSAGE =
+	"The new KubeCove has no update for this install type. Download the AppImage, DMG or Windows installer from GitHub Releases.";
 
 export const tauriAppUpdateApi: AppUpdateApi = {
 	check: async (): Promise<AppUpdate | null> => {
 		const { check } = await import("@tauri-apps/plugin-updater");
-		const update = await check().catch((error: unknown) => {
-			throw describeCheckError(error);
-		});
+		let update: Awaited<ReturnType<typeof check>>;
+		try {
+			update = await check();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(NO_TARGET.test(message) ? NO_TARGET_MESSAGE : message);
+		}
 		if (!update) return null;
 
 		return {

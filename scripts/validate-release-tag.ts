@@ -8,8 +8,7 @@ import {
 const tagName = process.env.TAG_NAME ?? "";
 const refType = process.env.REF_TYPE ?? "";
 // Main no longer builds Tauri, so the 0.15.x pitstop ships from the head of its maintenance branch.
-const TAG_BRANCHES: Record<string, string> = { "app-v0.15.2": "release/0.15.x" };
-const RELEASE_BRANCH = TAG_BRANCHES[tagName] ?? "main";
+const RELEASE_BRANCH = tagName === "app-v0.15.2" ? "release/0.15.x" : "main";
 
 try {
 	const versions = readWorkspaceReleaseVersions();
