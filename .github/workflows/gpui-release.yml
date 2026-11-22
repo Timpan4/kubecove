@@ -1,7 +1,7 @@
 name: GPUI release bundles
 
-# Builds the native GPUI client into updater bundles, signs them with the Tauri updater key,
-# verifies the signatures and writes `latest-gpui.json`. Called by release.yml. Everything
+# Builds the native GPUI client into updater bundles, signs them with the updater key,
+# verifies the signatures and writes `latest-desktop.json`. Called by release.yml. Everything
 # leaves as workflow artifacts; this workflow cannot write to releases, and release.yml's
 # stage-release-assets job uploads the `kubecove-gpui-release` artifact to the release.
 on:
@@ -212,7 +212,7 @@ jobs:
 
   # Signing happens once, here, so build runners never receive the updater key.
   sign:
-    name: Sign GPUI bundles and write latest-gpui.json
+    name: Sign GPUI bundles and write latest-desktop.json
     needs: bundle
     runs-on: ubuntu-latest
     # The same limit as the release publish job.
@@ -261,7 +261,7 @@ jobs:
           if [[ -z "$RELEASE_TAG" ]]; then channel_mode=--dry-run; fi
           bash scripts/sign-gpui-release.sh gpui-release "$version" "$channel_mode"
 
-      - name: Verify signatures and write latest-gpui.json
+      - name: Verify signatures and write latest-desktop.json
         env:
           ASSETS_DIR: gpui-release
           GH_REPO: ${{ github.repository }}

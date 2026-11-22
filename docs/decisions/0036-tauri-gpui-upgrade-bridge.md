@@ -1,6 +1,6 @@
 # ADR 0036: Install GPUI beside the Tauri desktop client
 
-Accepted.
+Accepted for 0.15.x; retired after `app-v0.15.1` once Tauri was removed and `0.16.0+` consolidated on `KubeCove` (`com.timpan.kubecove`, `latest-desktop.json`). Legacy `0.15.1` installs continue to read the frozen `latest.json` and `latest-gpui.json` manifests carried forward by `release.yml`.
 
 The Tauri desktop client offers migration through its local Settings window. The server, web client and remote cluster transport have no upgrade commands. Rust reads ADR 0034's feed, accepts a same-version or newer build, and binds both the version and exact platform asset name to the verified minisign trusted comment. A translated Intel process on Apple silicon selects the native Apple silicon build.
 

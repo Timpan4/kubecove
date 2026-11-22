@@ -124,16 +124,16 @@ fn resource(context: &str) -> ResourceSummary {
 
 impl Backend for Controlled {
     fn updates_enabled(&self) -> bool {
-        self.shell.consolidated_release.load(Ordering::SeqCst)
+        self.shell.unpublished_release.load(Ordering::SeqCst)
     }
 
     fn check_updates(&self) -> Read<kubecove_gpui::backend::UpdateStatus> {
         use kubecove_gpui::backend::updates::{AvailableUpdate, UpdateStatus};
         let status = if self.shell.checked_updates.swap(true, Ordering::SeqCst) {
-            UpdateStatus::Consolidated("0.16.0".into())
+            UpdateStatus::Unpublished
         } else {
             UpdateStatus::Available(AvailableUpdate {
-                version: "0.15.1".into(),
+                version: "0.16.0".into(),
                 ..Default::default()
             })
         };

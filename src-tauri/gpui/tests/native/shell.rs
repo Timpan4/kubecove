@@ -9,7 +9,7 @@ pub(super) struct ShellControls {
     /// Holds the next kubeconfig sources read until the test releases it.
     pub sources_pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub fail_save: AtomicBool,
-    pub consolidated_release: AtomicBool,
+    pub unpublished_release: AtomicBool,
     pub checked_updates: AtomicBool,
     pub preferences: Store,
 }
@@ -67,11 +67,11 @@ fn launcher_context_change_drops_the_old_namespace_read(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-fn consolidated_release_offers_download_in_settings_and_header(cx: &mut TestAppContext) {
+fn unpublished_release_offers_download_in_settings_and_header(cx: &mut TestAppContext) {
     let backend = Arc::new(Controlled::default());
     backend
         .shell
-        .consolidated_release
+        .unpublished_release
         .store(true, Ordering::SeqCst);
     let handle = open(cx, backend);
     click(cx, handle, "header-update");

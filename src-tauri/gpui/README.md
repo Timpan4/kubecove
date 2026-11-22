@@ -1,6 +1,6 @@
 # GPUI client
 
-This opt-in native client runs separately from the Tauri and Svelte client.
+The native GPUI desktop client for KubeCove.
 Kubernetes access goes through `Backend`, which calls the shared Rust commands.
 See [ADR 0029](../../docs/decisions/0029-gpui-native-client-and-feature-parity.md)
 and the [shared parity guide](../../e2e/parity/README.md) for the delivery boundary.
@@ -40,7 +40,7 @@ sign in with a token or OIDC
 HTTP/WebSocket client, with no local fallback after socket failure. Explicit
 disconnect returns to local access.
 
-Update checks read `latest-gpui.json` beside the desktop feed on the same release.
+Update checks read `latest-desktop.json` on the latest GitHub Release.
 Install downloads this platform's build, checks its signature and signed version
 against the key in `updater.json`, and replaces the AppImage or app bundle, or
 saves the Windows installer and runs it on relaunch. See
