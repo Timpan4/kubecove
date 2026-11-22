@@ -1,5 +1,6 @@
 //! Native persistence types mirror the browser's partializeSettings contract.
 mod store;
+mod tauri_migration;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 pub use store::Store;

@@ -63,6 +63,8 @@ mod settings_integrations;
 mod shell;
 #[path = "native/source_refresh.rs"]
 mod source_refresh;
+#[path = "native/tauri_migration.rs"]
+mod tauri_migration;
 #[path = "native/updates.rs"]
 mod updates;
 #[path = "native/watch_burst.rs"]

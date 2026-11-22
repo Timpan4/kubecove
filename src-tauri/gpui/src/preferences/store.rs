@@ -1,11 +1,14 @@
 //! All filesystem access is explicit. Default stores are memory-only.
-use super::Document;
+use super::{
+    Document,
+    tauri_migration::{self, IMPORTED_FILE, MIGRATION_FILE},
+};
 use crate::workspaces::SavedKind;
 use kubecove_lib::models::{AppError, AppErrorKind};
 use std::{
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 
@@ -14,6 +17,7 @@ pub struct Store {
     directory: Option<PathBuf>,
     memory: Mutex<Document>,
     legacy_file: Option<PathBuf>,
+    migration_diagnostic: Mutex<Option<String>>,
 }
 impl Store {
     pub fn file(directory: PathBuf) -> Self {
@@ -21,10 +25,25 @@ impl Store {
             directory: Some(directory),
             memory: Mutex::default(),
             legacy_file: None,
+            migration_diagnostic: Mutex::default(),
         }
     }
     pub fn set_legacy_file(&mut self, path: PathBuf) {
         self.legacy_file = Some(path);
+    }
+    pub fn last_migration_diagnostic(&self) -> Option<String> {
+        self.migration_diagnostic
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+    }
+    fn set_migration_diagnostic(&self, message: Option<String>) {
+        if let Some(ref text) = message {
+            eprintln!("KubeCove Tauri migration: {text}");
+        }
+        if let Ok(mut slot) = self.migration_diagnostic.lock() {
+            *slot = message;
+        }
     }
     pub fn clear_memory(&self) -> Result<(), AppError> {
         if self.directory.is_some() {
@@ -36,23 +55,105 @@ impl Store {
     pub fn load(&self) -> Result<Document, AppError> {
         match &self.directory {
             None => Ok(self.memory.lock().map_err(|_| invalid())?.clone()),
-            Some(directory) => match fs::read(directory.join("live-sessions.json")) {
-                Ok(bytes) => decode(&bytes),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    match &self.legacy_file {
-                        Some(path) => match fs::read(path) {
-                            Ok(bytes) => decode(&bytes),
-                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                                Ok(Document::default())
-                            }
-                            Err(_) => Err(io_error()),
-                        },
-                        None => Ok(Document::default()),
-                    }
+            Some(directory) => {
+                if directory.join(MIGRATION_FILE).exists() {
+                    return self.load_with_tauri_migration(directory);
                 }
-                Err(_) => Err(io_error()),
-            },
+                self.load_unlocked(directory).map(|(document, _)| document)
+            }
         }
+    }
+    fn load_unlocked(&self, directory: &Path) -> Result<(Document, bool), AppError> {
+        match fs::read(directory.join("live-sessions.json")) {
+            Ok(bytes) => Ok((decode(&bytes)?, true)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => match &self.legacy_file {
+                Some(path) => match fs::read(path) {
+                    Ok(bytes) => Ok((decode(&bytes)?, true)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        Ok((Document::default(), false))
+                    }
+                    Err(_) => Err(io_error()),
+                },
+                None => Ok((Document::default(), false)),
+            },
+            Err(_) => Err(io_error()),
+        }
+    }
+    fn load_with_tauri_migration(&self, directory: &Path) -> Result<Document, AppError> {
+        let mut memory = self.memory.lock().map_err(|_| invalid())?;
+        fs::create_dir_all(directory).map_err(|_| io_error())?;
+        let _lock = match acquire_lock(directory) {
+            Ok(lock) => lock,
+            Err(_) => {
+                self.set_migration_diagnostic(Some(
+                    "Skipped Tauri migration snapshot because another instance holds the preferences lock. The file was preserved."
+                        .into(),
+                ));
+                return self.load_unlocked(directory).map(|(document, _)| document);
+            }
+        };
+        let (mut document, has_existing) = self.load_unlocked(directory)?;
+        let migration_path = directory.join(MIGRATION_FILE);
+        let bytes = match fs::read(&migration_path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                *memory = document.clone();
+                return Ok(document);
+            }
+            Err(error) => {
+                self.set_migration_diagnostic(Some(format!(
+                    "Could not read {MIGRATION_FILE}: {error}. The file was preserved."
+                )));
+                *memory = document.clone();
+                return Ok(document);
+            }
+        };
+        let mut candidate = document.clone();
+        let report = match tauri_migration::merge_bytes(&bytes, &mut candidate, has_existing) {
+            Ok(report) => report,
+            Err(reason) => {
+                self.set_migration_diagnostic(Some(format!(
+                    "Ignored corrupt {MIGRATION_FILE}: {reason}. The file was preserved."
+                )));
+                *memory = document.clone();
+                return Ok(document);
+            }
+        };
+        if let Err(error) = validate(&candidate).and_then(|()| {
+            let value = serde_json::to_value(&candidate).map_err(|_| invalid())?;
+            reject_credentials(&value)
+        }) {
+            self.set_migration_diagnostic(Some(format!(
+                "Ignored {MIGRATION_FILE} because merged preferences failed validation: {}. The file was preserved.",
+                error.message
+            )));
+            *memory = document.clone();
+            return Ok(document);
+        }
+        candidate.revision = candidate.revision.checked_add(1).ok_or_else(invalid)?;
+        if write_atomic(directory, &candidate).is_err() {
+            self.set_migration_diagnostic(Some(format!(
+                "Could not persist imported {MIGRATION_FILE} into live-sessions.json. The file was preserved."
+            )));
+            *memory = document.clone();
+            return Ok(document);
+        }
+        let imported_path = directory.join(IMPORTED_FILE);
+        if let Err(error) = fs::rename(&migration_path, &imported_path) {
+            self.set_migration_diagnostic(Some(format!(
+                "Imported {MIGRATION_FILE} into live-sessions.json, but could not rename it to {IMPORTED_FILE}: {error}."
+            )));
+        } else if report.skipped > 0 {
+            self.set_migration_diagnostic(Some(format!(
+                "Imported {MIGRATION_FILE} with {} invalid or unsafe field(s) skipped.",
+                report.skipped
+            )));
+        } else {
+            self.set_migration_diagnostic(None);
+        }
+        document = candidate;
+        *memory = document.clone();
+        Ok(document)
     }
     pub fn save(&self, mut document: Document) -> Result<Document, AppError> {
         validate(&document)?;
@@ -66,45 +167,53 @@ impl Store {
             return Ok(document);
         };
         fs::create_dir_all(directory).map_err(|_| io_error())?;
-        let mut options = OpenOptions::new();
-        options.create(true).truncate(false).read(true).write(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let lock = options
-            .open(directory.join("live-sessions.lock"))
-            .map_err(|_| io_error())?;
-        lock.try_lock().map_err(|_| io_error())?;
+        let _lock = acquire_lock(directory)?;
         // Re-read under the process-shared lock. A corrupt/future document blocks writes.
-        if self.load()?.revision != document.revision {
+        if self.load_unlocked(directory)?.0.revision != document.revision {
             return Err(conflict());
         }
         document.revision = document.revision.checked_add(1).ok_or_else(invalid)?;
-        let bytes = serde_json::to_vec_pretty(&document).map_err(|_| invalid())?;
-        let staged = directory.join(format!("live-sessions.{}.tmp", std::process::id()));
-        let mut options = OpenOptions::new();
-        options.create_new(true).write(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&staged).map_err(|_| io_error())?;
-        let result = (|| {
-            file.write_all(&bytes)?;
-            file.sync_all()?;
-            drop(file);
-            fs::rename(&staged, directory.join("live-sessions.json"))
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&staged);
-            return Err(io_error());
-        }
+        write_atomic(directory, &document)?;
         *memory = document.clone();
         Ok(document)
     }
+}
+fn acquire_lock(directory: &Path) -> Result<File, AppError> {
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(false).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options
+        .open(directory.join("live-sessions.lock"))
+        .map_err(|_| io_error())?;
+    lock.try_lock().map_err(|_| io_error())?;
+    Ok(lock)
+}
+fn write_atomic(directory: &Path, document: &Document) -> Result<(), AppError> {
+    let bytes = serde_json::to_vec_pretty(document).map_err(|_| invalid())?;
+    let staged = directory.join(format!("live-sessions.{}.tmp", std::process::id()));
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&staged).map_err(|_| io_error())?;
+    let result = (|| {
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&staged, directory.join("live-sessions.json"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&staged);
+        return Err(io_error());
+    }
+    Ok(())
 }
 fn decode(bytes: &[u8]) -> Result<Document, AppError> {
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;

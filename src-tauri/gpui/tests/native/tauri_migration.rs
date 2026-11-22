@@ -1,0 +1,528 @@
+//! Failure modes: fresh Tauri 0.15.1 migration loses preferences/workspaces/reviews/pins/Argo;
+//! existing GPUI entries get clobbered on merge; migration re-runs after rename; corrupt
+//! migration file fails startup or gets deleted; secrets enter live-sessions.json.
+
+use crate::scratch::Scratch;
+use kubecove_gpui::preferences::{ConnectionPreference, Endpoint, LogLayout, Store};
+use serde_json::json;
+
+#[test]
+fn tauri_migration_fresh_import_and_idempotency() {
+    let root = Scratch::new("preferences-tests", "tauri-fresh");
+    let directory = root.to_path_buf();
+    let timestamp = "2026-11-21T00:00:00Z";
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "sourceVersion": "0.15.1",
+        "exportedAt": timestamp,
+        "entries": {
+            "kubecove-settings": {
+                "version": 0,
+                "state": {
+                    "showExactTimestamps": true,
+                    "showUsageFooter": true,
+                    "redactSecrets": false,
+                    "gitOpsViewMode": "list",
+                    "helmViewMode": "list",
+                    "timestampTimezone": "utc",
+                    "yamlViewModeDefault": "applyClean",
+                    "yamlEncodingDefault": "kyaml",
+                    "yamlDiffStyle": "git",
+                    "logLayout": "oneLine",
+                    "resourceKindLanes": { "first": ["Secret"], "normal": ["*"], "last": ["Pod"] },
+                    "argoProfiles": [
+                        {
+                            "id": "argo-ext",
+                            "transport": "connected",
+                            "workspaceId": "tauri-ws-1",
+                            "clusterContext": "prod",
+                            "kubeconfigSourceKey": "default",
+                            "rememberCredential": true,
+                            "endpoint": { "kind": "externalHttps", "url": "https://argo.example.test" }
+                        },
+                        {
+                            "id": "argo-tun",
+                            "transport": "connected",
+                            "clusterContext": "staging",
+                            "rememberCredential": false,
+                            "endpoint": {
+                                "kind": "serviceTunnel",
+                                "namespace": "argocd",
+                                "serviceName": "argocd-server",
+                                "servicePort": 443,
+                                "scheme": "https",
+                                "rootPath": "/argo"
+                            }
+                        }
+                    ],
+                    "argoConnectionPreferences": {
+                        "tauri-ws-1": { "kind": "connected", "profileId": "argo-ext" },
+                        "staging": { "kind": "kubernetes" }
+                    }
+                }
+            },
+            "kubecove-workspaces": {
+                "version": 0,
+                "state": {
+                    "workspaces": [
+                        {
+                            "id": "tauri-ws-1",
+                            "name": "Production",
+                            "sharedKey": "production",
+                            "scope": {
+                                "clusterContext": "prod",
+                                "layout": "resources",
+                                "namespaces": ["payments", "checkout"],
+                                "kinds": [
+                                    "Pod",
+                                    {
+                                        "group": "argoproj.io",
+                                        "version": "v1alpha1",
+                                        "apiVersion": "argoproj.io/v1alpha1",
+                                        "kind": "Application",
+                                        "plural": "applications",
+                                        "namespaced": true
+                                    }
+                                ],
+                                "clusterGroup": {
+                                    "id": "grp-1",
+                                    "name": "Prod Fleet",
+                                    "members": ["prod", "prod-eu"]
+                                }
+                            },
+                            "shortcuts": [
+                                { "id": "sc-1", "label": "Payments", "kind": "namespace", "namespace": "payments" }
+                            ],
+                            "portForwards": [
+                                {
+                                    "id": "pf-1",
+                                    "clusterContext": "prod",
+                                    "namespace": "payments",
+                                    "serviceName": "api",
+                                    "servicePort": 8080,
+                                    "localPort": 18080,
+                                    "label": "Payments API",
+                                    "createdAt": timestamp,
+                                    "updatedAt": timestamp
+                                }
+                            ],
+                            "rbacReviews": [
+                                {
+                                    "clusterContext": "prod",
+                                    "objectKey": "Roles:Role:token:reader",
+                                    "evidenceFingerprint": "rbac-v1-abc123",
+                                    "disposition": "expected",
+                                    "note": "Approved for on-call",
+                                    "reviewedAt": timestamp
+                                }
+                            ],
+                            "entryPoints": {
+                                "pinned": [
+                                    {
+                                        "kind": "resource",
+                                        "clusterContext": "prod",
+                                        "namespace": "payments",
+                                        "name": "api",
+                                        "resourceKind": "Deployment",
+                                        "apiVersion": "apps/v1",
+                                        "lastVisitedAt": timestamp
+                                    }
+                                ],
+                                "recent": [
+                                    {
+                                        "kind": "namespace",
+                                        "clusterContext": "prod",
+                                        "name": "payments",
+                                        "lastVisitedAt": timestamp
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    });
+    let migration_path = directory.join("tauri-migration.json");
+    let imported_path = directory.join("tauri-migration.imported.json");
+    std::fs::write(&migration_path, snapshot.to_string()).unwrap();
+
+    let store = Store::file(directory.clone());
+    let loaded = store.load().unwrap();
+    assert!(store.last_migration_diagnostic().is_none());
+    assert!(!migration_path.exists());
+    assert!(imported_path.exists());
+    assert!(directory.join("live-sessions.json").exists());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(directory.join("live-sessions.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    assert!(loaded.preferences.show_exact_timestamps);
+    assert!(loaded.preferences.show_usage_footer);
+    assert!(!loaded.preferences.redact_secrets);
+    assert_eq!(loaded.preferences.log_layout, LogLayout::OneLine);
+    assert_eq!(loaded.preferences.resource_kind_lanes.first, vec!["Secret"]);
+    assert_eq!(loaded.preferences.argo_profiles.len(), 2);
+    assert_eq!(
+        loaded.preferences.argo_profiles[0].workspace_id.as_deref(),
+        Some("1")
+    );
+    assert!(
+        loaded
+            .preferences
+            .argo_connection_preferences
+            .contains_key("1")
+    );
+    assert!(
+        loaded
+            .preferences
+            .argo_connection_preferences
+            .contains_key("staging")
+    );
+
+    assert_eq!(loaded.workspaces.len(), 1);
+    let ws = &loaded.workspaces[0];
+    assert_eq!(ws.id, 1);
+    assert_eq!(ws.name, "Production");
+    assert_eq!(ws.context, "prod");
+    assert_eq!(ws.group, vec!["prod-eu"]);
+    assert_eq!(ws.group_name.as_deref(), Some("Prod Fleet"));
+    assert_eq!(ws.namespaces, vec!["checkout", "payments"]);
+    assert_eq!(ws.kinds.len(), 2);
+    assert_eq!(ws.reviews.len(), 1);
+    assert_eq!(ws.reviews[0].note, "Approved for on-call");
+    assert!(loaded.workspace_documents.contains_key(&1));
+    assert_eq!(loaded.workspace_entry_points[&1].pinned.len(), 1);
+    assert_eq!(loaded.workspace_entry_points[&1].recent.len(), 1);
+    let preset_key = serde_json::to_string(&(Option::<&str>::None, "prod", "Production")).unwrap();
+    assert_eq!(loaded.saved_forward_presets[&preset_key].len(), 1);
+    assert_eq!(
+        loaded.saved_forward_presets[&preset_key][0].label,
+        "Payments API"
+    );
+
+    // Idempotency: editing GPUI preferences and reloading never re-imports the renamed file.
+    let mut edited = loaded;
+    edited.preferences.show_exact_timestamps = false;
+    let saved = store.save(edited).unwrap();
+    let reloaded = Store::file(directory).load().unwrap();
+    assert!(!reloaded.preferences.show_exact_timestamps);
+    assert_eq!(reloaded.revision, saved.revision);
+}
+
+#[test]
+fn tauri_migration_merges_without_clobbering_existing_gpui_data() {
+    let root = Scratch::new("preferences-tests", "tauri-merge");
+    let directory = root.to_path_buf();
+    let timestamp = "2026-11-21T00:00:00Z";
+    let store = Store::file(directory.clone());
+
+    let mut existing = store.load().unwrap();
+    existing.preferences.show_exact_timestamps = true;
+    existing.preferences.show_usage_footer = false;
+    existing
+        .preferences
+        .argo_profiles
+        .push(kubecove_gpui::preferences::ArgoProfile {
+            id: "shared-profile".into(),
+            endpoint: Endpoint::ExternalHttps {
+                url: "https://gpui-wins.example.test".into(),
+            },
+            cluster_context: Some("prod".into()),
+            workspace_id: Some("1".into()),
+            kubeconfig_source_key: None,
+            remember_credential: true,
+        });
+    existing
+        .preferences
+        .argo_connection_preferences
+        .insert("1".into(), ConnectionPreference::Kubernetes);
+    let mut gpui_ws = kubecove_gpui::workspaces::Draft {
+        name: "Production",
+        effective: "prod",
+        group: &[],
+        namespaces: &["gpui-ns".into()],
+        kinds: None,
+    }
+    .build(1, 1);
+    gpui_ws.reviews = serde_json::from_value(json!([{
+        "cluster_context": "prod",
+        "object_key": "Roles:Role:gpui-ns:admin",
+        "evidence_fingerprint": "rbac-v1-gpui",
+        "disposition": "anomalous",
+        "note": "GPUI note wins",
+        "reviewed_at": timestamp
+    }]))
+    .unwrap();
+    existing.workspaces.push(gpui_ws);
+    store.save(existing).unwrap();
+
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "sourceVersion": "0.15.1",
+        "exportedAt": timestamp,
+        "entries": {
+            "kubecove-settings": {
+                "version": 0,
+                "state": {
+                    "showExactTimestamps": false,
+                    "showUsageFooter": true,
+                    "argoProfiles": [
+                        {
+                            "id": "shared-profile",
+                            "transport": "connected",
+                            "endpoint": { "kind": "externalHttps", "url": "https://tauri-loses.example.test" }
+                        },
+                        {
+                            "id": "new-profile",
+                            "transport": "connected",
+                            "endpoint": { "kind": "externalHttps", "url": "https://tauri-new.example.test" }
+                        }
+                    ],
+                    "argoConnectionPreferences": {
+                        "tauri-prod": { "kind": "connected", "profileId": "shared-profile" },
+                        "staging": { "kind": "connected", "profileId": "new-profile" }
+                    }
+                }
+            },
+            "kubecove-workspaces": {
+                "version": 0,
+                "state": {
+                    "workspaces": [
+                        {
+                            "id": "tauri-prod",
+                            "name": "Production",
+                            "scope": { "clusterContext": "prod", "namespaces": ["tauri-ns"] },
+                            "rbacReviews": [
+                                {
+                                    "clusterContext": "prod",
+                                    "objectKey": "Roles:Role:gpui-ns:admin",
+                                    "evidenceFingerprint": "rbac-v1-tauri",
+                                    "disposition": "expected",
+                                    "note": "Tauri note loses",
+                                    "reviewedAt": timestamp
+                                },
+                                {
+                                    "clusterContext": "prod",
+                                    "objectKey": "Roles:Role:gpui-ns:viewer",
+                                    "evidenceFingerprint": "rbac-v1-new",
+                                    "disposition": "expected",
+                                    "note": "Merged new review",
+                                    "reviewedAt": timestamp
+                                }
+                            ]
+                        },
+                        {
+                            "id": "tauri-staging",
+                            "name": "Staging",
+                            "scope": { "clusterContext": "staging", "namespaces": ["web"] }
+                        }
+                    ]
+                }
+            }
+        }
+    });
+    std::fs::write(directory.join("tauri-migration.json"), snapshot.to_string()).unwrap();
+
+    let merged = Store::file(directory).load().unwrap();
+    assert!(merged.preferences.show_exact_timestamps);
+    assert!(!merged.preferences.show_usage_footer);
+    assert_eq!(merged.preferences.argo_profiles.len(), 2);
+    assert_eq!(
+        merged.preferences.argo_profiles[0].endpoint,
+        Endpoint::ExternalHttps {
+            url: "https://gpui-wins.example.test".into()
+        }
+    );
+    assert_eq!(merged.preferences.argo_profiles[1].id, "new-profile");
+    assert_eq!(
+        merged.preferences.argo_connection_preferences["1"],
+        ConnectionPreference::Kubernetes
+    );
+    assert_eq!(
+        merged.preferences.argo_connection_preferences["staging"],
+        ConnectionPreference::Connected {
+            profile_id: "new-profile".into()
+        }
+    );
+    assert_eq!(merged.workspaces.len(), 2);
+    assert_eq!(merged.workspaces[0].namespaces, vec!["gpui-ns"]);
+    assert_eq!(merged.workspaces[0].reviews.len(), 2);
+    assert_eq!(merged.workspaces[0].reviews[0].note, "GPUI note wins");
+    assert_eq!(merged.workspaces[0].reviews[1].note, "Merged new review");
+    assert_eq!(merged.workspaces[1].name, "Staging");
+    assert_eq!(merged.workspaces[1].id, 2);
+}
+
+#[test]
+fn tauri_migration_corrupt_and_partial_handling() {
+    let root = Scratch::new("preferences-tests", "tauri-corrupt");
+    let directory = root.to_path_buf();
+    let migration_path = directory.join("tauri-migration.json");
+    let imported_path = directory.join("tauri-migration.imported.json");
+
+    for raw in [
+        "{not-json",
+        r#"{"schemaVersion":2,"entries":{}}"#,
+        r#"{"schemaVersion":1,"entries":"bad"}"#,
+    ] {
+        std::fs::write(&migration_path, raw).unwrap();
+        let store = Store::file(directory.clone());
+        let doc = store.load().unwrap();
+        assert_eq!(doc.version, 2);
+        assert!(store.last_migration_diagnostic().is_some());
+        assert_eq!(std::fs::read_to_string(&migration_path).unwrap(), raw);
+        assert!(!imported_path.exists());
+    }
+
+    let partial = json!({
+        "schemaVersion": 1,
+        "entries": {
+            "kubecove-settings": {
+                "version": 0,
+                "state": {
+                    "showUsageFooter": true,
+                    "logLayout": "invalid-layout",
+                    "resourceKindLanes": { "first": ["Pod"], "normal": ["Pod"], "last": [] }
+                }
+            },
+            "kubecove-workspaces": {
+                "version": 0,
+                "state": {
+                    "workspaces": [
+                        { "id": "bad", "name": "Missing scope" },
+                        { "id": "ok", "name": "Valid", "scope": { "clusterContext": "dev" } }
+                    ]
+                }
+            }
+        }
+    });
+    std::fs::write(&migration_path, partial.to_string()).unwrap();
+    let store = Store::file(directory.clone());
+    let doc = store.load().unwrap();
+    assert!(doc.preferences.show_usage_footer);
+    assert_eq!(doc.preferences.log_layout, LogLayout::Stacked);
+    assert_eq!(doc.workspaces.len(), 1);
+    assert_eq!(doc.workspaces[0].name, "Valid");
+    assert!(store.last_migration_diagnostic().is_some());
+    assert!(!migration_path.exists());
+    assert!(imported_path.exists());
+}
+
+#[test]
+fn tauri_migration_never_persists_secrets() {
+    let root = Scratch::new("preferences-tests", "tauri-secrets");
+    let directory = root.to_path_buf();
+    let timestamp = "2026-11-21T00:00:00Z";
+    let snapshot = json!({
+        "schemaVersion": 1,
+        "sourceVersion": "0.15.1",
+        "exportedAt": timestamp,
+        "entries": {
+            "kubecove-settings": {
+                "version": 0,
+                "state": {
+                    "showUsageFooter": true,
+                    "token": "canary-root-token",
+                    "password": "canary-root-password",
+                    "argoProfiles": [
+                        {
+                            "id": "good-argo",
+                            "transport": "connected",
+                            "rememberCredential": true,
+                            "token": "canary-profile-token",
+                            "endpoint": {
+                                "kind": "externalHttps",
+                                "url": "https://argo.example.test",
+                                "auth": { "password": "canary-nested-password" }
+                            }
+                        },
+                        {
+                            "id": "bad-userinfo",
+                            "transport": "connected",
+                            "endpoint": { "kind": "externalHttps", "url": "https://admin:canary-url-pw@argo.example.test" }
+                        },
+                        {
+                            "id": "bad-query",
+                            "transport": "connected",
+                            "endpoint": { "kind": "externalHttps", "url": "https://argo.example.test?access_token=canary-query" }
+                        }
+                    ],
+                    "argoConnectionPreferences": {
+                        "token": { "kind": "automatic" },
+                        "safe-ctx": { "kind": "connected", "profileId": "good-argo", "headers": { "Authorization": "Bearer canary-hdr" } }
+                    }
+                }
+            },
+            "kubecove-workspaces": {
+                "version": 0,
+                "state": {
+                    "workspaces": [
+                        {
+                            "id": "ws-1",
+                            "name": "Clean Workspace",
+                            "scope": { "clusterContext": "dev", "namespaces": ["apps"] },
+                            "rbacReviews": [
+                                {
+                                    "clusterContext": "dev",
+                                    "objectKey": "Roles:Role:apps:reader",
+                                    "evidenceFingerprint": "rbac-v1-bad1",
+                                    "disposition": "expected",
+                                    "note": "Authorization: Bearer canary-note-bearer",
+                                    "reviewedAt": timestamp
+                                },
+                                {
+                                    "clusterContext": "dev",
+                                    "objectKey": "Roles:Role:apps:writer",
+                                    "evidenceFingerprint": "rbac-v1-bad2",
+                                    "disposition": "expected",
+                                    "note": "ghp_canarygithubtoken123",
+                                    "reviewedAt": timestamp
+                                },
+                                {
+                                    "clusterContext": "dev",
+                                    "objectKey": "Roles:Role:apps:safe",
+                                    "evidenceFingerprint": "rbac-v1-good",
+                                    "disposition": "expected",
+                                    "note": "Safe operational note",
+                                    "reviewedAt": timestamp
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    });
+    std::fs::write(directory.join("tauri-migration.json"), snapshot.to_string()).unwrap();
+
+    let store = Store::file(directory.clone());
+    let doc = store.load().unwrap();
+    let persisted = std::fs::read_to_string(directory.join("live-sessions.json")).unwrap();
+    assert!(!persisted.contains("canary"));
+    assert_eq!(doc.preferences.argo_profiles.len(), 1);
+    assert_eq!(doc.preferences.argo_profiles[0].id, "good-argo");
+    assert!(
+        !doc.preferences
+            .argo_connection_preferences
+            .contains_key("token")
+    );
+    assert!(
+        doc.preferences
+            .argo_connection_preferences
+            .contains_key("safe-ctx")
+    );
+    assert_eq!(doc.workspaces.len(), 1);
+    assert_eq!(doc.workspaces[0].reviews.len(), 1);
+    assert_eq!(doc.workspaces[0].reviews[0].note, "Safe operational note");
+    Store::file(directory).load().unwrap();
+}
