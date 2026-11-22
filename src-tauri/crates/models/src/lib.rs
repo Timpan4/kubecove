@@ -48,7 +48,7 @@ pub use flux::{
     FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
     FluxResourceSummary,
 };
-pub use gpui_upgrade::{GpuiInstallKind, GpuiUpgradeInfo};
+pub use gpui_upgrade::{GpuiInstallKind, GpuiUpgradeInfo, MigrationInput};
 pub use health::{
     HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentEvidence,
     HealthAssessmentInput, HealthAssessmentSource, HealthAssessmentState,

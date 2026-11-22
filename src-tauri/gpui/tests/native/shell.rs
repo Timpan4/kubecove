@@ -9,6 +9,8 @@ pub(super) struct ShellControls {
     /// Holds the next kubeconfig sources read until the test releases it.
     pub sources_pending: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub fail_save: AtomicBool,
+    pub consolidated_release: AtomicBool,
+    pub checked_updates: AtomicBool,
     pub preferences: Store,
 }
 
@@ -62,6 +64,48 @@ fn launcher_context_change_drops_the_old_namespace_read(cx: &mut TestAppContext)
         sender.send(()).is_err(),
         "old namespace read survived context selection"
     );
+}
+
+#[gpui_kit::test]
+fn consolidated_release_offers_download_in_settings_and_header(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    backend
+        .shell
+        .consolidated_release
+        .store(true, Ordering::SeqCst);
+    let handle = open(cx, backend);
+    click(cx, handle, "header-update");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("header-update-install").is_some());
+    })
+    .unwrap();
+    click(cx, handle, "open-settings");
+    click(cx, handle, "settings-section:Updates");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("settings-button:Install").is_some());
+    })
+    .unwrap();
+    click(cx, handle, "settings-button:Check");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(
+            window
+                .try_find("settings-button:Open GitHub Releases")
+                .is_some()
+        );
+        assert!(window.try_find("settings-button:Install").is_none());
+    })
+    .unwrap();
+    click(cx, handle, "settings-back");
+    click(cx, handle, "header-update");
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("header-open-releases").is_some());
+        assert!(window.try_find("header-update-install").is_none());
+    })
+    .unwrap();
 }
 
 /// Failure mode: Open Wiki replaces the kubeconfig sources read, so the

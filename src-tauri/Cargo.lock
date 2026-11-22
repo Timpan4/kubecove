@@ -2772,6 +2772,7 @@ dependencies = [
  "kubecove-models",
  "libc",
  "minisign-verify",
+ "regex",
  "reqwest",
  "ring",
  "rustix",

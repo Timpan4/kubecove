@@ -11,3 +11,11 @@ Development builds check the feed only when the user asks. Rust limits the manif
 Rust keeps the native path and sends a display string to Settings. Launch requires a location protected against writes by other users. Rust records the executable's SHA-256 digest during installation and checks the path permissions and digest again before starting that executable. On macOS this is the main binary inside the verified bundle. Settings offers only the folder action when Rust cannot establish launch safety.
 
 Kubeconfig sources, MCP settings and token, and stored server credentials already use shared storage. Workspaces use the existing JSON export and import. Display preferences and Argo CD profiles start fresh. Users who run MCP can reveal the installed app, quit Tauri to free the listener port, then start GPUI.
+
+## Version 0.15.1 handoff
+
+Both legacy update feeds freeze at 0.15.1. Settings checks the consolidated feed first and offers GitHub Releases for a compatible KubeCove 0.16.0 or later. The bridge installs a side-by-side build only from the legacy GPUI feed. See [ADR 0034](0034-gpui-release-bundles-and-updates.md) for the release asset and bundle identity checks.
+
+On startup, when the document becomes hidden, and before opening the installer or release page, Tauri snapshots the allowed fields of `kubecove-settings` and `kubecove-workspaces`. Rust writes schema version 1 to `tauri-migration.json` in the shared `com.timpan.kubecove` config directory. Entries retain the storage key and its state envelope. The file includes the source app version and UTC export time. Equal entries keep the previous file. Replacement is atomic and private to the owner on Unix.
+
+Allowed state includes display and behavior settings, workspace scope and shortcuts, port-forward presets, pins, recents, RBAC review notes and Argo connection metadata. Credentials, unknown fields, session storage, transient errors and update-check history are excluded. User-entered text is retained unless it contains recognizable credential syntax. An arbitrary password entered as ordinary text cannot be distinguished from a name or note. Credential stores retain sole ownership of saved authentication data.

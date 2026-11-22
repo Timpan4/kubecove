@@ -1,8 +1,10 @@
+import { exportTauriMigrationSnapshot } from "./tauri-migration";
 import { createNativeTauriClient } from "./tauri-runtime";
 
 type InstallKind = "appImage" | "appBundle" | "windowsInstaller";
 
 export type GpuiUpgradeInfo =
+	| { status: "consolidated"; version: string }
 	| { status: "unsupported"; target: string; message: string }
 	| { status: "unavailable"; target: string }
 	| {
@@ -23,14 +25,30 @@ export function checkGpuiUpgrade(): Promise<GpuiUpgradeInfo> {
 	return local.invoke("check_gpui_upgrade");
 }
 
-export function installGpuiUpgrade(version: string): Promise<GpuiUpgradeInfo | null> {
+async function saveBeforeHandoff(): Promise<void> {
+	try {
+		await exportTauriMigrationSnapshot();
+	} catch {
+		console.warn("Could not save the migration snapshot.");
+	}
+}
+
+export async function installGpuiUpgrade(version: string): Promise<GpuiUpgradeInfo | null> {
+	await saveBeforeHandoff();
 	return local.invoke("install_gpui_upgrade", { version });
 }
 
-export function launchGpuiUpgrade(): Promise<void> {
+export async function launchGpuiUpgrade(): Promise<void> {
+	await saveBeforeHandoff();
 	return local.invoke("launch_gpui_upgrade");
 }
 
-export function revealGpuiUpgrade(): Promise<void> {
+export async function openDesktopReleases(): Promise<void> {
+	await saveBeforeHandoff();
+	return local.invoke("open_desktop_releases_page");
+}
+
+export async function revealGpuiUpgrade(): Promise<void> {
+	await saveBeforeHandoff();
 	return local.invoke("reveal_gpui_upgrade");
 }

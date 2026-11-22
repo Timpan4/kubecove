@@ -3,9 +3,14 @@
 #[cfg(feature = "desktop")]
 mod gpui_upgrade;
 #[cfg(feature = "desktop")]
+mod migration;
+#[cfg(feature = "desktop")]
 pub use gpui_upgrade::{
-    GpuiUpgrade, check_gpui_upgrade, install_gpui_upgrade, launch_gpui_upgrade, reveal_gpui_upgrade,
+    GpuiUpgrade, check_gpui_upgrade, install_gpui_upgrade, launch_gpui_upgrade,
+    open_desktop_releases_page, reveal_gpui_upgrade,
 };
+#[cfg(feature = "desktop")]
+pub use migration::{MigrationDirectory, export_tauri_migration_snapshot};
 
 #[cfg(feature = "bench-support")]
 pub mod bench_support;

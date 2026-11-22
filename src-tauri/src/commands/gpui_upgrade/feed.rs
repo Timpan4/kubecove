@@ -109,6 +109,12 @@ pub(super) fn release(
     platform: Platform,
     current: &str,
 ) -> Result<Option<Release>, AppError> {
+    crate::desktop_release::validate_product(
+        &value,
+        platform.key(),
+        "KubeCove GPUI",
+        "com.timpan.kubecove.gpui",
+    )?;
     let mut manifest: Manifest =
         serde_json::from_value(value).map_err(|_| invalid("Invalid GPUI release manifest"))?;
     let parse = |s: &str| {
@@ -119,11 +125,20 @@ pub(super) fn release(
     if version.cmp_precedence(&parse(current)?).is_lt() {
         return Ok(None);
     }
+    if version
+        .cmp_precedence(&crate::desktop_release::LEGACY_MAX)
+        .is_gt()
+    {
+        return Err(invalid("The side-by-side feed exceeds its final release"));
+    }
     let Some(artifact) = manifest.platforms.remove(platform.key()) else {
         return Ok(None);
     };
     if artifact.signature.is_empty()
-        || reqwest::Url::parse(&artifact.url).map_or(true, |url| url.scheme() != "https")
+        || !crate::desktop_release::matches_asset(
+            &artifact.url,
+            &platform.asset(&version.to_string()),
+        )
     {
         return Err(invalid("Invalid GPUI release asset"));
     }
@@ -157,6 +172,24 @@ impl Feed {
         })
     }
 
+    pub(super) async fn consolidated(
+        &self,
+        platform: Platform,
+    ) -> Result<Option<semver::Version>, AppError> {
+        #[cfg(feature = "e2e")]
+        if std::env::var("KUBECOVE_E2E_SMOKE").as_deref() == Ok("1") {
+            let manifest = serde_json::json!({
+                "version":"0.16.0",
+                "platforms":{platform.key():{
+                    "url": format!("https://example.test/{}", platform.asset("0.16.0").replacen("kubecove-gpui_", "kubecove_", 1)),
+                    "signature":"offline-smoke"
+                }}
+            });
+            return crate::desktop_release::consolidated_version(&manifest, platform.key());
+        }
+        crate::desktop_release::consolidated(&client()?, &self.endpoint, platform.key()).await
+    }
+
     pub(super) async fn latest(&self, platform: Platform) -> Result<Option<Release>, AppError> {
         #[cfg(feature = "e2e")]
         if std::env::var("KUBECOVE_E2E_SMOKE").as_deref() == Ok("1") {
@@ -169,35 +202,24 @@ impl Feed {
             .get(&self.endpoint)
             .send()
             .await
-            .and_then(reqwest::Response::error_for_status)
             .map_err(|_| network("Could not check for a GPUI release"))?;
-        if response.status() == reqwest::StatusCode::NO_CONTENT {
+        if matches!(
+            response.status(),
+            reqwest::StatusCode::NO_CONTENT | reqwest::StatusCode::NOT_FOUND
+        ) {
             return Ok(None);
         }
+        let response = response
+            .error_for_status()
+            .map_err(|_| network("GPUI release check failed"))?;
         let value = read_manifest(response).await?;
         release(value, platform, env!("CARGO_PKG_VERSION"))
     }
 }
 
-// Match the existing 2 MiB remote JSON budget in gitops/commands/argo/transport.rs.
-pub(super) const MANIFEST_BYTES: usize = 2 * 1024 * 1024;
-
-pub(super) async fn read_manifest(
-    mut response: reqwest::Response,
-) -> Result<serde_json::Value, AppError> {
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| network("Could not read the GPUI release manifest"))?
-    {
-        if chunk.len() > MANIFEST_BYTES - bytes.len() {
-            return Err(invalid("The GPUI release manifest is too large"));
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&bytes).map_err(|_| invalid("Invalid GPUI release manifest"))
-}
+#[cfg(test)]
+pub(super) use crate::desktop_release::MANIFEST_BYTES;
+pub(super) use crate::desktop_release::read_manifest;
 
 pub(super) fn client() -> Result<reqwest::Client, AppError> {
     // ADR 0034 limits a stall, not the duration of a progressing transfer.

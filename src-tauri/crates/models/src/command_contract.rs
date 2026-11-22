@@ -319,9 +319,11 @@ macro_rules! command_contract {
             desktop_only sync fn save_workspace_export_json(fileName: String, content: String)
                 with App;
             desktop_only sync fn pick_workspace_import_json() with App;
+            desktop_only async fn export_tauri_migration_snapshot(input: MigrationInput) with State<MigrationDirectory>;
             desktop_only async fn check_gpui_upgrade() with State<GpuiUpgrade>;
             desktop_only async fn install_gpui_upgrade(version: String) with App, State<GpuiUpgrade>;
             desktop_only async fn launch_gpui_upgrade() with App, State<GpuiUpgrade>;
+            desktop_only async fn open_desktop_releases_page() with App;
             desktop_only async fn reveal_gpui_upgrade() with App, State<GpuiUpgrade>;
             desktop_only async fn remote_connect(serverUrl: String, token: String)
                 with State<RemoteConnectionStore>;

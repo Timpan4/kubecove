@@ -5,17 +5,17 @@
 use crate::{
     commands::{
         self, AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore,
-        GpuiUpgrade, McpHost, PodExecRegistry, PortForwardRegistry, RemoteConnectionStore,
-        StreamRegistry,
+        GpuiUpgrade, McpHost, MigrationDirectory, PodExecRegistry, PortForwardRegistry,
+        RemoteConnectionStore, StreamRegistry,
     },
     models::{
         AggregatedLogStreamRequest, AppError, AppErrorKind, ArgoApplicationRef,
         ArgoConfirmedTarget, ArgoConnectionProfile, ArgoManagedResource, ArgoOperationConfirmation,
         ArgoOperationRequest, ArgoServerEndpoint, CommandArgs, DiscoveredResourceKind,
-        FluxResourceKind, LiveSessionCleanupRequest, PodExecSessionRequest, PodExecTerminalSize,
-        PodLogStreamRequest, PortForwardRequest, RbacAccessReviewRequest, ResourceActionRequest,
-        ResourceActionStateRequest, ResourceListRequest, ResourceWatchStart, WatchResourceKey,
-        YamlApplyRequest, YamlEncoding, YamlViewMode,
+        FluxResourceKind, LiveSessionCleanupRequest, MigrationInput, PodExecSessionRequest,
+        PodExecTerminalSize, PodLogStreamRequest, PortForwardRequest, RbacAccessReviewRequest,
+        ResourceActionRequest, ResourceActionStateRequest, ResourceListRequest, ResourceWatchStart,
+        WatchResourceKey, YamlApplyRequest, YamlEncoding, YamlViewMode,
     },
 };
 use serde::Serialize;

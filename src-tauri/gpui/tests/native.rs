@@ -119,6 +119,23 @@ fn resource(context: &str) -> ResourceSummary {
 }
 
 impl Backend for Controlled {
+    fn updates_enabled(&self) -> bool {
+        self.shell.consolidated_release.load(Ordering::SeqCst)
+    }
+
+    fn check_updates(&self) -> Read<kubecove_gpui::backend::UpdateStatus> {
+        use kubecove_gpui::backend::updates::{AvailableUpdate, UpdateStatus};
+        let status = if self.shell.checked_updates.swap(true, Ordering::SeqCst) {
+            UpdateStatus::Consolidated("0.16.0".into())
+        } else {
+            UpdateStatus::Available(AvailableUpdate {
+                version: "0.15.1".into(),
+                ..Default::default()
+            })
+        };
+        Box::pin(async move { Ok(status) })
+    }
+
     fn load_preferences(&self) -> Result<kubecove_gpui::preferences::Document, AppError> {
         Ok(self.argo.document.lock().unwrap().clone())
     }
