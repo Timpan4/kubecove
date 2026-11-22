@@ -133,7 +133,6 @@ impl Store {
         };
         let (mut document, existing_pref_keys) = self.load_unlocked(directory)?;
         let migration_path = directory.join(MIGRATION_FILE);
-        let imported_path = directory.join(IMPORTED_FILE);
         let bytes = match fs::read(&migration_path) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -148,16 +147,12 @@ impl Store {
                 return Ok(document);
             }
         };
-        // Import runs once. Archival of the imported snapshot is cleanup that a
-        // later start retries; a different snapshot stays for the user to see.
+        // Import runs once. Pending presets and archival of the imported
+        // snapshot are finished by a later start; a different snapshot stays.
         if let Some(imported) = document.tauri_migration_imported.clone() {
             match tauri_migration::snapshot_identity(&bytes) {
                 Ok(identity) if identity == imported => {
-                    if let Err(error) = fs::rename(&migration_path, &imported_path) {
-                        self.set_migration_diagnostic(Some(format!(
-                            "Tauri migration was already imported; could not archive {MIGRATION_FILE} to {IMPORTED_FILE}: {error}."
-                        )));
-                    }
+                    document = self.finish_import(directory, document, &bytes);
                 }
                 Ok(identity) => self.set_migration_diagnostic(Some(format!(
                     "Did not import {MIGRATION_FILE} exported at {identity}: GPUI already imported the snapshot exported at {imported}. The file was preserved."
@@ -186,19 +181,65 @@ impl Store {
                 return Ok(document);
             }
         };
-        if let Err(error) = &source_key
-            && report.presets > 0
-        {
-            // Presets filed under no source would never match the source the
-            // inspector resolves once the kubeconfig settings are repaired.
-            self.set_migration_diagnostic(Some(format!(
-                "Did not import {MIGRATION_FILE} yet: its saved port forwards need the active kubeconfig source, which could not be resolved ({}). The file was preserved for the next start.",
-                error.message
-            )));
+        candidate.tauri_migration_imported = Some(report.identity);
+        // Presets filed under no source would never match the source the
+        // inspector resolves once the kubeconfig settings are repaired.
+        candidate.tauri_migration_presets_pending = source_key.is_err() && report.presets > 0;
+        let Some(committed) = self.commit(directory, candidate) else {
             *memory = document.clone();
             return Ok(document);
+        };
+        document = committed;
+        if let Err(error) = &source_key
+            && document.tauri_migration_presets_pending
+        {
+            self.set_migration_diagnostic(Some(format!(
+                "Imported {MIGRATION_FILE}, but its {} saved port forward(s) wait for the active kubeconfig source, which could not be resolved ({}). The file was kept for the next start.",
+                report.presets, error.message
+            )));
+        } else {
+            self.archive(directory, &bytes, report.skipped);
         }
-        candidate.tauri_migration_imported = Some(report.identity);
+        *memory = document.clone();
+        Ok(document)
+    }
+    /// Files presets an earlier import left pending, then archives the snapshot.
+    fn finish_import(&self, directory: &Path, document: Document, bytes: &[u8]) -> Document {
+        if !document.tauri_migration_presets_pending {
+            self.archive(directory, bytes, 0);
+            return document;
+        }
+        let source_key = match (self.source)() {
+            Ok(source_key) => source_key,
+            Err(error) => {
+                self.set_migration_diagnostic(Some(format!(
+                    "Saved port forwards from {MIGRATION_FILE} still wait for the active kubeconfig source, which could not be resolved ({}). The file was kept for the next start.",
+                    error.message
+                )));
+                return document;
+            }
+        };
+        let mut candidate = document.clone();
+        if let Err(reason) =
+            tauri_migration::merge_pending_presets(bytes, &mut candidate, &source_key)
+        {
+            self.set_migration_diagnostic(Some(format!(
+                "Ignored corrupt {MIGRATION_FILE}: {reason}. The file was preserved."
+            )));
+            return document;
+        }
+        candidate.tauri_migration_presets_pending = false;
+        match self.commit(directory, candidate) {
+            Some(committed) => {
+                self.archive(directory, bytes, 0);
+                committed
+            }
+            None => document,
+        }
+    }
+    /// Validates and durably writes an import result. On failure it records a
+    /// diagnostic and returns `None`, leaving the snapshot for the next start.
+    fn commit(&self, directory: &Path, mut candidate: Document) -> Option<Document> {
         if let Err(error) = validate(&candidate).and_then(|()| {
             let value = serde_json::to_value(&candidate).map_err(|_| invalid())?;
             reject_credentials(&value)
@@ -207,32 +248,39 @@ impl Store {
                 "Ignored {MIGRATION_FILE} because merged preferences failed validation: {}. The file was preserved.",
                 error.message
             )));
-            *memory = document.clone();
-            return Ok(document);
+            return None;
         }
-        candidate.revision = candidate.revision.checked_add(1).ok_or_else(invalid)?;
+        candidate.revision = candidate.revision.checked_add(1)?;
         if write_atomic(directory, &candidate).is_err() {
             self.set_migration_diagnostic(Some(format!(
                 "Could not persist imported {MIGRATION_FILE} into live-sessions.json. The file was preserved."
             )));
-            *memory = document.clone();
-            return Ok(document);
+            return None;
         }
-        if let Err(error) = fs::rename(&migration_path, &imported_path) {
-            self.set_migration_diagnostic(Some(format!(
-                "Imported {MIGRATION_FILE} into live-sessions.json, but could not rename it to {IMPORTED_FILE}: {error}."
-            )));
-        } else if report.skipped > 0 {
-            self.set_migration_diagnostic(Some(format!(
-                "Imported {MIGRATION_FILE} with {} invalid or unsafe field(s) skipped.",
-                report.skipped
-            )));
-        } else {
-            self.set_migration_diagnostic(None);
-        }
-        document = candidate;
-        *memory = document.clone();
-        Ok(document)
+        Some(candidate)
+    }
+    /// Archives the exact snapshot bytes that were imported. Tauri may replace
+    /// `tauri-migration.json` meanwhile, so the source is removed only while it
+    /// still holds those bytes; a newer export stays in place.
+    fn archive(&self, directory: &Path, bytes: &[u8], skipped: usize) {
+        let result = write_file_atomic(directory, IMPORTED_FILE, bytes).and_then(|()| {
+            let source = directory.join(MIGRATION_FILE);
+            match fs::read(&source) {
+                Ok(current) if current == bytes => fs::remove_file(&source),
+                Ok(_) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error),
+            }
+        });
+        self.set_migration_diagnostic(match result {
+            Err(error) => Some(format!(
+                "Imported {MIGRATION_FILE} into live-sessions.json, but could not archive it to {IMPORTED_FILE}: {error}."
+            )),
+            Ok(()) if skipped > 0 => Some(format!(
+                "Imported {MIGRATION_FILE} with {skipped} invalid or unsafe field(s) skipped."
+            )),
+            Ok(()) => None,
+        });
     }
     pub fn save(&self, mut document: Document) -> Result<Document, AppError> {
         validate(&document)?;
@@ -276,7 +324,12 @@ fn acquire_lock(directory: &Path) -> Result<File, LockError> {
 }
 fn write_atomic(directory: &Path, document: &Document) -> Result<(), AppError> {
     let bytes = serde_json::to_vec_pretty(document).map_err(|_| invalid())?;
-    let staged = directory.join(format!("live-sessions.{}.tmp", std::process::id()));
+    write_file_atomic(directory, "live-sessions.json", &bytes).map_err(|_| io_error())
+}
+/// Replaces `directory/name` with `bytes`, owner-only on Unix. The rename is
+/// durable on return, so a later step may rely on the new file surviving a crash.
+fn write_file_atomic(directory: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let staged = directory.join(format!("{name}.{}.tmp", std::process::id()));
     let mut options = OpenOptions::new();
     options.create_new(true).write(true);
     #[cfg(unix)]
@@ -284,18 +337,22 @@ fn write_atomic(directory: &Path, document: &Document) -> Result<(), AppError> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(&staged).map_err(|_| io_error())?;
+    let mut file = options.open(&staged)?;
     let result = (|| {
-        file.write_all(&bytes)?;
+        file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&staged, directory.join("live-sessions.json"))
+        fs::rename(&staged, directory.join(name))?;
+        // `File::open` cannot open a directory on Windows, so only Unix flushes
+        // the directory entry here.
+        #[cfg(unix)]
+        File::open(directory)?.sync_all()?;
+        Ok(())
     })();
     if result.is_err() {
         let _ = fs::remove_file(&staged);
-        return Err(io_error());
     }
-    Ok(())
+    result
 }
 fn decode_with_keys(bytes: &[u8]) -> Result<(Document, HashSet<String>), AppError> {
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;

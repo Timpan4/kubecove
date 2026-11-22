@@ -227,6 +227,10 @@ pub struct Document {
     /// `exportedAt` of the Tauri snapshot this document imported. Import runs once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tauri_migration_imported: Option<String>,
+    /// The imported snapshot's port-forward presets still wait for a resolvable
+    /// kubeconfig source, which scopes them. The snapshot stays until then.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tauri_migration_presets_pending: bool,
 }
 impl Default for Document {
     fn default() -> Self {
@@ -240,6 +244,7 @@ impl Default for Document {
             workspace_entry_points: BTreeMap::new(),
             saved_forward_presets: std::collections::HashMap::new(),
             tauri_migration_imported: None,
+            tauri_migration_presets_pending: false,
         }
     }
 }

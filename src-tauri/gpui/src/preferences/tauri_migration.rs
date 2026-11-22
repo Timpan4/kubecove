@@ -38,7 +38,8 @@ pub(super) struct MergeReport {
     /// The snapshot's `exportedAt`, which identifies it for the import marker.
     pub identity: String,
     pub skipped: usize,
-    /// Port-forward presets merged, which are keyed by `source_key`.
+    /// Port-forward presets in the snapshot. They are merged only with a
+    /// `source_key`, which scopes them.
     pub presets: usize,
 }
 
@@ -124,6 +125,23 @@ pub(super) fn merge_bytes(
     })
 }
 
+/// Files the presets an earlier import left pending once `source_key` resolves.
+/// Returns how many presets the snapshot held for workspaces GPUI still has.
+pub(super) fn merge_pending_presets(
+    bytes: &[u8],
+    document: &mut Document,
+    source_key: &str,
+) -> Result<usize, String> {
+    let (_, object) = snapshot_root(bytes)?;
+    Ok(object
+        .get("entries")
+        .and_then(|entries| entries.get("kubecove-workspaces"))
+        .and_then(entry_state)
+        .map_or(0, |state| {
+            workspaces::merge_pending_presets(state, document, source_key)
+        }))
+}
+
 fn entry_state(entry: &Value) -> Option<&serde_json::Map<String, Value>> {
     let obj = entry.as_object()?;
     if obj.get("version").is_some_and(|v| v.as_u64() != Some(0)) {
@@ -195,7 +213,7 @@ fn merge_settings(
                         Some(existing) if *existing == profile => {
                             selectable.insert(profile.id);
                         }
-                        Some(_) => {}
+                        Some(_) => *skipped += 1,
                         None => {
                             selectable.insert(profile.id.clone());
                             prefs.argo_profiles.push(profile);

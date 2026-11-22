@@ -52,6 +52,23 @@ pub(super) fn merge_workspaces(
             .find(|w| w.name.eq_ignore_ascii_case(&parsed.name) && w.context == parsed.context)
         {
             merge_reviews(&mut existing.reviews, parsed.reviews);
+            // Shortcuts live only in the retained document. Without one, file
+            // the incoming shortcuts under the winning GPUI workspace's scope.
+            if !document.workspace_documents.contains_key(&existing.id)
+                && let Some(retained) = item.as_object().and_then(|raw| {
+                    build_retained_document(
+                        raw,
+                        &existing.name,
+                        &existing.context,
+                        &existing.group,
+                        existing.group_name.as_deref(),
+                        &existing.namespaces,
+                        &existing.kinds,
+                    )
+                })
+            {
+                document.workspace_documents.insert(existing.id, retained);
+            }
             (existing.id, existing.name.clone())
         } else {
             if next_id == u64::MAX {
@@ -90,18 +107,73 @@ pub(super) fn merge_workspaces(
             merge_entries(slot, parsed.entries);
         }
 
-        if !parsed.port_forwards.is_empty() {
-            *presets += parsed.port_forwards.len();
-            // Matches `Inspector::preset_key`: source, context, workspace name.
-            let preset_key = serde_json::to_string(&(source_key, &parsed.context, &target_name))
-                .expect("string tuple");
-            let slot = document
-                .saved_forward_presets
-                .entry(preset_key)
-                .or_default();
-            merge_port_forwards(slot, parsed.port_forwards);
+        // Without a source the presets wait for `merge_pending_presets`.
+        *presets += parsed.port_forwards.len();
+        if let Some(source_key) = source_key {
+            file_presets(
+                document,
+                source_key,
+                &parsed.context,
+                &target_name,
+                parsed.port_forwards,
+            );
         }
     }
+}
+
+/// Files the snapshot's presets under `source_key` for workspaces GPUI still
+/// holds. A workspace the user deleted since the import gets none.
+pub(super) fn merge_pending_presets(
+    state: &serde_json::Map<String, Value>,
+    document: &mut Document,
+    source_key: &str,
+) -> usize {
+    let Some(items) = state.get("workspaces").and_then(Value::as_array) else {
+        return 0;
+    };
+    let mut merged = 0;
+    for item in items {
+        let Some(parsed) = parse_workspace(item, &mut 0) else {
+            continue;
+        };
+        let Some(name) = document
+            .workspaces
+            .iter()
+            .find(|w| w.name.eq_ignore_ascii_case(&parsed.name) && w.context == parsed.context)
+            .map(|w| w.name.clone())
+        else {
+            continue;
+        };
+        merged += parsed.port_forwards.len();
+        file_presets(
+            document,
+            source_key,
+            &parsed.context,
+            &name,
+            parsed.port_forwards,
+        );
+    }
+    merged
+}
+
+fn file_presets(
+    document: &mut Document,
+    source_key: &str,
+    context: &str,
+    workspace_name: &str,
+    forwards: Vec<SavedForward>,
+) {
+    if forwards.is_empty() {
+        return;
+    }
+    // Matches `Inspector::preset_key`: source, context, workspace name.
+    let preset_key =
+        serde_json::to_string(&(Some(source_key), context, workspace_name)).expect("string tuple");
+    let slot = document
+        .saved_forward_presets
+        .entry(preset_key)
+        .or_default();
+    merge_port_forwards(slot, forwards);
 }
 
 struct ParsedWorkspace {
