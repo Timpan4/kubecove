@@ -13,8 +13,7 @@ try {
   const password = "throwaway test password";
   execFileSync("minisign", ["-G", "-s", key, "-p", pub], { input: `${password}\n${password}\n`, stdio: ["pipe", "ignore", "pipe"] });
   for (const [version, prefix, filename, dryRun] of [
-    ["0.15.0", "kubecove-gpui", "latest-gpui.json", true],
-    ["0.15.1", "kubecove-gpui", "latest-gpui.json", false],
+    ["0.15.1", "kubecove", "latest-desktop.json", true],
     ["0.16.0", "kubecove", "latest-desktop.json", false],
   ]) {
     const assets = join(dir, version);

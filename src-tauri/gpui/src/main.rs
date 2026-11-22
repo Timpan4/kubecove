@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// The packager `identifier` in `Cargo.toml`, which names the installed
 /// `.desktop` file. A Wayland compositor and an X11 window manager match the
 /// window to that file, and so to its icon, by this ID.
-const APP_ID: &str = "com.timpan.kubecove.gpui";
+const APP_ID: &str = "com.timpan.kubecove";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     cap_malloc_arenas();

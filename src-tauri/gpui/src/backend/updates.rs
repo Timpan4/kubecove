@@ -1,9 +1,9 @@
 //! Update check and installation for the native client (ADR 0034).
 //!
-//! Each release publishes one signed build per platform and `latest-gpui.json`, a manifest in
-//! the Tauri updater's static format. The manifest and the download are untrusted. A build is
+//! Each release publishes one signed build per platform and `latest-desktop.json`, a manifest in
+//! the static updater format. The manifest and the download are untrusted. A build is
 //! installed only when its bytes carry a signature from the key in `gpui/updater.json` and that
-//! signature names the version the manifest announced.
+//! signature names the version and platform artifact the manifest announced.
 use base64::Engine as _;
 use kubecove_lib::models::{AppError, AppErrorKind};
 use minisign_verify::{PublicKey, Signature, StreamVerifier};
@@ -23,15 +23,11 @@ pub enum UpdateStatus {
     UpToDate,
     Unpublished,
     Available(AvailableUpdate),
-    Consolidated(String),
 }
 
 impl UpdateStatus {
     pub(crate) fn release_page_message(&self) -> Option<String> {
         match self {
-            Self::Consolidated(version) => Some(format!(
-                "KubeCove {version} requires a separate installation."
-            )),
             Self::Unpublished => Some("No desktop update has been published yet.".into()),
             _ => None,
         }
@@ -103,7 +99,7 @@ pub struct Feed {
 
 /// Every release asset of this client starts with this, and the signer records the asset's
 /// file name in the signature.
-const ARTIFACT_PREFIX: &str = "kubecove-gpui";
+const ARTIFACT_PREFIX: &str = "kubecove";
 
 impl Feed {
     pub fn release() -> Result<Self, AppError> {
@@ -142,37 +138,10 @@ pub(super) async fn check() -> Result<UpdateStatus, AppError> {
     let endpoint = Feed::release()?.endpoint;
     let client = client().map_err(|_| failed())?;
     let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).expect("valid package version");
-    check_feeds(&client, &endpoint, &platform(), &current).await
+    check_feed(&client, &endpoint, &platform(), &current).await
 }
 
-async fn check_feeds(
-    client: &reqwest::Client,
-    endpoint: &str,
-    target: &str,
-    current: &semver::Version,
-) -> Result<UpdateStatus, AppError> {
-    let consolidated_error =
-        match kubecove_lib::desktop_release::consolidated(client, endpoint, target).await {
-            Ok(Some(version)) => {
-                return Ok(if version.cmp_precedence(current).is_gt() {
-                    UpdateStatus::Consolidated(version.to_string())
-                } else {
-                    UpdateStatus::UpToDate
-                });
-            }
-            result => result.err(),
-        };
-    match (
-        check_legacy(client, endpoint, target, current).await,
-        consolidated_error,
-    ) {
-        (Ok(status @ UpdateStatus::Available(_)), _) => Ok(status),
-        (_, Some(error)) => Err(error),
-        (result, None) => result,
-    }
-}
-
-async fn check_legacy(
+async fn check_feed(
     client: &reqwest::Client,
     endpoint: &str,
     target: &str,
@@ -213,12 +182,12 @@ pub fn release_for_version(
     if !version.cmp_precedence(current).is_gt() {
         return Ok(UpdateStatus::UpToDate);
     }
-    legacy_version(&version)?;
+    consolidated_version(&version)?;
     kubecove_lib::desktop_release::validate_product(
         manifest,
         platform,
-        "KubeCove GPUI",
-        "com.timpan.kubecove.gpui",
+        "KubeCove",
+        "com.timpan.kubecove",
     )?;
     let build = &manifest["platforms"][platform];
     let field = |name: &str| {
@@ -236,7 +205,7 @@ pub fn release_for_version(
     let url = field("url")?;
     let expected = kubecove_lib::desktop_release::asset_name(ARTIFACT_PREFIX, &version, platform);
     if !expected.is_some_and(|name| kubecove_lib::desktop_release::matches_asset(&url, &name)) {
-        return Err(invalid("Unexpected side-by-side update artifact"));
+        return Err(invalid("Unexpected desktop update artifact"));
     }
     Ok(UpdateStatus::Available(AvailableUpdate {
         version: version.to_string(),
@@ -252,13 +221,13 @@ pub fn release_for_version(
     }))
 }
 
-fn legacy_version(version: &semver::Version) -> Result<(), AppError> {
+fn consolidated_version(version: &semver::Version) -> Result<(), AppError> {
     if version
-        .cmp_precedence(&kubecove_lib::desktop_release::LEGACY_MAX)
-        .is_gt()
+        .cmp_precedence(&kubecove_lib::desktop_release::CONSOLIDATED_MIN)
+        .is_lt()
     {
         return Err(AppError::new(
-            "This release requires a separate KubeCove installer",
+            "Unexpected version on the consolidated feed",
             AppErrorKind::Validation,
         ));
     }
@@ -338,14 +307,14 @@ impl Signed {
                 AppErrorKind::Validation,
             ));
         }
-        // The Tauri desktop app is signed with the same key and names its version too. The
-        // signed file name tells the two products apart.
+        // Historical Tauri and side-by-side GPUI builds were signed with the same key and name
+        // their version too. The exact signed file name binds the consolidated product and platform.
         let parsed = semver::Version::parse(version).map_err(|_| invalid_signature())?;
         let name = kubecove_lib::desktop_release::asset_name(ARTIFACT_PREFIX, &parsed, platform)
             .ok_or_else(invalid_signature)?;
         if signed("file:") != Some(name.as_str()) {
             return Err(AppError::new(
-                "The update is not a KubeCove GPUI build",
+                "The update is not a KubeCove build",
                 AppErrorKind::Validation,
             ));
         }
@@ -363,7 +332,7 @@ pub async fn install(
     progress: watch::Sender<DownloadProgress>,
 ) -> Result<Relaunch, AppError> {
     let version = semver::Version::parse(&update.version).map_err(|_| invalid_signature())?;
-    legacy_version(&version)?;
+    consolidated_version(&version)?;
     let signed = Signed::decode(&update.artifact.signature, &public_key)?;
     // 1 is the least capacity tokio allows, so at most one chunk waits between the two sides.
     let (sender, chunks) = mpsc::channel(1);
