@@ -125,7 +125,7 @@ The native client lives in `src-tauri/gpui`. These rules come from parallel agen
 
 ## Cross-Platform
 
-KubeCove ships cross-platform: macOS (universal), Windows x64, and Linux x64 (see `.github/workflows/release.yml`). All changes must work on all three platforms, not just the one you are developing on.
+KubeCove ships cross-platform: macOS (Apple silicon), Windows x64, and Linux x64 (see `.github/workflows/release.yml`). The 0.15.x Tauri series was the last universal macOS release. All changes must work on all three platforms, not just the one you are developing on.
 
 - Never hardcode path separators, path-list separators, or home directories. Use `std::env::split_paths` for path lists (`:` vs `;`) and the existing helpers (e.g. `default_kubeconfig_path` handles `HOME` and `USERPROFILE`).
 - Platform-specific code is gated with `#[cfg(target_os = "...")]` at the call site, but its helpers stay compiled on every platform so shared tests cover them — mark those helpers `#[allow(dead_code)]` with the standard comment (see `src-tauri/src/commands/usage_webview.rs`).

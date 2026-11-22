@@ -1,3 +1,3 @@
-import { config as nativeConfig } from "./wdio.real.conf";
+import { config as chromeConfig } from "./wdio.real.conf";
 
-export const config = { ...nativeConfig, specs: ["./specs/profile/footprint.e2e.ts"] };
+export const config = { ...chromeConfig, specs: ["./specs/profile/footprint.e2e.ts"] };

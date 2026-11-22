@@ -176,10 +176,10 @@ Paths below are relative to `src-tauri` at the reviewed baseline; link destinati
 | [src/commands/streams/watch.rs](../src-tauri/crates/live/src/commands/streams/watch.rs) | Read; updated |
 | [src/commands/usage.rs](../src-tauri/crates/host/src/usage.rs) | Read; updated |
 | [src/commands/usage_webview.rs](../src-tauri/crates/host/src/usage_webview.rs) | Read; unchanged |
-| [src/commands/workspace_files.rs](../src-tauri/crates/host/src/workspace_files.rs) | Read; updated |
+| `src/commands/workspace_files.rs` | Read; updated |
 | [src/e2e.rs](../src-tauri/crates/kube/src/e2e.rs) | Read; updated |
 | [src/lib.rs](../src-tauri/src/lib.rs) | Read; unchanged |
-| [src/main.rs](../src-tauri/src/main.rs) | Read; unchanged |
+| `src/main.rs` | Read; unchanged |
 | [src/models/argo.rs](../src-tauri/crates/models/src/argo.rs) | Read; updated |
 | [src/models/cancellation.rs](../src-tauri/crates/models/src/cancellation.rs) | Read; unchanged |
 | [src/models/cluster.rs](../src-tauri/crates/models/src/cluster.rs) | Read; unchanged |

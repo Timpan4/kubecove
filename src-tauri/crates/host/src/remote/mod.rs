@@ -28,9 +28,6 @@ use kubecove_models::{AppError, AppErrorKind};
 use serde_json::{Value, value::RawValue};
 use std::sync::Arc;
 
-// The commands take Tauri state; the functions they call take the store, so
-// tests can drive them without a Tauri app.
-
 /// Connects with the server token, or, when `token` is empty, selects the
 /// server by its sign-in mode: an OIDC server reuses a held sign-in or waits
 /// for `remote_sign_in` (ADR 0031).

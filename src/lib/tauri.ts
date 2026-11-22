@@ -1,8 +1,7 @@
-import { Channel, type InvokeOptions } from "@tauri-apps/api/core";
-import { IS_DEV_BUILD } from "./build-env";
+import { USE_BROWSER_DEV_MOCKS } from "./build-env";
 import { cancellableArg, kubeconfigArg } from "./tauri-args";
 import { createBrowserTauriClient } from "./browser-runtime";
-import { assertSelectedRemoteConnected, getDesktopRemoteTauriClient, isDesktopRemoteSelected } from "./remote-runtime";
+import { assertSelectedRemoteConnected } from "./remote-runtime";
 import type {
 	ClusterContext,
 	NamespaceSummary,
@@ -33,24 +32,16 @@ import type {
 	DeploymentRevision,
 	WatchResourceKey,
 } from "./types";
-import { createNativeTauriClient } from "./tauri-runtime";
+import { type TauriClient, traceInvoke } from "./tauri-runtime";
 
 export {
 	createMockChannel,
 	createMockTauriClient,
-	getChannelId,
-	isBrowserRuntime,
-	isBrowserDevMockMode,
-	isTauriRuntime,
-	shouldUseBrowserDevMocks,
 } from "./tauri-runtime";
 export type { TauriClient } from "./tauri-runtime";
-export { getDesktopRemoteTauriClient, isDesktopRemoteSelected } from "./remote-runtime";
 export { kubeconfigArg } from "./tauri-args";
 export * from "./tauri-argo";
 export * from "./tauri-streams";
-import { isBrowserRuntime, shouldUseBrowserDevMocks, traceInvoke } from "./tauri-runtime";
-import type { TauriClient } from "./tauri-runtime";
 
 const inFlightInvokes = new WeakMap<TauriClient, Map<string, Promise<unknown>>>();
 const readGenerations = new Map<string, number>();
@@ -97,50 +88,27 @@ export function refreshResourceCache(
 	return client.invoke("refresh_resource_cache", { clusterContext, keys, namespaces, ...kubeconfigArg(kubeconfigEnvVar) });
 }
 
-const nativeTauriClient = createNativeTauriClient();
 let createDevMockClient: (() => TauriClient) | undefined;
 
 export async function initializeBrowserDevMocks(): Promise<void> {
 	// Keep the define at the import site so production removes the entire mock graph.
-	if (process.env.KUBECOVE_PUBLIC_DEV === "true" && shouldUseBrowserDevMocks()) {
+	if (process.env.KUBECOVE_PUBLIC_DEV_MOCKS === "true") {
 		const mocks = await import("./tauri-dev-mocks");
 		createDevMockClient = mocks.createDevMockTauriClient;
 	}
 }
 
 export function createTauriClient(): TauriClient {
-	if (isBrowserRuntime()) return createBrowserTauriClient();
-	if (IS_DEV_BUILD && shouldUseBrowserDevMocks()) {
-		if (!createDevMockClient) throw new Error("Browser dev mocks must initialize before mounting the app");
-		// The mocks answer a selected remote's commands directly, so they apply the remote client's disconnected refusal here.
-		// Diagnostics trace mock commands as the native client and the GPUI fixture trace theirs.
-		const mockClient = createDevMockClient();
-		return {
-			...mockClient,
-			invoke: <T, Args extends object = object>(cmd: string, args?: Args, options?: InvokeOptions) =>
-				traceInvoke(cmd, args, async () => {
-					assertSelectedRemoteConnected();
-					return mockClient.invoke<T, Args>(cmd, args, options);
-				}),
-		};
-	}
+	if (!USE_BROWSER_DEV_MOCKS) return createBrowserTauriClient();
+	if (!createDevMockClient) throw new Error("Browser dev mocks must initialize before mounting the app");
+	const mockClient = createDevMockClient();
 	return {
-		createChannel: <T>(onMessage: (message: T) => void) => {
-			const activeClient = isDesktopRemoteSelected()
-				? getDesktopRemoteTauriClient()
-				: nativeTauriClient;
-			return activeClient.createChannel?.(onMessage) ?? new Channel(onMessage);
-		},
-		invoke: <T, Args extends object = object>(
-			cmd: string,
-			args?: Args,
-			options?: InvokeOptions,
-		) => {
-			const activeClient = isDesktopRemoteSelected()
-				? getDesktopRemoteTauriClient()
-				: nativeTauriClient;
-			return activeClient.invoke<T, Args>(cmd, args, options);
-		},
+		...mockClient,
+		invoke: <T, Args extends object = object>(cmd: string, args?: Args) =>
+			traceInvoke(cmd, args, async () => {
+				assertSelectedRemoteConnected();
+				return mockClient.invoke<T, Args>(cmd, args);
+			}),
 	};
 }
 
@@ -552,5 +520,3 @@ export function isAppError<Value>(value: Value): value is Value & AppError {
 
 export * from "./tauri-inspection";
 export * from "./tauri-diagnostics";
-export * from "./tauri-gpui-upgrade";
-export * from "./tauri-migration";

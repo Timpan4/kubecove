@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { browser, expect } from "@wdio/globals";
+import { pageInvoke } from "../../harness/browser-session";
 import { describe, it } from "mocha";
 import type { AppUsageMetrics } from "../../../src/lib/types";
 import { startupReport } from "../../harness/startup-report";
@@ -28,6 +29,8 @@ describe("release footprint startup companion", () => {
 				}
 				for (const sheet of Array.from(document.styleSheets)) inspectRules(sheet.cssRules);
 				return {
+				// SAFETY: Chromium may expose this optional Performance extension.
+				heapBytes: (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
 				entries: performance.getEntries().filter((entry) => entry.name.startsWith("kubecove:"))
 					.map(({ name, startTime, duration }) => ({ name, startTime, duration })),
 				fonts: [...files].sort(), fontObservation: "loaded CSS FontFace matched to its bundled src, not request timing",
@@ -37,8 +40,8 @@ describe("release footprint startup companion", () => {
 			};
 			}, [...fonts]);
 			expect(frontend.fonts.length).toBeGreaterThan(0);
-			const usage = await browser.execute(() => window.__TAURI__.core.invoke<AppUsageMetrics, { measureWorkingSet: boolean }>("get_app_usage_metrics", { measureWorkingSet: false }));
-			stages.push({ stage, ...frontend, ...startupReport(frontend.entries, null, usage) });
+			const usage = await pageInvoke<AppUsageMetrics>("get_app_usage_metrics", { measureWorkingSet: false });
+			stages.push({ stage, ...frontend, ...startupReport(frontend.entries, frontend.heapBytes, usage) });
 		}
 		async function clickText(text: string) {
 			await browser.waitUntil(async () => browser.execute((text) => Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
@@ -65,19 +68,6 @@ describe("release footprint startup companion", () => {
 		await browser.waitUntil(async () => browser.execute(() => Boolean(document.querySelector('[role="tab"][data-value="yaml"][data-state="active"]') && document.querySelector(".cm-content"))));
 		await capture("yaml");
 		await browser.saveScreenshot(join(artifacts, "yaml.png"));
-		// An invalid resource ID exercises updater dispatch without downloading or installing.
-		const plugins = await browser.execute(async () => {
-			const results: Array<{ command: string; error: string }> = [];
-			for (const command of ["plugin:updater|download", "plugin:updater|install", "plugin:updater|download_and_install"]) {
-				try { await window.__TAURI__.core.invoke(command, { rid: -1 }); }
-				catch (error) { results.push({ command, error: String(error) }); }
-			}
-			return results;
-		});
-		expect(plugins.length).toBe(3);
-		for (const plugin of plugins) {
-			expect(plugin.error).not.toMatch(/not found|not allowed|forbidden/i);
-		}
-		await writeFile(join(artifacts, "footprint-startup.json"), `${JSON.stringify({ passed: true, scenario: "fresh-65-pod-fixture-launcher-resources-yaml", build: "release-with-e2e-feature", stages, plugins, limitations: ["DOM events and E2E driver overhead", "WebKit JS heap is unavailable", "Production sizes are measured separately", "Restart and update execution are not performed; preserved command registration is checked separately"] }, null, 2)}\n`);
+		await writeFile(join(artifacts, "footprint-startup.json"), `${JSON.stringify({ passed: true, scenario: "fresh-pod-fixture-launcher-resources-yaml", build: "release-server-with-profiled-web-ui", stages, limitations: ["DOM events and E2E driver overhead", "Production sizes are measured separately"] }, null, 2)}\n`);
 	});
 });

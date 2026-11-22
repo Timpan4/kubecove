@@ -1,10 +1,10 @@
-//! The two transition clients announce the new product, but never install it in place.
+//! Release feed validation for the GPUI updater.
 use crate::models::{AppError, AppErrorKind};
 use reqwest::{Client, StatusCode};
 use semver::Version;
 use serde_json::Value;
 
-#[cfg(all(test, feature = "desktop"))]
+#[cfg(test)]
 mod tests;
 
 pub const RELEASES_URL: &str = "https://github.com/Timpan4/kubecove/releases";

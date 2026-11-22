@@ -109,7 +109,7 @@ jobs:
             const desktopPass = `${desktop} ${common}`;
             const gpuiPass = `${gpui} ${common}`;
             // text_fit also reads the browser-mock fixture that e2e/parity/visual exports from src.
-            const gpuiTestPass = `${gpuiPass} src e2e/parity/visual`;
+            const gpuiTestPass = `${gpuiPass} src e2e/parity/visual e2e/fixtures/exec-credential-plugin.mjs`;
             // cargo tree reads the separate server manifest and lockfile.
             const backendPass = `${server} ${common}`;
             // The server embeds dist/, builds and typechecks the browser, runs the
@@ -314,16 +314,6 @@ jobs:
           fi
           git diff --check "${BASE_SHA}" "${HEAD_SHA}"
 
-      # These packages are often already present on the hosted runner. Only
-      # update apt and install when pkg-config cannot resolve the required set.
-      - name: Install Tauri Linux dependencies
-        if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: |
-          if ! pkg-config --exists webkit2gtk-4.1 ayatana-appindicator3-0.1 librsvg-2.0 || ! command -v patchelf >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-          fi
-
       - name: Install GPUI build dependencies
         id: setup-gpui-native
         if: ${{ (matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test') && steps.decide-pass.outputs.skip != 'true' }}
@@ -365,8 +355,7 @@ jobs:
       - name: Audit desktop Rust dependencies
         id: audit-desktop
         if: ${{ matrix.task == 'rust' }}
-        # Owner: @Timpan4. Remove when stable Tauri resolves glib >=0.20.
-        run: cargo-audit audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2024-0429
+        run: cargo-audit audit --file src-tauri/Cargo.lock
 
       - name: Audit GPUI Rust dependencies
         id: audit-gpui
@@ -387,7 +376,7 @@ jobs:
       - name: Test Rust
         id: test-rust
         if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml
+        run: mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release
 
       - name: Lint Rust
         id: lint-rust
@@ -487,6 +476,7 @@ jobs:
         background: true
         env:
           KUBECOVE_VERIFY_CHROME: /usr/bin/google-chrome
+          KUBECOVE_NATIVE_REMOTE_PROBE: "1"
         run: bun e2e/headless-smoke.ts --browser
 
       - name: Test headless server

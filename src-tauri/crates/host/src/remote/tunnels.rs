@@ -294,6 +294,15 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires the running headless smoke fixture"]
     async fn native_tunnel_delivers_bytes_and_closes_after_upload_eof() {
+        tokio::time::timeout(
+            kubecove_kube::REQUEST_READ_TIMEOUT,
+            exercise_native_tunnel(),
+        )
+        .await
+        .expect("native tunnel probe did not finish before the request deadline");
+    }
+
+    async fn exercise_native_tunnel() {
         let connection = super::super::client::connect(
             &std::env::var("KUBECOVE_REMOTE_TEST_URL").expect("fixture URL"),
             &std::env::var("KUBECOVE_REMOTE_TEST_TOKEN").expect("fixture token"),
@@ -369,6 +378,16 @@ mod tests {
         }
         connection.close().await;
         assert_eq!(connection.tunnels.list(), Vec::new());
+        // Removing the registration aborts the relay. Tokio drops its listener asynchronously.
+        loop {
+            match TcpStream::connect((Ipv4Addr::LOCALHOST, forward.local_port)).await {
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => break,
+                Err(error) if error.kind() != std::io::ErrorKind::ConnectionReset => {
+                    panic!("unexpected listener probe error: {error}");
+                }
+                _ => tokio::time::sleep(std::time::Duration::from_millis(10)).await,
+            }
+        }
     }
 
     #[tokio::test]

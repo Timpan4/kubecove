@@ -1,5 +1,6 @@
 import { $, browser, expect } from "@wdio/globals";
 import { beforeEach, describe, it } from "mocha";
+import { SETTINGS_STORAGE_KEY } from "../../../src/lib/settings";
 
 describe("Advanced Actions settings", () => {
 	beforeEach(async () => {
@@ -29,8 +30,9 @@ describe("Advanced Actions settings", () => {
 		await $("button=Skip review").click();
 		await expect(setting).toHaveAttribute("aria-checked", "true");
 		await expect($('[role="alert"]')).not.toBeDisplayed();
-		const persisted = await browser.execute(() =>
-			JSON.parse(localStorage.getItem("kubecove-settings") ?? "{}").state.skipChangeReview,
+		const persisted = await browser.execute((storageKey) =>
+			JSON.parse(localStorage.getItem(storageKey) ?? "{}").state.skipChangeReview,
+			SETTINGS_STORAGE_KEY,
 		);
 		expect(persisted).toBe(true);
 

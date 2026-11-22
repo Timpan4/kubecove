@@ -121,6 +121,15 @@ jobs:
           fi
 
       # The bundle settings live in `[package.metadata.packager]` of src-tauri/gpui/Cargo.toml.
+      - name: Verify the target kubeconform sidecar
+        env:
+          BUNDLE_TARGET: ${{ matrix.bundle-target }}
+        run: |
+          set -euo pipefail
+          sidecar="src-tauri/bin/kubeconform-$BUNDLE_TARGET"
+          if [ "$RUNNER_OS" = "Windows" ]; then sidecar="$sidecar.exe"; fi
+          "$sidecar" -v
+
       - name: Bundle GPUI client
         env:
           BUNDLE_TARGET: ${{ matrix.bundle-target }}
@@ -151,16 +160,48 @@ jobs:
           product="$EXPECTED_PRODUCT"
           case "$FORMAT" in
             # AppImage and NSIS use the main executable name, even when the product changes.
-            appimage) cp "$out/kubecove-gpui_${version}_x86_64.AppImage" "gpui-updater/${prefix}_${version}_x86_64.AppImage" ;;
-            nsis) cp "$out/kubecove-gpui_${version}_x64-setup.exe" "gpui-updater/${prefix}_${version}_x64-setup.exe" ;;
+            appimage)
+              image="kubecove-gpui_${version}_x86_64.AppImage"
+              (cd "$out" && "./$image" --appimage-extract usr/bin/kubeconform && squashfs-root/usr/bin/kubeconform -v)
+              cp "$out/$image" "gpui-updater/${prefix}_${version}_x86_64.AppImage"
+              ;;
+            nsis)
+              installer="kubecove-gpui_${version}_x64-setup.exe"
+              cp "$out/$installer" "gpui-updater/${prefix}_${version}_x64-setup.exe"
+              ;;
             # The updater archive holds the bundle at its root, as Tauri's `.app.tar.gz` does.
             # cargo-packager names the DMG after the product; rename it to match the other GPUI assets.
             app,dmg)
+              "$out/$product.app/Contents/MacOS/kubeconform" -v
               tar -czf "gpui-updater/${prefix}_${version}_aarch64.app.tar.gz" -C "$out" "$product.app"
               cp "$out/${product}_${version}_aarch64.dmg" "gpui-updater/${prefix}_${version}_aarch64.dmg"
               ;;
           esac
           ls -l gpui-updater
+
+      - name: Verify the installed Windows kubeconform sidecar
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: |
+          $version = node -p 'require("./package.json").version'
+          $channelMode = @()
+          if (!$env:RELEASE_TAG) { $channelMode = @("--dry-run") }
+          $prefix = node scripts/desktop-release-channel.mjs $version prefix @channelMode
+          if ($LASTEXITCODE -ne 0) { throw "Could not select the desktop artifact prefix" }
+          $installer = Resolve-Path "gpui-updater/${prefix}_${version}_x64-setup.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP ("kubecove-gpui-" + [guid]::NewGuid())
+          # NSIS requires /D last and unquoted, even when the path contains spaces.
+          $install = Start-Process -FilePath $installer.Path -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "GPUI installer exited with code $($install.ExitCode)" }
+          $sidecar = Join-Path $installDir "kubeconform.exe"
+          if (!(Test-Path -LiteralPath (Join-Path $installDir "kubecove-gpui.exe") -PathType Leaf) -or
+              !(Test-Path -LiteralPath $sidecar -PathType Leaf)) {
+            throw "GPUI and kubeconform must both be installed in $installDir"
+          }
+          & $sidecar -v
+          if ($LASTEXITCODE -ne 0) { throw "Installed kubeconform exited with code $LASTEXITCODE" }
 
       - name: Upload unsigned GPUI bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

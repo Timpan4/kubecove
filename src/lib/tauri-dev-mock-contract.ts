@@ -1,4 +1,4 @@
-import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
+import type { StreamChannel } from "./stream-channel";
 import type { ArgoApplicationRef, ArgoOperationRequest, ArgoServerEndpoint } from "./gitops-types";
 import type { ArgoManagedResource, DiscoveredResourceKind, FluxResourceKind, PodLogStreamRequest, ResourceListRequest, StreamMessage, TopologyMode, YamlApplyRequest } from "./types";
 
@@ -12,7 +12,7 @@ export interface MockArgs {
 	yamlEncoding?: YamlApplyRequest["yamlEncoding"];
 	yamlViewMode?: "kubectl" | "applyClean";
 	application?: Partial<ArgoApplicationRef>;
-	channel?: Pick<Channel<StreamMessage>, "onmessage">;
+	channel?: Pick<StreamChannel<StreamMessage>, "onmessage">;
 	clusterContext?: string;
 	endpoint?: ArgoServerEndpoint;
 	envVar?: string;
@@ -41,7 +41,7 @@ export interface MockArgs {
 }
 
 export type MockResult = boolean | number | object | string | null | undefined;
-export type MockHandler = (args: MockArgs, options?: InvokeOptions) => MockResult | Promise<MockResult>;
+export type MockHandler = (args: MockArgs) => MockResult | Promise<MockResult>;
 export function readMockArgs<Args extends object>(args: Args | undefined): MockArgs {
 	if (args === undefined) return {};
 	// SAFETY: browser mocks are called only through typed Tauri wrappers whose command arguments

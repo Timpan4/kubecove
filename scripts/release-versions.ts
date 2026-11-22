@@ -13,7 +13,6 @@ const SIDE_WORKSPACES = [
 
 export type ReleaseVersions = {
 	packageVersion: string;
-	tauriVersion: string | undefined;
 	cargoVersion: string;
 };
 
@@ -31,29 +30,34 @@ export function computeNextReleaseVersion(
 }
 
 export function readWorkspaceReleaseVersions(root = "."): ReleaseVersions {
+	return readReleaseVersions((path) => {
+		const fullPath = join(root, path);
+		return existsSync(fullPath) ? readFileSync(fullPath, "utf8") : undefined;
+	});
+}
+
+export function readReleaseVersions(read: (path: string) => string | undefined, source = ""): ReleaseVersions {
+	const required = (path: string) => {
+		const content = read(path);
+		if (content === undefined) throw new Error(`Missing release manifest ${source}${path}.`);
+		return content;
+	};
 	// SAFETY: release metadata only reads optional `version`, validated by `requireVersion` before use.
-	const packageJson = JSON.parse(
-		readFileSync(join(root, "package.json"), "utf8"),
-	) as { version?: string };
-	const tauriPath = join(root, "src-tauri", "tauri.conf.json");
-	const tauriVersion = existsSync(tauriPath)
-		? requireVersion("src-tauri/tauri.conf.json", JSON.parse(readFileSync(tauriPath, "utf8")).version)
-		: undefined;
-	const cargoToml = readFileSync(
-		join(root, "src-tauri", "Cargo.toml"),
-		"utf8",
-	);
-	const cargoVersion = parseCargoPackageVersion(cargoToml, "src-tauri/Cargo.toml");
+	const packageJson = JSON.parse(required("package.json")) as { version?: string };
+	const cargoPath = "src-tauri/Cargo.toml";
+	const cargoVersion = parseCargoPackageVersion(required(cargoPath), source + cargoPath);
 	for (const { directory, label } of SIDE_WORKSPACES) {
-		const manifestPath = join(root, "src-tauri", directory, "Cargo.toml");
-		if (!existsSync(manifestPath)) continue;
-		const version = parseCargoPackageVersion(readFileSync(manifestPath, "utf8"), `src-tauri/${directory}/Cargo.toml`);
-		if (version !== cargoVersion) throw new Error(`Desktop and ${label} package versions must match.`);
+		const path = `src-tauri/${directory}/Cargo.toml`;
+		const manifest = read(path);
+		if (manifest === undefined) continue;
+		const version = parseCargoPackageVersion(manifest, source + path);
+		if (version !== cargoVersion) {
+			throw new Error(`Backend and ${label} package versions must match. ${source}${cargoPath}: ${cargoVersion}, ${source}${path}: ${version}.`);
+		}
 	}
 
 	return {
-		packageVersion: requireVersion("package.json", packageJson.version),
-		tauriVersion,
+		packageVersion: requireVersion(`${source}package.json`, packageJson.version),
 		cargoVersion,
 	};
 }
@@ -91,15 +95,14 @@ export function requireVersion(source: string, version: string | undefined): str
 }
 
 export function assertMatchingReleaseVersions(versions: ReleaseVersions): void {
-	const { packageVersion, tauriVersion, cargoVersion } = versions;
+	const { packageVersion, cargoVersion } = versions;
 
-	if ((tauriVersion === undefined || packageVersion === tauriVersion) && packageVersion === cargoVersion) return;
+	if (packageVersion === cargoVersion) return;
 
 	throw new Error(
 		[
 			"Release versions must match:",
 			`  package.json: ${packageVersion}`,
-			...(tauriVersion === undefined ? [] : [`  src-tauri/tauri.conf.json: ${tauriVersion}`]),
 			`  src-tauri/Cargo.toml: ${cargoVersion}`,
 		].join("\n"),
 	);
@@ -166,22 +169,20 @@ export function updateWorkspaceReleaseVersions(
 ): ReleaseVersions {
 	const targetVersion = requireVersion("target version", version);
 	const packagePath = join(root, "package.json");
-	const tauriPath = join(root, "src-tauri", "tauri.conf.json");
 	const cargoPath = join(root, "src-tauri", "Cargo.toml");
 	const cargoLockPath = join(root, "src-tauri", "Cargo.lock");
 
-	const channel = existsSync(join(root, "src-tauri", "gpui", "Cargo.toml")) ? desktopReleaseChannel(targetVersion) : undefined;
-	const hasTauriConfig = existsSync(tauriPath);
-	const updates = (hasTauriConfig ? [packagePath, tauriPath] : [packagePath]).map((path) => {
-		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-		if (Object.prototype.toString.call(parsed) !== "[object Object]") {
-			throw new Error(`${path} must contain a JSON object.`);
-		}
-		// SAFETY: Object.prototype.toString verified a plain JSON object; writer only sets `version`.
-		const config = parsed as { version?: string };
-		config.version = targetVersion;
-		return { path, contents: `${JSON.stringify(config, null, 2)}\n` };
-	});
+	const channel = existsSync(join(root, "src-tauri", "gpui", "Cargo.toml"))
+		? desktopReleaseChannel(targetVersion)
+		: undefined;
+	const parsed: unknown = JSON.parse(readFileSync(packagePath, "utf8"));
+	if (Object.prototype.toString.call(parsed) !== "[object Object]") {
+		throw new Error(`${packagePath} must contain a JSON object.`);
+	}
+	// SAFETY: the check above verified a JSON object; the writer only sets version.
+	const packageJson = parsed as { version?: string };
+	packageJson.version = targetVersion;
+	const updates = [{ path: packagePath, contents: `${JSON.stringify(packageJson, null, 2)}\n` }];
 
 	const cargoToml = readFileSync(cargoPath, "utf8");
 	updates.push({
@@ -216,7 +217,6 @@ export function updateWorkspaceReleaseVersions(
 
 	return {
 		packageVersion: targetVersion,
-		tauriVersion: hasTauriConfig ? targetVersion : undefined,
 		cargoVersion: targetVersion,
 	};
 }

@@ -210,7 +210,7 @@ test("a stale map includes intervening source changes and falls back for blind i
 	const workflows = await Promise.all(["parity.yml", "parity-suite.yml"].map((name) => readFile(resolve(".github/workflows", name), "utf8")));
 	const scripts = [...new Set(workflows.join("\n").match(/\b(?:scripts|e2e\/parity)\/[\w./-]+\.(?:mjs|ts)\b/g) ?? [])];
 	expect(scripts).toContain("scripts/ci-mbx-cargo.mjs");
-	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/tauri.conf.json", "scripts/e2e-parity.ts", ".env", ".env.local", ".env.test", ".env.test.local", ...scripts]) {
+	for (const path of ["src/feature.ts", "e2e/parity/visual/export-fixture.ts", "e2e/parity/scenarios/new.json", "src/lib/tauri-dev-mocks.ts", "src/lib/mcp-dev-mocks.ts", ".github/workflows/parity.yml", "src-tauri/gpui/assets/icons/search.svg", "src-tauri/gpui/assets/fonts/inter-400.ttf", "src-tauri/gpui/updater.json", "scripts/e2e-parity.ts", ".env", ".env.local", ".env.test", ".env.test.local", ...scripts]) {
 		await fixture(async (root) => {
 			await mkdir(join(root, path, ".."), { recursive: true });
 			await writeFile(join(root, path), path === "src/feature.ts" ? "export function first() {\n return 3;\n}\nexport function second() {\n return 2;\n}\n" : path.endsWith("new.json") ? JSON.stringify({ scenarios: [{ id: "one" }] }) : "Changed input\n");

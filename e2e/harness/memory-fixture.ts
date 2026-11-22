@@ -1,6 +1,7 @@
 import { chmod, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resources } from "../../src/lib/tauri-dev-mock-data";
+import { readinessTimeoutMs } from "./timeouts";
 
 export const MEMORY_FIXTURE_ROWS = {
 	normal: resources.length,
@@ -10,15 +11,19 @@ export const MEMORY_FIXTURE_ROWS = {
 export type MemoryFixture = keyof typeof MEMORY_FIXTURE_ROWS;
 
 /** Measurement options. `latencyMs` delays every response, as a cluster round trip would. */
-export type MemoryFixtureOptions = { latencyMs?: number };
+export type MemoryFixtureOptions = { latencyMs?: number; remoteDesktop?: boolean; signal?: AbortSignal };
 /** One served request, for counting the reads a client action makes. */
 export type FixtureRequest = { epochMs: number; method: string; path: string; watch: boolean };
 
-export async function startMemoryFixture(size: MemoryFixture, directory: string, { latencyMs = 0 }: MemoryFixtureOptions = {}) {
+export async function startMemoryFixture(size: MemoryFixture, directory: string, { latencyMs = 0, remoteDesktop = false, signal }: MemoryFixtureOptions = {}) {
 	const key = join(directory, "key.pem");
 	const cert = join(directory, "cert.pem");
-	const certificate = Bun.spawn(["openssl", "req", "-x509", "-newkey", "rsa", "-nodes", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE"], { stdout: "ignore", stderr: "pipe" });
+	const deadline = AbortSignal.timeout(readinessTimeoutMs);
+	const startup = signal ? AbortSignal.any([signal, deadline]) : deadline;
+	startup.throwIfAborted();
+	const certificate = Bun.spawn(["openssl", "req", "-x509", "-newkey", "rsa", "-nodes", "-keyout", key, "-out", cert, "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE"], { stdout: "ignore", stderr: "pipe", signal: startup, killSignal: "SIGKILL" });
 	const [code, error] = await Promise.all([certificate.exited, new Response(certificate.stderr).text()]);
+	startup.throwIfAborted();
 	if (code !== 0) {
 		throw new Error(`Fixture certificate generation failed: ${error}`);
 	}
@@ -65,8 +70,11 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 	};
 	// Open Pod watch streams. They stay idle unless a benchmark calls `burst`.
 	const podWatches = new Set<ReadableStreamDefaultController<Uint8Array>>();
+	let activeLogStreams = 0;
+	let cancelledLogStreams = 0;
 	let resourceVersion = 1;
 	const requests: FixtureRequest[] = [];
+	signal?.throwIfAborted();
 	const server = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		// Watches intentionally remain idle until the owned fixture is stopped.
@@ -77,6 +85,26 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 			requests.push({ epochMs: Date.now(), method: request.method, path: `${url.pathname}${url.search}`, watch: url.searchParams.get("watch") === "true" });
 			if (latencyMs > 0) await Bun.sleep(latencyMs);
 			if (request.method !== "GET") return Response.json({ kind: "Status", status: "Failure", reason: "MethodNotAllowed", code: 405 }, { status: 405 });
+			const logPath = /^\/api\/v1\/namespaces\/([^/]+)\/pods\/([^/]+)\/log$/.exec(url.pathname);
+			if (logPath) {
+				const [, namespace, name] = logPath;
+				if (remoteDesktop && pods.some(({ metadata }) => metadata.namespace === namespace && metadata.name === name)) {
+					if (url.searchParams.get("follow") !== "true") {
+						return Response.json({ kind: "Status", status: "Failure", reason: "BadRequest", code: 400, message: "Expected follow=true for live logs" }, { status: 400 });
+					}
+					return new Response(new ReadableStream<Uint8Array>({
+						start(controller) {
+							activeLogStreams++;
+							controller.enqueue(new TextEncoder().encode("kubecove-remote-log-marker\n"));
+						},
+						cancel() {
+							activeLogStreams--;
+							cancelledLogStreams++;
+						},
+					}), { headers: { "content-type": "text/plain" } });
+				}
+				return Response.json({ apiVersion: "v1", kind: "Status", status: "Failure", reason: "NotFound", code: 404 }, { status: 404 });
+			}
 			const aggregatedDiscovery = request.headers.get("accept")?.split(",").some((media) => media.split(";").some((parameter) => parameter.trim() === "g=apidiscovery.k8s.io"));
 			if ((url.pathname === "/api" || url.pathname === "/apis") && aggregatedDiscovery) return Response.json({ apiVersion: "apidiscovery.k8s.io/v2", kind: "APIGroupDiscoveryList", metadata: {}, items: aggregated[url.pathname] });
 			const apiDiscovery = discovery.get(url.pathname);
@@ -116,5 +144,9 @@ export async function startMemoryFixture(size: MemoryFixture, directory: string,
 		}
 		return { watches: podWatches.size, events: lines.length };
 	}
-	return { url: `https://127.0.0.1:${server.port}`, authority, rows: count, burst, requests, stop: () => server.stop(true) };
+	return {
+		url: `https://127.0.0.1:${server.port}`, authority, rows: count, burst, requests,
+		logStreams: () => ({ active: activeLogStreams, cancelled: cancelledLogStreams }),
+		stop: () => server.stop(true),
+	};
 }

@@ -40,8 +40,16 @@ test("the bundle step stages cargo-packager outputs under the public channel nam
       const metadata = { packages: [{ name: "kubecove-gpui", metadata: { packager: { productName: product, identifier } } }] };
       writeFileSync(join(directory, "metadata.json"), JSON.stringify(metadata));
       const out = join(directory, "src-tauri/gpui/target/gpui-bundle");
-      mkdirSync(join(out, product + ".app"), { recursive: true });
-      for (const name of [`kubecove-gpui_${version}_x86_64.AppImage`, `kubecove-gpui_${version}_x64-setup.exe`, `${product}_${version}_aarch64.dmg`]) {
+      const bundle = join(out, product + ".app", "Contents/MacOS");
+      mkdirSync(bundle, { recursive: true });
+      const sidecar = '#!/usr/bin/env bash\n[[ "$*" == "-v" ]]\n';
+      writeFileSync(join(bundle, "kubeconform"), sidecar, { mode: 0o755 });
+      writeFileSync(join(out, `kubecove-gpui_${version}_x86_64.AppImage`),
+        '#!/usr/bin/env bash\nset -e\n[[ "$*" == "--appimage-extract usr/bin/kubeconform" ]]\n' +
+        'mkdir -p squashfs-root/usr/bin\n' +
+        'cp "$EXPECTED_PRODUCT.app/Contents/MacOS/kubeconform" squashfs-root/usr/bin/kubeconform\n',
+        { mode: 0o755 });
+      for (const name of [`kubecove-gpui_${version}_x64-setup.exe`, `${product}_${version}_aarch64.dmg`]) {
         writeFileSync(join(out, name), name);
       }
       for (const format of ["appimage", "nsis", "app,dmg"]) {
@@ -55,7 +63,7 @@ test("the bundle step stages cargo-packager outputs under the public channel nam
       assert.deepEqual(readdirSync(staged).sort(), names.sort());
       const archive = spawnSync("tar", ["-tzf", join(staged, `${prefix}_${version}_aarch64.app.tar.gz`)], { encoding: "utf8" });
       assert.equal(archive.status, 0, archive.stderr);
-      assert.equal(archive.stdout.trim(), product + ".app/");
+      assert.ok(archive.stdout.split("\n").includes(product + ".app/Contents/MacOS/kubeconform"));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

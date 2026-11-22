@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -19,13 +19,9 @@ import {
 } from "../scripts/release-versions";
 
 describe("release version helpers", () => {
-	test("keeps release dispatch and macOS asset checks aligned", () => {
-		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+	test("dispatches the release workflow from the release tag", () => {
 		const tagWorkflow = readFileSync(".github/workflows/tag-release.yml", "utf8");
 
-		expect(releaseWorkflow).toContain(
-			'expected-updater-assets: "KubeCove___VERSION___universal.app.tar.gz KubeCove___VERSION___universal.app.tar.gz.sig"',
-		);
 		expect(tagWorkflow).toContain("actions: write");
 		expect(tagWorkflow).toContain("types: [closed]");
 		expect(tagWorkflow).toContain("github.event.pull_request.merged == true");
@@ -88,37 +84,6 @@ describe("release version helpers", () => {
 		}
 	});
 
-	test("uses an unlocked session collection for Linux desktop E2E", () => {
-		const e2eWorkflow = readFileSync(".github/workflows/e2e.yml", "utf8").replaceAll("\r\n", "\n");
-		const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8").replaceAll("\r\n", "\n");
-		const sessionAlias = [
-			"org.freedesktop.Secret.Service.SetAlias",
-			"string:default",
-			"objpath:/org/freedesktop/secrets/collection/session",
-		].join(" ");
-
-		const jobs = [
-			e2eWorkflow.match(
-				/\n {2}real-primary:\n[\s\S]*?(?=\n {2}real-matrix:\n)/,
-			)?.[0],
-			e2eWorkflow.match(
-				/\n {2}real-matrix:\n[\s\S]*?(?=\n {2}desktop-smoke:\n)/,
-			)?.[0],
-			releaseWorkflow.match(
-				/\n {2}e2e:\n[\s\S]*?(?=\n {2}verify:\n)/,
-			)?.[0],
-		];
-
-		expect(jobs).not.toContain(undefined);
-		for (const job of jobs) {
-			expect(
-				job?.replaceAll(/\\\r?\n/g, " ").replaceAll(/\s+/g, " "),
-			).toContain(sessionAlias);
-		}
-		expect(e2eWorkflow).not.toContain("gnome-keyring-daemon --unlock");
-		expect(releaseWorkflow).not.toContain("gnome-keyring-daemon --unlock");
-	});
-
 	test("reads the package version from Cargo.toml", () => {
 		expect(
 			parseCargoPackageVersion(`
@@ -170,7 +135,6 @@ example = "9.9.9"
 		expect(() =>
 			assertMatchingReleaseVersions({
 				packageVersion: "0.1.0",
-				tauriVersion: "0.1.0",
 				cargoVersion: "0.2.0",
 			}),
 		).toThrow("Release versions must match");
@@ -209,17 +173,13 @@ example = "9.9.9"
 		).not.toThrow();
 	});
 
-	test.each([true, false])("updates all release workspaces (Tauri config present: %p)", (withTauri) => {
-		const version = withTauri ? "0.15.1" : "0.16.0";
+	test("updates all release workspaces and selects the consolidated GPUI identity", () => {
+		const version = "0.16.0";
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
 		mkdirSync(join(root, "src-tauri"), { recursive: true });
 		writeFileSync(
 			join(root, "package.json"),
 			'{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n',
-		);
-		if (withTauri) writeFileSync(
-			join(root, "src-tauri", "tauri.conf.json"),
-			'{\n  "productName": "KubeCove",\n  "version": "0.1.0"\n}\n',
 		);
 		writeFileSync(
 			join(root, "src-tauri", "Cargo.toml"),
@@ -239,15 +199,12 @@ example = "9.9.9"
 
 		const updated = updateWorkspaceReleaseVersions(version, root);
 		const packager = Bun.TOML.parse(readFileSync(join(root, "src-tauri/gpui/Cargo.toml"), "utf8")).package.metadata.packager;
-		expect(packager.productName).toBe(withTauri ? "KubeCove GPUI" : "KubeCove");
-		expect(packager.identifier).toBe(withTauri ? "com.timpan.kubecove.gpui" : "com.timpan.kubecove");
+		expect(packager.productName).toBe("KubeCove");
+		expect(packager.identifier).toBe("com.timpan.kubecove");
 		expect(updated).toEqual(readWorkspaceReleaseVersions(root));
 		assertMatchingReleaseVersions(updated);
 
 		expect(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version).toBe(version);
-		const tauriPath = join(root, "src-tauri", "tauri.conf.json");
-		expect(existsSync(tauriPath)).toBe(withTauri);
-		if (withTauri) expect(JSON.parse(readFileSync(tauriPath, "utf8")).version).toBe(version);
 		expect(readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
 		expect(readFileSync(join(root, "src-tauri", "Cargo.lock"), "utf8")).toContain(`version = "${version}"`);
 		expect(readFileSync(join(root, "src-tauri", "server", "Cargo.toml"), "utf8")).toContain(`version = "${version}"`);
@@ -257,7 +214,7 @@ example = "9.9.9"
 		expect(readFileSync(join(root, "src-tauri", "gpui", "Cargo.lock"), "utf8")).not.toContain('version = "0.1.0"');
 		expect(readWorkspaceReleaseVersions(root).cargoVersion).toBe(version);
 		writeFileSync(join(root, "src-tauri", "gpui", "Cargo.toml"), '[package]\nname = "kubecove-gpui"\nversion = "0.1.0"\n');
-		expect(() => readWorkspaceReleaseVersions(root)).toThrow("Desktop and GPUI client package versions must match.");
+		expect(() => readWorkspaceReleaseVersions(root)).toThrow("Backend and GPUI client package versions must match.");
 	});
 
 	test("fails a bump when Cargo.lock is missing the kubecove package", () => {
@@ -266,10 +223,6 @@ example = "9.9.9"
 		writeFileSync(
 			join(root, "package.json"),
 			'{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n',
-		);
-		writeFileSync(
-			join(root, "src-tauri", "tauri.conf.json"),
-			'{\n  "productName": "KubeCove",\n  "version": "0.1.0"\n}\n',
 		);
 		writeFileSync(
 			join(root, "src-tauri", "Cargo.toml"),
@@ -285,12 +238,11 @@ example = "9.9.9"
 		);
 	});
 
-	test("rejects non-object JSON config without modifying package.json", () => {
+	test("rejects a non-object package.json without modifying it", () => {
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
 		mkdirSync(join(root, "src-tauri"), { recursive: true });
-		const originalPackage = '{\n  "name": "kubecove",\n  "version": "0.1.0"\n}\n';
+		const originalPackage = "[]\n";
 		writeFileSync(join(root, "package.json"), originalPackage);
-		writeFileSync(join(root, "src-tauri", "tauri.conf.json"), "[]\n");
 		writeFileSync(
 			join(root, "src-tauri", "Cargo.toml"),
 			'[package]\nname = "kubecove"\nversion = "0.1.0"\n',
@@ -306,7 +258,6 @@ example = "9.9.9"
 		const root = mkdtempSync(join(tmpdir(), "kubecove-release-"));
 		const files = {
 			"package.json": '{"version":"0.15.1"}\n',
-			"src-tauri/tauri.conf.json": '{"version":"0.15.1"}\n',
 			"src-tauri/Cargo.toml": '[package]\nname = "kubecove"\nversion = "0.15.1"\n',
 			"src-tauri/Cargo.lock": '[[package]]\nname = "kubecove"\nversion = "0.15.1"\n',
 			"src-tauri/server/Cargo.toml": '[package]\nname = "kubecove-server"\nversion = "0.15.1"\n',

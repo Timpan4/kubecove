@@ -2,16 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { queryKeys } from "../src/lib/queryKeys";
 import { kubeconfigSourceKey } from "../src/lib/settings";
 import {
+	createMockChannel,
 	getDynamicResourceDetails,
 	getResourceYaml,
 	isAppError,
-	isTauriRuntime,
 	listKubeContexts,
 	listNamespaces,
 	listPresentCustomResourceKinds,
 	listResourceTopology,
 	revealSecretDataValue,
-	shouldUseBrowserDevMocks,
 	startAggregatedLogStream,
 	startPodExecSession,
 	startPodLogStream,
@@ -29,19 +28,7 @@ function mockInvokeResult<T>(value: JsonValue): T {
 	return value as T;
 }
 
-describe("runtime detection and Argo cancellation", () => {
-	test("detects browser dev mock runtime", () => {
-		expect(shouldUseBrowserDevMocks({ DEV: true }, {})).toBe(true);
-		expect(shouldUseBrowserDevMocks({ DEV: false }, {})).toBe(false);
-		expect(
-			shouldUseBrowserDevMocks(
-				{ DEV: true },
-				{ __TAURI_INTERNALS__: { invoke: () => undefined } },
-			),
-		).toBe(false);
-		expect(isTauriRuntime({ isTauri: true })).toBe(true);
-	});
-
+describe("Argo cancellation", () => {
 	test("passes cancellation identity through Argo inspection reads", async () => {
 		const calls: Array<{ cmd: string; args?: JsonObject }> = [];
 		const client = {
@@ -263,8 +250,7 @@ describe("typed Tauri wrappers", () => {
 				});
 			},
 		};
-		// SAFETY: this wrapper test verifies serialized request arguments only; mocked invoke never reads channel.
-		const channel = {} as never;
+		const channel = createMockChannel<unknown>(() => {});
 
 		await startPodLogStream(
 			client,

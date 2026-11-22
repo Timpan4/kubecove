@@ -4,7 +4,7 @@ import {
 	assertMatchingReleaseVersions,
 	compareSemverVersions,
 	latestReleaseTagVersionFromRefs,
-	parseCargoPackageVersion,
+	readReleaseVersions,
 	requireVersion,
 } from "./release-versions";
 
@@ -28,24 +28,7 @@ fetchReleaseRefs();
 
 const originMainSha = run("git", ["rev-parse", "origin/main"]).stdout.trim();
 const latestReleaseTagVersion = readLatestRemoteReleaseTagVersion();
-// SAFETY: remote release metadata only reads optional `version`, validated by `requireVersion` before use.
-const packageJson = JSON.parse(readRemoteFile("package.json")) as { version?: string };
-const tauriPath = "src-tauri/tauri.conf.json";
-const hasTauriConfig = run("git", ["ls-tree", "--name-only", "origin/main", "--", tauriPath]).stdout.trim() === tauriPath;
-const cargoToml = readRemoteFile("src-tauri/Cargo.toml");
-
-const { packageVersion, tauriVersion, cargoVersion } = parseRemoteVersions();
-
-try {
-	assertMatchingReleaseVersions({ packageVersion, tauriVersion, cargoVersion });
-} catch {
-	fail([
-		"Release versions on origin/main must match:",
-		`  origin/main:package.json: ${packageVersion}`,
-		...(hasTauriConfig ? [`  origin/main:${tauriPath}: ${tauriVersion}`] : []),
-		`  origin/main:src-tauri/Cargo.toml: ${cargoVersion}`,
-	].join("\n"));
-}
+const { packageVersion } = validateRemoteVersions();
 
 const versionTagState = compareVersionToLatestTag(packageVersion, latestReleaseTagVersion);
 
@@ -102,22 +85,11 @@ function readLatestRemoteReleaseTagVersion(): string | null {
 	return latestReleaseTagVersionFromRefs(refs);
 }
 
-function readRemoteFile(path: string): string {
-	return run("git", ["show", `origin/main:${path}`]).stdout;
-}
-
-function parseRemoteVersions() {
+function validateRemoteVersions() {
 	try {
-		return {
-			packageVersion: requireVersion("origin/main:package.json", packageJson.version),
-			tauriVersion: hasTauriConfig
-				? requireVersion(`origin/main:${tauriPath}`, JSON.parse(readRemoteFile(tauriPath)).version)
-				: undefined,
-			cargoVersion: parseCargoPackageVersion(
-				cargoToml,
-				"origin/main:src-tauri/Cargo.toml",
-			),
-		};
+		const versions = readReleaseVersions((path) => run("git", ["show", `${originMainSha}:${path}`]).stdout, "origin/main:");
+		assertMatchingReleaseVersions(versions);
+		return versions;
 	} catch (error) {
 		fail(error instanceof Error ? error.message : String(error));
 	}

@@ -2,8 +2,8 @@ import "./App.css";
 import { markStartup } from "./lib/startup-marks";
 import { mount } from "svelte";
 import Root from "./app/svelte/Root.svelte";
-import { IS_DEV_BUILD } from "./lib/build-env";
-import { initializeBrowserDevMocks, startTauriMigrationExport } from "./lib/tauri";
+import { USE_BROWSER_DEV_MOCKS } from "./lib/build-env";
+import { initializeBrowserDevMocks } from "./lib/tauri";
 
 document.documentElement.classList.add("dark");
 
@@ -15,10 +15,9 @@ if (!target) {
 function mountApp(target: HTMLElement): void {
 	mount(Root, { target });
 	markStartup("svelte-mount");
-	startTauriMigrationExport();
 }
 
-if (IS_DEV_BUILD) {
+if (USE_BROWSER_DEV_MOCKS) {
 	void initializeBrowserDevMocks()
 		.then(() => mountApp(target))
 		.catch((error) => {

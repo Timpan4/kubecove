@@ -5,7 +5,7 @@
 	import BrowserSessionGate from "./BrowserSessionGate.svelte";
 	import { Button } from "@/components/ui/svelte";
 	import { getBrowserSessionState, initializeBrowserSession, signOutBrowserSession, subscribeBrowserSession, type BrowserSessionState } from "@/lib/browser-runtime";
-	import { isBrowserRuntime } from "@/lib/tauri-runtime";
+	import { USE_BROWSER_DEV_MOCKS } from "@/lib/build-env";
 	import { installFiniteReadLifecycle } from "@/lib/finite-read-lifecycle";
 	import { configureQueryCatalog } from "@/lib/queryKeys";
 	import { cancelBackendRequests, createTauriClient } from "@/lib/tauri";
@@ -20,7 +20,6 @@
 			},
 		},
 	});
-	const browserRuntime = isBrowserRuntime();
 	let browserSession = $state<BrowserSessionState>(getBrowserSessionState());
 	let signingOut = $state(false);
 	let signOutError = $state<string | null>(null);
@@ -36,7 +35,7 @@
 		}
 	}
 	onMount(() => {
-		if (!browserRuntime) return;
+		if (USE_BROWSER_DEV_MOCKS) return;
 		const unsubscribe = subscribeBrowserSession((state) => {
 			browserSession = state;
 		});
@@ -52,7 +51,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-	{#if !browserRuntime}
+	{#if USE_BROWSER_DEV_MOCKS}
 		<App />
 	{:else if browserSession.status === "ready"}
 		<div class="flex h-dvh min-h-0 flex-col overflow-hidden">

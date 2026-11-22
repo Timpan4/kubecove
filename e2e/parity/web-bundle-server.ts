@@ -38,7 +38,11 @@ await build({
     ...config,
     configFile: false,
     mode: "development",
-    define: { ...config.define, "process.env.KUBECOVE_PUBLIC_DEV": JSON.stringify("true") },
+    define: {
+        ...config.define,
+        "process.env.KUBECOVE_PUBLIC_DEV": JSON.stringify("true"),
+        "process.env.KUBECOVE_PUBLIC_DEV_MOCKS": JSON.stringify("true"),
+    },
     plugins: (config.plugins ?? []).flat().filter(plugin => !(plugin && "name" in plugin && plugin.name === "kubecove-bundle-report")),
     build: {
         ...config.build, outDir, emptyOutDir: false, minify: false, reportCompressedSize: false,

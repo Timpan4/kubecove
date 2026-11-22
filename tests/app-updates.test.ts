@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
 	resetAppUpdateStateForTests,
@@ -18,8 +18,13 @@ function mockApi(update: AppUpdate | null): AppUpdateApi {
 }
 
 describe("app update store", () => {
-	test("automatic checks wait for the DOM flush and animation frame", async () => {
+	beforeEach(() => {
 		resetAppUpdateStateForTests();
+		setAppUpdatesEnabledForTests(true);
+	});
+	afterEach(resetAppUpdateStateForTests);
+
+	test("automatic checks wait for the DOM flush and animation frame", async () => {
 		let checks = 0;
 		setAppUpdateApiForTests({ check: async () => { checks += 1; return null; }, relaunch: async () => {} });
 		const originalRequest = globalThis.requestAnimationFrame;
@@ -41,13 +46,11 @@ describe("app update store", () => {
 			cancel();
 			globalThis.requestAnimationFrame = originalRequest;
 			globalThis.cancelAnimationFrame = originalCancel;
-			resetAppUpdateStateForTests();
 		}
 	});
 
 	for (const afterDomFlush of [false, true]) {
 		test(`unmount cancels automatic checks, after DOM flush: ${afterDomFlush}`, async () => {
-			resetAppUpdateStateForTests();
 			let checks = 0;
 			setAppUpdateApiForTests({ check: async () => { checks += 1; return null; }, relaunch: async () => {} });
 			const originalRequest = globalThis.requestAnimationFrame;
@@ -69,13 +72,11 @@ describe("app update store", () => {
 			} finally {
 				globalThis.requestAnimationFrame = originalRequest;
 				globalThis.cancelAnimationFrame = originalCancel;
-				resetAppUpdateStateForTests();
 			}
 		});
 	}
 
 	test("launch check transitions to available when an update exists", async () => {
-		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests(
 			mockApi({
 				currentVersion: "0.2.0",
@@ -93,7 +94,6 @@ describe("app update store", () => {
 	});
 
 	test("manual check transitions to up to date when no update exists", async () => {
-		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests(mockApi(null));
 
 		await useAppUpdateStore.getState().checkForUpdates({ manual: true });
@@ -104,7 +104,6 @@ describe("app update store", () => {
 	});
 
 	test("download progress updates from updater events", async () => {
-		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests(
 			mockApi({
 				currentVersion: "0.2.0",
@@ -127,7 +126,6 @@ describe("app update store", () => {
 	});
 
 	test("checks and installs started during a download leave that download alone", async () => {
-		resetAppUpdateStateForTests();
 		let finishDownload = () => {};
 		let downloads = 0;
 		let checks = 0;
@@ -165,7 +163,6 @@ describe("app update store", () => {
 	});
 
 	test("a check started while another check runs does not overwrite its result", async () => {
-		resetAppUpdateStateForTests();
 		let checks = 0;
 		let resolveFirst: (update: AppUpdate | null) => void = () => {};
 		setAppUpdateApiForTests({
@@ -187,7 +184,6 @@ describe("app update store", () => {
 	});
 
 	test("dismissed version is retained while the update remains available", async () => {
-		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests(
 			mockApi({
 				currentVersion: "0.2.0",
@@ -204,7 +200,6 @@ describe("app update store", () => {
 	});
 
 	test("check failures become visible error state", async () => {
-		resetAppUpdateStateForTests();
 		setAppUpdateApiForTests({
 			check: async () => {
 				throw new Error("network unavailable");
@@ -220,9 +215,8 @@ describe("app update store", () => {
 		);
 	});
 
-	test("disabled update channel skips manual checks", async () => {
+	test("reset restores the disabled browser update channel", async () => {
 		resetAppUpdateStateForTests();
-		setAppUpdatesEnabledForTests(false);
 		let checks = 0;
 		setAppUpdateApiForTests({
 			check: async () => {
@@ -238,6 +232,5 @@ describe("app update store", () => {
 		expect(useAppUpdateStore.getState().status).toBe("idle");
 		expect(useAppUpdateStore.getState().lastCheckedAt).toBeNull();
 		expect(useAppUpdateStore.getState().errorMessage).toBeNull();
-		setAppUpdatesEnabledForTests(true);
 	});
 });

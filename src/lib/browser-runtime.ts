@@ -1,11 +1,13 @@
 import "./browser-token-bootstrap";
-import type { Channel, InvokeOptions } from "@tauri-apps/api/core";
+import { BROWSER_SESSION_PATH, BROWSER_SESSION_STORAGE_KEY } from "./browser-session-contract";
+import { isDiagnosticsEnabled } from "./diagnostics";
+import { markProfileIpc, markStartup } from "./startup-marks";
 import { writable } from "svelte/store";
 import { messageFromError } from "./error-redaction";
-import type { TauriClient } from "./tauri-runtime";
+import { createChannel, type StreamChannel } from "./stream-channel";
+import { traceInvoke, type TauriClient } from "./tauri-runtime";
 import type { JsonObject, JsonValue } from "./types";
 
-const SESSION_STORAGE_KEY = "kubecove-browser-resume";
 const CHANNEL_MARKER = "__KUBECOVE_CHANNEL__:";
 
 export type BrowserSessionStatus =
@@ -60,7 +62,7 @@ let link: SocketLink = { kind: "none" };
 const channelIdSeed = new Uint32Array(1);
 globalThis.crypto.getRandomValues(channelIdSeed);
 let nextChannelId = channelIdSeed[0] * 2 ** 20;
-const channels = new Map<number, BrowserChannel<unknown>>();
+const channels = new Map<number, StreamChannel<unknown>>();
 
 function publish(patch: Partial<BrowserSessionState>): void {
 	sessionState.update((current) => ({ ...current, ...patch }));
@@ -68,7 +70,7 @@ function publish(patch: Partial<BrowserSessionState>): void {
 
 function readStoredResumeToken(): string | null {
 	try {
-		return window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+		return window.sessionStorage.getItem(BROWSER_SESSION_STORAGE_KEY);
 	} catch {
 		return null;
 	}
@@ -77,7 +79,7 @@ function readStoredResumeToken(): string | null {
 function saveResumeToken(value: string): void {
 	resumeToken = value;
 	try {
-		window.sessionStorage.setItem(SESSION_STORAGE_KEY, value);
+		window.sessionStorage.setItem(BROWSER_SESSION_STORAGE_KEY, value);
 	} catch {
 		// The active page can still resume after a socket drop without sessionStorage.
 	}
@@ -86,7 +88,7 @@ function saveResumeToken(value: string): void {
 function clearResumeToken(): void {
 	resumeToken = null;
 	try {
-		window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+		window.sessionStorage.removeItem(BROWSER_SESSION_STORAGE_KEY);
 	} catch {
 		// Storage can be disabled by browser policy.
 	}
@@ -112,12 +114,13 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
 }
 
 function isString<Value>(value: Value): value is Value & string {
-	return String(value) === value;
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Validate server and WebSocket input without coercion.
+	return typeof value === "string";
 }
 
 async function postSession(body: { token?: string; resumeToken?: string }): Promise<void> {
 	publish({ status: "connecting", error: null });
-	const response = await fetch(apiUrl("/api/v1/session"), {
+	const response = await fetch(apiUrl(BROWSER_SESSION_PATH), {
 		method: "POST",
 		credentials: "same-origin",
 		cache: "no-store",
@@ -321,9 +324,8 @@ export async function signOutBrowserSession(): Promise<void> {
 
 function returnToOidcSignIn(): void {
 	closeLink();
-	for (const channel of channels.values()) channel.cleanupCallback();
-	channels.clear();
 	clearResumeToken();
+	for (const channel of channels.values()) channel.close();
 	publish({ status: "login", error: null, channelGap: 0 });
 }
 
@@ -448,48 +450,24 @@ function scheduleReconnect(): void {
 	};
 }
 
-interface BrowserChannel<T> {
-	id: number;
-	onmessage: (message: T) => void;
-	cleanupCallback: () => void;
-	unregister: () => Promise<void>;
-	toJSON: () => string;
-}
-
-function createBrowserChannel<T>(onMessage: (message: T) => void): Channel<T> {
-	let active = true;
+function createBrowserChannel<T>(onMessage: (message: T) => void): StreamChannel<T> {
 	const id = nextChannelId++;
-	const channel: BrowserChannel<T> = {
-		id,
-		onmessage: (message) => {
-			if (active) onMessage(message);
-		},
-		cleanupCallback: () => {
-			active = false;
-			channels.delete(id);
-		},
-		unregister: async () => {
-			active = false;
-			channels.delete(id);
-			if (!resumeToken || !window.navigator.onLine) return;
-			try {
-				await fetch(apiUrl(`/api/v1/channels/${id}/close`), {
-					method: "POST",
-					credentials: "same-origin",
-					keepalive: true,
-					headers: { "X-Kubecove-Session": resumeToken },
-				});
-			} catch {
+	const channel = createChannel(id, onMessage, () => {
+		channels.delete(id);
+		if (resumeToken && window.navigator.onLine) {
+			void fetch(apiUrl(`/api/v1/channels/${id}/close`), {
+				method: "POST",
+				credentials: "same-origin",
+				keepalive: true,
+				headers: { "X-Kubecove-Session": resumeToken },
+			}).catch(() => {
 				// The server removes channels when their owner grace window expires.
-			}
-		},
-		toJSON: () => `${CHANNEL_MARKER}${id}`,
-	};
+			});
+		}
+	});
 	// SAFETY: typed command wrappers choose T to match the Rust channel's serialized payload.
-	channels.set(id, channel as BrowserChannel<unknown>);
-	// SAFETY: the browser adapter implements the Channel members consumed by typed wrappers and cleanup.
-	// @ts-expect-error: Tauri Channel's private native runtime members are replaced by the browser adapter.
-	return channel as Channel<T>;
+	channels.set(id, channel as StreamChannel<unknown>);
+	return Object.assign(channel, { toJSON: () => `${CHANNEL_MARKER}${id}` });
 }
 
 let browserClient: TauriClient | null = null;
@@ -501,33 +479,42 @@ export function createBrowserTauriClient(): TauriClient {
 		invoke: async <T, Args extends object = object>(
 			command: string,
 			args?: Args,
-			_options?: InvokeOptions,
-		): Promise<T> => {
-			if (sessionSnapshot.status !== "ready" || !resumeToken) {
-				throw new Error("Open a KubeCove server session before invoking commands.");
-			}
-			const response = await fetch(apiUrl(`/api/v1/invoke/${encodeURIComponent(command)}`), {
-				method: "POST",
-				credentials: "same-origin",
-				cache: "no-store",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Kubecove-Session": resumeToken,
-				},
-				body: JSON.stringify(args ?? {}),
-			});
-			const result: unknown = await response.json().catch(() => null);
-			if (!response.ok) {
-				if (response.status === 401 && sessionSnapshot.authenticationMode === "oidc") {
-					returnToOidcSignIn();
+		): Promise<T> => traceInvoke(command, args, async () => {
+			const measured = isDiagnosticsEnabled() || process.env.KUBECOVE_PUBLIC_PROFILE === "true";
+			const started = measured ? performance.now() : 0;
+			let succeeded = false;
+			try {
+				if (sessionSnapshot.status !== "ready" || !resumeToken) {
+					throw new Error("Open a KubeCove server session before invoking commands.");
 				}
-				const error = new Error(parseSessionErrorMessage(result, `Command ${command} failed (${response.status}).`));
-				if (result && Object(result) === result) Object.assign(error, result);
-				throw error;
+				const response = await fetch(apiUrl(`/api/v1/invoke/${encodeURIComponent(command)}`), {
+					method: "POST",
+					credentials: "same-origin",
+					cache: "no-store",
+					headers: {
+						"Content-Type": "application/json",
+						"X-Kubecove-Session": resumeToken,
+					},
+					body: JSON.stringify(args ?? {}),
+				});
+				const result: JsonValue = await response.json().catch(() => null);
+				if (!response.ok) {
+					if (response.status === 401 && sessionSnapshot.authenticationMode === "oidc") {
+						returnToOidcSignIn();
+					}
+					const error = new Error(parseSessionErrorMessage(result, `Command ${command} failed (${response.status}).`));
+					// oxlint-disable-next-line anti-slop/no-runtime-typeof -- The optional HTTP error field is untrusted JSON.
+					if (isJsonObject(result) && typeof result.kind === "string") Object.assign(error, { kind: result.kind });
+					throw error;
+				}
+				succeeded = true;
+				if (measured && command === "get_kubeconfig_sources") markStartup("kubeconfig-ready");
+				// SAFETY: typed command wrappers select T from the matching Rust serde result contract.
+				return result as T;
+			} finally {
+				if (measured) markProfileIpc(command, started, succeeded, measured);
 			}
-			// SAFETY: typed command wrappers select T from the matching Rust serde result contract.
-			return result as T;
-		},
+		}),
 	};
 	return browserClient;
 }

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { chromium } from "playwright-core";
 import { chromeExecutable, readinessTimeoutMs } from "../../.agents/skills/verify-kubecove/scripts/processes";
+import type { SharedWorkspaceDocument } from "../../src/features/workspaces/workspace-sharing-schema";
 
 /** Drive the Svelte assets embedded in the smoke server, using its private fixture context. */
 export async function verifyServerBrowser(origin: string, token: string) {
@@ -22,6 +24,31 @@ export async function verifyServerBrowser(origin: string, token: string) {
 		credentials.push(session.resumeToken);
 		assert.equal(contexts.status(), 200);
 		await page.getByText("fixture", { exact: true }).first().waitFor();
+		const sharedWorkspace = {
+			apiVersion: "kubecove.dev/workspace/v1",
+			kind: "Workspace",
+			metadata: { name: "browser-import" },
+			spec: {
+				displayName: "Browser import",
+				scope: { clusterContext: "fixture", namespaces: ["readable"], kinds: ["Pod"], layout: "resources", argoAppFilter: "" },
+				shortcuts: [],
+				portForwards: [],
+			},
+		} satisfies SharedWorkspaceDocument;
+		const [chooser] = await Promise.all([
+			page.waitForEvent("filechooser"),
+			page.getByRole("button", { name: "Import", exact: true }).click(),
+		]);
+		await chooser.setFiles({ name: "browser-import.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(sharedWorkspace)) });
+		await page.getByText("Import preview", { exact: true }).waitFor();
+		await page.getByRole("button", { name: "Apply import", exact: true }).click();
+		await page.getByText("Imported 1 new, replaced 0, skipped 0.", { exact: true }).waitFor();
+		const [download] = await Promise.all([
+			page.waitForEvent("download"),
+			page.getByRole("button", { name: "Export all", exact: true }).click(),
+		]);
+		const exported = JSON.parse(await readFile(await download.path(), "utf8"));
+		assert.deepEqual(exported, sharedWorkspace);
 		await page.locator("#workspace-name").fill("Server smoke");
 		await page.getByRole("checkbox", { name: "readable", exact: true }).check();
 		await Promise.all([

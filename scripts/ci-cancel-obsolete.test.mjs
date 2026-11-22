@@ -123,10 +123,15 @@ test("verifies old commits of closed fork PRs with missing associations without 
 
 test("E2E primary and matrix runs cannot cancel each other's complementary jobs", () => {
   const workflow = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
-  const template = workflow.match(/^ {2}group: (.+)$/m)[1];
-  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ github.event_name == 'push' && 'primary' || 'matrix' }}");
-  assert.match(workflow, /real-primary:[\s\S]*?if: github.event_name == 'push'/);
-  for (const job of ["real-matrix", "desktop-smoke"]) assert.match(workflow, new RegExp(`${job}:[\\s\\S]*?if: github.event_name != 'push'`));
+  const template = workflow.match(/^ {2}group: (.+)$/m)?.[1];
+  assert.equal(template, "${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ inputs.compatibility-only && 'release-compatibility' || github.event_name == 'push' && 'primary' || 'matrix' }}");
+  const jobIf = (name) => {
+    const block = workflow.match(new RegExp(`(?:^|\\n) {2}${name}:\\n([\\s\\S]*?)(?=\\n {2}[a-z0-9_-]+:|\\n[a-z0-9_-]+:|$)`))?.[1] ?? "";
+    return block.match(/^ {4}if: (.+)$/m)?.[1];
+  };
+  assert.equal(jobIf("real-primary"), "${{ !inputs.compatibility-only && github.event_name == 'push' }}");
+  assert.equal(jobIf("real-matrix"), "${{ inputs.compatibility-only || github.event_name != 'push' }}");
+  assert.equal(jobIf("desktop-smoke"), "${{ !inputs.compatibility-only && github.event_name != 'push' }}");
 });
 
 test("selective main pushes cannot cancel full manual CI at the same SHA", () => {

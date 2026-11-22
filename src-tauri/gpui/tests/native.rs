@@ -11,6 +11,8 @@ mod automation;
 mod credential_plugin;
 #[path = "native/default_read_retry.rs"]
 mod default_read_retry;
+#[path = "native/desktop_runtime.rs"]
+mod desktop_runtime;
 #[path = "native/detail_tabs.rs"]
 mod detail_tabs;
 #[path = "native/e2e_interlock.rs"]

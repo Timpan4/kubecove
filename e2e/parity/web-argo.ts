@@ -1,5 +1,6 @@
 import { sharedActions, type WebActions } from "./web-action";
 import { errors, type Locator } from "playwright-core";
+import { SETTINGS_STORAGE_KEY } from "../../src/lib/settings";
 
 /** The control a dialog reachability check names, as the web renders it. */
 function argoDialogControl(dialog: Locator, control: string): Locator {
@@ -79,15 +80,15 @@ export const argoActions = {
 	},
 	async ageArgoProfileId(page, step) {
 		// The next restart reads the legacy ID from persisted settings.
-		await page.evaluate((url) => {
-			const stored = JSON.parse(localStorage.getItem("kubecove-settings") ?? "null");
+		await page.evaluate(({ url, storageKey }) => {
+			const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null");
 			const profile = stored?.state?.argoProfiles?.find((saved: { endpoint?: { url?: string } }) => saved.endpoint?.url === url);
 			if (!profile) throw new Error(`No saved Argo CD profile for ${url}`);
 			const [scope, endpoint] = profile.id.split(":externalHttps:");
 			if (!endpoint) throw new Error(`Not a current external profile id: ${profile.id}`);
 			profile.id = `${scope}:${endpoint.toLowerCase()}`;
-			localStorage.setItem("kubecove-settings", JSON.stringify(stored));
-		}, step.url);
+			localStorage.setItem(storageKey, JSON.stringify(stored));
+		}, { url: step.url, storageKey: SETTINGS_STORAGE_KEY });
 	},
 	async expectNoSavedArgoProfile(page, step) {
 		await page.getByRole("tabpanel").getByRole("button", { name: /^(Manage connection|Connect Argo CD)$/ }).click();

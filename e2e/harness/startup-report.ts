@@ -44,10 +44,9 @@ export function startupReport(entries: ProfileEntry[], heapBytes: number | null,
 			commands: [...groups.values()].sort((a, b) => a.command.localeCompare(b.command)),
 		},
 		memory: {
-			host: memoryGroup("KubeCove"),
-			webview: memoryGroup("WebView"),
+			server: memoryGroup("KubeCove"),
 			otherChildren: memoryGroup("Other children"),
-			processTree: usage?.memory ?? null,
+			serverProcessTree: usage?.memory ?? null,
 			jsHeap: { bytes: heapBytes, unavailable: heapBytes === null ? "engine-does-not-expose-heap" : null },
 		},
 	};

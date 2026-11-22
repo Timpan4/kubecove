@@ -7,18 +7,24 @@ on:
   schedule:
     - cron: "17 2 * * *"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      compatibility-only:
+        description: Run the Kubernetes compatibility matrix for a tagged release.
+        type: boolean
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ github.event_name == 'push' && 'primary' || 'matrix' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}-${{ inputs.compatibility-only && 'release-compatibility' || github.event_name == 'push' && 'primary' || 'matrix' }}
   cancel-in-progress: true
 
 jobs:
   real-primary:
     name: Real Kubernetes 1.35 probation
-    if: github.event_name == 'push'
+    if: ${{ !inputs.compatibility-only && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -32,29 +38,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # The cache action never updates the package lists on a hosted runner. A list older than
-      # the archive asks for package versions the mirror has dropped, the install fails with 404,
-      # and the action then saves an empty cache.
-      - name: Refresh apt package lists
-        run: sudo apt-get update
-
-      - name: Install Tauri Linux dependencies
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: >-
-            build-essential
-            dbus
-            dbus-x11
-            gnome-keyring
-            libayatana-appindicator3-dev
-            libsecret-1-0
-            libwebkit2gtk-4.1-dev
-            librsvg2-dev
-            libssl-dev
-            patchelf
-            xvfb
-          version: e2e-tauri-linux-v3
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -63,11 +46,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      # One cache holds the desktop and the headless server build: the objects payload carries
-      # what every Cargo step compiled, whichever target directory it built in. The target
-      # payload this replaces saved nothing, because Cargo 1.100 keeps unit state under build/
-      # (ci.yml has the details). Every Linux E2E job here and in release.yml uses this key,
-      # and only the job that runs on pushes to main saves it.
+      # Linux Kind jobs share the server build cache. Only the main push job saves it.
       - name: Key the Rust cache by its inputs
         id: rust-cache
         run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
@@ -90,22 +69,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run real suite
-        run: |
-          dbus-run-session -- bash -euc '
-            set -o pipefail
-            if ! keyring_env="$(gnome-keyring-daemon --start --components=secrets)"; then
-              echo "Failed to start gnome-keyring-daemon"
-              exit 1
-            fi
-            eval "$keyring_env"
-            dbus-send --session --print-reply \
-              --dest=org.freedesktop.secrets \
-              /org/freedesktop/secrets \
-              org.freedesktop.Secret.Service.SetAlias \
-              string:default \
-              objpath:/org/freedesktop/secrets/collection/session
-            exec xvfb-run -a bun run e2e:real -- --kubernetes 1.35 --provider docker
-          '
+        run: bun run e2e:real -- --kubernetes 1.35 --provider docker
 
       - name: Upload failure artifacts
         if: failure()
@@ -119,7 +83,7 @@ jobs:
 
   real-matrix:
     name: Real Kubernetes ${{ matrix.kubernetes }}
-    if: github.event_name != 'push'
+    if: ${{ inputs.compatibility-only || github.event_name != 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -136,29 +100,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # The cache action never updates the package lists on a hosted runner. A list older than
-      # the archive asks for package versions the mirror has dropped, the install fails with 404,
-      # and the action then saves an empty cache.
-      - name: Refresh apt package lists
-        run: sudo apt-get update
-
-      - name: Install Tauri Linux dependencies
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: >-
-            build-essential
-            dbus
-            dbus-x11
-            gnome-keyring
-            libayatana-appindicator3-dev
-            libsecret-1-0
-            libwebkit2gtk-4.1-dev
-            librsvg2-dev
-            libssl-dev
-            patchelf
-            xvfb
-          version: e2e-tauri-linux-v3
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -167,11 +108,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      # One cache holds the desktop and the headless server build: the objects payload carries
-      # what every Cargo step compiled, whichever target directory it built in. The target
-      # payload this replaces saved nothing, because Cargo 1.100 keeps unit state under build/
-      # (ci.yml has the details). Every Linux E2E job here and in release.yml uses this key,
-      # and only the job that runs on pushes to main saves it.
+      # Linux Kind jobs share the server build cache. Only the main push job saves it.
       - name: Key the Rust cache by its inputs
         id: rust-cache
         run: node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'
@@ -194,22 +131,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run real suite
-        run: |
-          dbus-run-session -- bash -euc '
-            set -o pipefail
-            if ! keyring_env="$(gnome-keyring-daemon --start --components=secrets)"; then
-              echo "Failed to start gnome-keyring-daemon"
-              exit 1
-            fi
-            eval "$keyring_env"
-            dbus-send --session --print-reply \
-              --dest=org.freedesktop.secrets \
-              /org/freedesktop/secrets \
-              org.freedesktop.Secret.Service.SetAlias \
-              string:default \
-              objpath:/org/freedesktop/secrets/collection/session
-            exec xvfb-run -a bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
-          '
+        run: bun run e2e:real -- --kubernetes "${{ matrix.kubernetes }}" --provider docker
 
       - name: Upload failure artifacts
         if: failure()
@@ -223,7 +145,7 @@ jobs:
 
   desktop-smoke:
     name: Desktop smoke (${{ matrix.os }})
-    if: github.event_name != 'push'
+    if: ${{ !inputs.compatibility-only && github.event_name != 'push' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -259,11 +181,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run native desktop smoke
+      - name: Run GPUI desktop smoke
         run: bun run e2e:desktop-smoke
 
-      # The suite writes its WDIO log to a file under e2e/artifacts, so without this upload a
-      # failed run shows only "node failed (1)".
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

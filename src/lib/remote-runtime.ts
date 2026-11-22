@@ -1,15 +1,14 @@
-import { Channel, type InvokeArgs, type InvokeOptions, invoke as nativeInvoke } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
-import { getChannelId, shouldUseBrowserDevMocks, type TauriClient } from "./tauri-runtime";
-import type { JsonObject, JsonValue } from "./types";
 
-async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
-	if (shouldUseBrowserDevMocks()) {
+// The browser parity driver exercises the native client's remote settings with fixtures.
+async function invoke<T>(command: string, args?: { serverUrl: string; token: string }): Promise<T> {
+	if (process.env.KUBECOVE_PUBLIC_DEV_MOCKS === "true") {
 		const { createDevMockTauriClient } = await import("./tauri-dev-mocks");
 		return createDevMockTauriClient().invoke<T>(command, args);
 	}
-	return nativeInvoke<T>(command, args);
+	throw new Error("Desktop remote controls are only available in browser mocks.");
 }
+
 
 /** How the selected server authenticates this desktop (ADR 0031). */
 export type RemoteAuthMode = "token" | "oidc";
@@ -40,17 +39,9 @@ export interface RemoteConnectionSummary {
 	signInNotDeleted: boolean;
 }
 
-type RemoteChannel = {
-	ready: Promise<void>;
-	cleanup?: (unregister?: boolean) => void;
-};
-const channels = new Map<number, RemoteChannel>();
 let desktopRemoteSummary: RemoteConnectionSummary | null = null;
 export const desktopRemoteConnection = writable<RemoteConnectionSummary | null>(null);
 
-export function isDesktopRemoteSelected(): boolean {
-	return desktopRemoteSummary !== null;
-}
 
 /** Counts Disconnects, so a connect or session start can tell that one overlapped it. */
 let disconnects = 0;
@@ -121,7 +112,6 @@ export async function startNewDesktopRemoteSession(): Promise<RemoteConnectionSu
 export async function signOutDesktopRemote(): Promise<RemoteConnectionSummary> {
 	const summary = await invoke<RemoteConnectionSummary>("remote_sign_out");
 	setRemoteState(summary);
-	if (!summary.connected) clearRemoteChannels();
 	return summary;
 }
 
@@ -142,10 +132,8 @@ export async function initializeDesktopRemote(): Promise<RemoteConnectionSummary
 		if (started !== actionChanges) return desktopRemoteSummary;
 		if (summary) {
 			publishRemoteState(summary);
-			if (!summary.connected) clearRemoteChannels();
 		} else {
 			markRemoteDisconnected();
-			clearRemoteChannels();
 		}
 		return summary;
 	} catch (error) {
@@ -170,91 +158,15 @@ function markRemoteDisconnected(): void {
 	}
 }
 
-function clearRemoteChannels(): void {
-	for (const entry of channels.values()) entry.cleanup?.(false);
-	channels.clear();
-}
-
 function clearRemoteState(): void {
 	actionChanges += 1;
 	desktopRemoteSummary = null;
 	desktopRemoteConnection.set(null);
-	clearRemoteChannels();
-}
-
-function rewriteChannelMarkers(serialized: string, used: Set<number>): JsonValue {
-	const rewritten = serialized.replace(/"__CHANNEL__:(\d+)"/g, (_marker, id: string) => {
-		const channelId = Number(id);
-		if (!Number.isSafeInteger(channelId) || !channels.has(channelId)) {
-			throw new Error("Remote stream channel is no longer subscribed.");
-		}
-		used.add(channelId);
-		return JSON.stringify(`__KUBECOVE_CHANNEL__:${channelId}`);
-	});
-	const parsed: JsonValue = JSON.parse(rewritten);
-	return parsed;
-}
-
-function subscribe<T>(onMessage: (message: T) => void): Channel<T> {
-	const channel = new Channel<T>(onMessage);
-	const channelId = getChannelId(channel);
-	const ready = invoke("remote_subscribe_channel", { channelId, channel }).then(() => undefined);
-	// The command can reject before it gets as far as awaiting the subscription.
-	void ready.catch(() => {});
-	const originalCleanup = channel["cleanupCallback"];
-	const cleanup = (unregister = true) => {
-		if (!channels.has(channelId)) return;
-		channels.delete(channelId);
-		originalCleanup?.call(channel);
-		if (unregister) void invoke("remote_unsubscribe_channel", { channelId }).catch(() => {});
-	};
-	channel["cleanupCallback"] = cleanup;
-	channels.set(channelId, { ready, cleanup });
-	return channel;
 }
 
 const DISCONNECTED_REMOTE = "The selected remote KubeCove server is disconnected. Reconnect or explicitly disconnect to use a local cluster.";
 
-/** Refuses a command while the selected remote is disconnected, as the remote client does, so nothing falls back to this laptop. */
+/** Mirrors the native client's refusal while the selected mock remote is disconnected. */
 export function assertSelectedRemoteConnected(): void {
 	if (desktopRemoteSummary && !desktopRemoteSummary.connected) throw new Error(DISCONNECTED_REMOTE);
-}
-
-const desktopRemoteClient: TauriClient = {
-	createChannel: subscribe,
-	invoke: async <Result, Args extends object = object>(
-		command: string,
-		args?: Args,
-		_options?: InvokeOptions,
-	): Promise<Result> => {
-		if (!desktopRemoteSummary?.connected) {
-			throw new Error(DISCONNECTED_REMOTE);
-		}
-		if (command === "save_workspace_export_json" || command === "pick_workspace_import_json") {
-			if (!args) return invoke<Result>(command);
-			const localSerialized = JSON.stringify(args);
-			if (localSerialized === undefined) throw new Error("Local command arguments could not be serialized.");
-			const localArgs: JsonObject = JSON.parse(localSerialized);
-			return invoke<Result>(command, localArgs);
-		}
-		const serializedArgs = JSON.stringify(args ?? {});
-		if (serializedArgs === undefined) throw new Error("Remote command arguments could not be serialized.");
-		const used = new Set<number>();
-		const remoteArgs = rewriteChannelMarkers(serializedArgs, used);
-		await Promise.all([...used].map((id) => channels.get(id)?.ready));
-		try {
-			return await invoke<Result>("remote_invoke", { command, args: remoteArgs });
-		} catch (error) {
-			try {
-				await initializeDesktopRemote();
-			} catch {
-				// A failed status check preserves the selected host and stream mappings.
-			}
-			throw error;
-		}
-	},
-};
-
-export function getDesktopRemoteTauriClient(): TauriClient {
-	return desktopRemoteClient;
 }

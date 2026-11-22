@@ -190,7 +190,7 @@ impl UsageProcessGroup {
 
     fn description(self) -> &'static str {
         match self {
-            Self::App => "Rust/Tauri host process",
+            Self::App => "Rust host process",
             Self::WebView => "Embedded WebView browser runtime",
             Self::OtherChildren => "Non-WebView child processes",
         }

@@ -9,14 +9,14 @@ Run before PR or completion.
 - [ ] Frontend behavior touched: nearest `bun test` passes.
 - [ ] Backend touched: `bun run rust:check` passes.
 - [ ] Backend behavior touched: nearest `bun run rust:test` passes.
-- [ ] Tauri integration touched: app starts and affected path works.
+- [ ] Host integration touched: the affected client starts and the changed path works.
 - [ ] Release flow touched: `bun run release:dry-run` passes.
 
 ## Organization and Hygiene
 
 - [ ] Feature-specific frontend code lives in `src/features/<area>/`; generic UI or shared logic only in `src/components/` or `src/lib/`.
 - [ ] New top-level directories are documented in [code-organization.md](code-organization.md).
-- [ ] New Tauri commands are declared once in `command_contract!` and have typed frontend wrappers; components do not call raw `invoke()`.
+- [ ] New server commands are declared once in `command_contract!` and have typed frontend wrappers. Components use the wrappers.
 - [ ] Touched files meet size caps; oversized files have split follow-up.
 - [ ] No superseded files, reference leftovers, commented-out blocks, or one-import wrappers remain.
 

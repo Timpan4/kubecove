@@ -25,7 +25,8 @@ function isRecord<Value>(value: Value): value is Value & JsonObject {
 }
 
 function isString<Value>(value: Value): value is Value & string {
-	return String(value) === value;
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Error details may be untrusted JSON without a callable toString.
+	return typeof value === "string";
 }
 
 export function messageFromError(cause: unknown): string {

@@ -1,4 +1,4 @@
-# A separate workspace prevents desktop features from unifying into server builds.
+# The server resolves its dependencies and build profiles independently.
 [workspace]
 resolver = "2"
 

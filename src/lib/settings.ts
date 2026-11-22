@@ -1,5 +1,4 @@
 import { persist } from "zustand/middleware";
-import { SETTINGS_STORAGE_KEY } from "./storage-keys";
 import { createStore } from "zustand/vanilla";
 import {
 	type ArgoConnectionPreference,
@@ -32,6 +31,7 @@ export type SavedArgoProfile = {
 	rememberCredential: boolean;
 };
 export const DEFAULT_KUBECONFIG_ENV_VAR = "KUBECONFIG";
+export const SETTINGS_STORAGE_KEY = "kubecove-settings";
 const DEFAULT_KUBECONFIG_SOURCE_KEY = "kubeconfigSource=default";
 
 export interface SettingsState {

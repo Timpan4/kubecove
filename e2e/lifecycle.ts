@@ -7,14 +7,14 @@ import { arch, platform, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 import type { ViteDevServer } from "vite";
-import { assertDesktopProfileIdle } from "./harness/desktop-profile";
+import { createBrowserBuild, createWdioRunner, runDevBrowser, runServerWdio, writeSmokeConfig } from "./harness/browser-run";
 import { startMemoryFixture } from "./harness/memory-fixture";
 import { downloadAsset, sha256, verifyAsset } from "./harness/assets";
 import { kindConfig, kindDeleteArgs } from "./harness/cluster";
 import { safeDiagnosticCommands, safeDiagnosticText } from "./harness/diagnostics";
 import { gitSeedIdentity, prepareGitSeed } from "./harness/git-seed";
 import { gitRepositoryUrl, platformApplicationNames, tenantApplicationNames } from "./harness/lab";
-import { captureProcessOutput, cleanEnvironment, type InterruptSignal, processOutput, trackChild } from "./harness/lifecycle-processes";
+import { captureProcessOutput, cleanEnvironment, type InterruptSignal, processOutput, rejectFailedPhases, trackChild } from "./harness/lifecycle-processes";
 import { assertOwned, assertOwnedOnDisk, assertOwnedPathOnDisk, expectedCluster, type Ownership, ownershipFromDisk, type Provider } from "./harness/ownership";
 import { chartPins, fixturePaths, gitDaemonPins, validateImmutablePins } from "./harness/platform";
 
@@ -121,20 +121,8 @@ async function runCommand(cmd: string, commandArgs: string[], extra: Record<stri
 async function attempt(cmd: string, commandArgs: string[], extra: Record<string, string | undefined> = {}) {
 	try { return await execute(cmd, commandArgs, extra, true); } catch { cancellation.signal.throwIfAborted(); return undefined; }
 }
-async function runWdio(config: string, extra: Record<string, string | undefined>, logFile?: string) {
-	const cli = join(root, "node_modules", "@wdio", "cli", "bin", "wdio.js");
-	const spec = option("--spec");
-	const command = [cli, "run", config, ...(spec ? ["--spec", spec] : [])];
-	const version = await execute("node", ["--version"], {}, true);
-	const match = /^v(\d+)\.(\d+)\.(\d+)/.exec(version.stdout.trim());
-	if (!match) throw new Error(`could not parse Node version ${version.stdout.trim()}`);
-	const [major, minor] = match.slice(1, 3).map(Number);
-	if ((major === 18 && minor >= 20) || (major > 18 && major <= 24)) return execute("node", command, extra, false, logFile);
-	if (major < 18 || (major === 18 && minor < 20)) throw new Error(`WDIO requires Node 18.20-24; found ${version.stdout.trim()}`);
-	const fnm = Bun.which("fnm");
-	if (!fnm) throw new Error(`WDIO requires Node 18-24; found ${version.stdout.trim()} and no fnm fallback`);
-	return execute(fnm, ["exec", "--using", "24", "node", ...command], extra, false, logFile);
-}
+const runWdio = createWdioRunner(root, option("--spec"), execute);
+const browserBuild = createBrowserBuild(stateDir, execute);
 async function verified(name: string, url: string, expected: string) {
 	cancellation.signal.throwIfAborted();
 	const target = join(stateDir, "tools", name);
@@ -510,52 +498,20 @@ async function fast() {
 		throw error;
 	}
 }
-function rejectFailedPhases(results: readonly PromiseSettledResult<unknown>[], names: readonly string[]): void {
-	const failures = results.flatMap((result, index) => result.status === "rejected" ? [new Error(`${names[index]}: ${String(result.reason)}`, { cause: result.reason })] : []);
-	if (failures.length) throw new AggregateError(failures, failures.map(({ message }) => message).join("\n"));
-}
-async function buildForWdio(artifacts: string) {
-	const targetDir = profiling ? join(stateDir, "profile-target") : join(root, "src-tauri", "target");
-	const buildEnv = {
-		KUBECOVE_E2E: "1", KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_KUBECONFIG: undefined,
-		KUBECOVE_DATA_DIR: undefined, KUBECOVE_E2E_CLUSTER: undefined, KUBECOVE_E2E_KUBECTL: undefined,
-	};
-	const profileEnv = profiling ? { CARGO_TARGET_DIR: targetDir, KUBECOVE_PUBLIC_PROFILE: "true", KUBECOVE_PROFILE: "1" } : {};
-	const headlessEnv = !profiling && os !== "windows" ? { KUBECOVE_HEADLESS_BINARY: join(root, "src-tauri/server/target/debug/kubecove-server") } : {};
-	if (!profiling && os !== "windows") {
-		await execute("bun", ["--bun", "vite", "build"], { KUBECOVE_PUBLIC_RUNTIME: "web" });
-		await execute("cargo", ["build", "--locked", "--manifest-path", "src-tauri/server/Cargo.toml"]);
-	}
-	const env = { ...buildEnv, ...profileEnv, ...headlessEnv };
-	await execute("bun", ["run", "tauri", "build", ...(profiling ? [] : ["--debug"]), "--no-bundle", "--config", "src-tauri/tauri.e2e.conf.json", "--features", "e2e"], env, false, profiling ? undefined : join(artifacts, "build.log"));
-	const built = { ...env, KUBECOVE_E2E_BINARY: join(targetDir, profiling ? "release" : "debug", `kubecove${suffix}`) };
-	if (profiling) {
-		await assertDesktopProfileIdle();
-		await mkdir(artifacts, { recursive: true });
-		await writeFile(join(artifacts, "frontend-bundle.json"), await readFile(join(stateDir, "reports", "frontend-bundle.json")));
-		const sha = (await execute("git", ["rev-parse", "HEAD"], {}, true)).stdout.trim();
-		const dirty = (await execute("git", ["status", "--porcelain"], {}, true)).stdout.trim();
-		return { ...built, KUBECOVE_PROFILE_SHA: /^[a-f0-9]{40,64}$/.test(sha) ? sha : undefined, KUBECOVE_PROFILE_DIRTY: dirty ? "true" : "false" };
-	}
-	return built;
-}
-async function driveWdio(build: Awaited<ReturnType<typeof buildForWdio>>, env: Record<string, string | undefined>, artifacts: string, smoke = false) {
-	await runWdio("e2e/wdio.real.conf.ts", { ...build, ...env, KUBECOVE_E2E_SMOKE: smoke ? "1" : undefined }, profiling ? undefined : join(artifacts, "wdio.log"));
-}
+
 async function real() {
 	if (keep && process.env.CI) throw new Error("--keep is forbidden in CI");
 	const artifacts = join(root, "e2e", "artifacts", runId);
 	// Both branches must finish before WDIO starts or teardown can touch the lab.
-	const [lab, build] = await Promise.allSettled([create("run"), buildForWdio(artifacts)]);
+	const [lab, build] = await Promise.allSettled([create("run"), browserBuild.build(artifacts, profiling)]);
 	try {
 		rejectFailedPhases([lab, build], ["Kind lab", "Application build"]);
 		if (lab.status !== "fulfilled" || build.status !== "fulfilled") throw new Error("Real E2E prerequisites did not finish");
 		const record = lab.value;
 		const env = {
-			KUBECOVE_KUBECONFIG: record.kubeconfig, KUBECOVE_DATA_DIR: record.dataDir,
 			KUBECOVE_E2E_CLUSTER: record.cluster, KUBECOVE_E2E_KUBECTL: (await tools()).kubectl,
 		};
-		await driveWdio(build.value, env, artifacts);
+		await runServerWdio(build.value, record.dataDir, record.kubeconfig, env, artifacts, cancellation.signal, runWdio);
 	} finally {
 		if (current) {
 			if (!interruptedBy) await diagnostics(current).catch((failure) => console.error("diagnostics failed", failure));
@@ -565,9 +521,57 @@ async function real() {
 		}
 	}
 }
-async function desktopSmoke() { if (profiling) await assertDesktopProfileIdle(); const dir = join(stateDir, "desktop-smoke", runId); const cluster = `kubecove-e2e-smoke-${runId}`; const kubeconfig = join(dir, "kubeconfig"); const dataDir = join(dir, "data"); const artifacts = join(root, "e2e", "artifacts", `desktop-${runId}`); if (profiling && (existsSync(dir) || existsSync(artifacts))) throw new Error("Profile run already exists; use a new run ID"); let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined; try { await mkdir(dataDir, { recursive: true }); fixture = memoryFixture === "normal" || memoryFixture === "large" ? await startMemoryFixture(memoryFixture, dir) : undefined; const config = { apiVersion: "v1", kind: "Config", clusters: [{ name: cluster, cluster: fixture ? { server: fixture.url, "certificate-authority-data": fixture.authority } : { server: "https://127.0.0.1:65535" } }], contexts: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, context: { cluster, user: `${cluster}-${role}` } })), "current-context": `${cluster}-admin`, users: ["admin", "restricted"].map((role) => ({ name: `${cluster}-${role}`, user: { token: "redacted-smoke-value" } })) }; await writeFile(kubeconfig, stringify(config)); const env = { KUBECOVE_E2E: "1", KUBECOVE_KUBECONFIG: kubeconfig, KUBECOVE_DATA_DIR: dataDir, KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_MEMORY_FIXTURE: memoryFixture, KUBECOVE_MEMORY_FIXTURE_ROWS: fixture ? String(fixture.rows) : undefined }; await driveWdio(await buildForWdio(artifacts), env, artifacts, true); } finally { await stoppingChildren; fixture?.stop(); await rm(dir, { recursive: true, force: true }); } }
-async function dev() { try { if ((await fetch("http://127.0.0.1:1430")).ok) throw new Error("an existing KubeCove dev server is running; dev:kind will not restart it"); } catch (error) { if (error instanceof Error && error.message.startsWith("an existing")) throw error; } const record = await create("dev"); await rm(record.dataDir, { recursive: true, force: true }); await mkdir(record.dataDir, { recursive: true }); try { await execute("bun", ["run", "tauri", "dev", "--config", "src-tauri/tauri.dev-kind.conf.json"], { KUBECONFIG: record.kubeconfig, KUBECOVE_DEV_KIND: "1", KUBECOVE_DATA_DIR: record.dataDir }); } finally { await stoppingChildren; await rm(record.dataDir, { recursive: true, force: true }); current = undefined; } }
-
+async function desktopSmoke() {
+	const dir = join(stateDir, "desktop-smoke", runId);
+	const artifacts = join(root, "e2e/artifacts", `desktop-${runId}`);
+	const cluster = `kubecove-e2e-smoke-${runId}`;
+	await mkdir(dirname(dir), { recursive: true });
+	await mkdir(dir, { mode: 0o700 });
+	let fixture: Awaited<ReturnType<typeof startMemoryFixture>> | undefined;
+	try {
+		await mkdir(dirname(artifacts), { recursive: true });
+		await mkdir(artifacts);
+		const dataDir = join(dir, "data");
+		await mkdir(dataDir, { mode: 0o700 });
+		if (memoryFixture === "normal" || memoryFixture === "large") fixture = await startMemoryFixture(memoryFixture, dir, { signal: cancellation.signal });
+		const kubeconfig = await writeSmokeConfig(dir, cluster, fixture);
+		const env = { KUBECOVE_E2E_CLUSTER: cluster, KUBECOVE_E2E_ARTIFACTS: artifacts, KUBECOVE_DATA_DIR: dataDir };
+		if (profiling) {
+			const binary = await browserBuild.build(artifacts, true);
+			const sha = (await execute("git", ["rev-parse", "HEAD"], {}, true)).stdout.trim();
+			const dirty = (await execute("git", ["status", "--porcelain"], {}, true)).stdout.trim();
+			await runServerWdio(binary, dataDir, kubeconfig, { ...env, KUBECOVE_PROFILE: "1", KUBECOVE_PROFILE_SHA: sha,
+				KUBECOVE_PROFILE_DIRTY: String(Boolean(dirty)), KUBECOVE_MEMORY_FIXTURE: memoryFixture,
+				KUBECOVE_MEMORY_FIXTURE_ROWS: fixture && String(fixture.rows) }, artifacts, cancellation.signal, runWdio);
+		} else {
+			const binary = os === "windows" ? undefined : await browserBuild.build(artifacts, false);
+			const target = join(root, "src-tauri/gpui/target");
+			const buildEnv = { CARGO_TARGET_DIR: target, CARGO_BUILD_BUILD_DIR: join(root, "src-tauri/gpui/build"), RUSTC_WRAPPER: "" };
+			const cargo = ["cargo", "build", "--locked", "--manifest-path", "src-tauri/gpui/Cargo.toml", "--features", "e2e"];
+			if (os === "linux") {
+				await mkdir(target, { recursive: true });
+				await execute("flock", [join(target, "heavy.lock"), "nice", "-n", "10", ...cargo], buildEnv);
+			} else await execute(cargo[0], cargo.slice(1), buildEnv);
+			await execute("bun", ["e2e/gpui-smoke.ts"], { ...env, KUBECOVE_SERVER_BINARY: binary,
+				KUBECOVE_GPUI_BINARY: join(target, "debug", `kubecove-gpui${suffix}`), KUBECOVE_KUBECONFIG: kubeconfig,
+				KUBECOVE_E2E: "1", KUBECOVE_AUTOMATION_PORT: "0", HTTPS_PROXY: undefined, https_proxy: undefined });
+		}
+	} finally {
+		await stoppingChildren;
+		fixture?.stop();
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+async function dev() {
+	try {
+		const record = await create("dev");
+		const binary = await browserBuild.build(join(root, "e2e/artifacts", `dev-${runId}`), profiling);
+		await runDevBrowser(binary, join(devDir, "dev-sessions"), record.kubeconfig, cancellation.signal);
+	} finally {
+		await stoppingChildren;
+		current = undefined;
+	}
+}
 const onInterrupt = () => interrupt("SIGINT");
 const onTerminate = () => interrupt("SIGTERM");
 if (["fast", "run", "dev-up", "desktop-smoke", "desktop-profile"].includes(action)) {
@@ -587,10 +591,8 @@ try {
 	console.error(error);
 } finally {
 	await stoppingChildren;
-	if (interruptedBy) {
-		process.exitCode = interruptedBy === "SIGINT" ? 130 : 143;
-		if (current?.kind === "dev") await rm(current.dataDir, { recursive: true, force: true });
-	}
+	if (interruptedBy) process.exitCode = interruptedBy === "SIGINT" ? 130 : 143;
 	process.off("SIGINT", onInterrupt);
 	process.off("SIGTERM", onTerminate);
+	await browserBuild.cleanup();
 }

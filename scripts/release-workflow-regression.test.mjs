@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import { test } from "node:test";
@@ -11,6 +11,7 @@ import { buildGpuiManifest, gpuiUpdaterAssets, verifyUpdaterSignature } from "./
 const workflow = parse(readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8"));
 const packaging = parse(readFileSync(new URL("../.github/workflows/server-packaging.yml", import.meta.url), "utf8"));
 const gpuiRelease = parse(readFileSync(new URL("../.github/workflows/gpui-release.yml", import.meta.url), "utf8"));
+const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
 const targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"];
 
 // The nested builders need an executable shim on PATH and unchanged artifact locations.
@@ -62,12 +63,10 @@ function step(job, name) {
   return found;
 }
 
-test("release preparation commits desktop and server version metadata", () => {
+test("release preparation commits frontend, backend, GPUI and server version metadata", () => {
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
   const commands = step(job("prepare", preparation), "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
-  assert.ok(!staged.includes("src-tauri/tauri.conf.json"));
-  assert.match(commands, /if \[\[ -f src-tauri\/tauri\.conf\.json \]\]; then git add src-tauri\/tauri\.conf\.json; fi/);
   for (const path of ["package.json", "src-tauri/Cargo.toml",
     "src-tauri/Cargo.lock", "src-tauri/server/Cargo.toml", "src-tauri/server/Cargo.lock",
     "src-tauri/gpui/Cargo.toml", "src-tauri/gpui/Cargo.lock", "CHANGELOG.md"]) {
@@ -310,21 +309,21 @@ test("server build reuses pinned actions already used by release jobs", () => {
 // Failure modes of the E2E cache: a job that differs from the saver in key, cache settings or
 // compiler flags restores nothing it can use; a second cache setup in one job moves the
 // builds into its own store, so the first restores for nothing; a second saver of the key
-// fails its job; and Cargo started by Bun or Tauri bypasses the cache unless the shim is on
+// fails its job; and Cargo started by Bun bypasses the cache unless the shim is on
 // PATH before the suite runs.
 test("release artifacts use local mbx while Linux E2E jobs share one objects cache", () => {
-  const e2e = parse(readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8"));
-  for (const build of [job("build"), job("server-build", packaging), job("bundle", gpuiRelease)]) {
+  for (const build of [job("server-build", packaging), job("bundle", gpuiRelease)]) {
     const setup = build.steps.find(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
     assert.equal(setup?.with.backend, "local");
     assert.doesNotMatch(JSON.stringify(build), /swatinem\/rust-cache/);
     const activation = step(build, "Activate Cargo caching");
     assert.equal(activation.run, "node scripts/ci-mbx-cargo.mjs");
-    const consumer = build.steps.find(({ uses, run }) => uses?.startsWith("tauri-apps/tauri-action@")
-      || run?.includes("for variant in full slim") || run?.includes("cargo build --locked"));
+    const consumer = build.steps.find(({ run }) => run?.includes("for variant in full slim") || run?.includes("cargo build --locked"));
     assert.ok(build.steps.indexOf(activation) < build.steps.indexOf(consumer));
   }
-  for (const check of [job("e2e"), e2e.jobs["real-primary"], e2e.jobs["real-matrix"]]) {
+  for (const check of [e2e.jobs["real-primary"], e2e.jobs["real-matrix"]]) {
+    assert.match(step(check, "Run real suite").run, /^bun run e2e:real -- --kubernetes /);
+    assert.doesNotMatch(JSON.stringify(check.steps), /webkit2gtk|gnome-keyring|xvfb-run/);
     const key = check.steps.find(({ id }) => id === "rust-cache");
     assert.equal(key?.run, "node scripts/ci-rust-cache-key.mjs e2e .github/workflows/e2e.yml e2e/lifecycle.ts src-tauri ':!src-tauri/gpui'");
     const setups = check.steps.filter(({ uses }) => uses?.startsWith("jdx/mr-boxington-action@"));
@@ -347,9 +346,9 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
     assert.doesNotMatch(JSON.stringify(check), /swatinem\/rust-cache/);
   }
   // The action saves on a push to the default branch only, and of these jobs one runs there.
-  assert.equal(e2e.jobs["real-primary"].if, "github.event_name == 'push'");
+  assert.equal(e2e.jobs["real-primary"].if, "${{ !inputs.compatibility-only && github.event_name == 'push' }}");
   assert.equal(e2e.jobs["real-primary"].strategy, undefined);
-  assert.equal(e2e.jobs["real-matrix"].if, "github.event_name != 'push'");
+  assert.equal(e2e.jobs["real-matrix"].if, "${{ inputs.compatibility-only || github.event_name != 'push' }}");
   assert.deepEqual(e2e.on.push, { branches: ["main"] });
   assert.deepEqual(Object.keys(workflow.on.push), ["tags"]);
   // Desktop smoke builds without a cache (e2e.yml has the reason), so it needs no shim.
@@ -359,18 +358,11 @@ test("release artifacts use local mbx while Linux E2E jobs share one objects cac
 test("publishing can read build artifacts and waits for all release gates", () => {
   const publish = job("publish");
   assert.equal(publish.permissions.contents, "write");
-  assert.deepEqual(publish.needs, ["prepare", "metadata", "verify-tauri", "publish-containers"]);
-  assert.deepEqual(job("verify").needs, ["metadata", "frontend", "server-packaging"]);
+  assert.deepEqual(publish.needs, ["prepare", "metadata", "publish-containers"]);
+  assert.deepEqual(job("verify").needs, ["metadata", "frontend", "backend-rust", "kubernetes-compatibility", "server-packaging"]);
   assert.deepEqual(job("draft").needs, ["prepare", "metadata", "verify"]);
-  assert.equal(job("verify-tauri").needs, "build");
-  assert.equal(job("verify-tauri").permissions?.contents, "write", "The draft release requires contents: write");
-  assert.deepEqual(job("build").needs, ["metadata", "rust", "e2e", "draft"]);
-  assert.equal(step(job("build"), "Build and upload release assets").with.releaseId, "${{ needs.draft.outputs.release-id }}");
-  for (const name of ["rust", "e2e", "build"]) {
-    assert.match(job(name).if, /needs\.metadata\.outputs\.tauri == 'true'/);
-  }
   const stage = job("stage-release-assets");
-  assert.deepEqual(stage.needs, ["draft", "gpui", "metadata", "verify-tauri"]);
+  assert.deepEqual(stage.needs, ["draft", "gpui", "metadata"]);
   assert.equal(stage.permissions.actions, "read");
   assert.equal(stage.permissions.contents, "write");
   assert.match(step(stage, "Download release build artifacts").run, /gh run download/);
@@ -392,58 +384,61 @@ test("publishing can read build artifacts and waits for all release gates", () =
   assert.ok(signed.steps.indexOf(step(signed, "Verify signatures and write latest-gpui.json")) < signed.steps.indexOf(artifact));
 });
 
-// These conditions use the same boolean operators as JavaScript. Convert job IDs to property lookups.
-function evaluatesJobIf(name, needs, dryRun = false) {
-  const expression = job(name).if.match(/^\$\{\{\s*([\s\S]+?)\s*\}\}$/)[1]
-    .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
-    .replaceAll("inputs.gpui-dry-run", 'inputs["gpui-dry-run"]');
-  return runInNewContext(expression, {
-    needs,
-    inputs: { "gpui-dry-run": dryRun },
-    always: () => true,
-    cancelled: () => false,
-  });
+function jobGuards(name) {
+  const expression = job(name).if?.match(/^\$\{\{\s*([\s\S]+?)\s*\}\}$/);
+  assert.ok(expression, `${name} must define a job-level condition`);
+  return expression[1].split(/\s+&&\s+/).map((guard) => guard.trim()).toSorted();
 }
 
-test("legacy Tauri releases require successful feed verification before publication", () => {
-  const success = { result: "success" };
-  const metadata = { ...success, outputs: { tauri: "true" } };
-  for (const result of ["success", "failure", "skipped", "cancelled"]) {
-    const legacy = { metadata, "verify-tauri": { result } };
-    const expected = result === "success";
-    assert.equal(evaluatesJobIf("stage-release-assets", { ...legacy, draft: success, gpui: success }), expected, result);
-    assert.equal(evaluatesJobIf("publish", { ...legacy, prepare: success, "publish-containers": success }), expected, result);
+const publishingJobs = ["stage-release-assets", "publish-containers", "publish"];
+
+test("releases publish only after GPUI staging and container publication succeed", () => {
+  assert.equal(job("publish-containers").needs, "stage-release-assets");
+  for (const name of publishingJobs) {
+    const dependencies = [job(name).needs].flat();
+    assert.deepEqual(jobGuards(name), [
+      "!cancelled()",
+      "!inputs.gpui-dry-run",
+      ...dependencies.map((dependency) => `needs.${dependency}.result == 'success'`),
+    ].toSorted(), name);
   }
 });
 
-test("GPUI-only releases publish with a skipped legacy feed and verified assets", () => {
-  // Without a status function, Actions applies an implicit success() check to needs.
-  for (const name of ["stage-release-assets", "publish-containers", "publish"]) {
-    assert.match(job(name).if, /^\$\{\{ !cancelled\(\) && /);
+test("release drafts wait for backend checks and every Kubernetes compatibility leg", () => {
+  const backend = job("backend-rust");
+  const compatibility = job("kubernetes-compatibility");
+  assert.equal(step(backend, "Setup Rust").with.components, "clippy");
+  assert.match(step(backend, "Test shared backend").run, /cargo test --locked --workspace --manifest-path src-tauri\/Cargo\.toml --features desktop-release/);
+  assert.match(step(backend, "Lint shared backend").run, /cargo clippy --locked --workspace --manifest-path src-tauri\/Cargo\.toml .* -D warnings/);
+  assert.equal(compatibility.uses, "./.github/workflows/e2e.yml");
+  assert.equal(compatibility.with["compatibility-only"], true);
+  assert.ok(e2e.on.workflow_call.inputs["compatibility-only"].required);
+  assert.deepEqual(job("real-matrix", e2e).strategy.matrix.kubernetes, ["1.34", "1.35", "1.36", "1.37"]);
+  const verify = job("verify");
+  const gate = step(verify, "Verify required jobs");
+  const allSuccess = Object.fromEntries(Object.entries(gate.env).map(([key, expression]) => {
+    const dependency = expression.match(/needs\.([\w-]+)\.result/)[1];
+    assert.ok(verify.needs.includes(dependency));
+    return [key, "success"];
+  }));
+  assert.equal(gate.env.BACKEND_RUST_RESULT, "${{ needs.backend-rust.result }}");
+  assert.equal(gate.env.KUBERNETES_COMPATIBILITY_RESULT, "${{ needs.kubernetes-compatibility.result }}");
+  const status = (env) => spawnSync("bash", ["-c", gate.run], { env: { ...process.env, ...env } }).status;
+  assert.equal(status(allSuccess), 0);
+  for (const key of Object.keys(allSuccess)) {
+    assert.equal(status({ ...allSuccess, [key]: "failure" }), 1, key);
   }
-  const success = { result: "success" };
-  const failure = { result: "failure" };
-  const gpuiOnly = { metadata: { ...success, outputs: { tauri: "" } }, "verify-tauri": { result: "skipped" } };
-  const stage = { ...gpuiOnly, draft: success, gpui: success };
-  assert.equal(evaluatesJobIf("stage-release-assets", stage), true);
-  assert.equal(evaluatesJobIf("stage-release-assets", { ...stage, gpui: failure }), false);
-  assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": success }), true);
-  for (const result of ["failure", "skipped", "cancelled"]) {
-    assert.equal(evaluatesJobIf("publish-containers", { "stage-release-assets": { result } }), false, result);
-  }
-  const publish = { ...gpuiOnly, prepare: success, "publish-containers": success };
-  assert.equal(evaluatesJobIf("publish", publish), true);
-  assert.equal(evaluatesJobIf("publish", { ...publish, "publish-containers": failure }), false);
 });
 
 // A dry run starts from a branch, so any job that reads `github.ref_name` as a release tag must not run.
 test("a GPUI dry run starts only the GPUI job and can never write a release", () => {
   const input = workflow.on.workflow_dispatch.inputs["gpui-dry-run"];
   assert.deepEqual({ type: input.type, default: input.default }, { type: "boolean", default: false });
-  const others = Object.keys(workflow.jobs).filter((name) => name !== "gpui");
+  const others = Object.keys(workflow.jobs).filter((name) => name !== "gpui" && !publishingJobs.includes(name));
   assert.ok(others.length > 0);
   for (const name of others) {
-    assert.equal(evaluatesJobIf(name, {}, true), false, `${name} must skip a dry run`);
+    const guards = name === "verify" ? ["!inputs.gpui-dry-run", "always()"] : ["!inputs.gpui-dry-run"];
+    assert.deepEqual(jobGuards(name), guards, `${name} must skip a dry run`);
   }
   const gpui = job("gpui");
   assert.equal(gpui.uses, "./.github/workflows/gpui-release.yml");
@@ -482,6 +477,36 @@ test("GPUI bundles build on all three platforms and only the signing job holds t
       assert.match(uses, /@[a-f0-9]{40}$/, `${uses} must be pinned`);
     }
   }
+});
+
+test("GPUI packages check out and bundle kubeconform for each installer target", () => {
+  const manifest = readFileSync(new URL("../src-tauri/gpui/Cargo.toml", import.meta.url), "utf8");
+  assert.match(manifest, /\[package\.metadata\.packager\][^[]*externalBinaries = \["\.\.\/bin\/kubeconform"\]/);
+  const bundle = job("bundle", gpuiRelease);
+  const sidecar = step(bundle, "Verify the target kubeconform sidecar");
+  const packaging = step(bundle, "Bundle GPUI client");
+  assert.ok(bundle.steps.indexOf(sidecar) < bundle.steps.indexOf(packaging));
+  assert.equal(sidecar.env.BUNDLE_TARGET, packaging.env.BUNDLE_TARGET);
+  assert.match(sidecar.run, /sidecar="src-tauri\/bin\/kubeconform-\$BUNDLE_TARGET"/);
+  assert.match(sidecar.run, /"\$sidecar" -v/);
+  for (const { "bundle-target": target } of bundle.strategy.matrix.include) {
+    const ending = target.includes("windows") ? ".exe" : "";
+    const file = new URL(`../src-tauri/bin/kubeconform-${target}${ending}`, import.meta.url);
+    assert.ok(statSync(file).size > 0, target);
+  }
+  assert.match(packaging.run, /--appimage-extract usr\/bin\/kubeconform/);
+  assert.match(packaging.run, /Contents\/MacOS\/kubeconform" -v/);
+  const windowsInstall = step(bundle, "Verify the installed Windows kubeconform sidecar");
+  assert.ok(bundle.steps.indexOf(packaging) < bundle.steps.indexOf(windowsInstall));
+  assert.ok(bundle.steps.indexOf(windowsInstall) < bundle.steps.indexOf(step(bundle, "Upload unsigned GPUI bundle")));
+  assert.equal(windowsInstall.if, "runner.os == 'Windows'");
+  assert.equal(windowsInstall.shell, "pwsh");
+  assert.match(windowsInstall.run, /Start-Process .* -ArgumentList "\/S \/D=\$installDir" -Wait -PassThru/);
+  assert.match(windowsInstall.run, /desktop-release-channel\.mjs \$version prefix/);
+  assert.match(windowsInstall.run, /gpui-updater\/\$\{prefix\}_\$\{version\}_x64-setup\.exe/);
+  assert.match(windowsInstall.run, /Test-Path -LiteralPath \(Join-Path \$installDir "kubecove-gpui\.exe"\) -PathType Leaf/);
+  assert.match(windowsInstall.run, /\$sidecar = Join-Path \$installDir "kubeconform\.exe"/);
+  assert.match(windowsInstall.run, /& \$sidecar -v/);
 });
 
 // Produced by `tauri signer sign --app-version 0.15.1` with a throwaway key generated for these
@@ -545,25 +570,25 @@ test("only the consolidated product gets new manifests after 0.15.1", async () =
 test("final verification rejects every missing archive, checksum, installer or updater platform", () => {
   const verification = step(job("stage-release-assets"), "Verify final updater platform coverage");
   const code = verification.run.match(/node <<'EOF'\n([\s\S]+)\nEOF/)[1];
-  const version = "0.15.1";
+  const version = "0.16.0";
   const assets = [
     ...targets.flatMap((target) => ["", "-slim"].flatMap((suffix) => {
       const archive = `kubecove-server_${version}_${target}${suffix}.tar.gz`;
       return [archive, `${archive}.sha256`];
     })),
     ...[...new Set(Object.values(gpuiUpdaterAssets(version)))].flatMap((bundle) => [bundle, `${bundle}.sig`]),
-    `kubecove-gpui_${version}_aarch64.dmg`,
-    "latest-gpui.json",
+    `kubecove_${version}_aarch64.dmg`,
+    "latest-desktop.json",
   ];
   const gpuiPlatforms = Object.fromEntries(Object.entries(gpuiUpdaterAssets(version)).map(([key, name]) =>
     [key, { signature: "sig", url: `https://github.com/owner/repo/releases/download/app-v${version}/${name}` }]));
   const validate = (names, gpui = { version, platforms: gpuiPlatforms }) => runInNewContext(code, {
-    process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version, MANIFEST: "latest-gpui.json", PREFIX: "kubecove-gpui" } },
+    process: { env: { UPDATER_CHECK_DIR: "/check", RELEASE_VERSION: version, MANIFEST: "latest-desktop.json", PREFIX: "kubecove" } },
     require: (name) => {
       assert.equal(name, "node:fs");
       return { readFileSync: (path) => {
         if (path === "/check/assets.txt") return names.join("\n");
-        assert.equal(path, "/check/latest-gpui.json");
+        assert.equal(path, "/check/latest-desktop.json");
         return JSON.stringify(gpui);
       } };
     },

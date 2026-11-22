@@ -18,7 +18,7 @@ fn reads_published_windows_and_apple_silicon_assets() {
 }
 
 #[tokio::test]
-async fn both_transition_clients_offer_the_desktop_page_only_for_the_new_product() {
+async fn consolidated_feed_offers_the_desktop_page_only_for_the_new_product() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let build =
         json!({"signature":"signed", "url":"https://example.test/kubecove_0.16.0_x86_64.AppImage"});

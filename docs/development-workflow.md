@@ -6,7 +6,7 @@ Use Bun for frontend dependencies and scripts, at the version CI pins. Dependenc
 
 ```sh
 bun install
-bun run tauri dev
+bun run dev
 bun run typecheck
 bun test
 bun run docs:check
@@ -25,16 +25,9 @@ After upgrading either checker, run `bun run test:svelte` plus the project TypeS
 
 ## Linux native dependencies
 
-Debian/Ubuntu native builds and headless desktop checks use the same packages as
-Linux CI:
-
-```sh
-sudo apt-get update
-sudo apt-get install -y build-essential pkg-config dbus dbus-x11 gnome-keyring libayatana-appindicator3-dev libsecret-1-0 libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev patchelf xvfb xauth
-```
-
-For example, missing `glib-2.0.pc` is a system dependency failure, not a Rust
-source error. Verify with `pkg-config --modversion glib-2.0 gtk+-3.0 webkit2gtk-4.1`.
+See the [GPUI development prerequisites](../src-tauri/gpui/README.md) and the
+[Linux CI dependency setup](../.github/actions/setup-linux-native-deps/action.yml)
+for native builds. The Svelte development server needs Bun and a browser.
 
 On small Linux VMs, Oxlint's JavaScript-plugin allocator can fail to reserve its
 large aligned block ([upstream issue #20331](https://github.com/oxc-project/oxc/issues/20331)).
@@ -51,7 +44,7 @@ bun run lint:anti-slop
 
 ## Rust workspace checks
 
-The desktop manifest is a workspace containing private backend crates under `src-tauri/crates/`. Use `bun run rust:test`, `bun run rust:check` and `bun run rust:lint` for workspace-wide checks, including tests moved into dependency crates. Direct equivalents are:
+The shared Rust workspace contains private backend crates under `src-tauri/crates/`. Use `bun run rust:test`, `bun run rust:check` and `bun run rust:lint` for workspace-wide checks.
 
 ```sh
 cargo test --locked --workspace --manifest-path src-tauri/Cargo.toml
@@ -59,11 +52,11 @@ cargo check --locked --workspace --manifest-path src-tauri/Cargo.toml
 cargo clippy --locked --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 ```
 
-For a backend-only check, add `--no-default-features`; for E2E source isolation, use the shell's `--features e2e`. The default package remains the desktop shell so existing Tauri build and packaging commands keep their output paths. See [the crate map](../src-tauri/crates/README.md) and [build measurements](rust-build-measurements.md).
+The workspace builds the shared `kubecove_lib` library. Build and test the GPUI desktop client and headless server from their own manifests. See [the crate map](../src-tauri/crates/README.md).
 
 ## GPUI native client development
 
-The opt-in native client is a separate Cargo workspace under `src-tauri/gpui/`. It uses GPUI Kit and calls the shared backend with Tauri features disabled. The Svelte and Tauri application builds keep their existing dependencies. See [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md) and the [native client guide](../src-tauri/gpui/README.md) for scope and platform prerequisites.
+The native client is a separate Cargo workspace under `src-tauri/gpui/`. It uses GPUI Kit and calls the shared backend directly. See [ADR 0029](decisions/0029-gpui-native-client-and-feature-parity.md) and the [native client guide](../src-tauri/gpui/README.md).
 
 ```sh
 cargo run --locked --manifest-path src-tauri/gpui/Cargo.toml
@@ -81,7 +74,7 @@ When a user-level Cargo configuration sets a shared build directory, override bo
 
 ## Headless Server Development
 
-The server is a separate Rust binary under `src-tauri/server`; it uses the shared backend without enabling the desktop feature. Build the browser runtime before compiling the server so the binary embeds the generated `dist/` assets:
+The server is a separate Rust binary under `src-tauri/server` and uses the shared backend. Build the browser runtime before compiling the server so the binary embeds the generated `dist/` assets:
 
 ```sh
 KUBECOVE_PUBLIC_RUNTIME=web bun --bun vite build
@@ -96,11 +89,7 @@ Run isolated server checks with `cargo test --locked --manifest-path src-tauri/s
 
 ## Browser Dev Mock Mode
 
-`bun run tauri dev` starts Vite on Bun at `http://localhost:1430`. Opening it in a normal browser runs Svelte with browser-only mock Tauri responses for frontend inspection and automation.
-
-The Tauri webview uses real IPC and Rust Kubernetes commands. On Windows, development does not expose Chrome DevTools Protocol by default. Set `KUBECOVE_DEVTOOLS=1` before `tauri dev` to expose it at `http://127.0.0.1:9222`, and set `KUBECOVE_DEVTOOLS_PORT` to change the port. Packaged apps do not expose this endpoint.
-
-Browser mock mode never receives kubeconfig contents, calls a local Rust bridge, or accesses a real cluster. Treat all browser data as fake.
+`bun run dev` starts Vite on Bun at `http://localhost:1430`. The browser runs Svelte with typed mock responses for frontend inspection and automation. It uses fixture data and never reads a kubeconfig or reaches a cluster.
 
 To drive a feature in mock mode and keep evidence, follow the [`verify-kubecove` skill](../.agents/skills/verify-kubecove/SKILL.md). It runs Vite on a free loopback port with headless Chrome, so it never touches a server on port 1430.
 
@@ -145,7 +134,7 @@ For resource-view setup, use the overview header's `Open resources` button. Its
 between pointerdown and click. The controlled regression runs with
 `bun run e2e:fast -- --spec e2e/specs/fast/resource-navigation.e2e.ts`.
 
-Use real E2E for native-command and cluster behavior:
+Use real E2E for browser, server and cluster behavior:
 
 ```sh
 bun run e2e:real -- --provider auto
@@ -153,7 +142,7 @@ bun run e2e:real -- --keep
 bun run e2e:cleanup -- --run-id <id>
 ```
 
-The runner downloads checksum-verified tools and assets, creates one uniquely named Kind cluster, builds the E2E-only Tauri flavor, and runs native WDIO serially. It installs real Cilium, Git, Argo CD, Helm, and tenant fixtures. It does not use fake GitOps CRDs or fabricated status.
+The runner downloads checksum-verified tools and assets, creates one uniquely named Kind cluster, builds the server with the embedded Svelte UI, and runs Chrome WDIO against it. The lab installs real Cilium, Git, Argo CD, Helm, and tenant fixtures.
 
 The runner gathers allowlisted, redacted diagnostics, then deletes only its own cluster on success, failure, SIGINT, or SIGTERM. A local `--keep` preserves that run for inspection and is rejected in CI. Cleanup requires the recorded run ID. It never deletes by prefix or reads the user kubeconfig.
 
@@ -165,17 +154,13 @@ For manual development against the same fixtures:
 bun run dev:kind
 bun run dev:kind:down
 bun run e2e:desktop-smoke
-bun run e2e:desktop-smoke -- --spec e2e/specs/desktop/exec-plugin.e2e.ts
 ```
 
-The focused exec-plugin scenario uses an isolated native app and a controlled
-credential subprocess. It checks IPC responsiveness and workspace cancellation
-without a cluster or real provider login. The desktop runner accepts WDIO's
-`--spec` selection; artifacts still go under `e2e/artifacts/desktop-<run-id>/`.
+The desktop smoke starts an isolated server and GPUI client with a synthetic kubeconfig. It drives the client through its test-only MCP endpoint and writes artifacts under `e2e/artifacts/desktop-<run-id>/`.
 
-`dev:kind` uses a cluster name derived from the checkout and a temporary app profile. The cluster stays until `dev:kind:down`. The app profile is removed on exit.
+`dev:kind` uses a cluster name derived from the checkout. It launches a server and signs in to the embedded UI in headless Chromium. The cluster stays until `dev:kind:down`. The browser profile is removed on exit.
 
-See [ADR 0010](decisions/0010-e2e-only-wdio-security-boundary.md), [ADR 0011](decisions/0011-rolling-kubernetes-support.md), and [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
+See [ADR 0011](decisions/0011-rolling-kubernetes-support.md), [ADR 0012](decisions/0012-production-shaped-e2e-lab.md), and [ADR 0035](decisions/0035-gpui-e2e-flavor-and-agent-automation.md).
 
 ## CI caching
 
@@ -360,7 +345,7 @@ Windows desktop smoke jobs build without a cache. They run nightly or by hand,
 and the Linux caches that pull requests restore take about 7.5 GB of the
 repository's 10 GB cache quota (cache list of 2026-11-13).
 The Cargo shim installed by
-`scripts/ci-mbx-cargo.mjs` also wraps Cargo launched by Bun and Tauri.
+`scripts/ci-mbx-cargo.mjs` also wraps Cargo launched by Bun.
 `MBX_TARGET_VIEWS=0` preserves the target paths consumed by E2E and packaging.
 
 Native desktop and headless server release builds use mbx's `local` backend.
@@ -438,7 +423,7 @@ Run the smallest checks that cover the work:
 - frontend: `bun run typecheck` and nearest `bun test`
 - backend: `bun run rust:check` and nearest `bun run rust:test`
 - behavior change: nearest E2E spec (`bun run e2e:fast` or `bun run e2e:real`) or existing focused test; see the Testing rules in `AGENTS.md`
-- Tauri integration: `bun run tauri dev` or smoke test
+- host integration: `bun run e2e:desktop-smoke` or `bun e2e/headless-smoke.ts --browser`
 - release change: `bun run release:dry-run`
 - guarded operation: relevant ADR checklist plus nearest frontend/backend checks
 
@@ -447,19 +432,18 @@ If a check cannot run, record the exact blocker and what remains unverified.
 ## Interaction recordings
 
 Settings → Diagnostics → Record interactions measures each click, drag, key, and
-scroll in the running webview: input-to-paint time, dropped frames against the
+scroll in the browser: input-to-paint time, dropped frames against the
 measured refresh interval, and DOM nodes added, removed, and changed, grouped by
 source. Dev builds group by Svelte file and line. Release builds have no source
 locations and fall back to `data-testid` attributes and ARIA roles, which the app
 sets on few elements, so release attribution is coarse; profile in a dev build to
-find the component. Enable diagnostics as well to include Tauri command
+find the component. Enable diagnostics as well to include backend command
 timings. Entries stay in memory, and Copy outputs JSON lines.
 
-Under `bun run tauri dev`, the Vite server also appends each entry to
+Under `bun run dev`, the Vite server also appends each entry to
 `e2e/artifacts/dev-interactions/<server-start>.jsonl`. `bun run perf:interactions
-[file]` summarizes the newest recording, or a pasted copy. Measure on the target
-webview: Chromium timings do not predict WebKitGTK behavior. Recording adds
-overhead, so compare runs only with recording on in both.
+[file]` summarizes the newest recording, or a pasted copy. Recording adds
+overhead. Keep recording enabled in both runs when comparing results.
 
 ## Startup and memory baselines
 

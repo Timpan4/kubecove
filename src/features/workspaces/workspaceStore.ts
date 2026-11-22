@@ -1,5 +1,4 @@
 import { derived, get, type Readable, writable } from "svelte/store";
-import { WORKSPACE_STORAGE_KEY } from "@/lib/storage-keys";
 import type { JsonObject, JsonValue, ResourceSummary } from "@/lib/types";
 import {
 	entryPointFromApplication,
@@ -31,6 +30,7 @@ import {
 	type WorkspaceImportResult,
 	} from "./workspace-sharing";
 
+const WORKSPACE_STORAGE_KEY = "kubecove-workspaces";
 
 interface StorageLike {
 	getItem: (key: string) => string | null;

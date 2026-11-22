@@ -1,6 +1,6 @@
-import { Channel } from "@tauri-apps/api/core";
+import type { StreamChannel } from "./stream-channel";
 import { kubeconfigArg, sanitizeKubeconfigRequest } from "./tauri-args";
-import { createMockChannel, isBrowserRuntime, shouldUseBrowserDevMocks, type TauriClient } from "./tauri-runtime";
+import type { TauriClient } from "./tauri-runtime";
 import type {
 	AggregatedLogStreamRequest,
 	LiveSessionCleanupRequest,
@@ -18,62 +18,36 @@ import type {
 
 export function createStreamChannel(
 	onMessage: (message: StreamMessage) => void,
-	client?: TauriClient,
-): Channel<StreamMessage> {
-	if (client?.createChannel) return client.createChannel(onMessage);
-	if (shouldUseBrowserDevMocks()) return createMockChannel(onMessage);
-	if (isBrowserRuntime()) {
-		throw new Error("A Tauri client is required to create a browser stream channel.");
-	}
-	return new Channel<StreamMessage>(onMessage);
+	client: TauriClient,
+): StreamChannel<StreamMessage> {
+	return openChannel(client, onMessage);
 }
 
-interface DisposableChannel<T> {
-	id: number;
-	onmessage: (message: T) => void;
-	cleanupCallback?: () => void;
-	unregister?: () => Promise<void>;
+function openChannel<T>(client: TauriClient, onMessage: (message: T) => void): StreamChannel<T> {
+	if (!client.createChannel) throw new Error("This client does not support streaming.");
+	return client.createChannel(onMessage);
 }
 
-function closeChannel<T>(channel: Channel<T>): void {
-	// SAFETY: Tauri channels and browser mock channels share id/onmessage; cleanup is the
-	// private v2 runtime hook, while unregister is supplied by the browser mock.
-	// @ts-expect-error: Tauri Channel has private runtime members not needed for cleanup.
-	const disposableChannel = channel as DisposableChannel<T>;
-	if (disposableChannel.unregister instanceof Function) {
-		void disposableChannel.unregister();
-		return;
-	}
-	disposableChannel.cleanupCallback?.();
-}
-
-export function closeStreamChannel(channel: Channel<StreamMessage>): void {
-	closeChannel(channel);
+export function closeStreamChannel(channel: StreamChannel<StreamMessage>): void {
+	channel.close();
 }
 
 export function createPodExecChannel(
 	onMessage: (message: PodExecSessionMessage) => void,
-	client?: TauriClient,
-): Channel<PodExecSessionMessage> {
-	if (client?.createChannel) return client.createChannel(onMessage);
-	if (shouldUseBrowserDevMocks()) return createMockChannel(onMessage);
-	if (isBrowserRuntime()) {
-		throw new Error("A Tauri client is required to create a browser exec channel.");
-	}
-	return new Channel<PodExecSessionMessage>(onMessage);
+	client: TauriClient,
+): StreamChannel<PodExecSessionMessage> {
+	return openChannel(client, onMessage);
 }
 
-export function closePodExecChannel(
-	channel: Channel<PodExecSessionMessage>,
-): void {
-	closeChannel(channel);
+export function closePodExecChannel(channel: StreamChannel<PodExecSessionMessage>): void {
+	channel.close();
 }
 
 export async function startResourceWatch(
 	client: TauriClient,
 	clusterContext: string,
 	keys: ResourceWatchStart[],
-	channel: Channel<StreamMessage>,
+	channel: StreamChannel<StreamMessage>,
 	kubeconfigEnvVar?: string,
 ): Promise<string> {
 	return client.invoke<string>("start_resource_watch", {
@@ -90,7 +64,7 @@ export async function startResourceEventWatch(
 	kind: string,
 	name: string,
 	namespace: string | null | undefined,
-	channel: Channel<StreamMessage>,
+	channel: StreamChannel<StreamMessage>,
 	kubeconfigEnvVar?: string,
 ): Promise<string> {
 	return client.invoke<string>("start_resource_event_watch", {
@@ -106,7 +80,7 @@ export async function startResourceEventWatch(
 export async function startPodLogStream(
 	client: TauriClient,
 	request: PodLogStreamRequest,
-	channel: Channel<StreamMessage>,
+	channel: StreamChannel<StreamMessage>,
 ): Promise<string> {
 	return client.invoke<string>("start_pod_log_stream", {
 		request: sanitizeKubeconfigRequest({ ...request, batchLines: true }),
@@ -117,7 +91,7 @@ export async function startPodLogStream(
 export async function startAggregatedLogStream(
 	client: TauriClient,
 	request: AggregatedLogStreamRequest,
-	channel: Channel<StreamMessage>,
+	channel: StreamChannel<StreamMessage>,
 ): Promise<string> {
 	return client.invoke<string>("start_aggregated_log_stream", {
 		request: sanitizeKubeconfigRequest({ ...request, batchLines: true }),
@@ -164,7 +138,7 @@ export async function listPortForwards(
 export async function startPodExecSession(
 	client: TauriClient,
 	request: PodExecSessionRequest,
-	channel: Channel<PodExecSessionMessage>,
+	channel: StreamChannel<PodExecSessionMessage>,
 ): Promise<PodExecSessionSummary> {
 	return client.invoke<PodExecSessionSummary>("start_pod_exec_session", {
 		request: sanitizeKubeconfigRequest(request),

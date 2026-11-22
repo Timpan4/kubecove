@@ -4,26 +4,15 @@ KubeCove installers publish through [GitHub Releases](https://github.com/Timpan4
 
 ## Installer Guide
 
-- macOS: download the `.dmg`. Unsigned beta builds may require right-click Open or System Settings approval.
-- Windows: download the NSIS setup executable. Unsigned beta builds may require SmartScreen's More info, then Run anyway.
-- Linux: download the `.AppImage`, `.deb`, or `.rpm` when present. The AppImage may need `chmod +x`.
+- macOS Apple silicon: download the `.dmg`.
+- Windows x64: download the NSIS setup executable.
+- Linux x64: download the `.AppImage` and make it executable with `chmod +x` if needed.
 
-Installers contain the desktop app and normal Tauri runtime files. They do not bundle `kubectl`, Helm, Argo CD, kubeconfigs, tokens, or cluster credentials.
+Installers contain the GPUI desktop app.
 
 The release workflow also builds standalone `kubecove-server` archives for Linux x64 and Linux arm64, each in a full variant with the browser assets embedded and a `-slim` API-only variant, with SHA-256 checksum files. Linux archives include a systemd unit. It also builds full and slim distroless container images for `linux/amd64` and `linux/arm64`, then publishes each version tag as a multi-architecture image beside per-architecture tags. There is no `latest` tag. The server runs without Tauri or webview GUI dependencies and is intended for a single OS user on a remote host, normally reached through SSH forwarding. See [the remote-host operations guide](wiki/Remote-Server.md) and [the install guide](wiki/Server-Installation.md). Server assets are available only after the matching release completes its publish gates.
 
 Windows releases use NSIS so in-app updates share one installer path. An older MSI install may need to be uninstalled once before the NSIS install.
-
-### Linux AppImage WebKitGTK
-
-The AppImage bundles the WebKitGTK stack from its Ubuntu build runner. At launch, the binary uses the host stack instead when the host `libwebkit2gtk-4.1.so.0` is newer:
-
-1. It finds the host `libwebkit2gtk-4.1.so.0`, `libgtk-3.so.0`, and `libglib-2.0.so.0` through `ldconfig -p`, matching the soname and the 64-bit ABI flag. It continues only when all three are in one directory, so host WebKit never resolves GTK or GLib from the AppImage.
-2. It reads the bundled version from the loaded library with `webkit_get_major_version`, `webkit_get_minor_version`, and `webkit_get_micro_version`.
-3. It starts itself once as a probe with the host library directory first in `LD_LIBRARY_PATH` and `LD_BIND_NOW=1`, and the probe prints the same three values. Every library must resolve its symbols against that stack at load, so an incompatible host stack fails the probe. The probe does not initialize GTK or start a web process, so a host WebKit that fails at runtime is not detected.
-4. If the probe succeeds with a newer version, the binary logs the switch to stderr and re-executes itself with that `LD_LIBRARY_PATH`. Host libraries in that directory then win; libraries the host keeps elsewhere can still resolve to bundled copies. The re-exec drops the GTK hook's variables that point into the AppImage (`GTK_PATH`, `GIO_MODULE_DIR`, `GSETTINGS_SCHEMA_DIR`, `GDK_PIXBUF_MODULE_FILE`, and related) and the AppImage entries of `XDG_DATA_DIRS`, `GST_PLUGIN_SYSTEM_PATH`, and `GST_PLUGIN_SYSTEM_PATH_1_0`, so host GTK, GLib, and GStreamer load host modules, schemas, and plugins. Otherwise the launch continues on the bundled stack; when a host stack was found but the probe failed, it logs that to stderr.
-
-Set `KUBECOVE_APPIMAGE_WEBKIT=bundled` to keep the bundled stack. `system` and `probe` are internal re-exec values; other values are ignored with a warning. Processes the app starts inherit the host-first `LD_LIBRARY_PATH`. Tauri's AppImage bundler copies `bundle.linux.appimage.files` only under `usr/`, so it cannot add an AppRun hook. The switch therefore lives in the binary, and the signed AppImage file stays as the Tauri bundler produced it. Other Linux packages and AppDirs without `APPDIR` skip the check.
 
 ## Product Safety
 
@@ -47,7 +36,7 @@ If signature verification fails after commit creation, the branch may already co
 
 Release PRs use the same change-based frontend, Rust, and CodSpeed checks as other PRs. The Nix build does not run on pull requests. After merge or on manual dispatch, it builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds run the release gates for each product described below.
 
-After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The workflow uploads and verifies the signed GPUI bundles, updater feed, and server archives before pushing container tags to GHCR. While the Tauri config exists, the legacy build must also upload its installers and pass `latest.json` verification before publication. GitHub makes the draft release public after the registry push succeeds.
+After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The workflow uploads and verifies the signed GPUI bundles, updater feed, and server archives before pushing container tags to GHCR. GitHub makes the draft release public after the registry push succeeds.
 
 A manual dispatch of the release workflow only reruns an existing `app-v*` tag and preserves the release's visibility.
 
@@ -63,13 +52,13 @@ bun run release:dry-run
 
 In-app updates run only in release-workflow builds. Local development and ad hoc builds use the `dev` channel and do not check GitHub.
 
-Updater artifacts require the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. Its password is optional. Each client compiles its own copy of the public key. Both feeds carry minisign signatures for the updater artifacts.
+Updater artifacts require the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. Its password is optional. The GPUI client compiles in the public key and verifies the minisign signatures.
 
 Release notes mirror the matching [CHANGELOG.md](../CHANGELOG.md) section.
 
 ### Native GPUI client
 
-The release also ships the native GPUI client (`src-tauri/gpui`) as `KubeCove GPUI`, which installs beside the Tauri app under its own identifier, `com.timpan.kubecove.gpui`. `.github/workflows/gpui-release.yml` builds it with `cargo build --locked` and bundles it with `cargo packager`, configured in `[package.metadata.packager]` of `src-tauri/gpui/Cargo.toml`:
+The desktop release ships `KubeCove GPUI` under the identifier `com.timpan.kubecove.gpui`. `.github/workflows/gpui-release.yml` builds it with `cargo build --locked` and bundles it with `cargo packager`, configured in `[package.metadata.packager]` of `src-tauri/gpui/Cargo.toml`:
 
 | Platform | Release asset |
 | --- | --- |
@@ -77,7 +66,7 @@ The release also ships the native GPUI client (`src-tauri/gpui`) as `KubeCove GP
 | macOS Apple silicon | `kubecove-gpui_<version>_aarch64.dmg` to install, and `kubecove-gpui_<version>_aarch64.app.tar.gz`, with `KubeCove GPUI.app` at the archive root, for the updater. There is no Intel macOS build. |
 | Windows x64 | `kubecove-gpui_<version>_x64-setup.exe`, a per-user NSIS installer |
 
-The DMG is the first-install download. Like the Tauri DMG, it is not in the updater feed and gets no `.sig`. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`, then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-gpui.json` in Tauri's static updater format, with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The `stage-release-assets` job uploads the assets, their signatures and `latest-gpui.json` to the release. `latest.json` stays the Tauri app's feed.
+The DMG is the first-install download. The updater uses the signed app archive. One Linux job signs each updater asset with standalone `minisign` and the existing `TAURI_SIGNING_PRIVATE_KEY`. Then `scripts/gpui-release-manifest.mjs` checks every `.sig` against the public key in `src-tauri/gpui/updater.json` and checks that its trusted comment names the exact file and version. It writes `latest-gpui.json` with `linux-x86_64`, `darwin-aarch64` and `windows-x86_64` entries. The `stage-release-assets` job uploads the assets, their signatures and `latest-gpui.json` to the release.
 
 The NSIS installer accepts `/P` for a passive install, `/R` to start the app after a silent or passive install, and `/NS` to skip shortcuts. In passive mode it closes a running `kubecove-gpui.exe` without asking.
 
@@ -93,7 +82,7 @@ Every other release job skips a dry run, so nothing reads or writes a release or
 
 ## Automated Release Gates
 
-Release tags run the frontend checks and server packaging before publication. Legacy Tauri installers also require the desktop Rust checks and the Kubernetes E2E matrix. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks, use the GitHub Actions Nix cache, and do not delay or block publishing. Nix users run the GPUI client from the tagged source flake; releases do not attach a separate Nix archive.
+Release tags run frontend checks, server packaging, and GPUI bundle and signature verification before publication. Native Nix builds for `x86_64-linux` and `aarch64-linux` run in parallel as advisory checks. Nix users run the GPUI client from the tagged source flake.
 
 Support window and matrix changes follow [ADR 0011](decisions/0011-rolling-kubernetes-support.md). Real E2E uses [ADR 0012](decisions/0012-production-shaped-e2e-lab.md).
 

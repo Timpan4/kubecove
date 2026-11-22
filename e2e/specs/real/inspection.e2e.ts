@@ -2,7 +2,10 @@ import { execFile } from "node:child_process";
 import { get } from "node:http";
 import { promisify } from "node:util";
 import { browser, expect } from "@wdio/globals";
-import { after, describe, it } from "mocha";
+import { runnerServer } from "../../harness/browser-session";
+import { messageFromError } from "../../../src/lib/error-redaction";
+import { channelMarker, type serverClient } from "../../harness/server-session";
+import { after, before, describe, it } from "mocha";
 import type {
 	ArgoApplicationInspector,
 	ArgoApplicationRef,
@@ -36,7 +39,6 @@ import type {
 	YamlApplyRequest,
 	YamlApplyResult,
 	YamlEncoding,
-	JsonValue,
 } from "../../../src/lib/types";
 
 type CommandMap = {
@@ -68,39 +70,38 @@ type ChannelCommandMap = {
 	start_pod_log_stream: { args: { request: PodLogStreamRequest }; result: string };
 	start_pod_exec_session: { args: { request: PodExecSessionRequest }; result: PodExecSessionSummary };
 };
+type CommandArgs = CommandMap[keyof CommandMap]["args"];
+type ChannelArgs = ChannelCommandMap[keyof ChannelCommandMap]["args"] & { channel: string };
 type E2eMessage = StreamMessage | PodExecSessionMessage;
 
-declare global {
-	interface Window {
-		__kubecoveE2eMessages: Record<string, E2eMessage[]>;
-	}
-}
+let client: ReturnType<typeof serverClient>;
+let session: Awaited<ReturnType<typeof client.login>>["session"];
+const buckets = new Map<string, E2eMessage[]>();
+const receivers = new Map<number, E2eMessage[]>();
 
 const clusterName = process.env.KUBECOVE_E2E_CLUSTER;
 if (!clusterName) throw new Error("runner did not provide KUBECOVE_E2E_CLUSTER");
 const cluster = `${clusterName}-admin`;
 const kubectl = process.env.KUBECOVE_E2E_KUBECTL;
-const kubeconfig = process.env.KUBECOVE_KUBECONFIG;
+const kubeconfig = process.env.KUBECONFIG;
 const streams: string[] = [];
 const sessions: string[] = [];
 const execSessions: string[] = [];
 const argoConnections: string[] = [];
-const e2eKubeconfigSource = "KUBECOVE_KUBECONFIG";
 const execFileAsync = promisify(execFile);
 
-function commandResult<Result>(value: JsonValue): Result {
-	// SAFETY: each caller couples this browser-returned JSON value to the exact command result in CommandMap.
-	return value as Result;
+async function commandResult<Result>(command: string, args: CommandArgs | ChannelArgs): Promise<Result> {
+	const response = await client.invoke(session, command, args);
+	if (!response.ok) {
+		const error: unknown = await response.json().catch(() => null);
+		const detail = messageFromError(error);
+		throw new Error(`${command} failed (${response.status})${detail === "Unknown error" ? "" : `: ${detail}`}`);
+	}
+	return response.json();
 }
 
-async function invokeTauri<K extends keyof CommandMap>(command: K, args: CommandMap[K]["args"]): Promise<CommandMap[K]["result"]> {
-	// SAFETY: `CommandMap` couples each tested command to its exact request and result contract.
-	return commandResult<CommandMap[K]["result"]>(await browser.execute(
-		async (payload: { command: K; args: CommandMap[K]["args"] }) => {
-			return await window.__TAURI__.core.invoke<JsonValue, typeof payload.args>(payload.command, payload.args);
-		},
-		{ command, args },
-	));
+function invoke<K extends keyof CommandMap>(command: K, args: CommandMap[K]["args"]): Promise<CommandMap[K]["result"]> {
+	return commandResult(command, args);
 }
 
 async function runKubectl(args: string[]) {
@@ -123,59 +124,63 @@ async function getWithHost(url: string, host: string) {
 }
 
 async function invokeChannel<K extends keyof ChannelCommandMap>(command: K, args: ChannelCommandMap[K]["args"], bucket: string): Promise<ChannelCommandMap[K]["result"]> {
-	// SAFETY: `ChannelCommandMap` couples each tested streaming command to its exact request and result contract.
-	return commandResult<ChannelCommandMap[K]["result"]>(await browser.execute(
-		async (payload: { command: K; args: ChannelCommandMap[K]["args"]; bucket: string }) => {
-			window.__kubecoveE2eMessages ??= {};
-			window.__kubecoveE2eMessages[payload.bucket] = [];
-			const channel = new window.__TAURI__.core.Channel<E2eMessage>();
-			channel.onmessage = (message) => window.__kubecoveE2eMessages[payload.bucket]?.push(message);
-			const commandPayload = { ...payload.args, channel };
-			return await window.__TAURI__.core.invoke<JsonValue, typeof commandPayload>(payload.command, commandPayload);
-		},
-		{ command, args, bucket },
-	));
+	const id = receivers.size + 1;
+	const received: E2eMessage[] = [];
+	buckets.set(bucket, received);
+	receivers.set(id, received);
+	return commandResult(command, { ...args, channel: channelMarker(id) });
 }
 
-async function messages<T extends StreamMessage | PodExecSessionMessage>(bucket: string): Promise<T[]> {
-	// SAFETY: each bucket receives only `E2eMessage` values from the typed Tauri channel above; caller chooses its command-specific subtype.
-	return await browser.execute((name: string) => window.__kubecoveE2eMessages?.[name] ?? [], bucket) as T[];
+function messages<T extends E2eMessage>(bucket: string): T[] {
+	// SAFETY: the named bucket is registered for exactly one command's stream.
+	return (buckets.get(bucket) ?? []) as T[];
 }
 
-const tauri = {
-	listKubeContexts: () => invokeTauri("list_kube_contexts", {}),
-	listNamespaces: (clusterContext: string) => invokeTauri("list_namespaces", { clusterContext }),
-	listResourceKinds: (clusterContext: string) => invokeTauri("list_resource_kinds", { clusterContext }),
-	getResourceYaml: (args: CommandMap["get_resource_yaml"]["args"]) => invokeTauri("get_resource_yaml", args),
-	prepareYamlApply: (request: YamlApplyRequest) => invokeTauri("prepare_yaml_apply", { request }),
-	applyYaml: (request: YamlApplyRequest) => invokeTauri("apply_yaml", { request }),
-	listResources: (args: CommandMap["list_resources"]["args"]) => invokeTauri("list_resources", args),
-	startPodPortForward: (request: PortForwardRequest) => invokeTauri("start_pod_port_forward", { request }),
-	stopPortForward: (sessionId: string) => invokeTauri("stop_port_forward", { sessionId }),
-	stopPodExecSession: (sessionId: string) => invokeTauri("stop_pod_exec_session", { sessionId }),
-	stopStream: (streamId: string) => invokeTauri("stop_stream", { streamId }),
-	listArgoCdApplications: (clusterContext: string) => invokeTauri("list_argocd_applications", { clusterContext }),
-	discoverArgoServers: (clusterContext: string) => invokeTauri("discover_argo_servers", { clusterContext, kubeconfigEnvVar: e2eKubeconfigSource }),
-	connectArgoServer: (args: CommandMap["connect_argo_server"]["args"]) => invokeTauri("connect_argo_server", args),
-	argoConnectionStatus: (id: string) => invokeTauri("get_argo_connection_status", { id }),
-	disconnectArgoServer: (id: string) => invokeTauri("disconnect_argo_server", { id }),
-	argoApplicationInspector: (args: CommandMap["get_argo_application_inspector"]["args"]) => invokeTauri("get_argo_application_inspector", args),
-	argoResourceComparison: (args: CommandMap["get_argo_resource_comparison"]["args"]) => invokeTauri("get_argo_resource_comparison", args),
-	preflightArgoOperation: (request: ArgoOperationRequest) => invokeTauri("preflight_argo_operation", { request }),
-	runArgoOperation: (confirmation: ArgoOperationConfirmation) => invokeTauri("run_argo_operation", { confirmation }),
-	listHelmReleases: (clusterContext: string) => invokeTauri("list_helm_releases", { clusterContext }),
-	getHelmReleaseDetails: (args: CommandMap["get_helm_release_details"]["args"]) => invokeTauri("get_helm_release_details", args),
+const api = {
+	listKubeContexts: () => invoke("list_kube_contexts", {}),
+	listNamespaces: (clusterContext: string) => invoke("list_namespaces", { clusterContext }),
+	listResourceKinds: (clusterContext: string) => invoke("list_resource_kinds", { clusterContext }),
+	getResourceYaml: (args: CommandMap["get_resource_yaml"]["args"]) => invoke("get_resource_yaml", args),
+	prepareYamlApply: (request: YamlApplyRequest) => invoke("prepare_yaml_apply", { request }),
+	applyYaml: (request: YamlApplyRequest) => invoke("apply_yaml", { request }),
+	listResources: (args: CommandMap["list_resources"]["args"]) => invoke("list_resources", args),
+	startPodPortForward: (request: PortForwardRequest) => invoke("start_pod_port_forward", { request }),
+	stopPortForward: (sessionId: string) => invoke("stop_port_forward", { sessionId }),
+	stopPodExecSession: (sessionId: string) => invoke("stop_pod_exec_session", { sessionId }),
+	stopStream: (streamId: string) => invoke("stop_stream", { streamId }),
+	listArgoCdApplications: (clusterContext: string) => invoke("list_argocd_applications", { clusterContext }),
+	discoverArgoServers: (clusterContext: string) => invoke("discover_argo_servers", { clusterContext }),
+	connectArgoServer: (args: CommandMap["connect_argo_server"]["args"]) => invoke("connect_argo_server", args),
+	argoConnectionStatus: (id: string) => invoke("get_argo_connection_status", { id }),
+	disconnectArgoServer: (id: string) => invoke("disconnect_argo_server", { id }),
+	argoApplicationInspector: (args: CommandMap["get_argo_application_inspector"]["args"]) => invoke("get_argo_application_inspector", args),
+	argoResourceComparison: (args: CommandMap["get_argo_resource_comparison"]["args"]) => invoke("get_argo_resource_comparison", args),
+	preflightArgoOperation: (request: ArgoOperationRequest) => invoke("preflight_argo_operation", { request }),
+	runArgoOperation: (confirmation: ArgoOperationConfirmation) => invoke("run_argo_operation", { confirmation }),
+	listHelmReleases: (clusterContext: string) => invoke("list_helm_releases", { clusterContext }),
+	getHelmReleaseDetails: (args: CommandMap["get_helm_release_details"]["args"]) => invoke("get_helm_release_details", args),
 	startResourceWatch: (clusterContext: string, keys: WatchResourceKey[], bucket: string) => invokeChannel("start_resource_watch", { clusterContext, keys }, bucket),
 	startPodLogStream: (request: PodLogStreamRequest, bucket: string) => invokeChannel("start_pod_log_stream", { request: { ...request, batchLines: true } }, bucket),
 	startPodExecSession: (request: PodExecSessionRequest, bucket: string) => invokeChannel("start_pod_exec_session", { request }, bucket),
 };
 
-describe("native Kind command boundary", () => {
+describe("server Kind command boundary", () => {
+	before(async () => {
+		({ client } = await runnerServer());
+		({ session } = await client.login());
+		await client.connect(session, (frame) => {
+			if (frame.type === "channel" && frame.channelId !== undefined && frame.message) {
+				// SAFETY: the command registered for this channel selects the serde message type.
+				receivers.get(frame.channelId)?.push(frame.message as E2eMessage);
+			}
+		});
+	});
 	after(async () => {
-		for (const id of streams) await tauri.stopStream(id).catch(() => undefined);
-		for (const id of execSessions) await tauri.stopPodExecSession(id).catch(() => undefined);
-		for (const id of sessions) await tauri.stopPortForward(id).catch(() => undefined);
-		for (const id of argoConnections) await tauri.disconnectArgoServer(id).catch(() => undefined);
+		for (const id of streams) await api.stopStream(id).catch(() => undefined);
+		for (const id of execSessions) await api.stopPodExecSession(id).catch(() => undefined);
+		for (const id of sessions) await api.stopPortForward(id).catch(() => undefined);
+		for (const id of argoConnections) await api.disconnectArgoServer(id).catch(() => undefined);
+		client?.closeSockets();
 	});
 
 	it("discovers the empty-profile contexts, namespaces, and dynamic kinds", async () => {
@@ -185,35 +190,35 @@ describe("native Kind command boundary", () => {
 		await create.waitForEnabled({ timeout: 20_000 });
 		await create.click();
 		await expect(browser.$("body")).toHaveText(expect.stringContaining("Kind E2E Lab"));
-		const contexts = await tauri.listKubeContexts();
+		const contexts = await api.listKubeContexts();
 		expect(contexts.map(({ name }) => name).sort()).toEqual([`${clusterName}-admin`, `${clusterName}-restricted`].sort());
-		const namespaces = await tauri.listNamespaces(cluster);
+		const namespaces = await api.listNamespaces(cluster);
 		expect(namespaces.map(({ name }) => name)).toContain("e2e-discovery");
 		expect(namespaces.map(({ name }) => name)).toContain("tenant-catalog");
 		expect(namespaces.map(({ name }) => name)).toContain("operations");
-		const kinds = await tauri.listResourceKinds(cluster);
+		const kinds = await api.listResourceKinds(cluster);
 		for (const kind of ["Application", "ApplicationSet", "CiliumNetworkPolicy"]) expect(kinds.map(({ kind: name }) => name)).toContain(kind);
 		expect(await runKubectl(["get", "daemonset", "kube-proxy", "-n", "kube-system", "-o", "jsonpath={.status.numberReady}"])).toBe("1");
 	});
 
 	it("receives external create and delete through one live watch", async () => {
 		const bucket = "__kubecoveWatchMessages";
-		const id = await tauri.startResourceWatch(cluster, [{ resourceKind: { kind: "ConfigMap" }, namespace: "e2e-watch" }], bucket);
+		const id = await api.startResourceWatch(cluster, [{ resourceKind: { kind: "ConfigMap" }, namespace: "e2e-watch" }], bucket);
 		streams.push(id);
 		await runKubectl(["create", "configmap", "external-watch-marker", "-n", "e2e-watch", "--from-literal=marker=created"]);
-		await browser.waitUntil(async () => (await messages<StreamMessage>(bucket)).some((message) => message.type === "resourceChanged" && message.target.name === "external-watch-marker"), { timeout: 20_000, interval: 200 });
+		await browser.waitUntil(async () => (messages<StreamMessage>(bucket)).some((message) => message.type === "resourceChanged" && message.target.name === "external-watch-marker"), { timeout: 20_000, interval: 200 });
 		await runKubectl(["delete", "configmap", "external-watch-marker", "-n", "e2e-watch", "--wait=true"]);
-		await browser.waitUntil(async () => (await messages<StreamMessage>(bucket)).filter((message) => message.type === "resourceChanged" && message.target.name === "external-watch-marker").length >= 2, { timeout: 20_000, interval: 200 });
+		await browser.waitUntil(async () => (messages<StreamMessage>(bucket)).filter((message) => message.type === "resourceChanged" && message.target.name === "external-watch-marker").length >= 2, { timeout: 20_000, interval: 200 });
 	});
 
 	it("previews and applies selected-resource YAML, then verifies independently", async () => {
-		const yaml = await tauri.getResourceYaml({ clusterContext: cluster, kind: "ConfigMap", name: "apply-target", namespace: "e2e-apply", yamlViewMode: "applyClean" });
+		const yaml = await api.getResourceYaml({ clusterContext: cluster, kind: "ConfigMap", name: "apply-target", namespace: "e2e-apply", yamlViewMode: "applyClean" });
 		const changed = yaml.replace("marker: before-apply", "marker: before-apply\n  e2eApplied: after-apply");
 		const request = { clusterContext: cluster, kind: "ConfigMap", apiVersion: "v1", namespaced: true, name: "apply-target", namespace: "e2e-apply", yaml: changed };
-		const preview = await tauri.prepareYamlApply(request);
+		const preview = await api.prepareYamlApply(request);
 		expect(preview.currentYaml).toContain("before-apply");
 		expect(preview.dryRunYaml).toContain("after-apply");
-		await tauri.applyYaml({
+		await api.applyYaml({
 			...request,
 			expectedUid: preview.uid,
 			expectedResourceVersion: preview.resourceVersion,
@@ -225,35 +230,35 @@ describe("native Kind command boundary", () => {
 		const restricted = `${clusterName}-restricted`;
 		const request = { clusterContext: restricted, kind: "ConfigMap", apiVersion: "v1", namespaced: true, name: "restricted-target", namespace: "e2e-restricted", yaml: "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: restricted-target\n  namespace: e2e-restricted\ndata:\n  marker: changed\n" };
 		let error = "";
-		try { await tauri.prepareYamlApply(request); } catch (value) { error = String(value); }
+		try { await api.prepareYamlApply(request); } catch (value) { error = String(value); }
 		expect(error.toLowerCase()).toContain("forbidden");
 		expect(await runKubectl(["get", "configmap", "restricted-target", "-n", "e2e-restricted", "-o", "jsonpath={.data.marker}"])).toBe("unchanged");
 	});
 
 	it("streams logs, executes the exact Pod, and serves then stops a Service forward", async () => {
-		const pods = await tauri.listResources({ clusterContext: cluster, kind: "Pod", namespace: "e2e-sessions" });
+		const pods = await api.listResources({ clusterContext: cluster, kind: "Pod", namespace: "e2e-sessions" });
 		const pod = pods.find(({ name }) => name.startsWith("fixture-api-"));
 		if (!pod) throw new Error("fixture-api Pod was not discovered");
 		const logBucket = "__kubecoveLogMessages";
-		streams.push(await tauri.startPodLogStream({ clusterContext: cluster, namespace: "e2e-sessions", podName: pod.name, container: "api", tailLines: 20 }, logBucket));
-		await browser.waitUntil(async () => (await messages<StreamMessage>(logBucket)).some((message) => message.type === "logLines" && message.lines.some((line) => line.includes("kubecove-log-marker"))), { timeout: 20_000, interval: 200 });
+		streams.push(await api.startPodLogStream({ clusterContext: cluster, namespace: "e2e-sessions", podName: pod.name, container: "api", tailLines: 20 }, logBucket));
+		await browser.waitUntil(async () => (messages<StreamMessage>(logBucket)).some((message) => message.type === "logLines" && message.lines.some((line) => line.includes("kubecove-log-marker"))), { timeout: 20_000, interval: 200 });
 		const execBucket = "__kubecoveExecMessages";
 		const command = ["sh", "-c", "echo kubecove-exec-marker"];
-		const exec = await tauri.startPodExecSession({ clusterContext: cluster, namespace: "e2e-sessions", podName: pod.name, container: "api", command, stdin: false, tty: false, terminalSize: { cols: 80, rows: 24 }, confirmation: { acknowledged: true, target: `${cluster}/e2e-sessions/Pod/${pod.name}/container/api`, command: JSON.stringify(command) } }, execBucket);
+		const exec = await api.startPodExecSession({ clusterContext: cluster, namespace: "e2e-sessions", podName: pod.name, container: "api", command, stdin: false, tty: false, terminalSize: { cols: 80, rows: 24 }, confirmation: { acknowledged: true, target: `${cluster}/e2e-sessions/Pod/${pod.name}/container/api`, command: JSON.stringify(command) } }, execBucket);
 		execSessions.push(exec.id);
-		await browser.waitUntil(async () => JSON.stringify(await messages<PodExecSessionMessage>(execBucket)).includes("kubecove-exec-marker"), { timeout: 20_000, interval: 200 });
-		const forward = await tauri.startPodPortForward({ clusterContext: cluster, namespace: "e2e-sessions", targetKind: "Service", targetName: "fixture-api", remotePort: 8080 });
+		await browser.waitUntil(async () => JSON.stringify(messages<PodExecSessionMessage>(execBucket)).includes("kubecove-exec-marker"), { timeout: 20_000, interval: 200 });
+		const forward = await api.startPodPortForward({ clusterContext: cluster, namespace: "e2e-sessions", targetKind: "Service", targetName: "fixture-api", remotePort: 8080 });
 		sessions.push(forward.id);
 		const localUrl = forward.localUrl;
 		if (!localUrl) throw new Error("fixture-api port forward returned no local URL");
 		await browser.waitUntil(async () => (await fetch(localUrl)).ok, { timeout: 20_000, interval: 200 });
 		expect(await (await fetch(localUrl)).text()).toContain("kubecove-http-marker");
-		expect(await tauri.stopPortForward(forward.id)).toBe(true);
+		expect(await api.stopPortForward(forward.id)).toBe(true);
 		sessions.splice(sessions.indexOf(forward.id), 1);
 	});
 
 	it("lists Argo objects and the installed Helm release", async () => {
-		const { items: apps, resourceVersion } = await tauri.listArgoCdApplications(cluster);
+		const { items: apps, resourceVersion } = await api.listArgoCdApplications(cluster);
 		expect(resourceVersion).toBeTruthy();
 		const expectedNames = ["root-application", "platform-argocd", "platform-cilium", "platform-metrics", "platform-storage", "platform-ingress", "tenant-catalog", "tenant-ledger"];
 		for (const name of expectedNames) expect(apps.map((app) => app.name)).toContain(name);
@@ -264,16 +269,16 @@ describe("native Kind command boundary", () => {
 		expect(await runKubectl(["get", "applicationset", "tenants", "-n", "argocd", "-o", "jsonpath={.metadata.name}"])).toBe("tenants");
 		expect(await runKubectl(["get", "hpa", "catalog", "-n", "tenant-catalog", "-o", "jsonpath={.metadata.name}"])).toBe("catalog");
 		expect(await runKubectl(["get", "pvc", "data-ledger-0", "-n", "tenant-ledger", "-o", "jsonpath={.status.phase}"])).toBe("Bound");
-		const { releases, warnings } = await tauri.listHelmReleases(cluster);
+		const { releases, warnings } = await api.listHelmReleases(cluster);
 		expect(warnings).toEqual([]);
 		const operations = releases.find(({ name }) => name === "operations");
 		if (!operations) throw new Error("operations Helm release was not discovered");
-		const details = await tauri.getHelmReleaseDetails({ clusterContext: cluster, namespace: operations.namespace, storageKind: operations.storageKind, storageName: operations.storageName, yamlViewMode: "applyClean", yamlEncoding: "yaml" });
+		const details = await api.getHelmReleaseDetails({ clusterContext: cluster, namespace: operations.namespace, storageKind: operations.storageKind, storageName: operations.storageName, yamlViewMode: "applyClean", yamlEncoding: "yaml" });
 		for (const name of ["operations", "operations-crashloop"]) expect(details.manifestSummary.resources.map((resource) => resource.name)).toContain(name);
 	});
 
 	it("inspects and refreshes tenant-catalog through the private Argo CD Service tunnel", async () => {
-		const server = (await tauri.discoverArgoServers(cluster)).find(({ endpoint }) => endpoint?.kind === "serviceTunnel" && endpoint.namespace === "argocd" && endpoint.serviceName === "argocd-server");
+		const server = (await api.discoverArgoServers(cluster)).find(({ endpoint }) => endpoint?.kind === "serviceTunnel" && endpoint.namespace === "argocd" && endpoint.serviceName === "argocd-server");
 		if (server?.endpoint?.kind !== "serviceTunnel") throw new Error("argocd-server Service tunnel was not discovered");
 		expect(server.url).toBeNull();
 		expect(server.unavailableReason).toBeNull();
@@ -285,7 +290,7 @@ describe("native Kind command boundary", () => {
 		const connectionId = "e2e-private-argocd";
 		const workspaceId = "e2e-private-argocd";
 		const application = { name: "tenant-catalog", namespace: "argocd", project: "e2e-tenants", workspaceId };
-		const connected = await tauri.connectArgoServer({
+		const connected = await api.connectArgoServer({
 			id: connectionId,
 			serverUrl: "",
 			endpoint: { ...server.endpoint, scheme: "http" },
@@ -294,36 +299,35 @@ describe("native Kind command boundary", () => {
 			insecureTls: false,
 			rememberCredential: false,
 			clusterContext: cluster,
-			kubeconfigEnvVar: e2eKubeconfigSource,
 			workspaceId,
 			confirmedTarget: { namespace: server.endpoint.namespace, serviceName: server.endpoint.serviceName, podName: server.targetPod },
 		});
 		argoConnections.push(connectionId);
 		expect(connected).toMatchObject({ connected: true, profile: { rememberCredential: false, endpoint: { kind: "serviceTunnel", serviceName: "argocd-server", servicePort: server.endpoint.servicePort, scheme: "http" } } });
 
-		const inspector = await tauri.argoApplicationInspector({ clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource, connectionId, transport: "connected", application, redactSecrets: true });
+		const inspector = await api.argoApplicationInspector({ clusterContext: cluster, connectionId, transport: "connected", application, redactSecrets: true });
 		expect(inspector).toMatchObject({ connected: true, transport: "connected", provenance: "argocd-api", application: { name: application.name, namespace: application.namespace } });
 		expect(inspector.comparisons).toHaveLength(17);
 		const secret = inspector.comparisons.find(({ resource }) => resource.kind === "Secret" && resource.name === "catalog-fixture");
 		if (!secret) throw new Error("catalog Secret comparison was not returned");
-		const comparison = await tauri.argoResourceComparison({ clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource, connectionId, transport: "connected", application, resource: secret.resource, redactSecrets: true });
+		const comparison = await api.argoResourceComparison({ clusterContext: cluster, connectionId, transport: "connected", application, resource: secret.resource, redactSecrets: true });
 		expect(comparison).toMatchObject({ exact: true, provenance: "argocd-managed-resource" });
 		// SAFETY: fixture comparison target state is validated immediately for the only redacted Secret fields this test reads.
 		const secretState = comparison.targetState as { data?: { fixture?: string }; stringData?: { fixture?: string } };
 		expect(secretState.data?.fixture ?? secretState.stringData?.fixture).toBe("[REDACTED]");
 
-		const preflight = await tauri.preflightArgoOperation({ connectionId, transport: "connected", application, action: "refresh", resources: [], clusterContext: cluster, kubeconfigEnvVar: e2eKubeconfigSource });
+		const preflight = await api.preflightArgoOperation({ connectionId, transport: "connected", application, action: "refresh", resources: [], clusterContext: cluster });
 		expect(preflight).toMatchObject({ allowed: true, transport: "connected", action: "refresh" });
 		if (!preflight.sessionId) throw new Error("Argo refresh preflight returned no session");
-		expect(await tauri.runArgoOperation({ sessionId: preflight.sessionId, confirmation: preflight.sessionId })).toMatchObject({ accepted: true, transport: "connected" });
+		expect(await api.runArgoOperation({ sessionId: preflight.sessionId, confirmation: preflight.sessionId })).toMatchObject({ accepted: true, transport: "connected" });
 		let replayRejected = false;
-		try { await tauri.runArgoOperation({ sessionId: preflight.sessionId, confirmation: preflight.sessionId }); } catch { replayRejected = true; }
+		try { await api.runArgoOperation({ sessionId: preflight.sessionId, confirmation: preflight.sessionId }); } catch { replayRejected = true; }
 		expect(replayRejected).toBe(true);
 		expect(inspector.application.uid).toBe(await runKubectl(["get", "application", application.name, "-n", application.namespace, "-o", "jsonpath={.metadata.uid}"]));
 
-		await tauri.disconnectArgoServer(connectionId);
+		await api.disconnectArgoServer(connectionId);
 		argoConnections.splice(argoConnections.indexOf(connectionId), 1);
-		expect(await tauri.argoConnectionStatus(connectionId)).toMatchObject({ connected: false, profile: null });
+		expect(await api.argoConnectionStatus(connectionId)).toMatchObject({ connected: false, profile: null });
 	});
 
 	it("reconciles a Git commit and restores manual drift", async function () {
@@ -366,19 +370,19 @@ describe("native Kind command boundary", () => {
 	});
 
 	it("routes through Traefik and exposes the controlled incident", async () => {
-		const forward = await tauri.startPodPortForward({ clusterContext: cluster, namespace: "traefik", targetKind: "Service", targetName: "traefik", remotePort: 80 });
+		const forward = await api.startPodPortForward({ clusterContext: cluster, namespace: "traefik", targetKind: "Service", targetName: "traefik", remotePort: 80 });
 		sessions.push(forward.id);
 		const localUrl = forward.localUrl;
 		if (!localUrl) throw new Error("Traefik port forward returned no local URL");
 		await browser.waitUntil(async () => (await getWithHost(localUrl, "catalog.e2e.local").catch(() => ({ status: 0, body: "" }))).status === 200, { timeout: 20_000, interval: 200 });
 		expect((await getWithHost(localUrl, "catalog.e2e.local")).body).toContain("catalog-ingress-marker");
-		const pods = await tauri.listResources({ clusterContext: cluster, kind: "Pod", namespace: "operations" });
+		const pods = await api.listResources({ clusterContext: cluster, kind: "Pod", namespace: "operations" });
 		const incident = pods.find(({ name }) => name.startsWith("operations-crashloop-"));
 		if (!incident) throw new Error("controlled incident Pod was not discovered");
 		expect(incident.restarts).toBeGreaterThan(0);
 		const incidentBucket = "__kubecoveIncidentLogMessages";
-		streams.push(await tauri.startPodLogStream({ clusterContext: cluster, namespace: "operations", podName: incident.name, container: "crashloop", tailLines: 20 }, incidentBucket));
-		await browser.waitUntil(async () => (await messages<StreamMessage>(incidentBucket)).some((message) => message.type === "logLines" && message.lines.some((line) => line.includes("kubecove-crashloop-marker"))), { timeout: 30_000, interval: 500 });
+		streams.push(await api.startPodLogStream({ clusterContext: cluster, namespace: "operations", podName: incident.name, container: "crashloop", tailLines: 20 }, incidentBucket));
+		await browser.waitUntil(async () => (messages<StreamMessage>(incidentBucket)).some((message) => message.type === "logLines" && message.lines.some((line) => line.includes("kubecove-crashloop-marker"))), { timeout: 30_000, interval: 500 });
 		expect(await runKubectl(["get", "events", "-n", "operations", "--field-selector", `involvedObject.name=${incident.name}`, "-o", "jsonpath={.items[*].reason}"])).toContain("BackOff");
 	});
 });

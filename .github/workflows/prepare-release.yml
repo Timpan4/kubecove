@@ -64,7 +64,6 @@ jobs:
         run: |
           set -euo pipefail
           git add package.json bun.lock CHANGELOG.md src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/server/Cargo.toml src-tauri/server/Cargo.lock src-tauri/gpui/Cargo.toml src-tauri/gpui/Cargo.lock
-          if [[ -f src-tauri/tauri.conf.json ]]; then git add src-tauri/tauri.conf.json; fi
           node scripts/commit-release-pr.mjs
 
       - name: Open release PR

@@ -55,7 +55,7 @@
 		pickWorkspaceImportJson,
 		saveWorkspaceExportJson,
 	} from "@/lib/tauri";
-	import { isBrowserRuntime, shouldUseBrowserDevMocks } from "@/lib/tauri-runtime";
+	import { USE_BROWSER_DEV_MOCKS } from "@/lib/build-env";
 	import { queryKeys } from "@/lib/queryKeys";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
 	import type { ClusterContext, NamespaceSummary } from "@/lib/types";
@@ -99,7 +99,6 @@
 	];
 
 	const client = createTauriClient();
-	const browserRuntime = isBrowserRuntime() && !shouldUseBrowserDevMocks();
 	let importFileInput = $state<HTMLInputElement | null>(null);
 	const sourceQuery = createQuery(() => kubeconfigSourcesQueryOptions(client));
 	const sourceReady = $derived(sourceQuery.isSuccess || sourceQuery.isError);
@@ -224,7 +223,7 @@
 			const fileName = workspaceFileName(workspaces);
 			const content = serializeWorkspaceExport(workspaces);
 			let saved: boolean;
-			if (browserRuntime) {
+			if (!USE_BROWSER_DEV_MOCKS) {
 				const url = URL.createObjectURL(
 					new Blob([content], { type: "application/json" }),
 				);
@@ -386,7 +385,7 @@
 					</span>
 				</div>
 				<div class="flex flex-wrap justify-end gap-2" role="group" aria-label="Workspace sharing">
-					{#if browserRuntime}
+					{#if !USE_BROWSER_DEV_MOCKS}
 						<input
 							bind:this={importFileInput}
 							type="file"

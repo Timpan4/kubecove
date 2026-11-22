@@ -177,21 +177,7 @@ fn tunnel_error_removes_download_sender_and_reaches_control_waiter() {
     );
 }
 
-/// A channel that records each message's JSON text. The desktop build's
-/// channel is Tauri's; the `remote-client` build without `desktop` uses the
-/// headless one from `kubecove_kube::runtime`.
-#[cfg(feature = "desktop")]
-fn recording_channel(received: Arc<Mutex<Vec<String>>>) -> Channel<Box<RawValue>> {
-    Channel::new(move |body| {
-        let tauri::ipc::InvokeResponseBody::Json(json) = body else {
-            panic!("channel payload must remain JSON");
-        };
-        received.lock().unwrap().push(json);
-        Ok(())
-    })
-}
-
-#[cfg(not(feature = "desktop"))]
+/// A channel that records each message's JSON text.
 fn recording_channel(received: Arc<Mutex<Vec<String>>>) -> Channel<Box<RawValue>> {
     Channel::new(move |message: Box<RawValue>| {
         received.lock().unwrap().push(message.get().to_owned());

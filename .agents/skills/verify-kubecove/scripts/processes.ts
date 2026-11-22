@@ -4,10 +4,11 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
+import { readinessTimeoutMs } from "../../../../e2e/harness/timeouts";
 
 export const root = resolve(import.meta.dir, "../../../..");
-// Reuses the fast E2E suite's 30 s Mocha budget (`e2e/wdio.fast.conf.ts`) and the lifecycle runner's 1 s poll.
-export const readinessTimeoutMs = 30_000;
+export { readinessTimeoutMs };
+// Reuses the lifecycle runner's 1 s poll.
 const pollMs = 1_000;
 
 export async function freePort() {
@@ -62,11 +63,12 @@ export function ownsLeader(pid: number, startedAt: string | undefined) {
 
 // Polls `check` until it returns true. Each check gets a signal that aborts at the deadline, and the deadline holds
 // even when a check ignores the signal.
-export async function waitFor(description: string, check: (signal: AbortSignal) => Promise<boolean>, timeoutMs = readinessTimeoutMs) {
+export async function waitFor(description: string, check: (signal: AbortSignal) => Promise<boolean>, timeoutMs = readinessTimeoutMs, { retryErrors = true } = {}) {
 	const signal = AbortSignal.timeout(timeoutMs);
 	const expired = new Promise<false>((done) => signal.addEventListener("abort", () => done(false), { once: true }));
 	do {
-		if (await Promise.race([check(signal).catch(() => false), expired])) return;
+		const checked = check(signal);
+		if (await Promise.race([retryErrors ? checked.catch(() => false) : checked, expired])) return;
 		await Promise.race([Bun.sleep(pollMs), expired]);
 	} while (!signal.aborted);
 	throw new Error(`timed out after ${timeoutMs} ms waiting for ${description}`);

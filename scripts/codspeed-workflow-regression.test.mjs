@@ -85,7 +85,7 @@ for (const [path, frontend, rust] of [
   ["src-tauri/crates/inspection/Cargo.toml", false, true],
   ["src-tauri/Cargo.toml", false, true],
   ["src-tauri/Cargo.lock", false, true],
-  ["src-tauri/tauri.conf.json", false, true],
+  ["src-tauri/crates/models/src/command_contract.rs", false, true],
   ["src-tauri/gpui/src/model.rs", false, false],
   ["src-tauri/gpui/Cargo.lock", false, false],
   ["src-tauri/server/src/main.rs", false, false],
