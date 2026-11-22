@@ -43,7 +43,8 @@ async fn delete_preview_displays_owner_metadata_without_replacement_queries() {
             let (request, send) = handle.next_request().await.expect("delete dry-run");
             assert_eq!(request.method(), Method::DELETE);
             let body: Value =
-                serde_json::from_slice(&request.into_body().collect_bytes().await.unwrap()).unwrap();
+                serde_json::from_slice(&request.into_body().collect_bytes().await.unwrap())
+                    .unwrap();
             assert_eq!(body["dryRun"][0], "All");
             send.send_response(json_response(200, pod));
             // Any further request remains unanswered and fails await_mock.

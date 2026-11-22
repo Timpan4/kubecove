@@ -222,6 +222,7 @@ for (const [path, selected] of [
   ["scripts/check-docs.ts", ["frontend"]],
   ["scripts/ci-mbx-cargo.mjs", domains],
   ["scripts/ci-rust-cache-key.mjs", domains],
+  ["scripts/check-rust-format.mjs", domains],
   ["bun.lock", ["frontend", "nix"]],
   ["src-tauri/src/lib.rs", ["rust"]],
   ["src-tauri/crates/models/src/lib.rs", ["rust"]],
@@ -340,8 +341,8 @@ test("change detection selects every required task without duplicate jobs", asyn
   assert.match(job("check"), /needs:\n {6}- changes\n {6}- frontend\n {6}- checks\n {6}- nix/);
   assert.deepEqual([...workflow.slice(workflow.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]), ["changes", "frontend", "checks", "nix", "check"]);
 });
-function step(name) {
-  const source = job("checks");
+function step(name, jobName = "checks") {
+  const source = job(jobName);
   const start = source.search(new RegExp(`^ {6}- name: ${name}\\n`, "m"));
   assert.notEqual(start, -1, `Missing step: ${name}`);
   const end = source.indexOf("\n      - name: ", start + 1);
@@ -575,9 +576,8 @@ test("each existing check remains in its selected task", () => {
   assert.ok(checks.indexOf(step("Lint headless server")) < checks.indexOf("      - wait-all:"));
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
-    frontend: ["node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs", "node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs", ...["audit", "docs:check", "typecheck", "typecheck:bench", "svelte:check", "lint", "lint:anti-slop", "test:bench-groups", "test:svelte"].map((name) => `bun run ${name}`), "bun test"],
     "frontend-e2e": ["bun run e2e:fast"],
-    rust: ["mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
+    rust: ["node scripts/check-rust-format.mjs", "mbx test --workspace --manifest-path src-tauri/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path src-tauri/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
     "gpui-test": [
       "bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json",
@@ -591,13 +591,12 @@ test("each existing check remains in its selected task", () => {
     ],
   };
   for (const [task, expected] of Object.entries(commands)) {
-    const source = job(task === "frontend" ? "frontend" : "checks");
-    const steps = source.split(/(?=^      - name: )/m);
+    const steps = checks.split(/(?=^      - name: )/m);
     for (const command of expected) {
       const found = steps.find((source) => source.split("\n").some((line) => line.trim() === `run: ${command}` || line.trim() === command));
       assert.ok(found, `Missing command: ${command}`);
-      assert.equal(source.split("\n").filter((line) => line.trim() === `run: ${command}` || line.trim() === command).length, 1, `Duplicate command: ${command}`);
-      assert.ok(task === "frontend" || found.includes(`matrix.task == '${task}'`), `Wrong task for ${command}`);
+      assert.equal(checks.split("\n").filter((line) => line.trim() === `run: ${command}` || line.trim() === command).length, 1, `Duplicate command: ${command}`);
+      assert.ok(found.includes(`matrix.task == '${task}'`), `Wrong task for ${command}`);
     }
   }
   // A missing task condition runs frontend commands in Rust-only jobs without Bun.
@@ -620,11 +619,34 @@ test("lightweight tasks avoid Rust and package setup; CI regressions precede ins
   assert.doesNotMatch(job("changes"), /actions\/checkout|git diff|fetch-depth/);
   assert.match(job("changes"), /actions\/github-script@[a-f0-9]{40}/);
   assert.ok(step("Install frontend dependencies").includes("matrix.task == 'frontend-e2e' || matrix.task == 'server'"));
-  assert.ok(job("frontend").indexOf("- name: Test CI orchestration") < job("frontend").indexOf("- name: Install frontend dependencies"));
+  const frontend = job("frontend");
+  assert.ok(frontend.indexOf(step("Test CI orchestration", "frontend")) < frontend.indexOf(step("Install frontend dependencies", "frontend")));
   assert.ok(step("Setup Rust").includes("matrix.workspace"));
   assert.ok(step("Check documentation").includes("matrix.task == 'docs'"));
   assert.match(step("Install GPUI build dependencies"), /uses: \.\/\.github\/actions\/setup-linux-native-deps/);
   assert.ok(step("Install GPUI build dependencies").includes("matrix.task == 'gpui-clippy' || matrix.task == 'gpui-test'"));
+});
+test("frontend CI and the local check use the same verification commands", () => {
+  const { scripts } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const frontend = job("frontend");
+  for (const command of ["bun run test:ci", "bun run check:frontend"]) {
+    assert.match(frontend, new RegExp(`^ +run: ${command}$`, "m"));
+    assert.ok(scripts.check.split(" && ").includes(command), `The local check must run ${command}`);
+  }
+  const parallel = frontend.indexOf("\n      - parallel:\n");
+  assert.ok(parallel > frontend.indexOf(step("Install frontend dependencies", "frontend")));
+  const independent = frontend.slice(parallel);
+  assert.match(independent, /^ {12}run: bun run check:frontend$/m);
+  assert.match(independent, /^ {12}run: bun run audit$/m);
+  assert.doesNotMatch(independent, /^ +(if|continue-on-error):/m);
+
+  const [preflight, ...compilation] = scripts["check:frontend"].split(" && ");
+  const tasks = preflight.split(" ");
+  assert.deepEqual(tasks.slice(0, 3), ["bun", "run", "--parallel"]);
+  for (const check of ["docs:check", "lint", "lint:anti-slop", "typecheck", "typecheck:bench", "svelte:check", "test:release", "test:bench-groups"]) {
+    assert.ok(tasks.includes(check), `The shared frontend check must run ${check}`);
+  }
+  assert.deepEqual(compilation, ["bun test", "bun run test:svelte", "bun run build:bundle"]);
 });
 test("native dependencies are installed only if GPUI cannot link or Playwright cannot launch Chromium", () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replaceAll("\r\n", "\n");
@@ -902,7 +924,11 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     assert.equal(run({}, ["workflow.yml", "src-tauri", ":!missing"]).status, 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-test("whitespace check rejects bad diffs even without an available base", () => {
+test("the required gate checks code-only diffs, including shallow pull request merges", async () => {
+  const { output } = await detect(["src/App.css"]);
+  assert.equal(output.docs, "false");
+  const check = step("Check diff whitespace", "check");
+  assert.doesNotMatch(check, /^ {8}if:/m);
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-whitespace-"));
   const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" };
   const git = (...args) => {
@@ -912,19 +938,54 @@ test("whitespace check rejects bad diffs even without an available base", () => 
   };
   try {
     git("init", "-q");
-    writeFileSync(join(root, "README.md"), "clean\n");
-    git("add", "README.md"); git("commit", "-qm", "clean");
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src/App.css"), "body {}\n");
+    git("add", "src/App.css"); git("commit", "-qm", "clean");
     const clean = git("rev-parse", "HEAD");
-    writeFileSync(join(root, "README.md"), "bad trailing whitespace  \n");
-    git("add", "README.md"); git("commit", "-qm", "bad");
+    writeFileSync(join(root, "src/App.css"), "body {}\n\n");
+    git("add", "src/App.css"); git("commit", "-qm", "bad");
     const bad = git("rev-parse", "HEAD");
-    const script = block(step("Check diff whitespace"), "run", 8);
+    const script = block(check, "run", 8);
+    const verify = (from, to, cwd = root) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], { cwd, env: { ...env, BASE_SHA: from, HEAD_SHA: to }, encoding: "utf8", timeout: 2000 });
     for (const from of [clean, "", "0".repeat(40), "d".repeat(40)]) {
       for (const [to, succeeds] of [[clean, true], [bad, false]]) {
-        const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], { cwd: root, env: { ...env, BASE_SHA: from, HEAD_SHA: to }, encoding: "utf8", timeout: 2000 });
+        const result = verify(from, to);
         assert.equal(result.status === 0, succeeds, `base=${from}, head=${to}: ${result.stderr}`);
       }
     }
+    writeFileSync(join(root, "README.md"), "Clean last commit.\n");
+    git("add", "README.md"); git("commit", "-qm", "clean tip with earlier whitespace");
+    const tip = git("rev-parse", "HEAD");
+    const missingMain = verify("", tip);
+    assert.equal(missingMain.status, 2, missingMain.stdout);
+    assert.match(missingMain.stdout, /src\/App\.css:2: new blank line at EOF/);
+
+    const unrelated = git("commit-tree", `${clean}^{tree}`, "-m", "unrelated history");
+    git("update-ref", "refs/remotes/origin/main", unrelated);
+    const unrelatedMain = verify("", tip);
+    assert.equal(unrelatedMain.status, 2, unrelatedMain.stdout);
+    assert.match(unrelatedMain.stdout, /src\/App\.css:2: new blank line at EOF/);
+
+    git("update-ref", "refs/remotes/origin/main", bad);
+    const fromMain = verify("", tip);
+    assert.equal(fromMain.status, 0, fromMain.stdout);
+    const dispatched = verify("", bad);
+    assert.equal(dispatched.status, 2, dispatched.stdout);
+    assert.match(dispatched.stdout, /src\/App\.css:2: new blank line at EOF/);
+    const rootCommit = git("commit-tree", `${bad}^{tree}`, "-m", "root with whitespace");
+    git("update-ref", "refs/remotes/origin/main", rootCommit);
+    const dispatchedRoot = verify("", rootCommit);
+    assert.equal(dispatchedRoot.status, 2, dispatchedRoot.stdout);
+    assert.match(dispatchedRoot.stdout, /src\/App\.css:2: new blank line at EOF/);
+
+    const merge = git("commit-tree", `${bad}^{tree}`, "-p", clean, "-p", bad, "-m", "pull request merge");
+    git("checkout", "--quiet", "--detach", merge);
+    git("clone", "--quiet", "--no-local", "--depth", "2", root, "checkout");
+    assert.equal(git("-C", "checkout", "rev-parse", "--is-shallow-repository"), "true");
+    const result = verify("HEAD^1", merge, join(root, "checkout"));
+    assert.equal(result.status, 2);
+    assert.match(result.stdout, /src\/App\.css:2: new blank line at EOF/);
+    assert.doesNotMatch(result.stdout, /No available base commit/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 // Failure modes: a matrix that misses a PARITY_SUITE_SHARD index silently drops that share of

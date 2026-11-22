@@ -150,7 +150,9 @@ async fn apply_requires_reviewed_identity_before_cluster_access() {
 #[tokio::test]
 async fn apply_rejects_a_resource_changed_after_review() {
     let (cluster, mut handle) = mock_cluster();
-    let operation = cluster.scope().run(apply_yaml(reviewed_request_yaml(false)));
+    let operation = cluster
+        .scope()
+        .run(apply_yaml(reviewed_request_yaml(false)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("identity get");
         assert_eq!(request.method(), Method::GET);
@@ -211,7 +213,9 @@ async fn apply_rechecks_identity_repeats_dry_run_and_guards_the_live_patch() {
 #[tokio::test]
 async fn apply_classifies_field_manager_conflict() {
     let (cluster, mut handle) = mock_cluster();
-    let operation = cluster.scope().run(apply_yaml(reviewed_request_yaml(false)));
+    let operation = cluster
+        .scope()
+        .run(apply_yaml(reviewed_request_yaml(false)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("identity get");
         assert_eq!(request.method(), Method::GET);
@@ -253,7 +257,9 @@ async fn apply_classifies_field_manager_conflict() {
 #[tokio::test]
 async fn apply_maps_forbidden_to_forbidden_kind() {
     let (cluster, mut handle) = mock_cluster();
-    let operation = cluster.scope().run(apply_yaml(reviewed_request_yaml(false)));
+    let operation = cluster
+        .scope()
+        .run(apply_yaml(reviewed_request_yaml(false)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("identity get");
         assert_eq!(request.method(), Method::GET);
