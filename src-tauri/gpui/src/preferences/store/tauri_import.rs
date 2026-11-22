@@ -31,6 +31,9 @@ impl Store {
     }
 
     pub(super) fn load_with_import(&self, directory: &Path) -> Result<Document, AppError> {
+        // The resolver reads kubeconfig settings from disk, so it runs before
+        // the store mutex and the shared file lock are taken.
+        let source_key = (self.source)();
         let mut memory = self.memory.lock().map_err(|_| invalid())?;
         fs::create_dir_all(directory).map_err(|_| io_error())?;
         let _lock = match acquire_lock(directory) {
@@ -51,7 +54,12 @@ impl Store {
         // Re-read under the lock: another instance may have imported meanwhile.
         let (mut document, existing_preference_keys) = self.load_unlocked(directory)?;
         if document.tauri_migration_imported.is_none() {
-            document = self.import_snapshot(directory, document, &existing_preference_keys);
+            document = self.import_snapshot(
+                directory,
+                document,
+                &existing_preference_keys,
+                source_key.as_deref().ok(),
+            );
         }
         *memory = document.clone();
         Ok(document)
@@ -62,6 +70,7 @@ impl Store {
         directory: &Path,
         document: Document,
         existing_preference_keys: &HashSet<String>,
+        source_key: Option<&str>,
     ) -> Document {
         let bytes = match fs::read(directory.join(MIGRATION_FILE)) {
             Ok(bytes) => bytes,
@@ -73,13 +82,12 @@ impl Store {
                 return document;
             }
         };
-        let source_key = (self.source)();
         let mut candidate = document.clone();
         let report = match tauri_migration::merge_bytes(
             &bytes,
             &mut candidate,
             existing_preference_keys,
-            source_key.as_deref().ok(),
+            source_key,
         ) {
             Ok(report) => report,
             Err(reason) => {
