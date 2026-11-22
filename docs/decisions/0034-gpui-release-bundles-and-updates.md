@@ -28,7 +28,7 @@ The native client has no Intel macOS build; the owner dropped it after 0.14.1, w
 
 One Linux job signs all three assets, so the updater key reaches one runner. The signing job decodes the existing base64-wrapped minisign key (`TAURI_SIGNING_PRIVATE_KEY`) and passes its optional password to standalone `minisign` on stdin. Each `.sig` contains the base64-encoded minisign signature text. Its trusted comment binds the timestamp, file name and version as tab-separated fields. `latest-desktop.json` lists the assets in the static updater format: `version`, `notes`, `pub_date`, and `platforms` keyed `linux-x86_64`, `darwin-aarch64` and `windows-x86_64`, each with `url` and `signature`.
 
-Starting with 0.16.0, the consolidated desktop product is named `KubeCove` with the bundle identifier `com.timpan.kubecove`, matching the `com.timpan.kubecove` config directory (ADR 0030). Through 0.15.1, it shipped side by side as `KubeCove GPUI` (`com.timpan.kubecove.gpui`) on `latest-gpui.json`. The GPUI crate version follows the app version, because the client compares its own version with the manifest's.
+Starting with 0.16.0, the consolidated desktop product is named `KubeCove` with the bundle identifier `com.timpan.kubecove`, matching the `com.timpan.kubecove` config directory (ADR 0030). Through 0.15.2, it shipped side by side as `KubeCove GPUI` (`com.timpan.kubecove.gpui`) on `latest-gpui.json`. The GPUI crate version follows the app version, because the client compares its own version with the manifest's.
 
 A manual run of `release.yml` with the `gpui-dry-run` input builds, bundles, signs and verifies all three platforms and keeps the results as workflow artifacts. It creates no release, tag or draft.
 
