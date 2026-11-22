@@ -13,7 +13,9 @@ use crate::ui;
 use gpui_kit::{
     AnyElement, Context, Div, MouseButton, SharedString, deferred, div, prelude::*, px,
 };
+use std::time::Duration;
 
+const STALE_NOTICE_DELAY: Duration = Duration::from_millis(500);
 /// The notice for watches that open, recover or catch up.
 const STALE: &str =
     "Showing last observed state. Activity indicators are paused until live updates recover.";
@@ -325,17 +327,37 @@ impl Inspector {
         freshness: NoticeFreshness,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let table_stale = self
-            .loading
-            .phase("table-live-notice", waiting_for_watch(freshness.table));
-        let map_stale = self
-            .loading
-            .phase("map-live-notice", waiting_for_watch(freshness.map));
-        let table = freshness
-            .table
-            .and_then(|status| notice_text(status, table_stale.shown()));
         let (table_error, map_error) = self.notice_read_errors(&freshness);
         let shared_error = self.shared_read_error(table_error, map_error);
+        let table_pending = waiting_for_watch(freshness.table);
+        let map_pending = if shared_error {
+            matches!(
+                freshness.map_watch,
+                Some(LiveStatus::Connecting | LiveStatus::Reconnecting)
+            )
+        } else {
+            map_error.is_none() && waiting_for_watch(freshness.map)
+        };
+        let table_shown = self
+            .loading
+            .phase_after("table-live-notice", table_pending, STALE_NOTICE_DELAY)
+            .shown();
+        let map_shown = self
+            .loading
+            .phase_after("map-live-notice", map_pending, STALE_NOTICE_DELAY)
+            .shown();
+        let only_table_stale = table_pending && table_shown && !map_pending;
+        let only_map_stale = map_pending && map_shown && !table_pending;
+        if only_table_stale {
+            self.loading.release_hold("map-live-notice");
+        }
+        if only_map_stale {
+            self.loading.release_hold("table-live-notice");
+        }
+        let table = freshness
+            .table
+            .and_then(|status| notice_text(status, table_shown && !only_map_stale));
+        let map_stale = map_shown && !only_table_stale;
         let map = freshness.map.and_then(|status| {
             if status == LiveStatus::RefreshFailed {
                 Some(MAP_STALE)
@@ -343,10 +365,10 @@ impl Inspector {
                 Some("Refresh failed. Showing last observed state. Map activity indicators are paused until live updates recover.")
             } else if shared_error {
                 freshness.map_watch.and_then(|watch| {
-                    notice_text(watch, map_stale.shown() && waiting_for_watch(Some(watch)))
+                    notice_text(watch, map_stale)
                 }).filter(|_| freshness.map_watch != Some(LiveStatus::RefreshFailed))
             } else {
-                notice_text(status, map_stale.shown())
+                notice_text(status, map_stale)
             }
         });
         let mut notices = Vec::new();

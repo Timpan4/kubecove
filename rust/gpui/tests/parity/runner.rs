@@ -213,7 +213,8 @@ pub(super) fn run_scenario(
                 }
             }
             cx.run_until_parked();
-            if step["control"]["operation"] == "release"
+            if !scenario_clock
+                && step["control"]["operation"] == "release"
                 && step["control"]["command"] == "list_resource_topology"
             {
                 // read_retry.rs uses TanStack's first cancelled-read backoff.
@@ -451,13 +452,18 @@ pub(super) fn run_scenario(
         if step["action"] == "terminalRelease" {
             terminal::advance_drag_scroll(cx, number(step, "ms"));
         }
-        if matches!(
-            string(step, "action"),
-            "expectLiveState" | "expectContextsLoading"
-        ) {
-            // The stale-data and loading-contexts notices appear after the
-            // show delay in `inspector/loading.rs` and stay for its minimum
-            // visible time. Both are 300 ms.
+        if !scenario_clock && step["action"] == "expectLiveState" && step["notice"].is_string() {
+            // Match the web driver's wait for the notice to appear.
+            cx.background_executor
+                .advance_clock(std::time::Duration::from_millis(500));
+            cx.run_until_parked();
+        } else if !scenario_clock
+            && matches!(
+                string(step, "action"),
+                "expectLiveState" | "expectContextsLoading"
+            )
+        {
+            // Give a recovered notice its minimum visible time, or let the context loader appear.
             cx.background_executor
                 .advance_clock(std::time::Duration::from_millis(300));
             cx.run_until_parked();
