@@ -84,7 +84,7 @@ async fn only_announces_a_newer_consolidated_release() {
 }
 
 #[tokio::test]
-async fn the_pitstop_installs_the_consolidated_release_in_place() {
+async fn the_pitstop_offers_the_consolidated_release_as_an_update() {
     let published = (
         "200 OK",
         r#"{"version":"0.16.0","platforms":{"linux-x86_64":{"signature":"signed","url":"https://example.test/kubecove_0.16.0_x86_64.AppImage"}}}"#,
