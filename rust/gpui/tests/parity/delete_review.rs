@@ -46,3 +46,80 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
     }
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::common::DetailTabs;
+    use kubecove_lib::models::{AppErrorKind, ResourceActionConfirmation, ResourceActionRequest};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn repeated_preview_issues_a_fresh_id_and_rejects_the_superseded_one() {
+        let request: ResourceActionRequest = serde_json::from_value(json!({
+            "clusterContext": "kind-dev",
+            "kind": "ConfigMap",
+            "name": "settings",
+            "namespace": "default",
+            "apiVersion": "v1",
+            "action": "delete"
+        }))
+        .unwrap();
+        let target = json!({
+            "clusterContext": "kind-dev",
+            "kind": "ConfigMap",
+            "name": "settings",
+            "namespace": "default",
+            "apiVersion": "v1"
+        });
+        let fixture: DetailTabs = serde_json::from_value(json!({
+            "logs": { "pod": [], "aggregate": [] },
+            "yamlReads": [],
+            "revisions": [],
+            "actions": {
+                "states": [],
+                "pausedState": null,
+                "previews": [{
+                    "request": request,
+                    "preview": {
+                        "reviewId": "fixture-review",
+                        "target": target,
+                        "effect": "Delete ConfigMap",
+                        "beforeYaml": "",
+                        "afterYaml": "",
+                        "uid": "uid-1",
+                        "resourceVersion": "7"
+                    }
+                }],
+                "executions": [{
+                    "confirmation": { "reviewId": "fixture-review" },
+                    "action": "delete",
+                    "result": { "effect": "Deleted ConfigMap", "target": target }
+                }]
+            },
+            "yamlApply": []
+        }))
+        .unwrap();
+
+        let first = fixture.preview_action(request.clone()).await.unwrap();
+        let second = fixture.preview_action(request).await.unwrap();
+        assert_ne!(first.review_id, second.review_id);
+        assert_eq!(
+            fixture
+                .execute_action(ResourceActionConfirmation {
+                    review_id: first.review_id,
+                })
+                .await
+                .unwrap_err()
+                .kind,
+            AppErrorKind::ConfirmationRequired
+        );
+        let current = ResourceActionConfirmation {
+            review_id: second.review_id,
+        };
+        assert!(fixture.execute_action(current.clone()).await.is_ok());
+        assert_eq!(
+            fixture.execute_action(current).await.unwrap_err().kind,
+            AppErrorKind::ConfirmationRequired
+        );
+    }
+}

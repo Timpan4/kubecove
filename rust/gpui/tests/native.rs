@@ -89,9 +89,10 @@ use kubecove_lib::models::{
     ClusterOperationResult, DeploymentRevision, HelmReleaseDetails, HelmReleaseList,
     HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary,
     KubernetesYamlLintResult, NamespaceSummary, RbacAccessReviewRequest, RbacAccessReviewResult,
-    RbacInspectionSummary, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-    ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
-    ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
+    RbacInspectionSummary, ResourceActionConfirmation, ResourceActionPreview,
+    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
+    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
 use std::sync::{
@@ -479,8 +480,11 @@ impl Backend for Controlled {
     fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
         self.detail.preview_action(request)
     }
-    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
-        self.detail.execute_action(request)
+    fn execute_action(
+        &self,
+        confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult> {
+        self.detail.execute_action(confirmation)
     }
     fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {
         self.detail.resource_yaml(resource, mode)

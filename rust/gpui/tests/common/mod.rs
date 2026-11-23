@@ -19,7 +19,7 @@ mod settings_remote;
 mod timing;
 mod unexpected;
 
-use detail_tabs::DetailTabs;
+pub(crate) use detail_tabs::DetailTabs;
 use kubecove_gpui::{
     backend::{
         Backend, CLUSTER_KINDS, KubeconfigSourcesSummary, LiveSessions, LogStream, LogTarget, Read,
@@ -32,10 +32,10 @@ use kubecove_lib::models::{
     ClusterContext, ClusterOperationResult, DeploymentRevision, HelmReleaseDetails,
     HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary, IncidentCockpitSummary,
     KubernetesYamlLintResult, NamespaceSummary, PodExecSessionSummary, PortForwardSessionSummary,
-    RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary, ResourceActionPreview,
-    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull,
-    ResourceEventSummary, ResourceSummary, ResourceTopology, YamlApplyPreview, YamlApplyRequest,
-    YamlApplyResult, YamlViewMode,
+    RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary,
+    ResourceActionConfirmation, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+    ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
+    ResourceTopology, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
 };
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path, sync::Mutex};
@@ -501,8 +501,11 @@ impl Backend for Fixture {
     fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
         self.detail_tabs.preview_action(request)
     }
-    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
-        self.detail_tabs.execute_action(request)
+    fn execute_action(
+        &self,
+        confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult> {
+        self.detail_tabs.execute_action(confirmation)
     }
     fn resource_yaml_encoded(
         &self,

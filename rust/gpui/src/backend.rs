@@ -11,10 +11,10 @@ use kubecove_lib::{
         HelmReleaseDetails, HelmReleaseList, HelmReleaseReconciliation, HelmReleaseSummary,
         IncidentCockpitSummary, KubernetesYamlLintResult, NamespaceSummary,
         RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary,
-        ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-        ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary, ResourceSummary,
-        ResourceTopology, WatchResourceKey, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
-        YamlViewMode,
+        ResourceActionConfirmation, ResourceActionPreview, ResourceActionRequest,
+        ResourceActionState, ResourceActionStateRequest, ResourceDetailsFull, ResourceEventSummary,
+        ResourceSummary, ResourceTopology, WatchResourceKey, YamlApplyPreview, YamlApplyRequest,
+        YamlApplyResult, YamlViewMode,
     },
     runtime::State,
 };
@@ -398,8 +398,11 @@ pub trait Backend: Send + Sync + 'static {
     fn action_state(&self, request: ResourceActionStateRequest) -> Read<ResourceActionState>;
     /// `preview_resource_action`: an API-server dry run that changes nothing.
     fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview>;
-    /// `execute_resource_action`: a confirmed action guarded by the previewed identity.
-    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult>;
+    /// `execute_resource_action`: consumes the backend-owned review.
+    fn execute_action(
+        &self,
+        confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult>;
     /// `get_resource_yaml` in a view mode; the apply draft reads `ApplyClean`.
     fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String>;
     /// Selected read encoding, shared by the YAML pickers and draft loader.
@@ -504,6 +507,7 @@ pub struct NativeBackend {
     exec_sessions: PodExecRegistry,
     streams: Arc<StreamRegistry>,
     argo_connections: Arc<ArgoConnectionStore>,
+    resource_action_reviews: Arc<commands::ResourceActionReviewStore>,
 }
 
 impl NativeBackend {
@@ -527,6 +531,7 @@ impl NativeBackend {
             exec_sessions: PodExecRegistry::default(),
             streams: Arc::default(),
             argo_connections: Arc::default(),
+            resource_action_reviews: Arc::default(),
         })
     }
 

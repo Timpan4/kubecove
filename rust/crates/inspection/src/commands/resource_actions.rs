@@ -1,14 +1,23 @@
 use crate::commands::builtin_kinds::{BuiltinKind, builtin_kind};
 use crate::commands::{ClusterAccess, operations::preview_patch_params};
 use crate::models::{
-    AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, ResourceActionEdits,
-    ResourceActionKind, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-    ResourceActionStateRequest, ResourceContainerEdit,
+    AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget,
+    ResourceActionConfirmation, ResourceActionEdits, ResourceActionKind, ResourceActionPreview,
+    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceContainerEdit,
 };
+use crate::runtime::State;
 use kube::api::{Api, ApiResource, DeleteParams, DynamicObject, Patch, PatchParams};
+use reviews::{ReviewedResourceAction, ensure_dry_run_matches_review, validate_review_guard};
 use serde_json::{Map, Value, json};
 
 const ACTION_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"];
+type PreviewEffect = (
+    String,
+    String,
+    Option<Value>,
+    Option<(String, String)>,
+    Option<Value>,
+);
 
 pub async fn get_resource_action_state(
     request: ResourceActionStateRequest,
@@ -76,9 +85,111 @@ pub async fn get_resource_action_state(
 
 pub async fn preview_resource_action(
     request: ResourceActionRequest,
+    reviews: State<'_, ResourceActionReviewStore>,
 ) -> Result<ResourceActionPreview, AppError> {
     validate_resource_action_request(&request)?;
-    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
+    let review_id = reviews.begin()?;
+    let result = prepare_resource_action_review(request, review_id.clone()).await;
+    match result {
+        Ok((preview, reviewed)) => {
+            reviews.complete(&review_id, reviewed)?;
+            Ok(preview)
+        }
+        Err(error) => {
+            reviews.discard(&review_id);
+            Err(error)
+        }
+    }
+}
+
+pub async fn execute_resource_action(
+    confirmation: ResourceActionConfirmation,
+    reviews: State<'_, ResourceActionReviewStore>,
+) -> Result<ClusterOperationResult, AppError> {
+    let reviewed = reviews.consume(&confirmation)?;
+    let request = reviewed.request;
+    validate_resource_action_request(&request)?;
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
+    if access.source_key() != reviewed.source_key {
+        return Err(AppError::new(
+            "kubeconfig source changed since the action was reviewed",
+            AppErrorKind::Validation,
+        ));
+    }
+    let client = access
+        .confirmed_operation_client(&request.target.cluster_context)
+        .await?;
+    let api = resource_api(client.clone(), &request.target)?;
+    let current = api.get(&request.target.name).await?;
+    let current_value = action_value(&current)?;
+    ensure_action_resource_is_not_secret(&current_value)?;
+    let (uid, resource_version) = action_identity(&current)?;
+    validate_review_guard(
+        &reviewed.uid,
+        &reviewed.resource_version,
+        &uid,
+        &resource_version,
+    )?;
+
+    if request.action == ResourceActionKind::Rollback {
+        let expected = reviewed.revision_identity.as_ref().ok_or_else(|| {
+            AppError::new(
+                "reviewed rollback revision identity is missing",
+                AppErrorKind::Validation,
+            )
+        })?;
+        let revision = request.revision.ok_or_else(|| {
+            AppError::new(
+                "reviewed rollback revision is missing",
+                AppErrorKind::Validation,
+            )
+        })?;
+        let current_revision =
+            owned_revision_by_number(client.clone(), &request.target, &uid, revision).await?;
+        let current_identity = revision_source_identity(&current_revision)?;
+        validate_revision_review_guard(expected, &current_identity)?;
+    }
+
+    if request.action == ResourceActionKind::Delete {
+        api.delete(
+            &request.target.name,
+            &preview_exact_delete_params(&reviewed.uid, &reviewed.resource_version),
+        )
+        .await?;
+        api.delete(
+            &request.target.name,
+            &exact_delete_params(&reviewed.uid, &reviewed.resource_version),
+        )
+        .await?;
+    } else {
+        let patch = Patch::Merge(reviewed.patch.as_ref().ok_or_else(|| {
+            AppError::new("reviewed resource patch is missing", AppErrorKind::Internal)
+        })?);
+        let dry_run = api
+            .patch(&request.target.name, &preview_patch_params(), &patch)
+            .await?;
+        ensure_dry_run_matches_review(
+            reviews::require_reviewed_after(reviewed.reviewed_after.as_ref())?,
+            &dry_run,
+        )?;
+        api.patch(&request.target.name, &PatchParams::default(), &patch)
+            .await?;
+    }
+    let verb = action_verb(request.action);
+    let target = target_label(&request.target);
+    Ok(ClusterOperationResult {
+        effect: format!("{verb} {target}"),
+        target: request.target,
+    })
+}
+
+async fn prepare_resource_action_review(
+    request: ResourceActionRequest,
+    review_id: String,
+) -> Result<(ResourceActionPreview, ReviewedResourceAction), AppError> {
+    let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
+    let source_key = access.source_key().to_owned();
+    let client = access
         .preview_client(&request.target.cluster_context)
         .await?;
     let api = resource_api(client.clone(), &request.target)?;
@@ -86,14 +197,11 @@ pub async fn preview_resource_action(
     let current_value = action_value(&current)?;
     ensure_action_resource_is_not_secret(&current_value)?;
     let (uid, resource_version) = action_identity(&current)?;
-    if request.expected_uid.is_some() || request.expected_resource_version.is_some() {
-        validate_review_guard(&request, &uid, &resource_version)?;
-    }
     let before_yaml = action_yaml(&current_value)?;
-    let (effect, after_yaml, revision_identity) = preview_effect(
+    let (effect, after_yaml, reviewed_after, revision_identity, patch) = preview_effect(
         &request,
         api,
-        client.clone(),
+        client,
         &current_value,
         &uid,
         &resource_version,
@@ -102,89 +210,30 @@ pub async fn preview_resource_action(
     let controller = (request.action == ResourceActionKind::Delete)
         .then(|| controller::action_controller(&current_value))
         .flatten();
-    Ok(ResourceActionPreview {
-        target: request.target,
+    let preview = ResourceActionPreview {
+        review_id,
+        target: request.target.clone(),
         effect,
         before_yaml,
-        after_yaml,
+        after_yaml: after_yaml.clone(),
+        uid: uid.clone(),
+        resource_version: resource_version.clone(),
+        revision_uid: revision_identity.as_ref().map(|(uid, _)| uid.clone()),
+        revision_resource_version: revision_identity
+            .as_ref()
+            .map(|(_, version)| version.clone()),
+        controller,
+    };
+    let reviewed = ReviewedResourceAction {
+        request,
+        source_key,
         uid,
         resource_version,
-        revision_uid: revision_identity.as_ref().map(|(uid, _)| uid.clone()),
-        revision_resource_version: revision_identity.map(|(_, version)| version),
-        controller,
-    })
-}
-
-pub async fn execute_resource_action(
-    request: ResourceActionRequest,
-) -> Result<ClusterOperationResult, AppError> {
-    validate_resource_action_request(&request)?;
-    require_action_confirmation(&request)?;
-    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
-        .confirmed_operation_client(&request.target.cluster_context)
-        .await?;
-    if request.action == ResourceActionKind::Rollback
-        && request
-            .expected_revision_uid
-            .as_deref()
-            .zip(request.expected_revision_resource_version.as_deref())
-            .is_none()
-    {
-        return Err(AppError::new(
-            "reviewed revision UID and resourceVersion are required",
-            AppErrorKind::Validation,
-        ));
-    }
-    let (expected_uid, expected_resource_version) = request
-        .expected_uid
-        .as_deref()
-        .zip(request.expected_resource_version.as_deref())
-        .ok_or_else(|| {
-            AppError::new(
-                "reviewed UID and resourceVersion are required",
-                AppErrorKind::Validation,
-            )
-        })?;
-    let api = resource_api(client.clone(), &request.target)?;
-    let current = api.get(&request.target.name).await?;
-    let current_value = action_value(&current)?;
-    ensure_action_resource_is_not_secret(&current_value)?;
-    let (uid, resource_version) = action_identity(&current)?;
-    validate_review_guard(&request, &uid, &resource_version)?;
-
-    if request.action == ResourceActionKind::Delete {
-        api.delete(
-            &request.target.name,
-            &preview_exact_delete_params(expected_uid, expected_resource_version),
-        )
-        .await?;
-        api.delete(
-            &request.target.name,
-            &exact_delete_params(expected_uid, expected_resource_version),
-        )
-        .await?;
-    } else {
-        let (patch, _) = action_patch(
-            &request,
-            &current_value,
-            &uid,
-            &resource_version,
-            client.clone(),
-        )
-        .await?;
-        api.patch(&request.target.name, &preview_patch_params(), &patch)
-            .await?;
-        api.patch(&request.target.name, &PatchParams::default(), &patch)
-            .await?;
-    }
-    Ok(ClusterOperationResult {
-        effect: format!(
-            "{} {}",
-            action_verb(request.action),
-            target_label(&request.target)
-        ),
-        target: request.target,
-    })
+        revision_identity,
+        patch,
+        reviewed_after,
+    };
+    Ok((preview, reviewed))
 }
 
 async fn preview_effect(
@@ -194,7 +243,7 @@ async fn preview_effect(
     current: &Value,
     uid: &str,
     resource_version: &str,
-) -> Result<(String, String, Option<(String, String)>), AppError> {
+) -> Result<PreviewEffect, AppError> {
     if request.action == ResourceActionKind::Delete {
         let response = api
             .delete(
@@ -225,19 +274,28 @@ async fn preview_effect(
             format!("Delete {}", target_label(&request.target)),
             yaml,
             None,
+            None,
+            None,
         ));
     }
     let (patch, revision_identity) =
         action_patch(request, current, uid, resource_version, client).await?;
     let result = api
-        .patch(&request.target.name, &preview_patch_params(), &patch)
+        .patch(
+            &request.target.name,
+            &preview_patch_params(),
+            &Patch::Merge(patch.clone()),
+        )
         .await?;
     let after = action_value(&result)?;
+    let reviewed_after = state::action_review_value(&after);
     let verb = action_verb(request.action);
     Ok((
         format!("{verb} {}", target_label(&request.target)),
         action_yaml(&after)?,
+        Some(reviewed_after),
         revision_identity,
+        Some(patch),
     ))
 }
 
@@ -247,7 +305,7 @@ async fn action_patch(
     uid: &str,
     resource_version: &str,
     client: kube::Client,
-) -> Result<(Patch<serde_json::Value>, Option<(String, String)>), AppError> {
+) -> Result<(Value, Option<(String, String)>), AppError> {
     let mut revision_identity = None;
     let mut patch = match request.action {
         ResourceActionKind::Edit => build_resource_action_patch(
@@ -271,11 +329,6 @@ async fn action_patch(
             let replica_set =
                 owned_revision_by_number(client, &request.target, uid, revision).await?;
             let source_identity = revision_source_identity(&replica_set)?;
-            if request.expected_revision_uid.is_some()
-                || request.expected_revision_resource_version.is_some()
-            {
-                validate_revision_review_guard(request, &source_identity.0, &source_identity.1)?;
-            }
             revision_identity = Some(source_identity);
             let template = owned_revision_template(&replica_set, &request.target.name, uid)?;
             let current_template = current.pointer("/spec/template").ok_or_else(|| {
@@ -290,7 +343,7 @@ async fn action_patch(
         metadata["uid"] = json!(uid);
         metadata["resourceVersion"] = json!(resource_version);
     }
-    Ok((Patch::Merge(patch), revision_identity))
+    Ok((patch, revision_identity))
 }
 
 fn validate_resource_action_request(request: &ResourceActionRequest) -> Result<(), AppError> {
@@ -425,33 +478,6 @@ fn validate_edits(
         ));
     }
     Ok(())
-}
-
-fn validate_review_guard(
-    request: &ResourceActionRequest,
-    uid: &str,
-    resource_version: &str,
-) -> Result<(), AppError> {
-    if request.expected_uid.as_deref() != Some(uid)
-        || request.expected_resource_version.as_deref() != Some(resource_version)
-    {
-        return Err(AppError::new(
-            "resource changed since the action was reviewed",
-            AppErrorKind::Validation,
-        ));
-    }
-    Ok(())
-}
-
-fn require_action_confirmation(request: &ResourceActionRequest) -> Result<(), AppError> {
-    if request.confirmed {
-        Ok(())
-    } else {
-        Err(AppError::new(
-            "explicit confirmation is required",
-            AppErrorKind::ConfirmationRequired,
-        ))
-    }
 }
 
 fn build_resource_action_patch(
@@ -684,7 +710,9 @@ fn complete_template_merge_patch(current: &Value, desired: &Value) -> Value {
 }
 
 mod controller;
+mod reviews;
 mod state;
+pub use reviews::ResourceActionReviewStore;
 use state::{
     access_review, action_identity, action_value, action_yaml,
     ensure_action_resource_is_not_secret, owned_revision_by_number, owned_revisions,

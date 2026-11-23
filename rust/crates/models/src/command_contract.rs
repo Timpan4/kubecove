@@ -124,8 +124,10 @@ macro_rules! command_contract {
             both async fn apply_yaml(request: YamlApplyRequest);
             both async fn lint_kubernetes_yaml(request: YamlApplyRequest);
             both async fn get_resource_action_state(request: ResourceActionStateRequest);
-            both async fn preview_resource_action(request: ResourceActionRequest);
-            both async fn execute_resource_action(request: ResourceActionRequest);
+            both async fn preview_resource_action(request: ResourceActionRequest)
+                with State<ResourceActionReviewStore>;
+            both async fn execute_resource_action(confirmation: ResourceActionConfirmation)
+                with State<ResourceActionReviewStore>;
             both async fn detect_argocd(clusterContext: String, kubeconfigEnvVar: Option<String>);
             both async fn list_argocd_applications(
                 clusterContext: String,

@@ -1,6 +1,9 @@
 import { stringify } from "yaml";
 import type {
 	ClusterOperationResult,
+	JsonObject,
+	JsonValue,
+	ResourceActionConfirmation,
 	ResourceActionPreview,
 	ResourceActionRequest,
 	ResourceActionState,
@@ -9,12 +12,13 @@ import type {
 
 interface MockArgs {
 	request?: object;
+	confirmation?: JsonValue;
 }
 
 export const operationMockHandlers = {
 	get_resource_action_state: (args?: MockArgs) => resourceActionState(resourceActionStateRequest(args)),
 	preview_resource_action: (args?: MockArgs) => resourceActionPreview(resourceActionRequest(args)),
-	execute_resource_action: (args?: MockArgs) => resourceActionResult(resourceActionRequest(args)),
+	execute_resource_action: (args?: MockArgs) => resourceActionResult(resourceActionConfirmation(args)),
 };
 
 function resourceActionRequest(args?: MockArgs): ResourceActionRequest {
@@ -29,6 +33,29 @@ function resourceActionStateRequest(args?: MockArgs): ResourceActionStateRequest
 	if (!request) throw new Error("Resource action state request is required.");
 	// SAFETY: the state handler is called through its matching typed read wrapper.
 	return request as ResourceActionStateRequest;
+}
+
+/** Mirrors the Rust model's `deny_unknown_fields`: exactly `{ reviewId: string }`. */
+function resourceActionConfirmation(args?: MockArgs): ResourceActionConfirmation {
+	const confirmation = args?.confirmation;
+	if (
+		!isRecord(confirmation)
+		|| Object.keys(confirmation).join() !== "reviewId"
+		|| !Object.hasOwn(confirmation, "reviewId")
+		|| !isString(confirmation.reviewId)
+	) {
+		throw new Error("Resource action confirmation must be exactly { reviewId: string }.");
+	}
+	return { reviewId: confirmation.reviewId };
+}
+
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Parse the untrusted IPC confirmation at its input boundary.
+	return typeof value === "string";
 }
 
 interface MockActionContainer {
@@ -89,6 +116,14 @@ interface MockActionYamlObject {
 
 // Synthetic resource objects live only in browser mock memory.
 const mockActionObjects = new Map<string, MockActionObject>();
+let mockReviewSequence = 0;
+let pendingMockReview: {
+	id: string;
+	request: ResourceActionRequest;
+	uid: string;
+	resourceVersion: string;
+	revision?: { uid: string; resourceVersion: string };
+} | null = null;
 
 function resourceActionState(request: ResourceActionStateRequest): ResourceActionState {
 	const object = getMockActionObject(request);
@@ -131,16 +166,26 @@ function resourceActionState(request: ResourceActionStateRequest): ResourceActio
 }
 
 function resourceActionPreview(request: ResourceActionRequest): ResourceActionPreview {
+	assertValidMockRequest(request);
+	// Like the backend store, a validated preview replaces the pending review even if its dry run fails.
+	pendingMockReview = null;
 	assertActionAllowed(request);
-	assertValidMockEdits(request);
 	assertNotDryRunFailure(request.name);
 	const before = getMockActionObject(request);
-	assertMockGuard(request, before, false);
 	const after = applyMockAction(cloneMock(before), request);
 	const target = actionTarget(request);
 	const revision = request.action === "rollback" ? mockRevisionIdentity(request) : undefined;
 	const controller = mockReplicaSetOwner(request);
+	const reviewId = `mock-resource-action-review-${++mockReviewSequence}`;
+	pendingMockReview = {
+		id: reviewId,
+		request: structuredClone(request),
+		uid: before.metadata.uid,
+		resourceVersion: before.metadata.resourceVersion,
+		revision,
+	};
 	return {
+		reviewId,
 		target,
 		effect: `${request.action} ${operationLabel(request)}`,
 		beforeYaml: mockActionYaml(before),
@@ -161,14 +206,19 @@ function mockReplicaSetOwner(request: ResourceActionRequest): string | undefined
 	return /^(.+-[a-z0-9]{9,10})-[a-z0-9]{5}$/.exec(request.name)?.[1];
 }
 
-function resourceActionResult(request: ResourceActionRequest): ClusterOperationResult {
-	requireMockConfirmation(request);
+function resourceActionResult(confirmation: ResourceActionConfirmation): ClusterOperationResult {
+	const reviewed = pendingMockReview;
+	if (!reviewed || reviewed.id !== confirmation.reviewId) {
+		throw new Error("Resource action review is missing, superseded, or already used.");
+	}
+	pendingMockReview = null;
+	const request = reviewed.request;
 	assertActionAllowed(request);
-	assertValidMockEdits(request);
+	assertValidMockRequest(request);
 	assertNotDryRunFailure(request.name);
 	const object = getMockActionObject(request);
-	assertMockGuard(request, object, true);
-	if (request.action === "rollback") assertMockRevisionGuard(request);
+	assertMockGuard(reviewed, object);
+	if (request.action === "rollback") assertMockRevisionGuard(request, reviewed.revision);
 	if (request.action === "delete") mockActionObjects.delete(mockActionKey(request));
 	else {
 		const applied = applyMockAction(cloneMock(object), request);
@@ -259,10 +309,9 @@ function assertNotDryRunFailure(name: string): void {
 	if (name.startsWith("mock-dry-run-error")) throw new Error("Browser mock dry-run failed for this fixture.");
 }
 
-function assertMockGuard(request: ResourceActionRequest, object: MockActionObject, required: boolean): void {
-	if (required && (!request.expectedUid || !request.expectedResourceVersion)) throw new Error("Reviewed UID and resourceVersion are required.");
-	if (request.expectedUid !== undefined && request.expectedUid !== object.metadata.uid) throw new Error("Resource UID changed since preview.");
-	if (request.expectedResourceVersion !== undefined && request.expectedResourceVersion !== object.metadata.resourceVersion) throw new Error("Resource version changed since preview.");
+function assertMockGuard(reviewed: NonNullable<typeof pendingMockReview>, object: MockActionObject): void {
+	if (reviewed.uid !== object.metadata.uid) throw new Error("Resource UID changed since preview.");
+	if (reviewed.resourceVersion !== object.metadata.resourceVersion) throw new Error("Resource version changed since preview.");
 }
 
 function mockRevisionIdentity(request: ResourceActionRequest) {
@@ -273,17 +322,24 @@ function mockRevisionIdentity(request: ResourceActionRequest) {
 	return { uid: `mock-revision-${revision}`, resourceVersion: "1" };
 }
 
-function assertMockRevisionGuard(request: ResourceActionRequest): void {
+function assertMockRevisionGuard(
+	request: ResourceActionRequest,
+	reviewed: { uid: string; resourceVersion: string } | undefined,
+): void {
 	const revision = mockRevisionIdentity(request);
-	if (!request.expectedRevisionUid || !request.expectedRevisionResourceVersion) {
+	if (!reviewed) {
 		throw new Error("Reviewed revision UID and resourceVersion are required.");
 	}
-	if (request.expectedRevisionUid !== revision.uid || request.expectedRevisionResourceVersion !== revision.resourceVersion) {
+	if (reviewed.uid !== revision.uid || reviewed.resourceVersion !== revision.resourceVersion) {
 		throw new Error("Rollback revision changed since the action was reviewed.");
 	}
 }
 
-function assertValidMockEdits(request: ResourceActionRequest): void {
+function assertValidMockRequest(request: ResourceActionRequest): void {
+	const revision = request.revision;
+	if (request.action === "rollback" && (revision === undefined || !Number.isInteger(revision) || revision < 1)) {
+		throw new Error("A positive revision is required.");
+	}
 	if (request.edits?.replicas !== undefined && request.edits.replicas < 0) throw new Error("Replicas must be zero or greater.");
 	for (const container of request.edits?.containers ?? []) {
 		if (container.image !== undefined && !container.image.trim()) throw new Error("Container image cannot be empty.");
@@ -404,8 +460,4 @@ function cloneMock<T>(value: T): T {
 
 function operationLabel(request: ResourceActionRequest) {
 	return `${request.kind} ${request.namespace}/${request.name} in context ${request.clusterContext}`;
-}
-
-function requireMockConfirmation(request: ResourceActionRequest) {
-	if (!request.confirmed) throw new Error("Explicit confirmation is required.");
 }

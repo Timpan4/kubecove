@@ -237,11 +237,20 @@ impl Backend for NativeBackend {
     }
 
     fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
-        self.read(commands::preview_resource_action(request))
+        let reviews = Arc::clone(&self.resource_action_reviews);
+        self.read(async move {
+            commands::preview_resource_action(request, State::new(reviews.as_ref())).await
+        })
     }
 
-    fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
-        self.read(commands::execute_resource_action(request))
+    fn execute_action(
+        &self,
+        confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult> {
+        let reviews = Arc::clone(&self.resource_action_reviews);
+        self.read(async move {
+            commands::execute_resource_action(confirmation, State::new(reviews.as_ref())).await
+        })
     }
 
     fn resource_yaml(&self, resource: ResourceSummary, mode: YamlViewMode) -> Read<String> {

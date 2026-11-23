@@ -3,8 +3,9 @@
 //! rules in `resourceActionSession.ts`.
 
 use kubecove_lib::models::{
-    ClusterOperationTarget, ResourceActionKind, ResourceActionPermission, ResourceActionPreview,
-    ResourceActionRequest, ResourceActionState, ResourceSummary,
+    ClusterOperationTarget, ResourceActionConfirmation, ResourceActionKind,
+    ResourceActionPermission, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+    ResourceSummary,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -328,27 +329,13 @@ pub fn review_request(
             ..Default::default()
         }),
         revision: None,
-        expected_uid: None,
-        expected_resource_version: None,
-        expected_revision_uid: None,
-        expected_revision_resource_version: None,
-        confirmed: false,
         kubeconfig_env_var: None,
     }
 }
 
-/// `executionRequest`: the reviewed request, guarded by the previewed identity.
-pub fn execution_request(
-    request: &ResourceActionRequest,
-    preview: &ResourceActionPreview,
-) -> ResourceActionRequest {
-    let mut guarded = request.clone();
-    guarded.expected_uid = Some(preview.uid.clone());
-    guarded.expected_resource_version = Some(preview.resource_version.clone());
-    guarded.confirmed = true;
-    if request.action == ResourceActionKind::Rollback {
-        guarded.expected_revision_uid = preview.revision_uid.clone();
-        guarded.expected_revision_resource_version = preview.revision_resource_version.clone();
+/// The only caller-controlled input to execution is the opaque review identifier.
+pub fn action_confirmation(preview: &ResourceActionPreview) -> ResourceActionConfirmation {
+    ResourceActionConfirmation {
+        review_id: preview.review_id.clone(),
     }
-    guarded
 }

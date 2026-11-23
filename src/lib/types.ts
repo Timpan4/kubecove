@@ -90,6 +90,7 @@ export type {
 export type {
 	ClusterOperationResult,
 	ClusterOperationTarget,
+	ResourceActionConfirmation,
 	ResourceActionContainer,
 	ResourceActionController,
 	ResourceActionEdits,

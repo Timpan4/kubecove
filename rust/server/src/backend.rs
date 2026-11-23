@@ -1,8 +1,8 @@
 use kubecove_lib::{
     commands::{
         AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore,
-        PodExecRegistry, PortForwardRegistry, SessionScope, StreamRegistry,
-        cancel_workspace_requests,
+        PodExecRegistry, PortForwardRegistry, ResourceActionReviewStore, SessionScope,
+        StreamRegistry, cancel_workspace_requests,
     },
     models::AppError,
     runtime::State,
@@ -17,6 +17,7 @@ pub struct BackendState {
     pub pod_exec: PodExecRegistry,
     pub usage: AppUsageMonitor,
     pub argo: ArgoConnectionStore,
+    pub resource_action_reviews: ResourceActionReviewStore,
     pub scope: Arc<SessionScope>,
 }
 
@@ -39,6 +40,7 @@ impl BackendState {
             pod_exec: PodExecRegistry::default(),
             usage: AppUsageMonitor::default(),
             argo,
+            resource_action_reviews: ResourceActionReviewStore::default(),
             scope,
         }
     }
@@ -82,4 +84,5 @@ managed_state! {
     pod_exec: PodExecRegistry,
     usage: AppUsageMonitor,
     argo: ArgoConnectionStore,
+    resource_action_reviews: ResourceActionReviewStore,
 }

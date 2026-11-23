@@ -22,9 +22,11 @@ k8s-openapi = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 kubecove-kube = { path = "../kube", features = ["test-support"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
 http = { workspace = true }
 tower = { workspace = true }
 tower-test = { workspace = true }
