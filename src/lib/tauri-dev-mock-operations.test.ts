@@ -29,6 +29,7 @@ test("a malformed confirmation is refused without consuming the pending review",
 		{},
 		{ review_id: reviewId },
 		{ reviewId: 1 },
+		{ reviewId: { toString: null } },
 		{ reviewId, expectedUid: "mock-uid-1" },
 	];
 	for (const confirmation of malformed) {
@@ -42,6 +43,20 @@ test("a preview refused by request validation keeps the pending review", async (
 	const { reviewId } = await preview(deleteConfigMap("confirmation-invalid-later"));
 	const invalid: ResourceActionRequest = { ...deleteConfigMap("confirmation-invalid-later"), action: "edit", edits: { replicas: -1 } };
 	await expect(preview(invalid)).rejects.toThrow("Replicas must be zero or greater.");
+	await execute({ reviewId });
+});
+
+test("an invalid rollback preview keeps the pending review", async () => {
+	const { reviewId } = await preview(deleteConfigMap("confirmation-invalid-rollback"));
+	const invalidRollback: ResourceActionRequest = {
+		clusterContext: "mock-dev",
+		kind: "Deployment",
+		name: "confirmation-invalid-rollback",
+		namespace: "default",
+		apiVersion: "apps/v1",
+		action: "rollback",
+	};
+	await expect(preview(invalidRollback)).rejects.toThrow("positive revision");
 	await execute({ reviewId });
 });
 

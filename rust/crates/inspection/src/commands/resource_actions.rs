@@ -11,6 +11,13 @@ use reviews::{ReviewedResourceAction, ensure_dry_run_matches_review, validate_re
 use serde_json::{Map, Value, json};
 
 const ACTION_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"];
+type PreviewEffect = (
+    String,
+    String,
+    Option<Value>,
+    Option<(String, String)>,
+    Option<Value>,
+);
 
 pub async fn get_resource_action_state(
     request: ResourceActionStateRequest,
@@ -155,13 +162,16 @@ pub async fn execute_resource_action(
         )
         .await?;
     } else {
-        let patch = Patch::Merge(reviewed.patch.ok_or_else(|| {
+        let patch = Patch::Merge(reviewed.patch.as_ref().ok_or_else(|| {
             AppError::new("reviewed resource patch is missing", AppErrorKind::Internal)
         })?);
         let dry_run = api
             .patch(&request.target.name, &preview_patch_params(), &patch)
             .await?;
-        ensure_dry_run_matches_review(&reviewed.after_yaml, &dry_run)?;
+        ensure_dry_run_matches_review(
+            reviews::require_reviewed_after(reviewed.reviewed_after.as_ref())?,
+            &dry_run,
+        )?;
         api.patch(&request.target.name, &PatchParams::default(), &patch)
             .await?;
     }
@@ -188,7 +198,7 @@ async fn prepare_resource_action_review(
     ensure_action_resource_is_not_secret(&current_value)?;
     let (uid, resource_version) = action_identity(&current)?;
     let before_yaml = action_yaml(&current_value)?;
-    let (effect, after_yaml, revision_identity, patch) = preview_effect(
+    let (effect, after_yaml, reviewed_after, revision_identity, patch) = preview_effect(
         &request,
         api,
         client,
@@ -221,7 +231,7 @@ async fn prepare_resource_action_review(
         resource_version,
         revision_identity,
         patch,
-        after_yaml,
+        reviewed_after,
     };
     Ok((preview, reviewed))
 }
@@ -233,7 +243,7 @@ async fn preview_effect(
     current: &Value,
     uid: &str,
     resource_version: &str,
-) -> Result<(String, String, Option<(String, String)>, Option<Value>), AppError> {
+) -> Result<PreviewEffect, AppError> {
     if request.action == ResourceActionKind::Delete {
         let response = api
             .delete(
@@ -265,6 +275,7 @@ async fn preview_effect(
             yaml,
             None,
             None,
+            None,
         ));
     }
     let (patch, revision_identity) =
@@ -277,10 +288,12 @@ async fn preview_effect(
         )
         .await?;
     let after = action_value(&result)?;
+    let reviewed_after = state::action_review_value(&after);
     let verb = action_verb(request.action);
     Ok((
         format!("{verb} {}", target_label(&request.target)),
         action_yaml(&after)?,
+        Some(reviewed_after),
         revision_identity,
         Some(patch),
     ))

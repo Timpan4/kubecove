@@ -360,15 +360,20 @@ pub(super) fn action_identity(object: &DynamicObject) -> Result<(String, String)
 }
 
 pub(super) fn action_yaml(value: &Value) -> Result<String, AppError> {
+    let value = action_review_value(value);
+    crate::commands::helpers::serialize_json_value_document(
+        &value,
+        crate::models::YamlEncoding::Yaml,
+    )
+}
+
+pub(super) fn action_review_value(value: &Value) -> Value {
     let mut value = value.clone();
     crate::commands::helpers::normalize_k8s_yaml_value(
         &mut value,
         crate::models::YamlViewMode::ApplyClean,
     );
-    crate::commands::helpers::serialize_json_value_document(
-        &value,
-        crate::models::YamlEncoding::Yaml,
-    )
+    value
 }
 
 pub(super) fn clean_action_display_metadata(value: &mut Value) {

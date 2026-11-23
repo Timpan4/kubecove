@@ -105,7 +105,7 @@ fn reviewed(
     resource_version: &str,
     revision_identity: Option<(&str, &str)>,
     patch: Option<Value>,
-    after_yaml: String,
+    reviewed_after: Option<Value>,
 ) -> (ResourceActionReviewStore, ResourceActionConfirmation) {
     let store = ResourceActionReviewStore::default();
     let review_id = store.begin().unwrap();
@@ -120,16 +120,11 @@ fn reviewed(
                 revision_identity: revision_identity
                     .map(|(uid, resource_version)| (uid.into(), resource_version.into())),
                 patch,
-                after_yaml,
+                reviewed_after,
             },
         )
         .unwrap();
     (store, ResourceActionConfirmation { review_id })
-}
-
-fn object_review_yaml(object: Value) -> String {
-    action_yaml(&action_value(&serde_json::from_value::<DynamicObject>(object).unwrap()).unwrap())
-        .unwrap()
 }
 
 fn assert_configmap_path(request: &Request<Body>) {
@@ -379,6 +374,8 @@ fn deletion_exact_preconditions_are_mandatory() {
 #[tokio::test]
 async fn execute_edit_repeats_dry_run_before_guarded_patch() {
     let (cluster, mut handle) = mock_cluster();
+    let mut reviewed_after = configmap();
+    reviewed_after["metadata"]["labels"]["team"] = json!("platform");
     let (reviews, confirmation) = reviewed(
         execution_request("edit"),
         "uid-1",
@@ -387,7 +384,7 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
         Some(
             json!({"metadata":{"labels":{"team":"platform"},"uid":"uid-1","resourceVersion":"7"}}),
         ),
-        object_review_yaml(configmap()),
+        Some(state::action_review_value(&reviewed_after)),
     );
     let operation = cluster
         .scope()
@@ -408,7 +405,7 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
                 .unwrap_or_default()
                 .contains("dryRun=All")
         );
-        send.send_response(json_response(200, configmap()));
+        send.send_response(json_response(200, reviewed_after.clone()));
 
         let (request, send) = handle.next_request().await.expect("guarded apply");
         assert_eq!(request.method(), Method::PATCH);
@@ -420,7 +417,7 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
                 .unwrap_or_default()
                 .contains("dryRun=")
         );
-        send.send_response(json_response(200, configmap()));
+        send.send_response(json_response(200, reviewed_after));
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     assert!(result.is_ok());
@@ -439,7 +436,7 @@ async fn failed_execution_dry_run_never_sends_mutating_patch() {
         Some(
             json!({"metadata":{"labels":{"team":"platform"},"uid":"uid-1","resourceVersion":"7"}}),
         ),
-        String::new(),
+        None,
     );
     let operation = cluster.scope().run(execute_resource_action(
         confirmation.clone(),
@@ -474,14 +471,8 @@ async fn failed_execution_dry_run_never_sends_mutating_patch() {
 #[tokio::test]
 async fn execute_delete_dry_runs_then_uses_uid_and_resource_version_preconditions() {
     let (cluster, mut handle) = mock_cluster();
-    let (reviews, confirmation) = reviewed(
-        execution_request("delete"),
-        "uid-1",
-        "7",
-        None,
-        None,
-        String::new(),
-    );
+    let (reviews, confirmation) =
+        reviewed(execution_request("delete"), "uid-1", "7", None, None, None);
     let operation = cluster
         .scope()
         .run(execute_resource_action(confirmation, State::new(&reviews)));
@@ -528,7 +519,7 @@ async fn rollback_execution_rejects_a_changed_revision_source_before_patch() {
         "7",
         Some(("revision-uid", "10")),
         Some(json!({"metadata":{"uid":"deployment-uid","resourceVersion":"7"}})),
-        String::new(),
+        None,
     );
     let operation = cluster
         .scope()

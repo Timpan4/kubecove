@@ -19,7 +19,7 @@ mod settings_remote;
 mod timing;
 mod unexpected;
 
-use detail_tabs::DetailTabs;
+pub(crate) use detail_tabs::DetailTabs;
 use kubecove_gpui::{
     backend::{
         Backend, CLUSTER_KINDS, KubeconfigSourcesSummary, LiveSessions, LogStream, LogTarget, Read,

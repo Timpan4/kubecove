@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn restart_execution_reuses_the_exact_reviewed_patch_and_cannot_be_replayed() {
+async fn restart_uses_exact_patch_ignores_key_order_and_cannot_be_replayed() {
     let (cluster, mut handle) = mock_cluster();
     let reviews = ResourceActionReviewStore::default();
     let preview_operation = cluster.scope().run(preview_resource_action(
@@ -18,6 +18,8 @@ async fn restart_execution_reuses_the_exact_reviewed_patch_and_cannot_be_replaye
             serde_json::from_slice(&request.into_body().collect_bytes().await.unwrap()).unwrap();
         let mut after = deployment();
         merge_patch(&mut after, &reviewed_patch);
+        after["metadata"]["labels"] =
+            serde_json::from_str(r#"{"app":"api","team":"platform"}"#).unwrap();
         send.send_response(json_response(200, after));
         (handle, reviewed_patch)
     };
@@ -41,6 +43,8 @@ async fn restart_execution_reuses_the_exact_reviewed_patch_and_cannot_be_replaye
         send.send_response(json_response(200, deployment()));
         let mut repeated = deployment();
         merge_patch(&mut repeated, &reviewed_patch);
+        repeated["metadata"]["labels"] =
+            serde_json::from_str(r#"{"team":"platform","app":"api"}"#).unwrap();
         repeated["metadata"]["resourceVersion"] = json!("8");
         repeated["metadata"]["generation"] = json!(3);
         repeated["metadata"]["managedFields"] = json!([{"manager": "kubecove"}]);

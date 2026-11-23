@@ -1,4 +1,4 @@
-use super::state::{action_value, action_yaml};
+use super::state::{action_review_value, action_value};
 use crate::models::{AppError, AppErrorKind, ResourceActionConfirmation, ResourceActionRequest};
 use kube::api::DynamicObject;
 use serde_json::Value;
@@ -13,15 +13,24 @@ pub(super) struct ReviewedResourceAction {
     pub resource_version: String,
     pub revision_identity: Option<(String, String)>,
     pub patch: Option<Value>,
-    pub after_yaml: String,
+    pub reviewed_after: Option<Value>,
+}
+
+pub(super) fn require_reviewed_after(reviewed_after: Option<&Value>) -> Result<&Value, AppError> {
+    reviewed_after.ok_or_else(|| {
+        AppError::new(
+            "reviewed resource dry-run result is missing",
+            AppErrorKind::Internal,
+        )
+    })
 }
 
 pub(super) fn ensure_dry_run_matches_review(
-    reviewed_after_yaml: &str,
+    reviewed_after: &Value,
     dry_run: &DynamicObject,
 ) -> Result<(), AppError> {
-    let after_yaml = action_yaml(&action_value(dry_run)?)?;
-    if reviewed_after_yaml != after_yaml {
+    let after = action_review_value(&action_value(dry_run)?);
+    if reviewed_after != &after {
         return Err(AppError::new(
             "server dry-run result changed since the action was reviewed; review the action again",
             AppErrorKind::Validation,
@@ -153,7 +162,7 @@ mod tests {
             resource_version: "7".into(),
             revision_identity: None,
             patch: Some(serde_json::json!({"metadata":{"labels":{"team":"platform"}}})),
-            after_yaml: String::new(),
+            reviewed_after: Some(serde_json::json!({})),
         }
     }
 

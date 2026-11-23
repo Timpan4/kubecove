@@ -54,7 +54,8 @@ function isRecord<Value>(value: Value): value is Value & JsonObject {
 }
 
 function isString<Value>(value: Value): value is Value & string {
-	return String(value) === value;
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Parse the untrusted IPC confirmation at its input boundary.
+	return typeof value === "string";
 }
 
 interface MockActionContainer {
@@ -165,7 +166,7 @@ function resourceActionState(request: ResourceActionStateRequest): ResourceActio
 }
 
 function resourceActionPreview(request: ResourceActionRequest): ResourceActionPreview {
-	assertValidMockEdits(request);
+	assertValidMockRequest(request);
 	// Like the backend store, a validated preview replaces the pending review even if its dry run fails.
 	pendingMockReview = null;
 	assertActionAllowed(request);
@@ -213,7 +214,7 @@ function resourceActionResult(confirmation: ResourceActionConfirmation): Cluster
 	pendingMockReview = null;
 	const request = reviewed.request;
 	assertActionAllowed(request);
-	assertValidMockEdits(request);
+	assertValidMockRequest(request);
 	assertNotDryRunFailure(request.name);
 	const object = getMockActionObject(request);
 	assertMockGuard(reviewed, object);
@@ -334,7 +335,11 @@ function assertMockRevisionGuard(
 	}
 }
 
-function assertValidMockEdits(request: ResourceActionRequest): void {
+function assertValidMockRequest(request: ResourceActionRequest): void {
+	const revision = request.revision;
+	if (request.action === "rollback" && (revision === undefined || !Number.isInteger(revision) || revision < 1)) {
+		throw new Error("A positive revision is required.");
+	}
 	if (request.edits?.replicas !== undefined && request.edits.replicas < 0) throw new Error("Replicas must be zero or greater.");
 	for (const container of request.edits?.containers ?? []) {
 		if (container.image !== undefined && !container.image.trim()) throw new Error("Container image cannot be empty.");

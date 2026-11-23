@@ -12,6 +12,12 @@ use kubecove_lib::models::{
     YamlEncoding, YamlViewMode,
 };
 use serde::Deserialize;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+struct PendingReview {
+    issued_id: String,
+    fixture_id: String,
+}
 
 #[derive(Deserialize)]
 pub struct DetailTabs {
@@ -24,9 +30,11 @@ pub struct DetailTabs {
     >,
     #[serde(skip)]
     paused: std::sync::Mutex<bool>,
-    /// The one review ID the last preview issued, consumed by the execution that names it.
+    /// The one review the last preview issued, consumed by the execution that names it.
     #[serde(skip)]
-    pending_review: std::sync::Mutex<Option<String>>,
+    pending_review: std::sync::Mutex<Option<PendingReview>>,
+    #[serde(skip)]
+    review_sequence: AtomicU64,
     logs: Logs,
     #[serde(rename = "yamlReads")]
     yaml_reads: Vec<YamlRead>,
@@ -248,12 +256,26 @@ impl DetailTabs {
             .previews
             .iter()
             .find(|entry| comparable(&entry.request) == request);
-        // Like the backend store, every preview replaces the pending review.
-        *self.pending_review.lock().unwrap() = found.map(|entry| entry.preview.review_id.clone());
-        ready(found.map_or_else(
-            || missing("action preview"),
-            |entry| Ok(entry.preview.clone()),
-        ))
+        let result = found.map_or_else(
+            || {
+                *self.pending_review.lock().unwrap() = None;
+                missing("action preview")
+            },
+            |entry| {
+                let issued_id = format!(
+                    "fixture-resource-action-review-{}",
+                    self.review_sequence.fetch_add(1, Ordering::Relaxed)
+                );
+                *self.pending_review.lock().unwrap() = Some(PendingReview {
+                    issued_id: issued_id.clone(),
+                    fixture_id: entry.preview.review_id.clone(),
+                });
+                let mut preview = entry.preview.clone();
+                preview.review_id = issued_id;
+                Ok(preview)
+            },
+        );
+        ready(result)
     }
 
     pub fn execute_action(
@@ -264,18 +286,18 @@ impl DetailTabs {
             .pending_review
             .lock()
             .unwrap()
-            .take_if(|id| *id == confirmation.review_id);
-        if issued.is_none() {
+            .take_if(|review| review.issued_id == confirmation.review_id);
+        let Some(issued) = issued else {
             return ready(Err(AppError::new(
                 "resource action review is missing, superseded, or already used",
                 AppErrorKind::ConfirmationRequired,
             )));
-        }
+        };
         let found = self
             .actions
             .executions
             .iter()
-            .find(|entry| entry.confirmation.review_id == confirmation.review_id);
+            .find(|entry| entry.confirmation.review_id == issued.fixture_id);
         if let Some(entry) = found {
             *self.paused.lock().unwrap() =
                 entry.action == kubecove_lib::models::ResourceActionKind::Pause;
