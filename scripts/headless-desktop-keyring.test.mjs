@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { readinessTimeoutMs } from "../e2e/harness/timeouts.ts";
 
 const runner = fileURLToPath(new URL("./headless-desktop.sh", import.meta.url));
+const processPollIntervalMs = 1_000;
 
 test("headless desktop changes only its own Secret Service default", { skip: process.platform !== "linux", timeout: readinessTimeoutMs }, async (t) => {
 	const caller = mkdtempSync(join(tmpdir(), "kubecove-keyring-caller-"));
@@ -86,7 +87,8 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 				signalCaller("SIGTERM");
 				await Promise.race([
 					closed,
-					delay(readinessTimeoutMs, undefined, { signal: deadline.signal }).then(() => {
+					// Give the desktop watchdog its shutdown budget before waiting on caller cleanup.
+					delay(readinessTimeoutMs * 2, undefined, { signal: deadline.signal }).then(() => {
 						throw new Error("The private caller session did not close");
 					}),
 				]);
@@ -139,6 +141,9 @@ async function verifyCancellation(t, stopSupervisor) {
 			assert.ok(Number.isSafeInteger(pid) && pid > 0, "expected one session supervisor");
 			process.kill(pid, "SIGSTOP");
 			supervisor = pid;
+			while (!/\) T /.test(readFileSync(`/proc/${pid}/stat`, "utf8"))) {
+				await delay(processPollIntervalMs, undefined, { signal: t.signal });
+			}
 		}
 		assert.equal(child.kill("SIGTERM"), true);
 		assert.deepEqual(await exited, [143, null]);
@@ -150,7 +155,7 @@ async function verifyCancellation(t, stopSupervisor) {
 				throw error;
 			}
 			if (/\) [ZX] /.test(status)) break;
-			await delay(1_000, undefined, { signal: t.signal });
+			await delay(processPollIntervalMs, undefined, { signal: t.signal });
 		}
 	} catch (error) {
 		try { process.kill(descendant, "SIGKILL"); } catch (signalError) {
