@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { MarkerType, useStore, ViewportPortal } from "@xyflow/svelte";
+	import { MarkerType, useSvelteFlowStore, ViewportPortal } from "@xyflow/svelte";
 	import { getMarkerId, type EdgeMarker } from "@xyflow/system";
 	import { topologyLayerEdgeVisible, type TopologyLayerEdge } from "./topology-edge-layer";
 
 	let { edges }: { edges: TopologyLayerEdge[] } = $props();
 
-	const flow = useStore();
+	const flow = useSvelteFlowStore();
 	const markerPrefix = $derived(`${flow.flowId}-edge-layer`);
 	const markers = $derived.by(() => {
 		const byId = new Map<string, EdgeMarker & { id: string }>();
