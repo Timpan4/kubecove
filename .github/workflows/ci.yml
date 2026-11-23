@@ -155,6 +155,12 @@ jobs:
       - name: Test CI orchestration
         run: bun run test:ci
 
+      - name: Test headless desktop keyring isolation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus-bin dbus-daemon gnome-keyring xauth xvfb
+          node --test scripts/headless-desktop-keyring.test.mjs
+
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 

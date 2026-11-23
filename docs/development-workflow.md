@@ -463,18 +463,18 @@ explicit new run identifier. It creates no cluster, uses only the smoke runner's
 synthetic loopback kubeconfig, and removes its temporary profile on completion.
 It never reads the user's kubeconfig. Reports remain local and ignored by Git.
 
-On headless Linux/WSL, run inside a disposable D-Bus/keyring and Xvfb session:
+On headless Linux/WSL, use the runner to launch Xvfb and a private D-Bus/keyring
+with a disposable home and XDG directories:
 
 ```sh
-dbus-run-session -- bash -euc '
-  eval "$(gnome-keyring-daemon --start --components=secrets)"
-  dbus-send --session --print-reply --dest=org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service.SetAlias string:default objpath:/org/freedesktop/secrets/collection/session
-  exec xvfb-run -a bun run perf:startup
-'
+bash scripts/headless-desktop.sh bun run perf:startup
+bash scripts/headless-desktop.sh bun run e2e:desktop-smoke
 ```
 
-The session keyring is temporary. On a small VM, set `CARGO_BUILD_JOBS=1` for the
-build if necessary; record the setting when comparing build times.
+A private D-Bus session alone does not isolate the keyring's on-disk default
+alias. Use the runner rather than starting the keyring against your real home.
+On a small VM, set `CARGO_BUILD_JOBS=1` for the build if necessary; record the
+setting when comparing build times.
 
 The runner checks for KubeCove processes and occupied frontend/automation ports
 before building and again before launch. It refuses an existing instance rather
