@@ -71,14 +71,35 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 		detached: true,
 	});
 	const closed = once(child, "close");
-	t.after(async () => {
-		if (child.exitCode === null && child.signalCode === null && child.pid !== undefined) {
-			try { process.kill(-child.pid, "SIGTERM"); } catch (error) {
-				if (error.code !== "ESRCH") throw error;
-			}
+	let closeSeen = false;
+	child.once("close", () => { closeSeen = true; });
+	function signalCaller(signal) {
+		if (child.pid === undefined) return;
+		try { process.kill(-child.pid, signal); } catch (error) {
+			if (error.code !== "ESRCH") throw error;
 		}
-		await closed;
-		rmSync(caller, { recursive: true, force: true });
+	}
+	t.after(async () => {
+		const deadline = new AbortController();
+		try {
+			if (!closeSeen) {
+				signalCaller("SIGTERM");
+				await Promise.race([
+					closed,
+					delay(readinessTimeoutMs, undefined, { signal: deadline.signal }).then(() => {
+						throw new Error("The private caller session did not close");
+					}),
+				]);
+			}
+		} finally {
+			deadline.abort();
+			if (!closeSeen) {
+				signalCaller("SIGKILL");
+				child.stdout.destroy();
+				child.stderr.destroy();
+			}
+			rmSync(caller, { recursive: true, force: true });
+		}
 	});
 	const [[status], stdout, stderr] = await Promise.all([closed, text(child.stdout), text(child.stderr)]);
 	assert.equal(status, 23, stderr);
