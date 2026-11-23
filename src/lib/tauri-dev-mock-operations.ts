@@ -10,7 +10,7 @@ import type {
 
 interface MockArgs {
 	request?: object;
-	confirmation?: object;
+	confirmation?: unknown;
 }
 
 export const operationMockHandlers = {
@@ -33,11 +33,20 @@ function resourceActionStateRequest(args?: MockArgs): ResourceActionStateRequest
 	return request as ResourceActionStateRequest;
 }
 
+/** Mirrors the Rust model's `deny_unknown_fields`: exactly `{ reviewId: string }`. */
 function resourceActionConfirmation(args?: MockArgs): ResourceActionConfirmation {
 	const confirmation = args?.confirmation;
-	if (!confirmation) throw new Error("Resource action confirmation is required.");
-	// SAFETY: the execute handler is called through its matching typed operation wrapper.
-	return confirmation as ResourceActionConfirmation;
+	if (
+		typeof confirmation !== "object"
+		|| confirmation === null
+		|| Array.isArray(confirmation)
+		|| Object.keys(confirmation).join() !== "reviewId"
+		|| !("reviewId" in confirmation)
+		|| typeof confirmation.reviewId !== "string"
+	) {
+		throw new Error("Resource action confirmation must be exactly { reviewId: string }.");
+	}
+	return { reviewId: confirmation.reviewId };
 }
 
 interface MockActionContainer {
@@ -148,8 +157,10 @@ function resourceActionState(request: ResourceActionStateRequest): ResourceActio
 }
 
 function resourceActionPreview(request: ResourceActionRequest): ResourceActionPreview {
-	assertActionAllowed(request);
 	assertValidMockEdits(request);
+	// Like the backend store, a validated preview replaces the pending review even if its dry run fails.
+	pendingMockReview = null;
+	assertActionAllowed(request);
 	assertNotDryRunFailure(request.name);
 	const before = getMockActionObject(request);
 	const after = applyMockAction(cloneMock(before), request);

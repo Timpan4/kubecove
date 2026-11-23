@@ -430,7 +430,7 @@ impl Inspector {
         let ReviewStep::Previewed(previewed) = &mut review.step else {
             return;
         };
-        let request = review.request.clone();
+        let request = &review.request;
         let reviewed_replicas = request.edits.as_ref().and_then(|edits| edits.replicas);
         let mut reviewed_edits = request.edits.clone().unwrap_or_default();
         reviewed_edits.replicas = None;

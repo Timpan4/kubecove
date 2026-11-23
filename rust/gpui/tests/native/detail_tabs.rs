@@ -26,7 +26,12 @@ pub struct DetailControls {
     log_fail: AtomicBool,
     log_stopped: Arc<AtomicBool>,
     preview_fail: AtomicBool,
+    /// Previews issued so far; each one gets a distinct review ID.
+    previews: AtomicUsize,
+    /// The review ID of the last successful preview, until an execution consumes it.
+    pending_review: Mutex<Option<String>>,
     execute_fail: AtomicBool,
+    /// Executions requested, including ones refused for their confirmation.
     executed: AtomicUsize,
     /// Holds the next execution until the test releases it.
     execute_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -94,6 +99,12 @@ impl DetailControls {
 
     pub fn preview_action(&self, request: ResourceActionRequest) -> Read<ResourceActionPreview> {
         let fail = self.preview_fail.load(Ordering::SeqCst);
+        let review_id = format!(
+            "controlled-review-{}",
+            self.previews.fetch_add(1, Ordering::SeqCst)
+        );
+        // Like the backend store, every preview replaces the pending review.
+        *self.pending_review.lock().unwrap() = (!fail).then(|| review_id.clone());
         Box::pin(async move {
             if fail {
                 return Err(AppError::new(
@@ -102,7 +113,7 @@ impl DetailControls {
                 ));
             }
             Ok(ResourceActionPreview {
-                review_id: "controlled-review".into(),
+                review_id,
                 target: request.target,
                 effect: "Restart".into(),
                 before_yaml: "metadata:\n  name: payments-api\n".into(),
@@ -118,10 +129,23 @@ impl DetailControls {
 
     pub fn execute_action(
         &self,
-        _confirmation: ResourceActionConfirmation,
+        confirmation: ResourceActionConfirmation,
     ) -> Read<ClusterOperationResult> {
         let fail = self.execute_fail.load(Ordering::SeqCst);
         self.executed.fetch_add(1, Ordering::SeqCst);
+        let issued = self
+            .pending_review
+            .lock()
+            .unwrap()
+            .take_if(|id| *id == confirmation.review_id);
+        if issued.is_none() {
+            return Box::pin(async {
+                Err(AppError::new(
+                    "resource action review is missing, superseded, or already used",
+                    AppErrorKind::ConfirmationRequired,
+                ))
+            });
+        }
         let gate = self.execute_gate.lock().unwrap().take();
         let finished = self.execute_finished.clone();
         Box::pin(async move {

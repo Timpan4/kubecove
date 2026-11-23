@@ -24,6 +24,9 @@ pub struct DetailTabs {
     >,
     #[serde(skip)]
     paused: std::sync::Mutex<bool>,
+    /// The one review ID the last preview issued, consumed by the execution that names it.
+    #[serde(skip)]
+    pending_review: std::sync::Mutex<Option<String>>,
     logs: Logs,
     #[serde(rename = "yamlReads")]
     yaml_reads: Vec<YamlRead>,
@@ -245,6 +248,8 @@ impl DetailTabs {
             .previews
             .iter()
             .find(|entry| comparable(&entry.request) == request);
+        // Like the backend store, every preview replaces the pending review.
+        *self.pending_review.lock().unwrap() = found.map(|entry| entry.preview.review_id.clone());
         ready(found.map_or_else(
             || missing("action preview"),
             |entry| Ok(entry.preview.clone()),
@@ -255,6 +260,17 @@ impl DetailTabs {
         &self,
         confirmation: ResourceActionConfirmation,
     ) -> Read<ClusterOperationResult> {
+        let issued = self
+            .pending_review
+            .lock()
+            .unwrap()
+            .take_if(|id| *id == confirmation.review_id);
+        if issued.is_none() {
+            return ready(Err(AppError::new(
+                "resource action review is missing, superseded, or already used",
+                AppErrorKind::ConfirmationRequired,
+            )));
+        }
         let found = self
             .actions
             .executions
