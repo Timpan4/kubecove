@@ -88,15 +88,23 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 	assert.equal(existsSync(profile), false, "failed command must not leave its profile behind");
 });
 
-test("cancelling the desktop stops a descendant that ignores TERM", { skip: process.platform !== "linux", timeout: readinessTimeoutMs }, async (t) => {
+async function verifyCancellation(t, stopSupervisor) {
 	const child = spawn("bash", [runner, "bash", "-euc", `
 		bash -c 'trap "" TERM; printf "%s\\n" "$BASHPID" "$HOME"; exec sleep infinity' &
 		wait "$!"
 	`], { stdio: ["ignore", "pipe", "inherit"] });
 	const exited = once(child, "exit");
 	const output = createInterface({ input: child.stdout, signal: t.signal });
+	let supervisor;
 	t.after(() => {
-		if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+		if (child.exitCode === null && child.signalCode === null) {
+			if (supervisor !== undefined) {
+				try { process.kill(supervisor, "SIGCONT"); } catch (error) {
+					if (error.code !== "ESRCH") throw error;
+				}
+			}
+			child.kill("SIGTERM");
+		}
 		output.close();
 	});
 	const lines = output[Symbol.asyncIterator]();
@@ -105,17 +113,36 @@ test("cancelling the desktop stops a descendant that ignores TERM", { skip: proc
 	assert.ok(Number.isSafeInteger(descendant) && descendant > 0);
 	try {
 		assert.ok(profile);
+		if (stopSupervisor) {
+			const pid = Number(readFileSync(`/proc/${child.pid}/task/${child.pid}/children`, "utf8").trim());
+			assert.ok(Number.isSafeInteger(pid) && pid > 0, "expected one session supervisor");
+			process.kill(pid, "SIGSTOP");
+			supervisor = pid;
+		}
 		assert.equal(child.kill("SIGTERM"), true);
 		assert.deepEqual(await exited, [143, null]);
 		assert.equal(existsSync(profile), false);
-		while (!/\) [ZX] /.test(readFileSync(`/proc/${descendant}/stat`, "utf8"))) {
+		for (;;) {
+			let status;
+			try { status = readFileSync(`/proc/${descendant}/stat`, "utf8"); } catch (error) {
+				if (error.code === "ENOENT") break;
+				throw error;
+			}
+			if (/\) [ZX] /.test(status)) break;
 			await delay(1_000, undefined, { signal: t.signal });
 		}
 	} catch (error) {
-		if (error.code === "ENOENT") return;
 		try { process.kill(descendant, "SIGKILL"); } catch (signalError) {
 			if (signalError.code !== "ESRCH") throw signalError;
 		}
 		throw error;
 	}
+}
+
+test("cancelling the desktop stops a descendant that ignores TERM", { skip: process.platform !== "linux", timeout: readinessTimeoutMs }, async (t) => {
+	await verifyCancellation(t, false);
+});
+
+test("cancelling the desktop still cleans up when the supervisor is stopped", { skip: process.platform !== "linux", timeout: readinessTimeoutMs * 2 }, async (t) => {
+	await verifyCancellation(t, true);
 });

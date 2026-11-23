@@ -19,18 +19,28 @@ export TMPDIR="$profile/tmp"
 unset DBUS_SESSION_BUS_ADDRESS DBUS_STARTER_ADDRESS DBUS_STARTER_BUS_TYPE GNOME_KEYRING_CONTROL
 unset BASH_ENV ENV SSH_AUTH_SOCK WAYLAND_DISPLAY WAYLAND_SOCKET DISPLAY XAUTHORITY
 mkdir -m 700 "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" "$TMPDIR"
+mkfifo "$profile/shutdown"
+exec {shutdown_fd}<>"$profile/shutdown"
 
 stop() {
+    trap '' INT TERM
+    # Match the E2E harness shutdown budget. The timer lives outside the session it stops.
+    (
+        if ! read -r -t 30 -u "$shutdown_fd"; then
+            kill -KILL -- "-$worker" 2>/dev/null || true
+        fi
+    ) &
+    local watchdog=$!
     kill -TERM "$worker" 2>/dev/null || true
     wait "$worker" 2>/dev/null || true
+    printf '\n' >&"$shutdown_fd"
+    wait "$watchdog"
     exit "$1"
 }
 setsid bash -euc '
     stop_session() {
         trap "" TERM
         kill -TERM -- "-$$"
-        # Match the E2E harness process shutdown budget in timeouts.ts.
-        (sleep 30; kill -KILL -- "-$$") &
         if [[ -n ${session:-} ]]; then wait "$session" || true; fi
         # Keep the process group anchored until the final signal is sent.
         kill -KILL -- "-$$"
@@ -44,7 +54,7 @@ setsid bash -euc '
         /org/freedesktop/secrets org.freedesktop.Secret.Service.SetAlias \
         string:default objpath:/org/freedesktop/secrets/collection/session >/dev/null
     exec xvfb-run -a "$@"
-' "$@" &
+' "$@" {shutdown_fd}>&- &
 worker=$!
 trap 'stop 130' INT
 trap 'stop 143' TERM
