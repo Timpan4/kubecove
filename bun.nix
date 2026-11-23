@@ -889,10 +889,6 @@
     url = "https://registry.npmjs.org/@xyflow/svelte/-/svelte-2.0.2.tgz";
     hash = "sha512-QJZ5ZzMBqJWO8bQOrp1G09r0qFxsL9ueBQLPbtXAupx3guMrjAPfK32EEAkqyBsp0OUptKn7FIMNq5ky8Nr6zQ==";
   };
-  "@xyflow/system@0.0.84" = fetchurl {
-    url = "https://registry.npmjs.org/@xyflow/system/-/system-0.0.84.tgz";
-    hash = "sha512-96zfGFjH3oZ3T0MRdH4gJ0SlXuCIxbBuHVevZ4xry5UTxqjzjt010+LRdholgepq7jhrcaz1JNtzrETscwnkEA==";
-  };
   "@xyflow/system@1.0.0" = fetchurl {
     url = "https://registry.npmjs.org/@xyflow/system/-/system-1.0.0.tgz";
     hash = "sha512-mOeG0ZIkEUY5V5XQS+LE3QKlJqL7gu5ukqxAniuDDpfxtkA4uagOmBiWKh3w59wZ5nBC7ojBcNrBukM3hUJBKg==";

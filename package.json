@@ -86,7 +86,7 @@
     "@wdio/mocha-framework": "10.2.0",
     "@wdio/spec-reporter": "10.2.0",
     "@xyflow/svelte": "2.0.2",
-    "@xyflow/system": "0.0.84",
+    "@xyflow/system": "1.0.0",
     "bits-ui": "2.21.0",
     "fast-check": "4.10.3",
     "lucide-svelte": "1.0.1",
