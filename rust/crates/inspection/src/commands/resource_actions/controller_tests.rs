@@ -33,9 +33,11 @@ async fn delete_preview_displays_owner_metadata_without_replacement_queries() {
             "status":{"phase":"Succeeded"}
         });
         let (cluster, mut handle) = mock_cluster();
-        let operation = cluster
-            .scope()
-            .run(preview_resource_action(request("Pod", "delete")));
+        let reviews = ResourceActionReviewStore::default();
+        let operation = cluster.scope().run(preview_resource_action(
+            request("Pod", "delete"),
+            State::new(&reviews),
+        ));
         let responder = async move {
             let (request, send) = handle.next_request().await.expect("target read");
             assert_eq!(request.method(), Method::GET);

@@ -6,16 +6,17 @@ use crate::{backend::BackendState, channels::ChannelHub};
 use kubecove_lib::{
     commands::{
         self, AppUsageMonitor, ArgoConnectionStore, BackendCancellationRegistry, ClusterLiveStore,
-        PodExecRegistry, PortForwardRegistry, StreamRegistry,
+        PodExecRegistry, PortForwardRegistry, ResourceActionReviewStore, StreamRegistry,
     },
     models::{
         AggregatedLogStreamRequest, AppError, AppErrorKind, ArgoApplicationRef,
         ArgoConfirmedTarget, ArgoConnectionProfile, ArgoManagedResource, ArgoOperationConfirmation,
         ArgoOperationRequest, ArgoServerEndpoint, CommandArgs, DiscoveredResourceKind,
         FluxResourceKind, LiveSessionCleanupRequest, PodExecSessionRequest, PodExecTerminalSize,
-        PodLogStreamRequest, PortForwardRequest, RbacAccessReviewRequest, ResourceActionRequest,
-        ResourceActionStateRequest, ResourceListRequest, ResourceWatchStart, WatchResourceKey,
-        YamlApplyRequest, YamlEncoding, YamlViewMode,
+        PodLogStreamRequest, PortForwardRequest, RbacAccessReviewRequest,
+        ResourceActionConfirmation, ResourceActionRequest, ResourceActionStateRequest,
+        ResourceListRequest, ResourceWatchStart, WatchResourceKey, YamlApplyRequest, YamlEncoding,
+        YamlViewMode,
     },
     runtime::{Channel, State},
 };

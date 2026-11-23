@@ -270,9 +270,9 @@ impl Backend for DesktopBackend {
         json!({"request":request})
     );
     route!(
-        execute_action(request: ResourceActionRequest) -> ClusterOperationResult,
+        execute_action(confirmation: ResourceActionConfirmation) -> ClusterOperationResult,
         "execute_resource_action",
-        json!({"request":request})
+        json!({"confirmation":confirmation})
     );
     route!(
         prepare_yaml_apply(request: YamlApplyRequest) -> YamlApplyPreview,

@@ -6,9 +6,10 @@
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, DeploymentRevision,
-    KubernetesYamlLintResult, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-    ResourceActionStateRequest, ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest,
-    YamlApplyResult, YamlEncoding, YamlViewMode,
+    KubernetesYamlLintResult, ResourceActionConfirmation, ResourceActionKind,
+    ResourceActionPreview, ResourceActionRequest, ResourceActionState, ResourceActionStateRequest,
+    ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlEncoding, YamlViewMode,
 };
 use serde::Deserialize;
 
@@ -93,7 +94,8 @@ struct Previewed {
 
 #[derive(Deserialize)]
 struct Executed {
-    request: ResourceActionRequest,
+    confirmation: ResourceActionConfirmation,
+    action: ResourceActionKind,
     result: ClusterOperationResult,
 }
 
@@ -249,17 +251,18 @@ impl DetailTabs {
         ))
     }
 
-    pub fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
-        let action = request.action;
-        let request = comparable(&request);
+    pub fn execute_action(
+        &self,
+        confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult> {
         let found = self
             .actions
             .executions
             .iter()
-            .find(|entry| comparable(&entry.request) == request);
-        if found.is_some() {
+            .find(|entry| entry.confirmation.review_id == confirmation.review_id);
+        if let Some(entry) = found {
             *self.paused.lock().unwrap() =
-                action == kubecove_lib::models::ResourceActionKind::Pause;
+                entry.action == kubecove_lib::models::ResourceActionKind::Pause;
         }
         ready(found.map_or_else(
             || missing("action execution"),

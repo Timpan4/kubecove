@@ -22,6 +22,7 @@ import type {
 	YamlEncoding,
 	YamlViewMode,
 	ClusterOperationResult,
+	ResourceActionConfirmation,
 	ResourceActionPreview,
 	ResourceActionRequest,
 	ResourceActionStateRequest,
@@ -431,9 +432,9 @@ export async function previewResourceAction(
 
 export async function executeResourceAction(
 	client: TauriClient,
-	request: ResourceActionRequest,
+	confirmation: ResourceActionConfirmation,
 ): Promise<ClusterOperationResult> {
-	return client.invoke<ClusterOperationResult>("execute_resource_action", { request });
+	return client.invoke<ClusterOperationResult>("execute_resource_action", { confirmation });
 }
 
 export async function listResourceEvents(

@@ -105,20 +105,6 @@ function canExecute(view: ResourceActionReview): boolean {
 	return view.status === "ready" && view.preview !== null && view.error === null;
 }
 
-function executionRequest(request: ResourceActionRequest, preview: ResourceActionPreview): ResourceActionRequest {
-	const guarded: ResourceActionRequest = {
-		...request,
-		expectedUid: preview.uid,
-		expectedResourceVersion: preview.resourceVersion,
-		confirmed: true,
-	};
-	if (request.action === "rollback") {
-		guarded.expectedRevisionUid = preview.revisionUid;
-		guarded.expectedRevisionResourceVersion = preview.revisionResourceVersion;
-	}
-	return guarded;
-}
-
 function targetIdentity({ resource, kubeconfigSourceKey }: ResourceActionTarget): string {
 	return JSON.stringify([actionTarget(resource), kubeconfigSourceKey ?? ""]);
 }
@@ -164,7 +150,7 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 		updateRun(current, { status: "executing", error: null });
 		let effect: string;
 		try {
-			effect = (await executeResourceAction(client, executionRequest(current.request, preview))).effect;
+			effect = (await executeResourceAction(client, { reviewId: preview.reviewId })).effect;
 		} catch (cause) {
 			if (run !== current) return;
 			updateRun(
@@ -235,7 +221,6 @@ export function createResourceActionSession(options: ResourceActionSessionOption
 			const request: ResourceActionRequest = {
 				...actionTarget(target.resource),
 				action,
-				confirmed: false,
 				kubeconfigEnvVar: target.kubeconfigSourceKey,
 			};
 			if (action === "edit") request.edits = structuredClone(state.edits);

@@ -33,16 +33,13 @@ pub struct ResourceActionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_uid: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_resource_version: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_revision_uid: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_revision_resource_version: Option<String>,
-    pub confirmed: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kubeconfig_env_var: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResourceActionConfirmation {
+    pub review_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -137,6 +134,7 @@ pub struct ResourceActionRevision {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceActionPreview {
+    pub review_id: String,
     pub target: ClusterOperationTarget,
     pub effect: String,
     pub before_yaml: String,

@@ -7,9 +7,10 @@ use gpui_kit::test::{TestQueryExt, TestWindowExt};
 use gpui_kit::{AppContext, TestAppContext};
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
-    AppError, AppErrorKind, ClusterOperationResult, DeploymentRevision, ResourceActionPreview,
-    ResourceActionRequest, ResourceActionState, ResourceActionStateRequest, ResourceSummary,
-    StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult, YamlViewMode,
+    AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, DeploymentRevision,
+    ResourceActionConfirmation, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
+    ResourceActionStateRequest, ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest,
+    YamlApplyResult, YamlViewMode,
 };
 use serde_json::json;
 use std::collections::VecDeque;
@@ -101,6 +102,7 @@ impl DetailControls {
                 ));
             }
             Ok(ResourceActionPreview {
+                review_id: "controlled-review".into(),
                 target: request.target,
                 effect: "Restart".into(),
                 before_yaml: "metadata:\n  name: payments-api\n".into(),
@@ -114,7 +116,10 @@ impl DetailControls {
         })
     }
 
-    pub fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
+    pub fn execute_action(
+        &self,
+        _confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult> {
         let fail = self.execute_fail.load(Ordering::SeqCst);
         self.executed.fetch_add(1, Ordering::SeqCst);
         let gate = self.execute_gate.lock().unwrap().take();
@@ -131,7 +136,13 @@ impl DetailControls {
                 ));
             }
             Ok(ClusterOperationResult {
-                target: request.target,
+                target: ClusterOperationTarget {
+                    cluster_context: "mock-dev".into(),
+                    kind: "Deployment".into(),
+                    name: "payments-api".into(),
+                    api_version: Some("apps/v1".into()),
+                    namespace: Some("payments".into()),
+                },
                 effect: "Restarted".into(),
             })
         })

@@ -10,6 +10,8 @@ import type {
 	ClusterOperationResult,
 	DeploymentRevision,
 	KubernetesYamlLintResult,
+	ResourceActionConfirmation,
+	ResourceActionKind,
 	ResourceActionPreview,
 	ResourceActionRequest,
 	ResourceActionState,
@@ -60,52 +62,52 @@ export async function exportDetailTabs(client: TauriClient, resources: ResourceS
 	// Each review runs against a fresh mock object: executing changes its resourceVersion,
 	// so every non-delete execution is followed by a reviewed delete that resets it.
 	const previews: { request: ResourceActionRequest; preview: ResourceActionPreview }[] = [];
-	const executions: { request: ResourceActionRequest; result: ClusterOperationResult }[] = [];
+	const executions: { confirmation: ResourceActionConfirmation; action: ResourceActionKind; result: ClusterOperationResult }[] = [];
 	let pausedState: ResourceActionState | undefined;
 	const review = async (request: ResourceActionRequest) => {
 		const preview = await client.invoke<ResourceActionPreview>("preview_resource_action", { request });
-		const confirmed: ResourceActionRequest = { ...request, expectedUid: preview.uid, expectedResourceVersion: preview.resourceVersion, ...(request.action === "rollback" && { expectedRevisionUid: preview.revisionUid, expectedRevisionResourceVersion: preview.revisionResourceVersion }), confirmed: true };
-		const result = await client.invoke<ClusterOperationResult>("execute_resource_action", { request: confirmed });
-		return { preview, confirmed, result };
+		const confirmation = { reviewId: preview.reviewId };
+		const result = await client.invoke<ClusterOperationResult>("execute_resource_action", { confirmation });
+		return { preview, confirmation, result };
 	};
 	const container = { name: "api", env: [], requests: {}, limits: {} };
 	const requests: ResourceActionRequest[] = [
-		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, name: "sidecar", image: "registry.example/sidecar:v2" },{ ...container, env: [{name: "MODE", value: "merged"}] }] },confirmed:false },
-		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, env: [{ name: "RENAMED", value: "new" }, { name: "MODE", remove: true }] }] }, confirmed: false },
-		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, name: "sidecar", image: "registry.example/sidecar:v2" }] }, confirmed: false },
-		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, env: [{ name: "MODE", value: "reviewed" }] }] }, confirmed: false },
-		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, requests: { cpu: "100m" }, limits: { memory: "128Mi" } }] }, confirmed: false },
-		{ ...target(focus), action: "edit", edits: { labels: { app: "reviewed" } }, confirmed: false },
-		{ ...target(focus), action: "edit", edits: { annotations: { "mock.example/keep": "reviewed" } }, confirmed: false },
-		{ ...target(focus), action: "rollback", revision: 2, confirmed: false },
-		{ ...target(focus), action: "restart", confirmed: false },
-		{ ...target(focus), action: "pause", confirmed: false },
-		{ ...target(focus), action: "edit", edits: { replicas: 3 }, confirmed: false },
-		{ ...target(focus), action: "delete", confirmed: false },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, name: "sidecar", image: "registry.example/sidecar:v2" },{ ...container, env: [{name: "MODE", value: "merged"}] }] } },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, env: [{ name: "RENAMED", value: "new" }, { name: "MODE", remove: true }] }] } },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, name: "sidecar", image: "registry.example/sidecar:v2" }] } },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, env: [{ name: "MODE", value: "reviewed" }] }] } },
+		{ ...target(focus), action: "edit", edits: { containers: [{ ...container, requests: { cpu: "100m" }, limits: { memory: "128Mi" } }] } },
+		{ ...target(focus), action: "edit", edits: { labels: { app: "reviewed" } } },
+		{ ...target(focus), action: "edit", edits: { annotations: { "mock.example/keep": "reviewed" } } },
+		{ ...target(focus), action: "rollback", revision: 2 },
+		{ ...target(focus), action: "restart" },
+		{ ...target(focus), action: "pause" },
+		{ ...target(focus), action: "edit", edits: { replicas: 3 } },
+		{ ...target(focus), action: "delete" },
 	];
 	for (const request of requests) {
-		const { preview, confirmed, result } = await review(request);
+		const { preview, confirmation, result } = await review(request);
 		previews.push({ request, preview });
-		executions.push({ request: confirmed, result });
+		executions.push({ confirmation, action: request.action, result });
 		if (request.action === "pause") {
 			pausedState = await client.invoke<ResourceActionState>("get_resource_action_state", { request: target(focus) });
-			const resume: ResourceActionRequest = { ...target(focus), action: "resume", confirmed: false };
+			const resume: ResourceActionRequest = { ...target(focus), action: "resume" };
 			const resumed = await review(resume);
 			previews.push({ request: resume, preview: resumed.preview });
-			executions.push({ request: resumed.confirmed, result: resumed.result });
+			executions.push({ confirmation: resumed.confirmation, action: resume.action, result: resumed.result });
 		}
-		if (request.action !== "delete") await review({ ...target(focus), action: "delete", confirmed: false });
+		if (request.action !== "delete") await review({ ...target(focus), action: "delete" });
 	}
 	// The managed-Pod scenario shows the owner without relying on replacement.
 	const replica = resources.find((row) => row.cluster === focus.cluster && row.kind === "Pod" && row.name === "payments-api-7d9c9b7f8d-k2r9p");
 	if (!replica) throw new Error("The browser mock has no ReplicaSet Pod payments-api-7d9c9b7f8d-k2r9p");
-	const podDelete = await review({ ...target(replica), action: "delete", confirmed: false });
-	previews.push({ request: { ...target(replica), action: "delete", confirmed: false }, preview: podDelete.preview });
-	executions.push({ request: podDelete.confirmed, result: podDelete.result });
+	const podDelete = await review({ ...target(replica), action: "delete" });
+	previews.push({ request: { ...target(replica), action: "delete" }, preview: podDelete.preview });
+	executions.push({ confirmation: podDelete.confirmation, action: "delete", result: podDelete.result });
 	// Multi-context scenarios review the replica edit of the same Deployment in another context.
 	const sameObject = (row: ResourceSummary) => row.cluster !== focus.cluster && row.kind === focus.kind && row.name === focus.name && row.namespace === focus.namespace;
 	for (const row of resources.filter(sameObject)) {
-		const request: ResourceActionRequest = { ...target(row), action: "edit", edits: { replicas: 3 }, confirmed: false };
+		const request: ResourceActionRequest = { ...target(row), action: "edit", edits: { replicas: 3 } };
 		previews.push({ request, preview: await client.invoke<ResourceActionPreview>("preview_resource_action", { request }) });
 	}
 	const draft = await client.invoke<string>("get_resource_yaml", { clusterContext, kind: focus.kind, name: focus.name, namespace: focus.namespace, yamlViewMode: "applyClean" });

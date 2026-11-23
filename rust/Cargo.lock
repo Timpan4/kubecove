@@ -1773,6 +1773,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-test",
+ "uuid",
  "yaml_serde",
 ]
 
