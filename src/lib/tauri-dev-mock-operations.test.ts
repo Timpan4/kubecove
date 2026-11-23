@@ -38,6 +38,13 @@ test("a malformed confirmation is refused without consuming the pending review",
 	await expect(execute({ reviewId })).rejects.toThrow("missing, superseded, or already used");
 });
 
+test("a preview refused by request validation keeps the pending review", async () => {
+	const { reviewId } = await preview(deleteConfigMap("confirmation-invalid-later"));
+	const invalid: ResourceActionRequest = { ...deleteConfigMap("confirmation-invalid-later"), action: "edit", edits: { replicas: -1 } };
+	await expect(preview(invalid)).rejects.toThrow("Replicas must be zero or greater.");
+	await execute({ reviewId });
+});
+
 test("a later preview whose dry run fails supersedes the pending review", async () => {
 	const { reviewId } = await preview(deleteConfigMap("confirmation-superseded"));
 	await expect(preview(deleteConfigMap("mock-dry-run-error-superseding"))).rejects.toThrow("dry-run failed");
