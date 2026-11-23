@@ -16,7 +16,7 @@ const deleteConfigMap = (name: string): ResourceActionRequest => ({
 });
 const preview = (request: ResourceActionRequest) =>
 	client.invoke<ResourceActionPreview>("preview_resource_action", { request });
-const execute = (confirmation: unknown) =>
+const execute = <Confirmation>(confirmation: Confirmation) =>
 	client.invoke<ClusterOperationResult>("execute_resource_action", { confirmation });
 
 test("a malformed confirmation is refused without consuming the pending review", async () => {

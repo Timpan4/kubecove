@@ -1,6 +1,8 @@
 import { stringify } from "yaml";
 import type {
 	ClusterOperationResult,
+	JsonObject,
+	JsonValue,
 	ResourceActionConfirmation,
 	ResourceActionPreview,
 	ResourceActionRequest,
@@ -10,7 +12,7 @@ import type {
 
 interface MockArgs {
 	request?: object;
-	confirmation?: unknown;
+	confirmation?: JsonValue;
 }
 
 export const operationMockHandlers = {
@@ -37,16 +39,22 @@ function resourceActionStateRequest(args?: MockArgs): ResourceActionStateRequest
 function resourceActionConfirmation(args?: MockArgs): ResourceActionConfirmation {
 	const confirmation = args?.confirmation;
 	if (
-		typeof confirmation !== "object"
-		|| confirmation === null
-		|| Array.isArray(confirmation)
+		!isRecord(confirmation)
 		|| Object.keys(confirmation).join() !== "reviewId"
-		|| !("reviewId" in confirmation)
-		|| typeof confirmation.reviewId !== "string"
+		|| !Object.hasOwn(confirmation, "reviewId")
+		|| !isString(confirmation.reviewId)
 	) {
 		throw new Error("Resource action confirmation must be exactly { reviewId: string }.");
 	}
 	return { reviewId: confirmation.reviewId };
+}
+
+function isRecord<Value>(value: Value): value is Value & JsonObject {
+	return value !== null && !Array.isArray(value) && Object(value) === value;
+}
+
+function isString<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }
 
 interface MockActionContainer {
