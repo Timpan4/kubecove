@@ -36,6 +36,7 @@ function resourceActionStateRequest(args?: MockArgs): ResourceActionStateRequest
 function resourceActionConfirmation(args?: MockArgs): ResourceActionConfirmation {
 	const confirmation = args?.confirmation;
 	if (!confirmation) throw new Error("Resource action confirmation is required.");
+	// SAFETY: the execute handler is called through its matching typed operation wrapper.
 	return confirmation as ResourceActionConfirmation;
 }
 
