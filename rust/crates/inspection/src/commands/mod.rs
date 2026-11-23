@@ -29,7 +29,8 @@ pub use namespaces::{list_namespaces, namespaces_summary_from};
 pub use rbac::{list_rbac_inspection, rbac_inspection_from};
 pub use rbac_review::review_rbac_access;
 pub use resource_actions::{
-    execute_resource_action, get_resource_action_state, preview_resource_action,
+    ResourceActionReviewStore, execute_resource_action, get_resource_action_state,
+    preview_resource_action,
 };
 pub use resources::{
     apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,

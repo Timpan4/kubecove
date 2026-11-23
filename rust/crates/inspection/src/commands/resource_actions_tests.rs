@@ -1,7 +1,10 @@
 use super::state::clean_action_display_metadata;
 use super::*;
-use crate::commands::{ClientIntent, FixedClusterAccess};
-use crate::models::{AppErrorKind, ResourceActionEdits, ResourceActionRequest};
+use crate::commands::{ClientIntent, FIXED_SOURCE_KEY, FixedClusterAccess};
+use crate::models::{
+    AppErrorKind, ResourceActionConfirmation, ResourceActionEdits, ResourceActionRequest,
+};
+use crate::runtime::State;
 use http::{Method, Request, Response, header::CONTENT_TYPE};
 use kube::{Client, client::Body};
 use serde_json::{Value, json};
@@ -38,17 +41,39 @@ fn request(kind: &str, action: &str) -> ResourceActionRequest {
         "kind": kind,
         "name": "api",
         "namespace": "default",
-        "action": action,
-        "confirmed": false
+        "action": action
     }))
     .expect("valid action request")
 }
 
+#[test]
+fn execution_confirmation_rejects_caller_supplied_action_data() {
+    let error = serde_json::from_value::<ResourceActionConfirmation>(json!({
+        "reviewId": "review-1",
+        "confirmation": "review-1",
+        "action": "delete",
+        "name": "other-target"
+    }))
+    .unwrap_err();
+    assert!(error.to_string().contains("unknown field"));
+}
+
+#[tokio::test]
+async fn execution_without_a_server_owned_review_is_rejected_before_cluster_access() {
+    let reviews = ResourceActionReviewStore::default();
+    let error = execute_resource_action(
+        ResourceActionConfirmation {
+            review_id: "missing-review".into(),
+        },
+        State::new(&reviews),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.kind, AppErrorKind::ConfirmationRequired);
+}
+
 fn execution_request(action: &str) -> ResourceActionRequest {
     let mut request = request("ConfigMap", action);
-    request.confirmed = true;
-    request.expected_uid = Some("uid-1".into());
-    request.expected_resource_version = Some("7".into());
     if action == "edit" {
         request.edits =
             Some(serde_json::from_value(json!({"labels":{"team":"platform"}})).unwrap());
@@ -68,23 +93,38 @@ fn revision_set(uid: &str, resource_version: &str, image: &str) -> Value {
     json!({"apiVersion":"apps/v1","kind":"ReplicaSet","metadata":{"name":"api-abc","namespace":"default","uid":uid,"resourceVersion":resource_version,"annotations":{"deployment.kubernetes.io/revision":"2"},"ownerReferences":[{"apiVersion":"apps/v1","kind":"Deployment","name":"api","uid":"deployment-uid","controller":true}]},"spec":{"template":{"metadata":{"labels":{"app":"api","pod-template-hash":"abc"}},"spec":{"containers":[{"name":"api","image":image}]}}}})
 }
 
-fn rollback_request(
-    expected_revision_uid: Option<&str>,
-    expected_revision_resource_version: Option<&str>,
-) -> ResourceActionRequest {
+fn rollback_request() -> ResourceActionRequest {
     let mut request = request("Deployment", "rollback");
-    request.confirmed = true;
     request.revision = Some(2);
-    request.expected_uid = Some("deployment-uid".into());
-    request.expected_resource_version = Some("7".into());
-    let mut value = serde_json::to_value(request).unwrap();
-    if let Some(uid) = expected_revision_uid {
-        value["expectedRevisionUid"] = json!(uid);
-    }
-    if let Some(resource_version) = expected_revision_resource_version {
-        value["expectedRevisionResourceVersion"] = json!(resource_version);
-    }
-    serde_json::from_value(value).unwrap()
+    request
+}
+
+fn reviewed(
+    request: ResourceActionRequest,
+    uid: &str,
+    resource_version: &str,
+    revision_identity: Option<(&str, &str)>,
+    patch: Option<Value>,
+    reviewed_after: Option<Value>,
+) -> (ResourceActionReviewStore, ResourceActionConfirmation) {
+    let store = ResourceActionReviewStore::default();
+    let review_id = store.begin().unwrap();
+    store
+        .complete(
+            &review_id,
+            ReviewedResourceAction {
+                request,
+                source_key: FIXED_SOURCE_KEY.into(),
+                uid: uid.into(),
+                resource_version: resource_version.into(),
+                revision_identity: revision_identity
+                    .map(|(uid, resource_version)| (uid.into(), resource_version.into())),
+                patch,
+                reviewed_after,
+            },
+        )
+        .unwrap();
+    (store, ResourceActionConfirmation { review_id })
 }
 
 fn assert_configmap_path(request: &Request<Body>) {
@@ -156,27 +196,14 @@ fn permission_errors_fail_closed_and_keep_the_action_visible() {
 
 #[test]
 fn stale_resource_version_and_uid_block_execution() {
-    let request = request("Deployment", "edit");
     assert_eq!(
-        validate_review_guard(&request, "current-uid", "7")
+        validate_review_guard("old-uid", "7", "current-uid", "7")
             .unwrap_err()
             .kind,
         AppErrorKind::Validation
     );
-
-    let mut request = request;
-    request.expected_uid = Some("old-uid".into());
-    request.expected_resource_version = Some("7".into());
     assert_eq!(
-        validate_review_guard(&request, "current-uid", "7")
-            .unwrap_err()
-            .kind,
-        AppErrorKind::Validation
-    );
-    request.expected_uid = Some("current-uid".into());
-    request.expected_resource_version = Some("6".into());
-    assert_eq!(
-        validate_review_guard(&request, "current-uid", "7")
+        validate_review_guard("current-uid", "6", "current-uid", "7")
             .unwrap_err()
             .kind,
         AppErrorKind::Validation
@@ -333,13 +360,7 @@ fn edit_patch_cleans_server_metadata_and_preview_never_mutates_without_dry_run()
 }
 
 #[test]
-fn deletion_confirmation_and_exact_preconditions_are_mandatory() {
-    assert_eq!(
-        require_action_confirmation(&request("ConfigMap", "delete"))
-            .unwrap_err()
-            .kind,
-        AppErrorKind::ConfirmationRequired
-    );
+fn deletion_exact_preconditions_are_mandatory() {
     let params = exact_delete_params("uid-1", "12");
     assert_eq!(params.preconditions.unwrap().uid.as_deref(), Some("uid-1"));
     let dry_run = preview_exact_delete_params("uid-1", "12");
@@ -353,9 +374,21 @@ fn deletion_confirmation_and_exact_preconditions_are_mandatory() {
 #[tokio::test]
 async fn execute_edit_repeats_dry_run_before_guarded_patch() {
     let (cluster, mut handle) = mock_cluster();
+    let mut reviewed_after = configmap();
+    reviewed_after["metadata"]["labels"]["team"] = json!("platform");
+    let (reviews, confirmation) = reviewed(
+        execution_request("edit"),
+        "uid-1",
+        "7",
+        None,
+        Some(
+            json!({"metadata":{"labels":{"team":"platform"},"uid":"uid-1","resourceVersion":"7"}}),
+        ),
+        Some(state::action_review_value(&reviewed_after)),
+    );
     let operation = cluster
         .scope()
-        .run(execute_resource_action(execution_request("edit")));
+        .run(execute_resource_action(confirmation, State::new(&reviews)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -372,7 +405,7 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
                 .unwrap_or_default()
                 .contains("dryRun=All")
         );
-        send.send_response(json_response(200, configmap()));
+        send.send_response(json_response(200, reviewed_after.clone()));
 
         let (request, send) = handle.next_request().await.expect("guarded apply");
         assert_eq!(request.method(), Method::PATCH);
@@ -384,7 +417,7 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
                 .unwrap_or_default()
                 .contains("dryRun=")
         );
-        send.send_response(json_response(200, configmap()));
+        send.send_response(json_response(200, reviewed_after));
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     assert!(result.is_ok());
@@ -395,9 +428,20 @@ async fn execute_edit_repeats_dry_run_before_guarded_patch() {
 #[tokio::test]
 async fn failed_execution_dry_run_never_sends_mutating_patch() {
     let (cluster, mut handle) = mock_cluster();
-    let operation = cluster
-        .scope()
-        .run(execute_resource_action(execution_request("edit")));
+    let (reviews, confirmation) = reviewed(
+        execution_request("edit"),
+        "uid-1",
+        "7",
+        None,
+        Some(
+            json!({"metadata":{"labels":{"team":"platform"},"uid":"uid-1","resourceVersion":"7"}}),
+        ),
+        None,
+    );
+    let operation = cluster.scope().run(execute_resource_action(
+        confirmation.clone(),
+        State::new(&reviews),
+    ));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -415,14 +459,23 @@ async fn failed_execution_dry_run_never_sends_mutating_patch() {
     };
     let (result, ()) = Box::pin(await_mock(async { tokio::join!(operation, responder) })).await;
     assert!(result.is_err());
+    assert_eq!(
+        execute_resource_action(confirmation, State::new(&reviews))
+            .await
+            .unwrap_err()
+            .kind,
+        AppErrorKind::ConfirmationRequired
+    );
 }
 
 #[tokio::test]
 async fn execute_delete_dry_runs_then_uses_uid_and_resource_version_preconditions() {
     let (cluster, mut handle) = mock_cluster();
+    let (reviews, confirmation) =
+        reviewed(execution_request("delete"), "uid-1", "7", None, None, None);
     let operation = cluster
         .scope()
-        .run(execute_resource_action(execution_request("delete")));
+        .run(execute_resource_action(confirmation, State::new(&reviews)));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -460,12 +513,17 @@ async fn execute_delete_dry_runs_then_uses_uid_and_resource_version_precondition
 #[tokio::test]
 async fn rollback_execution_rejects_a_changed_revision_source_before_patch() {
     let (cluster, mut handle) = mock_cluster();
+    let (reviews, confirmation) = reviewed(
+        rollback_request(),
+        "deployment-uid",
+        "7",
+        Some(("revision-uid", "10")),
+        Some(json!({"metadata":{"uid":"deployment-uid","resourceVersion":"7"}})),
+        None,
+    );
     let operation = cluster
         .scope()
-        .run(execute_resource_action(rollback_request(
-            Some("revision-uid"),
-            Some("10"),
-        )));
+        .run(execute_resource_action(confirmation, State::new(&reviews)));
     let responder = async move {
         let mut operation = Box::pin(operation);
         loop {
@@ -489,39 +547,13 @@ async fn rollback_execution_rejects_a_changed_revision_source_before_patch() {
 }
 
 #[tokio::test]
-async fn rollback_execution_requires_both_revision_source_guards_before_api_access() {
-    for (uid, resource_version) in [
-        (None, None),
-        (Some("revision-uid"), None),
-        (None, Some("10")),
-    ] {
-        let (cluster, mut handle) = mock_cluster();
-        let operation = cluster
-            .scope()
-            .run(execute_resource_action(rollback_request(
-                uid,
-                resource_version,
-            )));
-        let responder = async move {
-            tokio::select! {
-                result = operation => result,
-                request = handle.next_request() => {
-                    let (request, _) = request.expect("mock request stream");
-                    panic!("rollback with incomplete source guards made an API request: {} {}", request.method(), request.uri());
-                }
-            }
-        };
-        let result = Box::pin(await_mock(responder)).await;
-        assert_eq!(result.unwrap_err().kind, AppErrorKind::Validation);
-    }
-}
-
-#[tokio::test]
 async fn rollback_preview_returns_identity_of_the_revision_used_for_its_dry_run_patch() {
     let (cluster, mut handle) = mock_cluster();
-    let operation = cluster
-        .scope()
-        .run(preview_resource_action(rollback_request(None, None)));
+    let reviews = ResourceActionReviewStore::default();
+    let operation = cluster.scope().run(preview_resource_action(
+        rollback_request(),
+        State::new(&reviews),
+    ));
     let responder = async move {
         let (request, send) = handle.next_request().await.expect("target read");
         assert_eq!(request.method(), Method::GET);
@@ -576,3 +608,5 @@ fn secret_objects_are_rejected_before_any_yaml_is_returned() {
 }
 #[path = "resource_actions/controller_tests.rs"]
 mod controller_tests;
+#[path = "resource_actions/review_binding_tests.rs"]
+mod review_binding_tests;

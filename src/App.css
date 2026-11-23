@@ -1,4 +1,5 @@
 /* Browser profiles and build output must not become CSS dependencies or trigger reloads. */
+@layer theme, base, xyflow, components, utilities;
 @import "tailwindcss" source("./");
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";

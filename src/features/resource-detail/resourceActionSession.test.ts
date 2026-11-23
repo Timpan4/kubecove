@@ -4,6 +4,7 @@ import { configureQueryCatalog, queryKeys } from "@/lib/queryKeys";
 import { createMockTauriClient } from "@/lib/tauri-runtime";
 import type {
 	ResourceActionPreview,
+	ResourceActionConfirmation,
 	ResourceActionRequest,
 	ResourceActionState,
 	ResourceSummary,
@@ -26,8 +27,7 @@ import { createResourceActionSession, type ResourceActionSessionState } from "./
 //    old target's details, YAML, revisions, and lists.
 // 3. Execution runs without a ready preview: before one, while checking, after
 //    a failed dry run, after a failed execution, or twice.
-// 4. Execution omits the reviewed UID and resourceVersion guards, or a rollback
-//    omits its revision source guards; a preview claims confirmation.
+// 4. Execution sends anything except the opaque identifier of the server-owned review.
 // 5. Drafts edited after the preview change what executes.
 // 6. Delete skips the explicit confirmation dialog when review skipping is on.
 // 7. Skipping review hides a failed dry run or applies a no-op without showing it.
@@ -82,6 +82,7 @@ function actionState(name: string, allowed = true): ResourceActionState {
 
 function preview(request: ResourceActionRequest, changed = true): ResourceActionPreview {
 	return {
+		reviewId: `review-${request.action}-${request.name}`,
 		target: { clusterContext: request.clusterContext, kind: request.kind, name: request.name, namespace: request.namespace },
 		effect: `${request.action} ${request.name}`,
 		beforeYaml: "replicas: 2",
@@ -97,7 +98,8 @@ type Command = "get_resource_action_state" | "preview_resource_action" | "execut
 
 interface Call {
 	command: Command;
-	request: ResourceActionRequest;
+	request?: ResourceActionRequest;
+	confirmation?: ResourceActionConfirmation;
 	resolve: () => void;
 	reject: (message: string) => void;
 }
@@ -116,22 +118,27 @@ function harness({
 	failPreview?: boolean;
 } = {}) {
 	const calls: Call[] = [];
-	const respond = (command: Command, request: ResourceActionRequest) => {
+	const respond = (command: Command, request?: ResourceActionRequest, confirmation?: ResourceActionConfirmation) => {
+		if (command === "execute_resource_action") {
+			const action = confirmation?.reviewId.split("-")[1];
+			return { target: { clusterContext: "kind-dev", kind: "Deployment", name: "payments-api" }, effect: `Applied ${action}` };
+		}
+		if (!request) throw new Error("request missing");
 		if (command === "get_resource_action_state") return actionState(request.name, allowed);
 		if (command === "preview_resource_action") {
 			if (failPreview) throw new Error("admission webhook denied the dry run");
 			return preview(request, changed);
 		}
-		return { target: { clusterContext: request.clusterContext, kind: request.kind, name: request.name }, effect: `Applied ${request.action}` };
 	};
-	const handler = (command: Command) => (args: { request: ResourceActionRequest }) =>
+	const handler = (command: Command) => (args: { request?: ResourceActionRequest; confirmation?: ResourceActionConfirmation }) =>
 		new Promise((resolve, reject) => {
 			const call: Call = {
 				command,
 				request: args.request,
+				confirmation: args.confirmation,
 				resolve: () => {
 					try {
-						resolve(respond(command, args.request));
+						resolve(respond(command, args.request, args.confirmation));
 					} catch (cause) {
 						reject(cause);
 					}
@@ -254,31 +261,29 @@ describe("resource action session: target changes", () => {
 });
 
 describe("resource action session: preview then execute", () => {
-	test("executes the reviewed preview with its UID and resourceVersion guards", async () => {
+	test("executes only the opaque identifier returned by preview", async () => {
 		const h = harness();
 		await ready(h);
 		h.session.draft(setReplicas(3));
 		await h.session.review("edit");
 		await h.session.execute();
 
-		expect(h.last("preview_resource_action")?.request.confirmed).toBe(false);
-		expect(h.last("preview_resource_action")?.request.expectedUid).toBe(undefined);
-		const executed = h.last("execute_resource_action")?.request;
-		expect(executed?.confirmed).toBe(true);
-		expect(executed?.expectedUid).toBe("payments-api-uid");
-		expect(executed?.expectedResourceVersion).toBe("7");
+		expect(h.last("preview_resource_action")?.request?.action).toBe("edit");
+		expect(h.last("execute_resource_action")?.confirmation).toEqual({
+			reviewId: "review-edit-payments-api",
+		});
 	});
 
-	test("rollback execution carries the reviewed revision source guards", async () => {
+	test("rollback execution carries only the review that bound its revision", async () => {
 		const h = harness();
 		await ready(h);
 		await h.session.review("rollback", 2);
 		await h.session.execute();
 
-		const executed = h.last("execute_resource_action")?.request;
-		expect(executed?.revision).toBe(2);
-		expect(executed?.expectedRevisionUid).toBe("rs-uid");
-		expect(executed?.expectedRevisionResourceVersion).toBe("41");
+		expect(h.last("preview_resource_action")?.request?.revision).toBe(2);
+		expect(h.last("execute_resource_action")?.confirmation).toEqual({
+			reviewId: "review-rollback-payments-api",
+		});
 	});
 
 	test("refuses to execute without a ready preview", async () => {
@@ -330,7 +335,8 @@ describe("resource action session: preview then execute", () => {
 		h.last("execute_resource_action")?.resolve();
 		await settle();
 
-		expect(h.last("execute_resource_action")?.request.edits).toEqual({ replicas: 3 });
+		expect(h.last("preview_resource_action")?.request?.edits).toEqual({ replicas: 3 });
+		expect(h.last("execute_resource_action")?.confirmation).toEqual({ reviewId: "review-edit-payments-api" });
 		expect(h.session.current.edits).toEqual({ replicas: 4 });
 		expect(h.draftsApplied()).toBe(0);
 	});
@@ -384,10 +390,10 @@ describe("resource action session: review skipping", () => {
 			expect(h.calls("execute_resource_action")).toHaveLength(0);
 			expect(h.session.current.review?.canExecute).toBe(true);
 			await h.session.execute();
-			expect(h.last("execute_resource_action")?.request).toMatchObject({
-				action: "delete", kind, name: "payments-api", confirmed: true,
-				expectedUid: "payments-api-uid", expectedResourceVersion: "7",
+			expect(h.last("preview_resource_action")?.request).toMatchObject({
+				action: "delete", kind, name: "payments-api",
 			});
+			expect(h.last("execute_resource_action")?.confirmation).toEqual({ reviewId: "review-delete-payments-api" });
 		});
 	}
 
@@ -430,10 +436,10 @@ describe("resource action session: drafts", () => {
 		await h.session.review("restart");
 		await h.session.execute();
 
-		expect(h.last("execute_resource_action")?.request.edits).toBe(undefined);
+		expect(h.last("preview_resource_action")?.request?.edits).toBe(undefined);
 		expect(h.calls("get_resource_action_state")).toHaveLength(2);
 		await h.session.review("edit");
-		expect(h.last("preview_resource_action")?.request.edits?.containers?.[0]?.image).toBe("registry.example/api:v2");
+		expect(h.last("preview_resource_action")?.request?.edits?.containers?.[0]?.image).toBe("registry.example/api:v2");
 	});
 
 	test("a review waits for the baseline reload after an independent action", async () => {
@@ -457,7 +463,7 @@ describe("resource action session: drafts", () => {
 		expect(h.session.current.loading).toBe(false);
 		await h.session.review("edit");
 		expect(h.calls("preview_resource_action")).toHaveLength(2);
-		expect(h.last("preview_resource_action")?.request.edits?.containers?.[0]?.image).toBe("registry.example/api:v2");
+		expect(h.last("preview_resource_action")?.request?.edits?.containers?.[0]?.image).toBe("registry.example/api:v2");
 	});
 
 	test("removal sends only what the baseline has", async () => {
@@ -470,7 +476,7 @@ describe("resource action session: drafts", () => {
 		h.session.draft(removeQuantity("api", "limits", "memory"));
 		await h.session.review("edit");
 
-		const [container] = h.last("preview_resource_action")?.request.edits?.containers ?? [];
+		const [container] = h.last("preview_resource_action")?.request?.edits?.containers ?? [];
 		expect(container?.env).toEqual([{ name: "LOG_LEVEL", remove: true }]);
 		expect(container?.requests).toEqual({ cpu: null });
 		expect(container?.limits).toEqual({});

@@ -6,11 +6,18 @@
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, DeploymentRevision,
-    KubernetesYamlLintResult, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
-    ResourceActionStateRequest, ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest,
-    YamlApplyResult, YamlEncoding, YamlViewMode,
+    KubernetesYamlLintResult, ResourceActionConfirmation, ResourceActionKind,
+    ResourceActionPreview, ResourceActionRequest, ResourceActionState, ResourceActionStateRequest,
+    ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest, YamlApplyResult,
+    YamlEncoding, YamlViewMode,
 };
 use serde::Deserialize;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+struct PendingReview {
+    issued_id: String,
+    fixture_id: String,
+}
 
 #[derive(Deserialize)]
 pub struct DetailTabs {
@@ -23,6 +30,11 @@ pub struct DetailTabs {
     >,
     #[serde(skip)]
     paused: std::sync::Mutex<bool>,
+    /// The one review the last preview issued, consumed by the execution that names it.
+    #[serde(skip)]
+    pending_review: std::sync::Mutex<Option<PendingReview>>,
+    #[serde(skip)]
+    review_sequence: AtomicU64,
     logs: Logs,
     #[serde(rename = "yamlReads")]
     yaml_reads: Vec<YamlRead>,
@@ -93,7 +105,8 @@ struct Previewed {
 
 #[derive(Deserialize)]
 struct Executed {
-    request: ResourceActionRequest,
+    confirmation: ResourceActionConfirmation,
+    action: ResourceActionKind,
     result: ClusterOperationResult,
 }
 
@@ -243,23 +256,51 @@ impl DetailTabs {
             .previews
             .iter()
             .find(|entry| comparable(&entry.request) == request);
-        ready(found.map_or_else(
-            || missing("action preview"),
-            |entry| Ok(entry.preview.clone()),
-        ))
+        let result = found.map_or_else(
+            || {
+                *self.pending_review.lock().unwrap() = None;
+                missing("action preview")
+            },
+            |entry| {
+                let issued_id = format!(
+                    "fixture-resource-action-review-{}",
+                    self.review_sequence.fetch_add(1, Ordering::Relaxed)
+                );
+                *self.pending_review.lock().unwrap() = Some(PendingReview {
+                    issued_id: issued_id.clone(),
+                    fixture_id: entry.preview.review_id.clone(),
+                });
+                let mut preview = entry.preview.clone();
+                preview.review_id = issued_id;
+                Ok(preview)
+            },
+        );
+        ready(result)
     }
 
-    pub fn execute_action(&self, request: ResourceActionRequest) -> Read<ClusterOperationResult> {
-        let action = request.action;
-        let request = comparable(&request);
+    pub fn execute_action(
+        &self,
+        confirmation: ResourceActionConfirmation,
+    ) -> Read<ClusterOperationResult> {
+        let issued = self
+            .pending_review
+            .lock()
+            .unwrap()
+            .take_if(|review| review.issued_id == confirmation.review_id);
+        let Some(issued) = issued else {
+            return ready(Err(AppError::new(
+                "resource action review is missing, superseded, or already used",
+                AppErrorKind::ConfirmationRequired,
+            )));
+        };
         let found = self
             .actions
             .executions
             .iter()
-            .find(|entry| comparable(&entry.request) == request);
-        if found.is_some() {
+            .find(|entry| entry.confirmation.review_id == issued.fixture_id);
+        if let Some(entry) = found {
             *self.paused.lock().unwrap() =
-                action == kubecove_lib::models::ResourceActionKind::Pause;
+                entry.action == kubecove_lib::models::ResourceActionKind::Pause;
         }
         ready(found.map_or_else(
             || missing("action execution"),

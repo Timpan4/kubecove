@@ -414,7 +414,7 @@ impl Inspector {
         cx.notify();
     }
 
-    /// `execute`: the reviewed request, guarded by the previewed identity.
+    /// `execute`: consume the backend-owned review.
     pub(super) fn execute_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let backend = self.backend.clone();
         let timings = self.timings.clone();
@@ -430,13 +430,13 @@ impl Inspector {
         let ReviewStep::Previewed(previewed) = &mut review.step else {
             return;
         };
-        let request = actions::execution_request(&review.request, &previewed.preview);
+        let request = &review.request;
         let reviewed_replicas = request.edits.as_ref().and_then(|edits| edits.replicas);
         let mut reviewed_edits = request.edits.clone().unwrap_or_default();
         reviewed_edits.replicas = None;
         let reviewed_edits = serde_json::to_value(reviewed_edits).expect("edits serialize");
         let edit = request.action == ResourceActionKind::Edit;
-        let read = backend.execute_action(request);
+        let read = backend.execute_action(actions::action_confirmation(&previewed.preview));
         let read = timings.measure("execute_action", read);
         let id = Rc::new(());
         let current = id.clone();

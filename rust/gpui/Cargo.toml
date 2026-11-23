@@ -52,7 +52,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kubecove_coverage)"] }
 gpui-kit = { version = "=0.9.0", default-features = false, features = ["assets", "tree-sitter-yaml"] }
 kubecove = { path = "..", default-features = false, features = ["mcp-host", "credential-plugin-path", "desktop-release"] }
 kubecove-host = { path = "../crates/host", features = ["remote-client"] }
-rfd = "=0.17.2"
+rfd = "=0.18.0"
 dirs = "=7.0.0"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
 # reqwest uses `rustls-no-provider`; `main` installs the ring provider before the update check.
@@ -77,7 +77,7 @@ ryu-js = "=1.0.3"
 base64 = { version = "=0.23.1", default-features = false, features = ["std"] }
 # Both are already in the lockfile through the backend. `regex` ports the web
 # log-structure patterns; `serde` reads JSON log fields in document order.
-regex = "=1.13.1"
+regex = "=1.13.2"
 serde = { version = "=1.0.229", features = ["derive"] }
 # The backend's YAML crate, which the Argo CD tab uses to read the Application
 # spec and print comparison documents, as `yaml` does in the web.
@@ -95,7 +95,7 @@ tree-sitter-yaml = "=0.7.2"
 # The E2E flavor's automation endpoint (ADR 0035), at the versions already locked through
 # the backend's MCP host and GPUI.
 kubecove-mcp = { path = "../crates/mcp", features = ["loopback"], optional = true }
-rmcp = { version = "=3.10.0", default-features = false, features = ["server", "transport-streamable-http-server"], optional = true }
+rmcp = { version = "=3.11.0", default-features = false, features = ["server", "transport-streamable-http-server"], optional = true }
 schemars = { version = "=1.2.3", optional = true }
 image = { version = "=0.25.10", default-features = false, features = ["png"], optional = true }
 tokio-util = { version = "=0.7.20", optional = true }

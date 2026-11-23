@@ -17,12 +17,11 @@ export interface ResourceActionRequest extends ClusterOperationTarget {
 	action: ResourceActionKind;
 	edits?: ResourceActionEdits;
 	revision?: number;
-	expectedUid?: string;
-	expectedResourceVersion?: string;
-	expectedRevisionUid?: string;
-	expectedRevisionResourceVersion?: string;
-	confirmed: boolean;
 	kubeconfigEnvVar?: string;
+}
+
+export interface ResourceActionConfirmation {
+	reviewId: string;
 }
 
 export interface ResourceActionStateRequest extends ClusterOperationTarget {
@@ -84,6 +83,7 @@ export interface ResourceActionState {
 }
 
 export interface ResourceActionPreview {
+	reviewId: string;
 	target: ClusterOperationTarget;
 	effect: string;
 	beforeYaml: string;

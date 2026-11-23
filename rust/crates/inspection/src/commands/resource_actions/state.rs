@@ -2,8 +2,7 @@ use super::{kind_api_resource, owned_revision_template};
 use crate::commands::builtin_kinds::builtin_kind;
 use crate::models::{
     AppError, AppErrorKind, ClusterOperationTarget, ResourceActionContainer, ResourceActionEnv,
-    ResourceActionKind, ResourceActionPermission, ResourceActionRequest, ResourceActionRevision,
-    ResourceActionState,
+    ResourceActionKind, ResourceActionPermission, ResourceActionRevision, ResourceActionState,
 };
 use k8s_openapi::api::authorization::v1::{
     ResourceAttributes, SelfSubjectAccessReview, SelfSubjectAccessReviewSpec,
@@ -224,13 +223,10 @@ pub(super) fn revision_source_identity(revision: &Value) -> Result<(String, Stri
 }
 
 pub(super) fn validate_revision_review_guard(
-    request: &ResourceActionRequest,
-    uid: &str,
-    resource_version: &str,
+    expected: &(String, String),
+    current: &(String, String),
 ) -> Result<(), AppError> {
-    if request.expected_revision_uid.as_deref() != Some(uid)
-        || request.expected_revision_resource_version.as_deref() != Some(resource_version)
-    {
+    if expected != current {
         return Err(AppError::new(
             "rollback revision changed since the action was reviewed",
             AppErrorKind::Validation,
@@ -364,15 +360,20 @@ pub(super) fn action_identity(object: &DynamicObject) -> Result<(String, String)
 }
 
 pub(super) fn action_yaml(value: &Value) -> Result<String, AppError> {
+    let value = action_review_value(value);
+    crate::commands::helpers::serialize_json_value_document(
+        &value,
+        crate::models::YamlEncoding::Yaml,
+    )
+}
+
+pub(super) fn action_review_value(value: &Value) -> Value {
     let mut value = value.clone();
     crate::commands::helpers::normalize_k8s_yaml_value(
         &mut value,
         crate::models::YamlViewMode::ApplyClean,
     );
-    crate::commands::helpers::serialize_json_value_document(
-        &value,
-        crate::models::YamlEncoding::Yaml,
-    )
+    value
 }
 
 pub(super) fn clean_action_display_metadata(value: &mut Value) {
