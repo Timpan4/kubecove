@@ -32,17 +32,18 @@ pub(super) fn connected_payload(request: &ArgoOperationRequest) -> Value {
             json!({"name":request.application.name,"appNamespace":request.application.namespace,"project":request.application.project,"id":request.history_id,"prune":request.prune,"dryRun":request.dry_run})
         }
         "resourceAction" => {
-            let parameters = request
+            let mut parameters = request
                 .resource_action_parameters
                 .as_ref()
                 .and_then(Value::as_object)
                 .into_iter()
                 .flatten()
-                .filter_map(|(name, value)| {
-                    value
-                        .as_str()
-                        .map(|value| json!({"name":name,"value":value}))
-                })
+                .filter_map(|(name, value)| value.as_str().map(|value| (name, value)))
+                .collect::<Vec<_>>();
+            parameters.sort_unstable_by_key(|(name, _)| *name);
+            let parameters = parameters
+                .into_iter()
+                .map(|(name, value)| json!({"name":name,"value":value}))
                 .collect::<Vec<_>>();
             json!({"appNamespace":request.application.namespace,"project":request.application.project,"group":request.resources[0].group,"version":request.resources[0].version,"kind":request.resources[0].kind,"namespace":request.resources[0].namespace,"resourceName":request.resources[0].name,"action":request.resource_action,"resourceActionParameters":parameters})
         }

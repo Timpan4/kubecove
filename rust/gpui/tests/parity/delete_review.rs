@@ -113,13 +113,13 @@ mod tests {
                 .kind,
             AppErrorKind::ConfirmationRequired
         );
-        assert!(
-            fixture
-                .execute_action(ResourceActionConfirmation {
-                    review_id: second.review_id,
-                })
-                .await
-                .is_ok()
+        let current = ResourceActionConfirmation {
+            review_id: second.review_id,
+        };
+        assert!(fixture.execute_action(current.clone()).await.is_ok());
+        assert_eq!(
+            fixture.execute_action(current).await.unwrap_err().kind,
+            AppErrorKind::ConfirmationRequired
         );
     }
 }
