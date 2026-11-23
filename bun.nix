@@ -885,13 +885,17 @@
     url = "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz";
     hash = "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==";
   };
-  "@xyflow/svelte@1.7.1" = fetchurl {
-    url = "https://registry.npmjs.org/@xyflow/svelte/-/svelte-1.7.1.tgz";
-    hash = "sha512-dKyAJ8Thwu/zqjOtRDoGN1j1LGtK94B7vWQ7OgIiyQ06OscRXuSBJeH2xbVS5Sv52rq1uHBMUmkGDZH5mTlVOA==";
+  "@xyflow/svelte@2.0.2" = fetchurl {
+    url = "https://registry.npmjs.org/@xyflow/svelte/-/svelte-2.0.2.tgz";
+    hash = "sha512-QJZ5ZzMBqJWO8bQOrp1G09r0qFxsL9ueBQLPbtXAupx3guMrjAPfK32EEAkqyBsp0OUptKn7FIMNq5ky8Nr6zQ==";
   };
   "@xyflow/system@0.0.84" = fetchurl {
     url = "https://registry.npmjs.org/@xyflow/system/-/system-0.0.84.tgz";
     hash = "sha512-96zfGFjH3oZ3T0MRdH4gJ0SlXuCIxbBuHVevZ4xry5UTxqjzjt010+LRdholgepq7jhrcaz1JNtzrETscwnkEA==";
+  };
+  "@xyflow/system@1.0.0" = fetchurl {
+    url = "https://registry.npmjs.org/@xyflow/system/-/system-1.0.0.tgz";
+    hash = "sha512-mOeG0ZIkEUY5V5XQS+LE3QKlJqL7gu5ukqxAniuDDpfxtkA4uagOmBiWKh3w59wZ5nBC7ojBcNrBukM3hUJBKg==";
   };
   "@zip.js/zip.js@2.24.0" = fetchurl {
     url = "https://registry.npmjs.org/@zip.js/zip.js/-/zip.js-2.24.0.tgz";

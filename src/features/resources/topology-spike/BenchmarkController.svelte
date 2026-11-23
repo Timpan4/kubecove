@@ -15,6 +15,8 @@
 	} = $props();
 
 	const flow = useSvelteFlow();
+	// Svelte Flow 1's 0.2 padding fits the graph into 1/1.2 of each viewport axis.
+	const fitPadding = `${(1 - 1 / 1.2) * 50}%` as const;
 
 	function frame(): Promise<void> {
 		return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -66,7 +68,7 @@
 			const viewportOpsMs = performance.now() - viewportStarted;
 
 			const fitStarted = performance.now();
-			await flow.fitView({ padding: 0.2, duration: 0 });
+			await flow.fitView({ padding: fitPadding, duration: 0 });
 			await settle();
 			const fitViewMs = performance.now() - fitStarted;
 			const result: TopologySpikeRunResult = {
