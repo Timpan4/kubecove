@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { text } from "node:stream/consumers";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -12,16 +13,15 @@ import { readinessTimeoutMs } from "../e2e/harness/timeouts.ts";
 
 const runner = fileURLToPath(new URL("./headless-desktop.sh", import.meta.url));
 
-test("headless desktop changes only its own Secret Service default", { skip: process.platform !== "linux" }, (t) => {
+test("headless desktop changes only its own Secret Service default", { skip: process.platform !== "linux", timeout: readinessTimeoutMs }, async (t) => {
 	const caller = mkdtempSync(join(tmpdir(), "kubecove-keyring-caller-"));
-	t.after(() => rmSync(caller, { recursive: true, force: true }));
 	const data = join(caller, "data");
 	mkdirSync(data, { mode: 0o700 });
 	const runtime = join(caller, "runtime");
 	mkdirSync(runtime, { mode: 0o700 });
 	const defaultAlias = join(data, "keyrings", "default");
 
-	const result = spawnSync("dbus-run-session", ["--", "bash", "-euo", "pipefail", "-c", `
+	const child = spawn("dbus-run-session", ["--", "bash", "-euo", "pipefail", "-c", `
 		unset GNOME_KEYRING_CONTROL
 		printf '%s' fixture | gnome-keyring-daemon --unlock --components=secrets \\
 			--control-directory="$XDG_RUNTIME_DIR/keyring" >/dev/null
@@ -68,13 +68,22 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 			WAYLAND_DISPLAY: "caller-wayland",
 			SSH_AUTH_SOCK: join(caller, "caller-ssh"),
 		},
-		encoding: "utf8",
-		timeout: readinessTimeoutMs,
+		detached: true,
 	});
-	assert.ifError(result.error);
-	assert.equal(result.status, 23, result.stderr);
+	const closed = once(child, "close");
+	t.after(async () => {
+		if (child.exitCode === null && child.signalCode === null && child.pid !== undefined) {
+			try { process.kill(-child.pid, "SIGTERM"); } catch (error) {
+				if (error.code !== "ESRCH") throw error;
+			}
+		}
+		await closed;
+		rmSync(caller, { recursive: true, force: true });
+	});
+	const [[status], stdout, stderr] = await Promise.all([closed, text(child.stdout), text(child.stderr)]);
+	assert.equal(status, 23, stderr);
 	assert.equal(readFileSync(defaultAlias, "utf8"), "login");
-	const profile = result.stdout.trim();
+	const profile = stdout.trim();
 	assert.ok(profile);
 	assert.equal(existsSync(profile), false, "failed command must not leave its profile behind");
 });
