@@ -14,6 +14,7 @@ export const incidentDiagnosticsActions = {
 			await page.keyboard.press("Escape");
 		} else {
 			await dialog.getByRole("button", { name: step.control, exact: true }).click();
+			if (step.control === "Later") await dialog.waitFor({ state: "hidden" });
 		}
 	},
 	async expectUpdateControl(page, step) {
