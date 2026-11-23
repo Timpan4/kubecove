@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -14,12 +16,25 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 	const data = join(caller, "data");
 	const keyrings = join(data, "keyrings");
 	mkdirSync(keyrings, { recursive: true });
+	const runtime = join(caller, "runtime");
+	mkdirSync(runtime, { mode: 0o700 });
 	const defaultAlias = join(keyrings, "default");
 	writeFileSync(defaultAlias, "caller-keyring");
 
-	const result = spawnSync("bash", [runner, "bash", "-euc", `
+	const result = spawnSync("dbus-run-session", ["--", "bash", "-euc", `
+		read_default() {
+			dbus-send --session --print-reply --dest=org.freedesktop.secrets \\
+				/org/freedesktop/secrets org.freedesktop.Secret.Service.ReadAlias string:default | tail -n 1
+		}
+		before=$(read_default)
+		[[ "$before" != *'/collection/session'* ]]
+		status=0
+		CALLER_BUS=$DBUS_SESSION_BUS_ADDRESS bash "$1" bash -euc "$2" || status=$?
+		[[ $(read_default) == "$before" ]]
+		exit "$status"
+	`, "caller", runner, `
 		test "$HOME" != "$CALLER_HOME"
-		for directory in "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"; do
+		for directory in "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" "$TMPDIR"; do
 			[[ "$directory" == "$HOME/"* && -d "$directory" ]]
 		done
 		test -n "$DISPLAY"
@@ -40,11 +55,8 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 			XDG_DATA_HOME: data,
 			XDG_CACHE_HOME: join(caller, "cache"),
 			XDG_STATE_HOME: join(caller, "state"),
-			XDG_RUNTIME_DIR: join(caller, "runtime"),
-			CALLER_BUS: `unix:path=${join(caller, "caller-bus")}`,
-			DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(caller, "caller-bus")}`,
-			DBUS_STARTER_ADDRESS: `unix:path=${join(caller, "caller-bus")}`,
-			GNOME_KEYRING_CONTROL: join(caller, "caller-keyring"),
+			XDG_RUNTIME_DIR: runtime,
+			TMPDIR: caller,
 			WAYLAND_DISPLAY: "caller-wayland",
 			SSH_AUTH_SOCK: join(caller, "caller-ssh"),
 		},
@@ -55,4 +67,29 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 	const profile = result.stdout.trim();
 	assert.ok(profile);
 	assert.equal(existsSync(profile), false, "failed command must not leave its profile behind");
+});
+
+test("cancelling the desktop stops a descendant that ignores TERM", { skip: process.platform !== "linux" }, async () => {
+	const child = spawn("bash", [runner, "bash", "-euc", `
+		bash -c 'trap "" TERM; printf "%s\\n" "$BASHPID" "$HOME"; exec sleep infinity' &
+		wait "$!"
+	`], { stdio: ["ignore", "pipe", "inherit"] });
+	const exited = once(child, "exit");
+	const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+	const descendant = Number((await lines.next()).value);
+	const profile = (await lines.next()).value;
+	assert.ok(Number.isSafeInteger(descendant) && descendant > 0);
+	try {
+		assert.ok(profile);
+		assert.equal(child.kill("SIGTERM"), true);
+		assert.deepEqual(await exited, [143, null]);
+		assert.equal(existsSync(profile), false);
+		assert.match(readFileSync(`/proc/${descendant}/stat`, "utf8"), /\) [ZX] /);
+	} catch (error) {
+		if (error.code === "ENOENT") return;
+		try { process.kill(descendant, "SIGKILL"); } catch (signalError) {
+			if (signalError.code !== "ESRCH") throw signalError;
+		}
+		throw error;
+	}
 });
