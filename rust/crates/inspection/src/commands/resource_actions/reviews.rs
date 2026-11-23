@@ -1,4 +1,6 @@
+use super::state::{action_value, action_yaml};
 use crate::models::{AppError, AppErrorKind, ResourceActionConfirmation, ResourceActionRequest};
+use kube::api::DynamicObject;
 use serde_json::Value;
 use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
@@ -11,6 +13,36 @@ pub(super) struct ReviewedResourceAction {
     pub resource_version: String,
     pub revision_identity: Option<(String, String)>,
     pub patch: Option<Value>,
+    pub after_yaml: String,
+}
+
+pub(super) fn ensure_dry_run_matches_review(
+    reviewed_after_yaml: &str,
+    dry_run: &DynamicObject,
+) -> Result<(), AppError> {
+    let after_yaml = action_yaml(&action_value(dry_run)?)?;
+    if reviewed_after_yaml != after_yaml {
+        return Err(AppError::new(
+            "server dry-run result changed since the action was reviewed; review the action again",
+            AppErrorKind::Validation,
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_review_guard(
+    expected_uid: &str,
+    expected_resource_version: &str,
+    uid: &str,
+    resource_version: &str,
+) -> Result<(), AppError> {
+    if expected_uid != uid || expected_resource_version != resource_version {
+        return Err(AppError::new(
+            "resource changed since the action was reviewed",
+            AppErrorKind::Validation,
+        ));
+    }
+    Ok(())
 }
 
 struct ReviewSlot {
@@ -121,6 +153,7 @@ mod tests {
             resource_version: "7".into(),
             revision_identity: None,
             patch: Some(serde_json::json!({"metadata":{"labels":{"team":"platform"}}})),
+            after_yaml: String::new(),
         }
     }
 

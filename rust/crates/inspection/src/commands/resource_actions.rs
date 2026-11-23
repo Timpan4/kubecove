@@ -7,7 +7,7 @@ use crate::models::{
 };
 use crate::runtime::State;
 use kube::api::{Api, ApiResource, DeleteParams, DynamicObject, Patch, PatchParams};
-use reviews::ReviewedResourceAction;
+use reviews::{ReviewedResourceAction, ensure_dry_run_matches_review, validate_review_guard};
 use serde_json::{Map, Value, json};
 
 const ACTION_KINDS: &[&str] = &["Deployment", "StatefulSet", "DaemonSet", "Pod", "ConfigMap"];
@@ -158,8 +158,10 @@ pub async fn execute_resource_action(
         let patch = Patch::Merge(reviewed.patch.ok_or_else(|| {
             AppError::new("reviewed resource patch is missing", AppErrorKind::Internal)
         })?);
-        api.patch(&request.target.name, &preview_patch_params(), &patch)
+        let dry_run = api
+            .patch(&request.target.name, &preview_patch_params(), &patch)
             .await?;
+        ensure_dry_run_matches_review(&reviewed.after_yaml, &dry_run)?;
         api.patch(&request.target.name, &PatchParams::default(), &patch)
             .await?;
     }
@@ -203,7 +205,7 @@ async fn prepare_resource_action_review(
         target: request.target.clone(),
         effect,
         before_yaml,
-        after_yaml,
+        after_yaml: after_yaml.clone(),
         uid: uid.clone(),
         resource_version: resource_version.clone(),
         revision_uid: revision_identity.as_ref().map(|(uid, _)| uid.clone()),
@@ -219,6 +221,7 @@ async fn prepare_resource_action_review(
         resource_version,
         revision_identity,
         patch,
+        after_yaml,
     };
     Ok((preview, reviewed))
 }
@@ -458,21 +461,6 @@ fn validate_edits(
     {
         return Err(AppError::new(
             "container image cannot be empty",
-            AppErrorKind::Validation,
-        ));
-    }
-    Ok(())
-}
-
-fn validate_review_guard(
-    expected_uid: &str,
-    expected_resource_version: &str,
-    uid: &str,
-    resource_version: &str,
-) -> Result<(), AppError> {
-    if expected_uid != uid || expected_resource_version != resource_version {
-        return Err(AppError::new(
-            "resource changed since the action was reviewed",
             AppErrorKind::Validation,
         ));
     }
