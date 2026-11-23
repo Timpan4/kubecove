@@ -29,13 +29,16 @@ setsid bash -euc '
     stop_session() {
         trap "" TERM
         kill -TERM -- "-$$"
-        wait || true
+        # Match the E2E harness process shutdown budget in timeouts.ts.
+        (sleep 30; kill -KILL -- "-$$") &
+        if [[ -n ${session:-} ]]; then wait "$session" || true; fi
         # Keep the process group anchored until the final signal is sent.
         kill -KILL -- "-$$"
     }
     trap stop_session TERM
     dbus-run-session -- bash -euc "$1" headless-desktop "${@:2}" &
-    wait "$!"
+    session=$!
+    wait "$session"
 ' headless-desktop-session '
     dbus-send --session --print-reply --dest=org.freedesktop.secrets \
         /org/freedesktop/secrets org.freedesktop.Secret.Service.SetAlias \

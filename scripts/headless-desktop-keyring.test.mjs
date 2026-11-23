@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { readinessTimeoutMs } from "../e2e/harness/timeouts.ts";
 
 const runner = fileURLToPath(new URL("./headless-desktop.sh", import.meta.url));
 
@@ -14,23 +16,29 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 	const caller = mkdtempSync(join(tmpdir(), "kubecove-keyring-caller-"));
 	t.after(() => rmSync(caller, { recursive: true, force: true }));
 	const data = join(caller, "data");
-	const keyrings = join(data, "keyrings");
-	mkdirSync(keyrings, { recursive: true });
+	mkdirSync(data, { mode: 0o700 });
 	const runtime = join(caller, "runtime");
 	mkdirSync(runtime, { mode: 0o700 });
-	const defaultAlias = join(keyrings, "default");
-	writeFileSync(defaultAlias, "caller-keyring");
+	const defaultAlias = join(data, "keyrings", "default");
 
-	const result = spawnSync("dbus-run-session", ["--", "bash", "-euc", `
+	const result = spawnSync("dbus-run-session", ["--", "bash", "-euo", "pipefail", "-c", `
+		unset GNOME_KEYRING_CONTROL
+		printf '%s' fixture | gnome-keyring-daemon --unlock --components=secrets \\
+			--control-directory="$XDG_RUNTIME_DIR/keyring" >/dev/null
+		login=/org/freedesktop/secrets/collection/login
+		dbus-send --session --print-reply --dest=org.freedesktop.secrets \\
+			/org/freedesktop/secrets org.freedesktop.Secret.Service.SetAlias \\
+			string:default "objpath:$login" >/dev/null
 		read_default() {
 			dbus-send --session --print-reply --dest=org.freedesktop.secrets \\
 				/org/freedesktop/secrets org.freedesktop.Secret.Service.ReadAlias string:default | tail -n 1
 		}
 		before=$(read_default)
-		[[ "$before" != *'/collection/session'* ]]
+		[[ "$before" == *"object path \\\"$login\\\"" ]]
 		status=0
 		CALLER_BUS=$DBUS_SESSION_BUS_ADDRESS bash "$1" bash -euc "$2" || status=$?
-		[[ $(read_default) == "$before" ]]
+		after=$(read_default)
+		[[ "$after" == "$before" ]]
 		exit "$status"
 	`, "caller", runner, `
 		test "$HOME" != "$CALLER_HOME"
@@ -61,21 +69,28 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 			SSH_AUTH_SOCK: join(caller, "caller-ssh"),
 		},
 		encoding: "utf8",
+		timeout: readinessTimeoutMs,
 	});
-	assert.equal(readFileSync(defaultAlias, "utf8"), "caller-keyring");
+	assert.ifError(result.error);
 	assert.equal(result.status, 23, result.stderr);
+	assert.equal(readFileSync(defaultAlias, "utf8"), "login");
 	const profile = result.stdout.trim();
 	assert.ok(profile);
 	assert.equal(existsSync(profile), false, "failed command must not leave its profile behind");
 });
 
-test("cancelling the desktop stops a descendant that ignores TERM", { skip: process.platform !== "linux" }, async () => {
+test("cancelling the desktop stops a descendant that ignores TERM", { skip: process.platform !== "linux", timeout: readinessTimeoutMs }, async (t) => {
 	const child = spawn("bash", [runner, "bash", "-euc", `
 		bash -c 'trap "" TERM; printf "%s\\n" "$BASHPID" "$HOME"; exec sleep infinity' &
 		wait "$!"
 	`], { stdio: ["ignore", "pipe", "inherit"] });
 	const exited = once(child, "exit");
-	const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+	const output = createInterface({ input: child.stdout, signal: t.signal });
+	t.after(() => {
+		if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+		output.close();
+	});
+	const lines = output[Symbol.asyncIterator]();
 	const descendant = Number((await lines.next()).value);
 	const profile = (await lines.next()).value;
 	assert.ok(Number.isSafeInteger(descendant) && descendant > 0);
@@ -84,7 +99,9 @@ test("cancelling the desktop stops a descendant that ignores TERM", { skip: proc
 		assert.equal(child.kill("SIGTERM"), true);
 		assert.deepEqual(await exited, [143, null]);
 		assert.equal(existsSync(profile), false);
-		assert.match(readFileSync(`/proc/${descendant}/stat`, "utf8"), /\) [ZX] /);
+		while (!/\) [ZX] /.test(readFileSync(`/proc/${descendant}/stat`, "utf8"))) {
+			await delay(1_000, undefined, { signal: t.signal });
+		}
 	} catch (error) {
 		if (error.code === "ENOENT") return;
 		try { process.kill(descendant, "SIGKILL"); } catch (signalError) {
