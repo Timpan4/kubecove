@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -113,7 +113,7 @@ test("headless desktop changes only its own Secret Service default", { skip: pro
 
 async function verifyCancellation(t, stopSupervisor) {
 	const child = spawn("bash", [runner, "bash", "-euc", `
-		bash -c 'trap "" TERM; printf "%s\\n" "$BASHPID" "$HOME"; exec sleep infinity' &
+		bash -c 'trap "" TERM; printf "%s\\n" "$BASHPID" "$HOME" "$DISPLAY"; exec sleep infinity' &
 		wait "$!"
 	`], { stdio: ["ignore", "pipe", "inherit"] });
 	const exited = once(child, "exit");
@@ -133,9 +133,13 @@ async function verifyCancellation(t, stopSupervisor) {
 	const lines = output[Symbol.asyncIterator]();
 	const descendant = Number((await lines.next()).value);
 	const profile = (await lines.next()).value;
+	const display = /^:(\d+)$/.exec((await lines.next()).value ?? "")?.[1];
 	assert.ok(Number.isSafeInteger(descendant) && descendant > 0);
 	try {
 		assert.ok(profile);
+		assert.ok(display, "expected a local Xvfb display number");
+		const displayPaths = [`/tmp/.X11-unix/X${display}`, `/tmp/.X${display}-lock`];
+		const inodes = displayPaths.map((path) => statSync(path).ino);
 		if (stopSupervisor) {
 			const pid = Number(readFileSync(`/proc/${child.pid}/task/${child.pid}/children`, "utf8").trim());
 			assert.ok(Number.isSafeInteger(pid) && pid > 0, "expected one session supervisor");
@@ -148,6 +152,9 @@ async function verifyCancellation(t, stopSupervisor) {
 		assert.equal(child.kill("SIGTERM"), true);
 		assert.deepEqual(await exited, [143, null]);
 		assert.equal(existsSync(profile), false);
+		for (const [index, path] of displayPaths.entries()) {
+			assert.notEqual(statSync(path, { throwIfNoEntry: false })?.ino, inodes[index], `${path} was left behind`);
+		}
 		for (;;) {
 			let status;
 			try { status = readFileSync(`/proc/${descendant}/stat`, "utf8"); } catch (error) {

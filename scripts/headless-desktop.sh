@@ -31,7 +31,7 @@ stop() {
         fi
     ) &
     local watchdog=$!
-    kill -TERM "$worker" 2>/dev/null || true
+    kill -TERM -- "-$worker" 2>/dev/null || kill -TERM "$worker" 2>/dev/null || true
     wait "$worker" 2>/dev/null || true
     printf '\n' >&"$shutdown_fd"
     wait "$watchdog"
@@ -40,9 +40,9 @@ stop() {
 setsid bash -euc '
     stop_session() {
         trap "" TERM
-        kill -TERM -- "-$$"
         if [[ -n ${session:-} ]]; then wait "$session" || true; fi
-        # Keep the process group anchored until the final signal is sent.
+        # Xvfb removes its display socket and lock when it handles TERM.
+        while ps -s "$$" -o comm=,stat= | grep -c "^Xvfb[[:blank:]]\+[^ZX]" >/dev/null; do sleep 1; done
         kill -KILL -- "-$$"
     }
     trap stop_session TERM
