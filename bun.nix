@@ -893,6 +893,10 @@
     url = "https://registry.npmjs.org/@xyflow/system/-/system-0.0.84.tgz";
     hash = "sha512-96zfGFjH3oZ3T0MRdH4gJ0SlXuCIxbBuHVevZ4xry5UTxqjzjt010+LRdholgepq7jhrcaz1JNtzrETscwnkEA==";
   };
+  "@xyflow/system@1.0.0" = fetchurl {
+    url = "https://registry.npmjs.org/@xyflow/system/-/system-1.0.0.tgz";
+    hash = "sha512-mOeG0ZIkEUY5V5XQS+LE3QKlJqL7gu5ukqxAniuDDpfxtkA4uagOmBiWKh3w59wZ5nBC7ojBcNrBukM3hUJBKg==";
+  };
   "@zip.js/zip.js@2.24.0" = fetchurl {
     url = "https://registry.npmjs.org/@zip.js/zip.js/-/zip.js-2.24.0.tgz";
     hash = "sha512-WlaVKzdqBK+RF3bdiXZWbdCnvGB6PdO4IHC1mn/2Yfl3bASgqUNegnU3+PNg61iecwoPfUi5BgLUPqBukXpyWw==";
