@@ -19,6 +19,11 @@
 	let workspaceTransferError = $state("");
 	let importPreview = $state.raw<WorkspaceImportPreview | null>(null);
 	let importActions = $state<Record<string, WorkspaceImportAction>>({});
+	// Raw text and the workspace each matched item would replace, captured at preview time so apply can detect changes.
+	let importRaw = "";
+	let previewTargets = new Map<string, SavedWorkspace>();
+	// Bumped when a picker starts, so a read that started under an older picker is dropped.
+	let importGeneration = 0;
 
 	const newImportOptions: { value: WorkspaceImportAction; label: string }[] = [
 		{ value: "add", label: "Add" },
@@ -79,23 +84,46 @@
 		}
 	}
 
-	async function importWorkspaces() {
+	// Starting either picker discards the previous preview and decisions, and returns the generation its reads must match.
+	function beginImportPick(): number {
+		importGeneration += 1;
+		clearImportPreview();
 		workspaceTransferError = "";
 		workspaceTransferMessage = "";
+		return importGeneration;
+	}
+
+	function clearImportPreview() {
+		importPreview = null;
+		importActions = {};
+		importRaw = "";
+		previewTargets = new Map();
+	}
+
+	async function importWorkspaces() {
+		const generation = beginImportPick();
 		try {
 			const raw = await pickWorkspaceImportJson(client);
+			if (generation !== importGeneration) return;
 			if (!raw) {
 				workspaceTransferMessage = "Import canceled.";
 				return;
 			}
 			showImportPreview(raw);
 		} catch (error) {
-			workspaceTransferError = errorText(error);
+			if (generation === importGeneration) workspaceTransferError = errorText(error);
 		}
 	}
 
 	function showImportPreview(raw: string) {
 		const preview = buildWorkspaceImportPreview(raw, $workspaces);
+		importRaw = raw;
+		previewTargets = new Map(
+			preview.items.flatMap((item) => {
+				const target = $workspaces.find((workspace) => workspace.id === item.existingWorkspaceId);
+				return target ? [[item.id, target] as const] : [];
+			}),
+		);
 		importPreview = preview;
 		importActions = Object.fromEntries(
 			preview.items.map((item) => [item.id, item.defaultAction]),
@@ -104,14 +132,14 @@
 	}
 
 	function openBrowserImportPicker() {
-		workspaceTransferError = "";
-		workspaceTransferMessage = "";
+		beginImportPick();
 		importFileInput?.click();
 	}
 
 	async function readBrowserImportFile(event: Event) {
 		const input = event.currentTarget;
 		if (!(input instanceof HTMLInputElement)) return;
+		const generation = importGeneration;
 		const file = input.files?.[0];
 		input.value = "";
 		if (!file) return;
@@ -122,9 +150,10 @@
 			return;
 		}
 		try {
-			showImportPreview(await file.text());
+			const raw = await file.text();
+			if (generation === importGeneration) showImportPreview(raw);
 		} catch (error) {
-			workspaceTransferError = errorText(error);
+			if (generation === importGeneration) workspaceTransferError = errorText(error);
 		}
 	}
 
@@ -133,10 +162,23 @@
 	}
 
 	function applyImportPreview() {
-		if (!importPreview) return;
-		const result = workspaceStore.importWorkspaces(importPreview, importActions);
-		importPreview = null;
-		importActions = {};
+		const preview = importPreview;
+		if (!preview) return;
+		// A replace overwrites the workspace matched at preview time. If that workspace is gone or changed, the
+		// preview was built from a store that no longer exists, so show it again for review instead of committing.
+		const current = $workspaces;
+		const replaceTargetChanged = preview.items.some((item) => {
+			if ((importActions[item.id] ?? item.defaultAction) !== "replace") return false;
+			const target = current.find((workspace) => workspace.id === item.existingWorkspaceId);
+			return target === undefined || target !== previewTargets.get(item.id);
+		});
+		if (replaceTargetChanged) {
+			showImportPreview(importRaw);
+			workspaceTransferMessage = "Saved workspaces changed since this preview. Review the import again.";
+			return;
+		}
+		const result = workspaceStore.importWorkspaces(preview, importActions);
+		clearImportPreview();
 		workspaceTransferError = "";
 		workspaceTransferMessage = `Imported ${result.added} new, replaced ${result.replaced}, skipped ${result.skipped}.`;
 	}
@@ -231,10 +273,7 @@
 						type="button"
 						variant="ghost"
 						size="sm"
-						onclick={() => {
-							importPreview = null;
-							importActions = {};
-						}}
+						onclick={clearImportPreview}
 					>
 						Cancel
 					</Button>
