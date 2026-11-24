@@ -1,7 +1,8 @@
 use super::super::manifest::manifest_summary;
 use super::super::values::values_summary;
+use super::list_projection::{configmap_list_summary, secret_list_summary};
 use super::*;
-use crate::commands::FixedClusterAccess;
+use crate::{commands::FixedClusterAccess, models::HelmReleaseList};
 use std::collections::BTreeMap;
 
 #[test]
@@ -34,17 +35,22 @@ fn list_record_matches_full_decode_including_decoded_label_precedence_and_failur
             ..Secret::default()
         };
         let full = secret_record("context", &secret).unwrap();
-        let projected = secret_list_record("context", &secret).unwrap();
+        let projected = secret_list_summary("context", &secret).unwrap();
         assert_eq!(
             serde_json::to_vec(&full.summary).unwrap(),
-            serde_json::to_vec(&projected.summary).unwrap()
+            serde_json::to_vec(&projected).unwrap()
         );
+        let configmap = ConfigMap {
+            metadata: secret.metadata,
+            data: Some(BTreeMap::from([("release".into(), encoded)])),
+            ..ConfigMap::default()
+        };
+        let full = configmap_record("context", &configmap).unwrap();
+        let projected = configmap_list_summary("context", &configmap).unwrap();
         assert_eq!(
-            full.decode_error.as_ref().map(|e| e.kind),
-            projected.decode_error.as_ref().map(|e| e.kind)
+            serde_json::to_vec(&full.summary).unwrap(),
+            serde_json::to_vec(&projected).unwrap()
         );
-        assert!(projected.release.is_none());
-        assert!(projected.manifest_resources.is_empty());
     }
 }
 
@@ -112,6 +118,55 @@ fn malformed_manifest_stops_parsing_and_preserves_valid_prefix() {
     assert_eq!(summary.resource_count, 1);
     assert_eq!(summary.resources[0].name.as_deref(), Some("before-error"));
     assert_eq!(manifest_summary(Some(malformed), None).resource_count, 0);
+}
+
+#[test]
+fn manifest_projection_preserves_partial_identities_and_document_order() {
+    let manifest = r"
+# empty document
+---
+apiVersion: true
+kind: Deployment
+metadata: [not, a, mapping]
+---
+metadata: {name: 42, namespace: default}
+---
+apiVersion: v1
+kind: List
+items: [{apiVersion: v1, kind: Secret, metadata: {name: child}}]
+---
+metadata: !identity {name: !literal '42', namespace: ''}
+---
+kind: [
+";
+    let resources = manifest_resources(Some(manifest));
+    let identities: Vec<_> = resources
+        .iter()
+        .map(|row| {
+            (
+                row.api_version.as_deref(),
+                row.kind.as_deref(),
+                row.name.as_deref(),
+                row.namespace.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        identities,
+        [
+            (None, Some("Deployment"), None, None),
+            (Some("v1"), Some("List"), None, None),
+            (None, None, Some("42"), None),
+        ]
+    );
+}
+
+#[test]
+fn duplicate_keys_in_discarded_manifest_fields_preserve_the_valid_prefix() {
+    let manifest = "kind: ConfigMap\n---\nkind: Deployment\nspec: {replicas: 1, replicas: 2}\n---\nkind: Service\n";
+    let resources = manifest_resources(Some(manifest));
+    assert_eq!(resources.len(), 1);
+    assert_eq!(resources[0].kind.as_deref(), Some("ConfigMap"));
 }
 
 #[test]

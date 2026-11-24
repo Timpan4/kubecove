@@ -1808,9 +1808,12 @@ dependencies = [
 name = "kubecove-live"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "chrono",
  "futures-util",
  "http",
+ "http-body",
+ "http-body-util",
  "k8s-openapi",
  "kube",
  "kubecove-kube",

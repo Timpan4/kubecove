@@ -6,7 +6,7 @@ use super::table_columns::{
     Column, EMPTY, READINESS_NOT_REPORTED, RESTART_COUNT_NOT_REPORTED, cell, ready_chip,
     ready_text, resource_id, restart_text, text_cell, value_cell,
 };
-use super::table_controls::{GroupRow, group_row_id, pin_id, sort_id};
+use super::table_controls::{GroupRow, group_row_id, pin_id_of, sort_id};
 use super::table_status::{health_badge, lifecycle_status, row_height_key};
 use super::{Inspector, surface, timestamp_text};
 use crate::model::{
@@ -20,6 +20,36 @@ use gpui_kit::{
     AnyElement, Context, Div, FocusHandle, KeyDownEvent, SharedString, div, prelude::*, px,
 };
 use kubecove_lib::models::ResourceSummary;
+
+/// A rendered row's index in `Visible::all_rows`, its `resource_id` and API
+/// version. Row controls keep this instead of a copy of the row, and `table_row`
+/// finds the row when their input arrives. The element id omits the API version,
+/// so two custom-resource groups with the same kind and object names need it to
+/// tell their rows apart.
+#[derive(Clone)]
+pub(super) struct RowHandle {
+    pub index: usize,
+    pub id: SharedString,
+    pub api_version: Option<String>,
+}
+
+impl RowHandle {
+    /// Whether `row` is this handle's resource. Compares fields against the id
+    /// in place, so the fallback scan formats nothing.
+    fn is(&self, row: &ResourceSummary) -> bool {
+        fn field<'a>(rest: &'a str, value: &str) -> Option<&'a str> {
+            rest.strip_prefix(value)?.strip_prefix(':')
+        }
+        row.api_version == self.api_version
+            && self
+                .id
+                .strip_prefix("resource:")
+                .and_then(|rest| field(rest, &row.kind))
+                .and_then(|rest| field(rest, row.namespace.as_deref().unwrap_or("")))
+                .and_then(|rest| field(rest, &row.name))
+                .is_some_and(|cluster| cluster == row.cluster)
+    }
+}
 
 impl Inspector {
     /// The table's columns. `multi_context` comes from the workspace, not the
@@ -123,11 +153,21 @@ impl Inspector {
         handle
     }
 
+    /// The row a table control rendered for `handle`, as the rows stand now. A
+    /// watch patch can move or drop the row between the render and the input.
+    pub(super) fn table_row(&self, handle: &RowHandle) -> Option<ResourceSummary> {
+        let rows = self.visible.all_rows();
+        rows.get(handle.index)
+            .filter(|row| handle.is(row))
+            .or_else(|| rows.iter().find(|row| handle.is(row)))
+            .cloned()
+    }
+
     /// The name cell. Its control takes focus, and Enter or Space opens the resource
     /// as a click does, as the web's name button does.
-    fn name_cell(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
-        let focus = self.table_tab_stop(&resource_id(row), cx);
-        let resource = row.clone();
+    fn name_cell(&self, row: &ResourceSummary, handle: &RowHandle, cx: &mut Context<Self>) -> Div {
+        let focus = self.table_tab_stop(&handle.id, cx);
+        let target = handle.clone();
         cell(
             Column::Name,
             div()
@@ -137,7 +177,7 @@ impl Inspector {
                 .min_w_0()
                 .child(
                     div()
-                        .id(SharedString::from(resource_id(row)))
+                        .id(handle.id.clone())
                         .test_support()
                         .aria_label(format!("Open resource {}", row.name))
                         .aria_description(format!("{:?}", row.health_assessment.state))
@@ -147,7 +187,9 @@ impl Inspector {
                         .focus(|style| style.border_2().border_color(Tokens::ring()))
                         .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                             if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                this.open_resource(resource.clone(), window, cx);
+                                if let Some(resource) = this.table_row(&target) {
+                                    this.open_resource(resource, window, cx);
+                                }
                                 cx.stop_propagation();
                             }
                         }))
@@ -172,9 +214,18 @@ impl Inspector {
         )
     }
 
-    fn row_cell(&self, column: Column, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
+    /// The cell's content. `text` is `cell_text` for the cell, read once per cell.
+    fn row_cell(
+        &self,
+        column: Column,
+        row: &ResourceSummary,
+        handle: &RowHandle,
+        text: &str,
+        ready: Option<(Tone, &'static str)>,
+        cx: &mut Context<Self>,
+    ) -> Div {
         match column {
-            Column::Name => self.name_cell(row, cx),
+            Column::Name => self.name_cell(row, handle, cx),
             Column::Status => {
                 let content: AnyElement =
                     match crate::topology::node::lifecycle(&row.kind, row.status.as_deref()) {
@@ -198,12 +249,12 @@ impl Inspector {
             }
             Column::Context | Column::Namespace | Column::Kind | Column::Owner => value_cell(
                 column,
-                format!("value:{}:{}", column.label(), resource_id(row)),
-                self.cell_text(column, row),
+                format!("value:{}:{}", column.label(), handle.id),
+                text.to_owned(),
             ),
-            Column::Ready => match ready_chip(row) {
+            Column::Ready => match ready {
                 Some((tone, label)) => cell(column, ui::status_badge(tone, label)),
-                None => text_cell(column, ready_text(row)),
+                None => text_cell(column, text.to_owned()),
             },
             Column::Restarts => {
                 let content: AnyElement = match row.restarts {
@@ -225,7 +276,7 @@ impl Inspector {
                 )
             }
             Column::Cpu | Column::Memory => {
-                let value = self.cell_text(column, row);
+                let value = text.to_owned();
                 let label = format!(
                     "{} usage {value}",
                     if matches!(column, Column::Cpu) {
@@ -258,11 +309,10 @@ impl Inspector {
                         row.name
                     ),
                     row.created_at.clone(),
-                    ui::sm(self.timestamp_label(&row.age, row.created_at.as_deref()))
-                        .whitespace_nowrap(),
+                    ui::sm(text.to_owned()).whitespace_nowrap(),
                 ),
             ),
-            Column::Pin => self.pin_cell(row, cx),
+            Column::Pin => self.pin_cell(row, handle, cx),
         }
     }
 
@@ -272,23 +322,40 @@ impl Inspector {
         &self,
         column: Column,
         row: &ResourceSummary,
+        handle: &RowHandle,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let id = format!("cell:{}:{}", column.label(), resource_id(row));
-        let description = Self::cell_description(column, row);
-        self.row_cell(column, row, cx)
+        let id = format!("cell:{}:{}", column.label(), handle.id);
+        // The Ready column's chip decides its text, content and description.
+        let ready = matches!(column, Column::Ready)
+            .then(|| ready_chip(row))
+            .flatten();
+        let (text, description) = match column {
+            Column::Ready => (
+                ready.map_or_else(|| ready_text(row), |(_, label)| label.to_owned()),
+                ready.is_none().then_some(READINESS_NOT_REPORTED),
+            ),
+            _ => (
+                self.cell_text(column, row),
+                Self::cell_description(column, row),
+            ),
+        };
+        self.row_cell(column, row, handle, &text, ready, cx)
             .id(SharedString::from(id))
             .test_support()
-            .aria_label(self.cell_text(column, row))
+            .aria_label(text)
             .when_some(description, |cell, description| {
                 cell.aria_description(description)
             })
     }
 
+    /// Entry `index` of `page`. `ids` holds each page row's `resource_id`, in
+    /// `page.rows` order.
     fn table_entry(
         &self,
         page: &crate::model::TablePage<usize>,
         columns: &[Column],
+        ids: &[SharedString],
         index: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -335,19 +402,28 @@ impl Inspector {
                 .into_any_element(),
             Entry::Row(index) => {
                 let row = &self.visible.all_rows()[page.rows[*index]];
-                let id = resource_id(row);
-                let tint = self.row_changes.tint(&id);
+                let handle = RowHandle {
+                    index: page.rows[*index],
+                    id: ids[*index].clone(),
+                    api_version: row.api_version.clone(),
+                };
+                let tint = self.row_changes.tint(&handle.id);
                 let cells: Vec<AnyElement> = columns
                     .iter()
-                    .map(|column| self.table_cell(*column, row, cx).into_any_element())
+                    .map(|column| {
+                        self.table_cell(*column, row, &handle, cx)
+                            .into_any_element()
+                    })
                     .collect();
-                let resource = row.clone();
+                let row_id = SharedString::from(format!("row:{}", handle.id));
                 div()
-                    .id(SharedString::from(format!("row:{id}")))
+                    .id(row_id)
                     .test_support()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_resource(resource.clone(), window, cx)
+                        if let Some(resource) = this.table_row(&handle) {
+                            this.open_resource(resource, window, cx);
+                        }
                     }))
                     .flex()
                     .border_b_1()
@@ -388,12 +464,16 @@ impl Inspector {
         self.table_page = self.table_page.min(page.page_count - 1);
         let contexts = self.workspace_contexts().len();
         let columns = self.columns(&page.rows, contexts > 1);
-        // Drop the focus handles of controls that left the page.
-        let mut live: std::collections::HashSet<String> = page
+        // Each page row's id, formatted once for the row's cells and controls.
+        let ids: std::rc::Rc<[SharedString]> = page
             .rows
             .iter()
-            .map(|&index| &self.visible.all_rows()[index])
-            .flat_map(|row| [resource_id(row), pin_id(row)])
+            .map(|&index| SharedString::from(resource_id(&self.visible.all_rows()[index])))
+            .collect();
+        // Drop the focus handles of controls that left the page.
+        let mut live: std::collections::HashSet<String> = ids
+            .iter()
+            .flat_map(|id| [id.to_string(), pin_id_of(id)])
             .collect();
         live.extend(page.entries.iter().filter_map(|entry| match entry {
             Entry::Group { key, .. } | Entry::Type { key, .. } => Some(group_row_id(key)),
@@ -426,7 +506,7 @@ impl Inspector {
         let body = if page.entries.is_empty() {
             div().children(body).into_any_element()
         } else {
-            let ids: Vec<u64> = page
+            let heights: Vec<u64> = page
                 .entries
                 .iter()
                 .map(|entry| match entry {
@@ -436,17 +516,20 @@ impl Inspector {
                     _ => super::windowed::row_id(std::mem::discriminant(entry)),
                 })
                 .collect();
-            if let Some(tops) = self.table_rows.fixed_tops(0, &ids) {
+            if let Some(tops) = self.table_rows.fixed_tops(0, &heights) {
                 let owner = cx.entity();
                 let page = page.clone();
+                let ids = ids.clone();
                 super::windowed::Windowed::fixed_rows(tops, move |index, _, app| {
-                    owner.update(app, |this, cx| this.table_entry(&page, &columns, index, cx))
+                    owner.update(app, |this, cx| {
+                        this.table_entry(&page, &columns, &ids, index, cx)
+                    })
                 })
                 .into_any_element()
             } else {
                 self.table_rows
-                    .rows(0, ids, cx.entity_id(), |index| {
-                        self.table_entry(&page, &columns, index, cx)
+                    .rows(0, heights, cx.entity_id(), |index| {
+                        self.table_entry(&page, &columns, &ids, index, cx)
                     })
                     .into_any_element()
             }

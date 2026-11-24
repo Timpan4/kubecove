@@ -11,7 +11,7 @@
 	import { FolderOpen, Settings } from "lucide-svelte";
 	import { Button, TooltipProvider } from "@/components/ui/svelte";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
-	import UpdateStatusButton from "./UpdateStatusButton.svelte";
+	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import WorkspaceLauncher from "@/features/workspaces/WorkspaceLauncher.svelte";
 	import { invalidatePodExecQueries } from "@/features/live-sessions/podExecLifecycle";
@@ -21,9 +21,8 @@
 	import ForegroundLoadingBar from "./ForegroundLoadingBar.svelte";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
-	import { desktopRemoteConnection } from "@/lib/remote-runtime";
-	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
+	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import {
 		createTauriClient,
 		cancelWorkspaceRequests,
@@ -43,7 +42,6 @@
 		cancelWorkspaceWork,
 		createWorkspaceTransitionCoordinator,
 	} from "./workspaceTransition";
-	import { scheduleAutomaticUpdateCheck } from "./appUpdateStore";
 
 	const selectedWorkspace = workspaceStore.selectedWorkspace;
 	const diagnosticsClient = createTauriClient();
@@ -63,8 +61,6 @@
 	let lastDiagnosticsEnabled: boolean | null = null;
 	let liveSessionScopeInitialized = false;
 	let lastLiveSessionCleanupKey = "";
-	let remoteScopeInitialized = false;
-	let lastRemoteScope: string | null = null;
 
 	const workspaceTransition = createWorkspaceTransitionCoordinator<WorkspaceDestination>({
 		suspend: async () => {
@@ -176,11 +172,6 @@
 			});
 	});
 
-	onMount(() => {
-		if (!isAppUpdatesEnabled()) return;
-		return scheduleAutomaticUpdateCheck();
-	});
-
 	function syncDiagnostics(enabled: boolean) {
 		setDiagnosticsEnabled(enabled);
 		void setBackendDiagnosticsEnabled(diagnosticsClient, enabled).catch((error) => {
@@ -189,18 +180,6 @@
 			});
 		});
 	}
-
-	$effect(() => {
-		const remoteScope = $desktopRemoteConnection?.serverUrl ?? null;
-		if (!remoteScopeInitialized) {
-			remoteScopeInitialized = true;
-			lastRemoteScope = remoteScope;
-			return;
-		}
-		if (lastRemoteScope === remoteScope) return;
-		lastRemoteScope = remoteScope;
-		void queryClient.resetQueries();
-	});
 
 	$effect(() => {
 		const enabled = $settingsStore.debugModeEnabled;
@@ -275,6 +254,13 @@
 </script>
 
 <CopyToast />
+{#if browserMockSurfaces}
+	<DeferredSurface load={browserMockSurfaces.appEffects} label="browser mock effects" showPending={false}>
+		{#snippet children(BrowserMockAppEffects)}
+			<BrowserMockAppEffects />
+		{/snippet}
+	</DeferredSurface>
+{/if}
 
 <TooltipProvider>
 	{#if workspaceTransitionPending}
@@ -314,7 +300,13 @@
 				</span>
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
-				<UpdateStatusButton />
+				{#if browserMockSurfaces && isAppUpdatesEnabled()}
+					<DeferredSurface load={browserMockSurfaces.updateButton} label="update status">
+						{#snippet children(UpdateStatusButton)}
+							<UpdateStatusButton />
+						{/snippet}
+					</DeferredSurface>
+				{/if}
 				{#if launcherView === "settings"}
 					<Button
 						type="button"

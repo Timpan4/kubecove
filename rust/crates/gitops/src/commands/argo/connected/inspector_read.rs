@@ -8,6 +8,7 @@ use crate::commands::{
 use crate::models::AppErrorKind;
 use crate::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef, ArgoManagedResource};
 use kube::core::DynamicObject;
+use serde_json::Value;
 
 pub(crate) async fn kubernetes_application(
     access: &ClusterAccess,
@@ -55,13 +56,13 @@ pub(crate) fn connected_application_path(
     ))
 }
 
-async fn connected_inspector_read(
+async fn connected_inspector_responses(
     store: &ArgoConnectionStore,
     cluster_context: &str,
     source_key: &str,
     connection_id: Option<&str>,
-    application: ArgoApplicationRef,
-) -> Result<ArgoApplicationInspector, AppError> {
+    application: &ArgoApplicationRef,
+) -> Result<(Value, Option<Value>), AppError> {
     let connection = scoped_connection(
         store,
         connection_id.ok_or_else(|| {
@@ -71,13 +72,13 @@ async fn connected_inspector_read(
         application.workspace_id.as_deref(),
         source_key,
     )?;
-    let namespace = application.namespace.clone().unwrap_or_default();
+    let namespace = application.namespace.as_deref().unwrap_or_default();
     let response = api_get(
         &connection,
         &connected_application_path(
             &connection.profile.url,
             &application.name,
-            Some(&namespace),
+            Some(namespace),
             application.project.as_deref(),
             false,
         )?,
@@ -88,7 +89,7 @@ async fn connected_inspector_read(
         &connected_application_path(
             &connection.profile.url,
             &application.name,
-            Some(&namespace),
+            Some(namespace),
             None,
             true,
         )?,
@@ -101,7 +102,7 @@ async fn connected_inspector_read(
         Err(error) if is_response_too_large(&error) => None,
         Err(error) => return Err(error),
     };
-    Ok(connected_inspector(application, response, managed))
+    Ok((response, managed))
 }
 
 /// One managed resource's states. Argo CD filters the list server-side, so selecting
@@ -198,16 +199,16 @@ pub(super) async fn application_inspector(
             AppErrorKind::ArgoConnection,
         ));
     }
-    match connected_inspector_read(
+    match connected_inspector_responses(
         store,
         &cluster_context,
         access.source_key(),
         connection_id.as_deref(),
-        application.clone(),
+        &application,
     )
     .await
     {
-        Ok(inspector) => Ok(inspector),
+        Ok((response, managed)) => Ok(connected_inspector(application, response, managed)),
         Err(connected_error) => {
             match kubernetes_inspector(access, &cluster_context, &application).await {
                 Ok(inspector) => Ok(with_connected_fallback(inspector, &connected_error)),

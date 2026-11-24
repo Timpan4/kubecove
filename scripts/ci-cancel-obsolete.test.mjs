@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { cancelObsoleteRuns } from "./ci-cancel-obsolete.mjs";
 
 // Failure modes: stale main reruns displace current checks, closed PR runs retain
@@ -56,7 +60,13 @@ async function exercise(runs, options = {}) {
           selection = "Detect benchmark changes";
         }
         const selected = options.jobs?.[params.run_id] ?? [{ name, status: "in_progress", conclusion: null }];
-        const visible = selection && !selected.some((job) => job.name === selection) ? [{ name: selection, status: "completed", conclusion: "success" }, ...selected] : selected;
+        // nixStep gives CI's "Select Nix build" step a conclusion, or "in_progress".
+        const nixStep = options.nixStep?.[params.run_id];
+        const steps = nixStep === undefined ? undefined : [
+          { name: "Detect relevant changes", status: "completed", conclusion: "success" },
+          { name: "Select Nix build", status: nixStep === "in_progress" ? "in_progress" : "completed", conclusion: nixStep === "in_progress" ? null : nixStep },
+        ];
+        const visible = selection && !selected.some((job) => job.name === selection) ? [{ name: selection, status: "completed", conclusion: "success", steps }, ...selected] : selected;
         if (path === ".github/workflows/ci.yml" && !options.hiddenNix?.includes(params.run_id) && !visible.some((job) => job.name === "Nix build")) {
           return [...visible, { name: "Nix build", status: "completed", conclusion: "skipped" }];
         }
@@ -164,15 +174,101 @@ test("a newer main commit must replace the same work before an old run is cancel
   assert.deepEqual((await exercise([benchmark, newerBenchmark])).cancelled, [1], "CodSpeed selects its full baseline on main pushes");
 });
 
-test("retains CI until downstream Nix selection is visible and replaced", async () => {
+test("retains CI until its Nix selection is known and replaced", async () => {
   const original = run(1);
   const replacement = run(2, { head_sha: main });
   const frontend = { name: "CI frontend-e2e", status: "in_progress", conclusion: null };
   const nix = { name: "Nix build", status: "queued", conclusion: null };
   const jobs = { 1: [frontend], 2: [frontend] };
-  assert.deepEqual((await exercise([original, replacement], { jobs, hiddenNix: [1] })).cancelled, [], "selected Nix may not be visible while its dependencies run");
+  const both = { jobs, hiddenNix: [1, 2] };
+  assert.deepEqual((await exercise([original, replacement], { ...both, hiddenNix: [1] })).cancelled, [], "a run without the selection step keeps its unknown Nix selection");
+  for (const nixStep of ["in_progress", "failure", "cancelled"]) {
+    assert.deepEqual((await exercise([original, replacement], { ...both, nixStep: { 1: nixStep, 2: "success" } })).cancelled, [], `an unfinished or failed selection step (${nixStep}) is unknown`);
+  }
   assert.deepEqual((await exercise([original, replacement], { jobs: { ...jobs, 1: [frontend, nix] } })).cancelled, [], "frontend-only replacement omits selected Nix");
   assert.deepEqual((await exercise([original, replacement], { jobs: { 1: [frontend, nix], 2: [frontend, nix] } })).cancelled, [1]);
+});
+
+// Superseded main CI used to run every matrix task before its Nix job appeared, and only then
+// could a newer run replace it. The selection step makes the Nix selection known at once.
+test("cancels superseded CI as soon as the newer run selects the same tasks and Nix", async () => {
+  const original = run(1);
+  const replacement = run(2, { head_sha: main });
+  const rust = { name: "CI rust", status: "in_progress", conclusion: null };
+  const docs = { name: "CI docs", status: "in_progress", conclusion: null };
+  const both = { jobs: { 1: [rust], 2: [rust] }, hiddenNix: [1, 2] };
+  assert.deepEqual((await exercise([original, replacement], { ...both, nixStep: { 1: "success", 2: "success" } })).cancelled, [1]);
+  assert.deepEqual((await exercise([original, replacement], { ...both, nixStep: { 1: "skipped", 2: "skipped" } })).cancelled, [1]);
+  assert.deepEqual((await exercise([original, replacement], { ...both, nixStep: { 1: "skipped", 2: "success" } })).cancelled, [1]);
+  assert.deepEqual((await exercise([original, replacement], { ...both, nixStep: { 1: "success", 2: "skipped" } })).cancelled, [], "the newer run does not build Nix");
+  assert.deepEqual((await exercise([original, replacement], { ...both, nixStep: { 1: "success" } })).cancelled, [], "the newer run's Nix selection is unknown");
+  assert.deepEqual((await exercise([original, replacement], { ...both, jobs: { 1: [rust], 2: [docs] }, nixStep: { 1: "skipped", 2: "success" } })).cancelled, [], "the newer run does not test Rust");
+  // A Nix job that the newer run already shows counts only while it is active or passed.
+  for (const [nix, cancelled] of [[{ status: "queued", conclusion: null }, [1]], [{ status: "completed", conclusion: "success" }, [1]], [{ status: "completed", conclusion: "failure" }, []]]) {
+    const jobs = { 1: [rust], 2: [rust, { name: "Nix build", ...nix }] };
+    assert.deepEqual((await exercise([original, replacement], { jobs, hiddenNix: [1], nixStep: { 1: "success", 2: "success" } })).cancelled, cancelled, JSON.stringify(nix));
+  }
+  const detecting = { name: "Detect CI changes", status: "in_progress", conclusion: null };
+  assert.deepEqual((await exercise([original, replacement], { jobs: { 1: [detecting], 2: [rust] }, hiddenNix: [1, 2], nixStep: { 1: "skipped", 2: "success" } })).cancelled, [], "the older run's selection is still running");
+  const marked = { ...detecting, steps: [{ name: "Select Nix build", status: "completed", conclusion: "success" }] };
+  assert.deepEqual((await exercise([original, replacement], { jobs: { 1: [rust], 2: [rust, marked] }, hiddenNix: [1, 2], nixStep: { 1: "success" } })).cancelled, [], "the newer run's Detect job has not published its outputs");
+});
+
+// Superseded Parity and CodSpeed main runs used to run their shards until the newer run's
+// build finished and its shards appeared.
+test("a newer main Parity or CodSpeed run replaces every job of an older one at once", async () => {
+  for (const path of [".github/workflows/parity.yml", ".github/workflows/codspeed.yml"]) {
+    const shards = path.endsWith("parity.yml") ? [{ name: "Parity (main) / Both shard 0 of 4 ", status: "in_progress", conclusion: null }] : [{ name: "Run Rust benchmarks (dl)", status: "in_progress", conclusion: null }];
+    const building = [{ name: path.endsWith("parity.yml") ? "Build instrumented parity GPUI (main) / GPUI build (artifact)" : "Detect benchmark changes", status: "in_progress", conclusion: null }];
+    const original = run(1, { path });
+    const newer = run(2, { path, head_sha: main, status: "in_progress" });
+    const jobs = { 1: shards, 2: building };
+    assert.deepEqual((await exercise([original, newer], { jobs })).cancelled, [1], path);
+    assert.deepEqual((await exercise([original], { jobs })).cancelled, [], `${path}: no newer run`);
+    for (const conclusion of ["failure", "cancelled"]) {
+      assert.deepEqual((await exercise([original, { ...newer, status: "completed", conclusion }], { jobs })).cancelled, [], `${path}: ${conclusion} newer run`);
+    }
+    assert.deepEqual((await exercise([original, { ...newer, status: "completed", conclusion: "success" }], { jobs })).cancelled, [1]);
+    assert.deepEqual((await exercise([original, { ...newer, head_sha: old }], { jobs })).cancelled, [], `${path}: a run at the old commit`);
+    assert.deepEqual((await exercise([original, { ...newer, head_branch: "topic" }], { jobs })).cancelled, [], `${path}: a branch run`);
+  }
+});
+
+// Failure modes: the selection step's condition drifts from the Nix job's, so a run that builds
+// Nix reports that it does not; a renamed step or job leaves every selection unknown or wrong;
+// or Parity or CodSpeed gain push-side selection, so a newer run no longer replaces every job.
+test("the cancellation rules match the workflow graphs they rely on", () => {
+  const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  const jobsOf = (text) => [...text.slice(text.indexOf("\njobs:\n")).matchAll(/^ {2}([\w-]+):\n((?: {4}.*\n|\n)*)/gm)].map(([, id, body]) => ({ id, body }));
+  const ci = Object.fromEntries(jobsOf(read("ci.yml")).map(({ id, body }) => [id, body]));
+  assert.match(ci.changes, /^ {4}name: Detect CI changes$/m);
+  assert.match(ci.changes, /^ {6}nix: \$\{\{ steps\.detect\.outputs\.nix \}\}$/m);
+  const marker = /^ {6}- name: Select Nix build\n {8}if: \$\{\{ (.+) \}\}$/m.exec(ci.changes)?.[1];
+  assert.ok(marker?.includes("steps.detect.outputs.nix == 'true'"));
+  assert.match(ci.nix, /^ {4}name: Nix build$/m);
+  assert.equal(/^ {4}if: \$\{\{ (.+) \}\}$/m.exec(ci.nix)?.[1], `always() && !cancelled() && ${marker.replace("steps.detect.outputs.nix", "needs.changes.outputs.nix")}`);
+  // Every Parity job that can run on a push decides by event and branch, with a fixed matrix.
+  const pushJobs = jobsOf(read("parity.yml")).filter(({ body }) => !/^ {4}if: .*github\.event_name == 'pull_request'/m.test(body));
+  assert.deepEqual(pushJobs.map(({ id }) => id), ["timings", "main-gpui-build", "main", "main-spike", "main-build-cache", "publish-timings", "coverage-map"]);
+  for (const { id, body } of pushJobs) {
+    assert.doesNotMatch(/^ {4}if: (.+)$/m.exec(body)?.[1] ?? "", /outputs|result/, id);
+    assert.doesNotMatch(body, /fromJSON/, id);
+  }
+  // CodSpeed's detection gets the event and selects every benchmark outside pull requests.
+  assert.match(read("codspeed.yml"), /^ {10}EVENT_NAME: \$\{\{ github\.event_name \}\}$/m);
+  const root = mkdtempSync(join(tmpdir(), "kubecove-codspeed-full-"));
+  try {
+    for (const event of ["push", "workflow_dispatch"]) {
+      const output = join(root, event);
+      writeFileSync(output, "");
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL("./codspeed-detect.mjs", import.meta.url)), join(root, "unused")], {
+        env: { ...process.env, EVENT_NAME: event, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: "" }, encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(readFileSync(output, "utf8"), /^frontend=true\nrust=true\n/, event);
+      assert.match(result.stdout + readFileSync(output, "utf8"), /frontend_matrix=/);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("tag dispatches survive a same-name default or merged branch", async () => {

@@ -112,9 +112,14 @@ The `Cancel obsolete CI` workflow cancels superseded main runs, validation for c
 manual validation on deleted branches. It reconciles on main pushes, PR closure,
 branch deletion and validation startup/completion, including reruns. Non-PR concurrency groups
 include the commit SHA so a late rerun of an old commit cannot cancel current
-validation, including manual feature-branch runs. Before cancelling an older main run, cleanup requires a current-main
-run of the same workflow and E2E mode with every previously selected job either
-pending, running or successful. A path filter or change selection that omits work
+validation, including manual feature-branch runs. Before cancelling an older main run, cleanup requires a
+pending, running or successful current-main run of the same workflow and E2E mode.
+Parity and CodSpeed run every job on main whatever changed, so that run alone
+replaces an older one, including shards that wait for its build. CI, E2E, tsrs and
+server packaging select jobs by what changed, so the current run must also select every job
+the older one did, with each pending, running or successful. CI's Nix job appears
+only after the matrix finishes, so the `Select Nix build` step of `Detect CI changes`
+reports the Nix selection earlier. A path filter or change selection that omits work
 preserves its latest relevant run. Release and publishing workflows stay outside
 this cleanup. Dispatches whose head name also names an existing tag are retained
 because the API does not distinguish that ambiguous ref.
@@ -229,8 +234,11 @@ compiler identity and the existing key/wrapper scripts. Compiler-bundle inputs
 retain the lists from before pass reuse. Wider pass inputs never refresh a
 compiler bundle.
 
-In this table, `shared` means `tests scripts/ci-rust-pass.mjs ':(top,glob)*'
-':(top,glob).c*/**'`. Root files cover package, lockfile, environment and toolchain
+In this table, `shared` means `tests/fixtures/kubernetes scripts/ci-rust-pass.mjs
+':(top,glob)*' ':(top,glob).c*/**'`, and `notes` means
+`':(exclude,glob)rust/**/*.md'`: no crate reads the Markdown under `rust/`, so
+those files select no Rust task and change no key. Under `tests/`, Rust embeds only
+the Kubernetes fixtures. Root files cover package, lockfile, environment and toolchain
 configuration; the dot-directory pattern covers `.cargo` and `.config` and also
 matches the tracked `.claude` tree. Other `.github` files are excluded. The only
 GitHub input is the explicit `.github/workflows/ci.yml`: CI currently uses no
@@ -239,17 +247,18 @@ inputs, which the workflow regression checks enforce.
 
 | Task | Compiler-bundle inputs | Pass inputs |
 | --- | --- | --- |
-| rust | `rust :!rust/gpui :!rust/server` | Compiler inputs plus `shared` |
-| gpui-clippy | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
-| gpui-test | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared src e2e/parity/visual` |
-| server-backend | `rust :!rust/gpui :!rust/server` | `rust :!rust/gpui` plus `shared` |
-| server | `rust :!rust/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
+| rust | `rust :!rust/gpui :!rust/server notes` | Compiler inputs plus `shared` |
+| gpui-clippy | `rust :!rust/server notes src/lib/*-workspace.json src/lib/tauri-dev-mock-overview.json` | Compiler inputs plus `shared` |
+| gpui-test | `rust :!rust/server notes src/lib/*-workspace.json src/lib/tauri-dev-mock-overview.json` | Compiler inputs plus `shared src e2e/parity/visual` |
+| server | `rust :!rust/gpui notes` | Compiler inputs plus `shared src public e2e scripts deploy tests/server-command-contract.test.ts` |
 
 The server's generated `dist/` comes from its audited browser inputs. The
-backend pass includes the server manifest and lockfile that `cargo tree` reads.
-GPUI pass inputs include embedded workspace JSON, and every pass includes root
-test fixtures. These wider inputs affect only pass records. The edited workflow
-itself changes all five compiler keys once because it was already a build input.
+server pass includes the server manifest and lockfile that `cargo tree` reads.
+GPUI compiler and pass inputs include the embedded workspace and overview JSON,
+and every pass includes the Kubernetes test fixtures. A workflow regression test
+checks that every file a crate embeds from outside `rust/` selects, and is keyed
+for, each task that compiles it. These wider inputs affect only pass records. The edited workflow
+itself changes all four compiler keys once because it was already a build input.
 
 The pass-record cache key is
 `passed-<pass-input key>-<runner-environment SHA-256>-<run ID>-<run attempt>`.
@@ -314,15 +323,14 @@ one cache:
   fixture, and keys its pass on `src` and `e2e/parity/visual` too. Frontend
   changes select `gpui-test` as well as Rust changes, as they do for the server
   tasks;
-- `server-backend`: GUI-free backend tests and dependency-tree verification;
-- `server`: API-only server tests and Clippy, then the browser UI build,
-  default-feature server tests and Clippy, the server build and HTTP/WebSocket
-  lifecycle verification.
+- `server`: a check that the server's dependency tree holds no GPUI, windowing
+  or webview crates, API-only server tests and Clippy, then the browser UI
+  build, default-feature server tests and Clippy, the server build and
+  HTTP/WebSocket lifecycle verification.
 
 The default-feature server checks build the real browser assets that
-`rust/server/build.rs` embeds. The API-only checks run before that build,
-and the GUI-free backend task never builds it, so both prove they need neither
-those assets nor GUI packages. Native build prerequisites are installed
+`rust/server/build.rs` embeds. The API-only checks run before that build, so
+they prove the server does not need those assets. Native build prerequisites are installed
 only when `pkg-config` cannot resolve them. Caching compiler outputs does not
 supply missing system libraries.
 
@@ -356,8 +364,10 @@ They neither restore nor save shared compiler outputs, following the upstream
 Container and Nix builds keep their existing build paths. CodSpeed retains its
 Rust dependency cache.
 
-The frontend, headless server, and E2E jobs share Bun's download cache on each
-OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
+CI, Parity and the Linux E2E jobs install Bun packages without a download cache.
+Server packaging, the release frontend build, and the macOS and Windows desktop
+smoke jobs restore Bun's download cache on each OS and still run
+`bun install --frozen-lockfile` after restoring it. Caches
 do not replace verification. Compiler-cache misses run the same checks; only the
 separate exact-input pass records above can reuse completed Rust verification.
 

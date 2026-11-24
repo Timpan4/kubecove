@@ -8,8 +8,8 @@ import type {
 	ServiceAccountSummary,
 } from "@/lib/types";
 import type { WorkspaceRbacReview } from "@/lib/workspace-model";
-import type { RbacCockpitItem } from "./cockpitModel";
-import { serviceAccountMatcher } from "./principal";
+import { buildRbacBindingIndex, type RbacBindingIndex, type RbacCockpitItem } from "./cockpitModel";
+import { bindingSources } from "./queueModel";
 import type { RbacView } from "./surfaceModel";
 
 export const REVIEWABLE_RBAC_CATEGORIES = [
@@ -44,18 +44,20 @@ export function isReviewableRbacCategory(category: RbacView): category is Review
 export function buildRbacEvidenceFingerprint(
 	inspection: RbacInspectionSummary,
 	entry: RbacCockpitItem,
+	index?: RbacBindingIndex,
 ): string | undefined {
 	if (!isReviewableRbacCategory(entry.category)) return undefined;
-	return `rbac-v1-${fnv1a(JSON.stringify(evidenceFor(inspection, entry)))}`;
+	return `rbac-v1-${fnv1a(JSON.stringify(evidenceFor(inspection, entry, index)))}`;
 }
 
 export function reviewStatus(
 	record: RbacReviewRecord | undefined,
 	inspection: RbacInspectionSummary,
 	entry: RbacCockpitItem,
+	index?: RbacBindingIndex,
 ): RbacReviewStatus {
 	if (!record) return "none";
-	const fingerprint = buildRbacEvidenceFingerprint(inspection, entry);
+	const fingerprint = buildRbacEvidenceFingerprint(inspection, entry, index);
 	return record.clusterContext === inspection.cluster &&
 		record.objectKey === entry.key &&
 		fingerprint === record.evidenceFingerprint
@@ -66,6 +68,7 @@ export function reviewStatus(
 export function rbacReviewSubjectLabels(
 	inspection: RbacInspectionSummary,
 	entry: RbacCockpitItem,
+	index?: RbacBindingIndex,
 ): string[] {
 	if (!isReviewableRbacCategory(entry.category)) return [];
 	if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
@@ -74,7 +77,7 @@ export function rbacReviewSubjectLabels(
 	}
 	const bindings = entry.category === "Bindings" && isRbacBindingSummary(entry.item)
 		? [entry.item]
-		: isRbacRoleSummary(entry.item) ? relevantBindings(inspection, entry.item) : [];
+		: isRbacRoleSummary(entry.item) ? bindingSources(index ?? buildRbacBindingIndex(inspection), entry) : [];
 	return Array.from(new Set(bindings.flatMap((binding) => binding.subjects.map(subjectLabel)))).sort();
 }
 
@@ -104,7 +107,7 @@ function normalizedReviewRecord(input: RbacReviewRecordInput): RbacReviewRecord 
 	return { ...input, note };
 }
 
-function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem) {
+function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem, index?: RbacBindingIndex) {
 	const common = {
 		cluster: inspection.cluster,
 		objectKey: entry.key,
@@ -118,7 +121,7 @@ function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem) 
 		return {
 			...common,
 			role: normalizedRole(role),
-			bindingPaths: relevantBindings(inspection, role)
+			bindingPaths: bindingSources(index ?? buildRbacBindingIndex(inspection), entry)
 				.map((binding) => normalizedBinding(binding, role))
 				.sort(compareJson),
 		};
@@ -135,33 +138,13 @@ function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem) 
 				automountToken: account.automountToken ?? null,
 				secretsCount: account.secretsCount,
 				imagePullSecretsCount: account.imagePullSecretsCount,
-				inheritedPaths: inheritedPaths(inspection, account),
+				inheritedPaths: bindingSources(index ?? buildRbacBindingIndex(inspection), entry)
+					.map((binding) => normalizedBinding(binding, roleForBinding(inspection, binding)))
+					.sort(compareJson),
 			},
 		};
 	}
 	return common;
-}
-
-function inheritedPaths(inspection: RbacInspectionSummary, account: ServiceAccountSummary) {
-	return relevantBindings(inspection, account)
-		.map((binding) => normalizedBinding(binding, roleForBinding(inspection, binding)))
-		.sort(compareJson);
-}
-
-function relevantBindings(
-	inspection: RbacInspectionSummary,
-	item: ServiceAccountSummary | RbacRoleSummary,
-): RbacBindingSummary[] {
-	const bindings = [...inspection.roleBindings, ...inspection.clusterRoleBindings];
-	if ("rules" in item) {
-		return bindings.filter((binding) =>
-			binding.roleRefKind === item.kind &&
-			binding.roleRefName === item.name &&
-			(binding.roleRefKind !== "Role" || binding.namespace === item.namespace),
-		);
-	}
-	const applies = serviceAccountMatcher(item.namespace, item.name);
-	return bindings.filter((binding) => binding.subjects.some(applies));
 }
 
 function roleForBinding(inspection: RbacInspectionSummary, binding: RbacBindingSummary): RbacRoleSummary | undefined {

@@ -5,13 +5,12 @@
 use super::super::Inspector;
 use super::super::controls::{Variant, button};
 use super::super::detail::ResourceDetail;
-use super::super::events::tw;
 use super::super::loading::LoadingDelays;
 use super::state::ActionsState;
 use crate::actions::{self, ActionRow, RowId};
 use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
-use crate::theme::Tokens;
+use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::Input;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Stateful, div, prelude::*, px};
@@ -148,8 +147,8 @@ fn action_row(
                             .px(px(8.))
                             .py(px(2.))
                             .rounded_full()
-                            .bg(tw::sky500(0.1))
-                            .text_color(tw::sky300()),
+                            .bg(Palette::sky500(0.1))
+                            .text_color(Palette::sky300()),
                     )
                 }),
         )
@@ -164,7 +163,7 @@ fn action_row(
             .mt(px(4.)),
         );
     if let Some(pending) = pending.clone() {
-        info = info.child(ui::xs(pending).mt(px(4.)).text_color(tw::sky300()));
+        info = info.child(ui::xs(pending).mt(px(4.)).text_color(Palette::sky300()));
     }
     if permission.is_none_or(|permission| !permission.allowed) {
         let needs = permission
@@ -284,7 +283,11 @@ fn action_row(
 
 fn notice(id: &'static str, text: String, success: bool) -> impl IntoElement {
     let (border, background, foreground) = if success {
-        (tw::emerald500(0.3), tw::emerald500(0.05), tw::emerald300())
+        (
+            Palette::emerald500(0.3),
+            Palette::emerald500(0.05),
+            Palette::emerald300(),
+        )
     } else {
         (
             Tokens::destructive().opacity(0.3),

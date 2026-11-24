@@ -6,36 +6,24 @@ use crate::models::{
     HelmReconciliationStatus, HelmReconciliationTotals, HelmReleaseReconciliation,
     HelmReleaseSummary, ResourceSummary,
 };
+use futures_util::{StreamExt, future::Either, stream};
 use kube::{
     Client, Error as KubeError,
     api::{Api, DynamicObject},
-    discovery::{Scope, verbs},
 };
-use kubecove_kube::commands::discover_resources;
 use kubecove_kube::commands::dynamic_projection::{
     api_resource_from_discovered, dynamic_resource_summary,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-const HELM_RELEASE_LABEL: &str = "helm.sh/release";
-const CONSERVATIVE_SCAN_WARNING: &str = "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common built-in namespaced kinds; it does not exhaustively scan every API group or CRD.";
-/// Built-in kinds the label scan covers even when the manifest omits them, as
-/// `(group, kind)`. A same-named kind in another group is scanned only when the
-/// manifest references it.
-const COMMON_LABEL_SCAN_KINDS: &[(&str, &str)] = &[
-    ("", "Pod"),
-    ("apps", "Deployment"),
-    ("apps", "StatefulSet"),
-    ("apps", "DaemonSet"),
-    ("", "Service"),
-    ("networking.k8s.io", "Ingress"),
-    ("", "ConfigMap"),
-    ("", "Secret"),
-    ("", "PersistentVolumeClaim"),
-    ("batch", "Job"),
-    ("batch", "CronJob"),
-];
+#[path = "reconciliation_reads.rs"]
+mod reads;
+use reads::{conservative_label_scan_kinds, discovered_resources, label_scan};
 
+const HELM_RELEASE_LABEL: &str = "helm.sh/release";
+// Match the Kubernetes inspection read limit in inspection/src/commands/mod.rs.
+const MAX_READ_CONCURRENCY: usize = 16;
+const CONSERVATIVE_SCAN_WARNING: &str = "Label-only reconciliation scans explicit Helm release labels for manifest kinds and common built-in namespaced kinds; it does not exhaustively scan every API group or CRD.";
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ResourceKey {
     api_version: String,
@@ -48,6 +36,12 @@ struct ResourceKey {
 struct ResourceIdentity {
     key: ResourceKey,
     resource_kind: DiscoveredResourceKind,
+}
+
+struct PreparedManifest {
+    reads: Vec<(ResourceIdentity, usize)>,
+    unavailable_rows: Vec<HelmReconciliationResource>,
+    scan_kinds: BTreeSet<(String, String)>,
 }
 
 pub async fn get_helm_release_reconciliation(
@@ -88,60 +82,6 @@ pub async fn get_helm_release_reconciliation(
     })
 }
 
-/// Discovers only the groups the manifest and the label scan use, with a
-/// warning for each version that was unavailable. A manifest group that is not
-/// served or is unavailable is left out, so only its own rows read as
-/// unavailable.
-async fn discovered_resources(
-    client: Client,
-    manifest_refs: &[HelmManifestResourceSummary],
-) -> Result<(Vec<DiscoveredResourceKind>, Vec<String>), AppError> {
-    let mut groups: BTreeSet<&str> = COMMON_LABEL_SCAN_KINDS
-        .iter()
-        .map(|(group, _)| *group)
-        .collect();
-    groups.extend(manifest_refs.iter().filter_map(|manifest_ref| {
-        let api_version = manifest_ref.api_version.as_deref()?;
-        Some(api_version.rsplit_once('/').map_or("", |(group, _)| group))
-    }));
-    let groups: Vec<&str> = groups.into_iter().collect();
-    let discovered = discover_resources(&client, &groups).await?;
-    let warnings = discovered
-        .unavailable_versions
-        .iter()
-        .map(|api_version| {
-            format!(
-                "API {api_version} is unavailable, so resources at that version were not checked."
-            )
-        })
-        .collect();
-    let mut kinds = Vec::new();
-    for (api_resource, capabilities) in discovered.resources {
-        if !capabilities.supports_operation(verbs::GET)
-            && !capabilities.supports_operation(verbs::LIST)
-        {
-            continue;
-        }
-        kinds.push(DiscoveredResourceKind {
-            group: api_resource.group,
-            version: api_resource.version,
-            api_version: api_resource.api_version,
-            kind: api_resource.kind,
-            plural: api_resource.plural,
-            short_names: Vec::new(),
-            namespaced: matches!(capabilities.scope, Scope::Namespaced),
-        });
-    }
-    kinds.sort_by(|a, b| {
-        a.api_version
-            .cmp(&b.api_version)
-            .then(a.kind.cmp(&b.kind))
-            .then(a.plural.cmp(&b.plural))
-    });
-    kinds.dedup_by(|a, b| a.api_version == b.api_version && a.kind == b.kind);
-    Ok((kinds, warnings))
-}
-
 async fn reconcile_release(
     client: Client,
     cluster_context: &str,
@@ -154,42 +94,104 @@ async fn reconcile_release(
     HelmReconciliationTotals,
 ) {
     let discovered_by_ref = discovered_ref_index(discovered);
+    let prepared = prepare_manifest(manifest_refs, &release.namespace, &discovered_by_ref);
     let mut rows_by_key = BTreeMap::new();
-    let mut unavailable_rows = Vec::new();
-    let mut manifest_scan_kinds = BTreeSet::new();
-
-    for manifest_ref in manifest_refs {
-        match prepare_manifest_ref(manifest_ref, &release.namespace, &discovered_by_ref) {
-            Ok(identity) => {
-                manifest_scan_kinds
-                    .insert((identity.key.api_version.clone(), identity.key.kind.clone()));
-                let row = live_row_for_manifest(
-                    client.clone(),
-                    cluster_context,
-                    release,
-                    manifest_ref,
-                    &identity,
-                )
-                .await;
-                rows_by_key.insert(identity.key, row);
+    let mut warnings = vec![CONSERVATIVE_SCAN_WARNING.to_string()];
+    let scan_kinds = match crate::commands::helpers::validate_namespace(Some(&release.namespace)) {
+        Ok(()) => conservative_label_scan_kinds(discovered, &prepared.scan_kinds),
+        Err(error) => {
+            warnings.push(error.message);
+            Vec::new()
+        }
+    };
+    let params = list_params().labels(&format!("{HELM_RELEASE_LABEL}={}", release.name));
+    let mut tasks = Vec::with_capacity(prepared.reads.len() + scan_kinds.len());
+    let mut manifest_iter = prepared.reads.into_iter();
+    let mut scan_iter = scan_kinds.into_iter();
+    loop {
+        match (manifest_iter.next(), scan_iter.next()) {
+            (Some(manifest_read), Some(kind)) => {
+                tasks.push(Either::Left(manifest_read));
+                tasks.push(Either::Right(kind));
             }
-            Err(row) => unavailable_rows.push(row),
+            (Some(manifest_read), None) => tasks.push(Either::Left(manifest_read)),
+            (None, Some(kind)) => tasks.push(Either::Right(kind)),
+            (None, None) => break,
+        }
+    }
+    let reads = stream::iter(tasks)
+        .map(|read| {
+            let client = client.clone();
+            let params = &params;
+            async move {
+                match read {
+                    Either::Left((identity, manifest_index)) => {
+                        let row = live_row_for_manifest(
+                            client,
+                            cluster_context,
+                            release,
+                            &manifest_refs[manifest_index],
+                            &identity,
+                        )
+                        .await;
+                        Either::Left((identity.key, row))
+                    }
+                    Either::Right(kind) => {
+                        let items = label_scan(client, &release.namespace, &kind, params).await;
+                        Either::Right((kind, items))
+                    }
+                }
+            }
+        })
+        .buffered(MAX_READ_CONCURRENCY);
+    futures_util::pin_mut!(reads);
+    // Ordered results keep the last manifest row and the first label-only row for each key.
+    // A manifest row replaces a label-only row even when its GET failed.
+    while let Some(read) = reads.next().await {
+        match read {
+            Either::Left((key, row)) => {
+                rows_by_key.insert(key, row);
+            }
+            Either::Right((kind, Ok(items))) => {
+                for object in items {
+                    let summary = dynamic_resource_summary(cluster_context, &kind, &object);
+                    if has_explicit_helm_label(&summary, release) && !summary.name.is_empty() {
+                        rows_by_key
+                            .entry(key_from_summary(&summary))
+                            .or_insert_with(|| label_only_row(summary));
+                    }
+                }
+            }
+            Either::Right((_, Err(warning))) => warnings.push(warning),
         }
     }
 
-    let mut warnings = vec![CONSERVATIVE_SCAN_WARNING.to_string()];
-    scan_label_only_resources(
-        client,
-        cluster_context,
-        release,
-        discovered,
-        &manifest_scan_kinds,
-        &mut rows_by_key,
-        &mut warnings,
-    )
-    .await;
+    assemble_reconciliation_rows(rows_by_key, prepared.unavailable_rows, warnings)
+}
 
-    assemble_reconciliation_rows(rows_by_key, unavailable_rows, warnings)
+fn prepare_manifest(
+    manifest_refs: &[HelmManifestResourceSummary],
+    namespace: &str,
+    discovered_by_ref: &BTreeMap<(String, String), DiscoveredResourceKind>,
+) -> PreparedManifest {
+    let mut prepared = PreparedManifest {
+        reads: Vec::with_capacity(manifest_refs.len()),
+        unavailable_rows: Vec::new(),
+        scan_kinds: BTreeSet::new(),
+    };
+
+    for (manifest_index, manifest_ref) in manifest_refs.iter().enumerate() {
+        match prepare_manifest_ref(manifest_ref, namespace, discovered_by_ref) {
+            Ok(identity) => {
+                prepared
+                    .scan_kinds
+                    .insert((identity.key.api_version.clone(), identity.key.kind.clone()));
+                prepared.reads.push((identity, manifest_index));
+            }
+            Err(row) => prepared.unavailable_rows.push(row),
+        }
+    }
+    prepared
 }
 
 fn assemble_reconciliation_rows(
@@ -224,25 +226,12 @@ pub fn benchmark_reconciliation_prepare(
     discovered: &[DiscoveredResourceKind],
 ) -> BenchmarkReconciliationPreparation {
     let discovered_by_ref = discovered_ref_index(discovered);
-    let mut valid_identity_count = 0;
-    let mut unavailable_rows = Vec::new();
-    let mut manifest_scan_kinds = BTreeSet::new();
-    for manifest_ref in manifest_refs {
-        match prepare_manifest_ref(manifest_ref, "payments", &discovered_by_ref) {
-            Ok(identity) => {
-                manifest_scan_kinds
-                    .insert((identity.key.api_version.clone(), identity.key.kind.clone()));
-                std::hint::black_box(identity);
-                valid_identity_count += 1;
-            }
-            Err(row) => unavailable_rows.push(row),
-        }
-    }
-    let scan_kinds = conservative_label_scan_kinds(discovered, &manifest_scan_kinds);
+    let prepared = prepare_manifest(manifest_refs, "payments", &discovered_by_ref);
+    let scan_kinds = conservative_label_scan_kinds(discovered, &prepared.scan_kinds);
     BenchmarkReconciliationPreparation {
         discovered_index_size: discovered_by_ref.len(),
-        valid_identity_count,
-        unavailable_rows,
+        valid_identity_count: std::hint::black_box(&prepared.reads).len(),
+        unavailable_rows: prepared.unavailable_rows,
         scan_kinds,
     }
 }
@@ -427,77 +416,6 @@ async fn live_row_for_manifest(
         },
         Err(err) => unavailable_row(manifest_ref, true, err.to_string()),
     }
-}
-
-async fn scan_label_only_resources(
-    client: Client,
-    cluster_context: &str,
-    release: &HelmReleaseSummary,
-    discovered: &[DiscoveredResourceKind],
-    manifest_scan_kinds: &BTreeSet<(String, String)>,
-    rows_by_key: &mut BTreeMap<ResourceKey, HelmReconciliationResource>,
-    warnings: &mut Vec<String>,
-) {
-    let scan_kinds = conservative_label_scan_kinds(discovered, manifest_scan_kinds);
-    if let Err(error) = crate::commands::helpers::validate_namespace(Some(&release.namespace)) {
-        warnings.push(error.message);
-        return;
-    }
-    let label_selector = format!("{HELM_RELEASE_LABEL}={}", release.name);
-    for resource_kind in scan_kinds {
-        let api_resource = match api_resource_from_discovered(&resource_kind) {
-            Ok(api_resource) => api_resource,
-            Err(err) => {
-                warnings.push(format!(
-                    "Could not scan {} {}: {}",
-                    resource_kind.api_version, resource_kind.kind, err.message
-                ));
-                continue;
-            }
-        };
-        let api: Api<DynamicObject> = if resource_kind.namespaced {
-            Api::namespaced_with(client.clone(), &release.namespace, &api_resource)
-        } else {
-            Api::all_with(client.clone(), &api_resource)
-        };
-        let params = list_params().labels(&label_selector);
-        let items = match api.list(&params).await {
-            Ok(items) => items,
-            Err(err) => {
-                warnings.push(format!(
-                    "Could not scan {} {} for explicit Helm labels: {}",
-                    resource_kind.api_version, resource_kind.kind, err
-                ));
-                continue;
-            }
-        };
-        for object in items.items {
-            let summary = dynamic_resource_summary(cluster_context, &resource_kind, &object);
-            if !has_explicit_helm_label(&summary, release) || summary.name.is_empty() {
-                continue;
-            }
-            let key = key_from_summary(&summary);
-            rows_by_key
-                .entry(key)
-                .or_insert_with(|| label_only_row(summary));
-        }
-    }
-}
-
-fn conservative_label_scan_kinds(
-    discovered: &[DiscoveredResourceKind],
-    manifest_scan_kinds: &BTreeSet<(String, String)>,
-) -> Vec<DiscoveredResourceKind> {
-    let mut by_key = BTreeMap::new();
-    for kind in discovered {
-        let common = COMMON_LABEL_SCAN_KINDS.contains(&(kind.group.as_str(), kind.kind.as_str()));
-        if manifest_scan_kinds.contains(&(kind.api_version.clone(), kind.kind.clone()))
-            || (kind.namespaced && common)
-        {
-            by_key.insert((kind.api_version.clone(), kind.kind.clone()), kind.clone());
-        }
-    }
-    by_key.into_values().collect()
 }
 
 fn has_explicit_helm_label(summary: &ResourceSummary, release: &HelmReleaseSummary) -> bool {

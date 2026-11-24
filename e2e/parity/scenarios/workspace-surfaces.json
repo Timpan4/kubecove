@@ -56,19 +56,14 @@
     },
     {
       "id": "rbac.observed-identity-defaults",
-      "title": "Observed grants read the identity the verifier reviews: a user without groups is authenticated and a blank namespace is default",
+      "title": "Observed grants read the identity the verifier reviews: a user without groups is authenticated",
       "steps": [
         { "action": "openPage", "page": "RBAC" },
         { "action": "selectRbacCategory", "category": "Bindings" },
         { "action": "selectRbacItem", "title": "RoleBinding/payments-oncall" },
         { "action": "investigateRbacSubject", "subject": "User/alice" },
         { "action": "expectRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" },
-        { "action": "expectRbacGrant", "grant": "get, list · core/namespaces" },
-        { "action": "coverageClick", "label": "Investigate identity" },
-        { "action": "coverageClick", "label": "ServiceAccount" },
-        { "action": "coverageFill", "label": "Identity name", "value": "deployer" },
-        { "action": "coverageFill", "label": "ServiceAccount namespace", "value": "" },
-        { "action": "expectRbacGrant", "grant": "get, list, watch · core/pods, services, configmaps" }
+        { "action": "expectRbacGrant", "grant": "get, list · core/namespaces" }
       ]
     },
     {

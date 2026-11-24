@@ -65,13 +65,13 @@ export async function frontendBundleReport(root: string, outdir: string, bundle:
 	};
 }
 
-export function frontendBundleReportPlugin(releaseChannel: string, profiling: boolean): Plugin {
+export function frontendBundleReportPlugin(releaseChannel: string, profiling: boolean, skip = false): Plugin {
 	let root: string;
 	let publicDir: string | false;
 	let outdir: string;
 	return {
 		name: "kubecove-bundle-report",
-		apply: "build",
+		apply: (_config, { command }) => command === "build" && (profiling || !skip),
 		configResolved(config) {
 			root = config.root;
 			publicDir = config.publicDir || false;

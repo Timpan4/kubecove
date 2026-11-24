@@ -14,7 +14,8 @@ use crate::targets::TestSupportExt;
 use crate::theme::{MONO, Palette, Tokens};
 use crate::ui::{self, Tone};
 use crate::unified_diff::{DiffLine, DiffLineKind};
-use gpui_kit::{AnyElement, Context, Div, FontWeight, SharedString, div, prelude::*, px};
+use gpui_kit::{AnyElement, Context, Div, SharedString, div, prelude::*, px};
+use std::sync::Arc;
 
 /// `ArgoResourceDiff` shows this many lines until expanded.
 const DIFF_PREVIEW: usize = 24;
@@ -82,21 +83,21 @@ fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
                 .unwrap_or_default(),
         ))
         .children(VIEWS.map(|(option, label)| {
-            let segment =
-                div()
-                    .id(SharedString::from(format!("argo-view:{label}")))
-                    .test_support()
-                    .aria_label(label)
-                    .cursor_pointer()
-                    .flex()
-                    .items_center()
-                    .h(px(24.))
-                    .px(px(8.))
-                    .rounded(px(8.))
-                    .child(ui::medium(ui::xs(label)))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        update(this, cx, |state| state.view = option)
-                    }));
+            let segment = div()
+                .id(SharedString::from(format!("argo-view:{label}")))
+                .test_support()
+                .aria_label(label)
+                .cursor_pointer()
+                .flex()
+                .items_center()
+                .h(px(24.))
+                .px(px(8.))
+                .rounded(px(8.))
+                .child(ui::medium(ui::xs(label)))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    update(this, cx, |state| state.view = option);
+                    this.ensure_argo_editors(window, cx);
+                }));
             let segment = crate::control_motion::eased(
                 SharedString::from(format!("segment:argo-view:{label}")),
                 option == active,
@@ -140,73 +141,69 @@ fn yaml_text(index: usize, text: &SharedString, state: &ArgoTab, live: bool) -> 
         .whitespace_nowrap()
         .test_support()
         .aria_label(text.clone())
-        .children(state.editors.get(index).map(|(desired, actual)| {
-            gpui_kit::component::input::Editor::new(if live { actual } else { desired })
-                .readonly(true)
-                .aria_label("Argo CD resource YAML")
-                .w_full()
-                .h(px(180.))
-        }))
+        .children(
+            state
+                .editors
+                .get(index)
+                .and_then(Option::as_ref)
+                .map(|(desired, actual)| {
+                    gpui_kit::component::input::Editor::new(if live { actual } else { desired })
+                        .readonly(true)
+                        .aria_label("Argo CD resource YAML")
+                        .w_full()
+                        .h(px(180.))
+                }),
+        )
         .into_any_element()
 }
 
-fn diff_line(line: &DiffLine, highlights: Option<&super::highlight::Highlights>) -> Div {
-    let (background, foreground) = controls::diff_colors(line.kind);
-    div()
-        .h(px(20.))
-        .px(px(12.))
-        .whitespace_nowrap()
-        .bg(background)
-        .text_color(foreground)
-        .when(line.kind == DiffLineKind::Header, |line| {
-            line.font_weight(FontWeight::SEMIBOLD)
-        })
-        .child(
-            gpui_kit::StyledText::new(line.text.clone())
-                .with_highlights(highlights.cloned().unwrap_or_default()),
-        )
-}
-
 /// `ArgoResourceDiff.svelte` in its `overflow-x-auto border-t font-mono
-/// text-[0.6875rem] leading-5` wrapper.
+/// text-[0.6875rem] leading-5` wrapper. A full diff builds only the rows the
+/// detail body shows; its label is the whole diff, joined with the change.
 fn resource_diff(
     index: usize,
-    lines: &[DiffLine],
+    lines: &Arc<[DiffLine]>,
+    label: &SharedString,
     full: bool,
     state: &ArgoTab,
     cx: &mut Context<Inspector>,
 ) -> Div {
-    let shown = if full {
-        lines
-    } else {
-        &lines[..lines.len().min(DIFF_PREVIEW)]
-    };
     let hidden_changed = lines
         .iter()
         .skip(DIFF_PREVIEW)
         .filter(|line| matches!(line.kind, DiffLineKind::Add | DiffLineKind::Remove))
         .count();
+    let highlights = state.highlights.get(index);
     let body = div()
         .id(SharedString::from(format!("argo-diff:{index}")))
         .test_support()
-        .aria_label(
-            lines
-                .iter()
-                .map(|line| line.text.as_ref())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        )
+        .aria_label(label.clone())
         .border_t_1()
         .border_color(Tokens::border())
         .font_family(MONO)
         .text_size(px(11.))
-        .line_height(px(20.))
-        .children(shown.iter().enumerate().map(|(i, line)| {
-            diff_line(
-                line,
-                state.highlights.get(index).and_then(|lines| lines.get(i)),
-            )
-        }));
+        .line_height(px(20.));
+    let body = if full {
+        body.child(controls::windowed_diff_rows(
+            lines.clone(),
+            20.,
+            highlights.cloned(),
+        ))
+    } else {
+        body.children(
+            lines
+                .iter()
+                .take(DIFF_PREVIEW)
+                .enumerate()
+                .map(|(i, line)| {
+                    controls::diff_row(
+                        line,
+                        20.,
+                        highlights.and_then(|lines| lines.get(i)).map(Vec::as_slice),
+                    )
+                }),
+        )
+    };
     if lines.len() <= DIFF_PREVIEW {
         return div().child(body);
     }
@@ -256,15 +253,21 @@ fn article_body(
     if removal && state.view != DiffView::Target && !expanded {
         return None;
     }
-    Some(match (state.view, change.diff.as_deref()) {
+    Some(match (state.view, change.diff.as_ref()) {
         (DiffView::Target, _) if removal => note(
             Some("No desired manifest"),
             "Selected revision no longer contains this resource.",
         )
         .into_any_element(),
-        (DiffView::Changes, Some(lines)) => {
-            resource_diff(index, lines, state.full.contains(&index), state, cx).into_any_element()
-        }
+        (DiffView::Changes, Some(lines)) => resource_diff(
+            index,
+            lines,
+            &change.diff_label,
+            state.full.contains(&index),
+            state,
+            cx,
+        )
+        .into_any_element(),
         (DiffView::Changes, None) if removal && !change.live.is_empty() => {
             yaml_text(index, &change.live, state, true)
         }
@@ -292,7 +295,7 @@ fn article_body(
 fn change_badge(badge: ChangeBadge) -> Div {
     match badge {
         ChangeBadge::Remove => ui::status_badge(Tone::Error, "Remove on sync"),
-        ChangeBadge::Added => dui::badge(
+        ChangeBadge::Added => ui::badge(
             (
                 Palette::emerald500(0.35),
                 Palette::emerald500(0.1),
@@ -340,8 +343,9 @@ fn article(
                 )
                 .id(SharedString::from(format!("argo-removal:{}", change.key)))
                 .test_support()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    update(this, cx, |state| toggle(&mut state.expanded, index))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    update(this, cx, |state| toggle(&mut state.expanded, index));
+                    this.ensure_argo_editors(window, cx);
                 })),
             )
         })

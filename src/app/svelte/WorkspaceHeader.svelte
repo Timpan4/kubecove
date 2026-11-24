@@ -2,10 +2,12 @@
 	import { ChevronRight, FolderOpen, Menu, Search, Settings } from "lucide-svelte";
 	import ClusterSelector from "@/components/ClusterSelector.svelte";
 	import { Button } from "@/components/ui/svelte";
-	import RemoteHostScope from "@/features/remote-connection/RemoteHostScope.svelte";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
+	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
-	import UpdateStatusButton from "./UpdateStatusButton.svelte";
+	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 
+	const updatesEnabled = isAppUpdatesEnabled();
 	const IS_MAC = /Mac/i.test(globalThis.navigator?.userAgent ?? "");
 	const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K";
 
@@ -70,9 +72,21 @@
 		{@render location()}
 	</nav>
 	<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
-		<RemoteHostScope />
+		{#if browserMockSurfaces}
+			<DeferredSurface load={browserMockSurfaces.remoteHostScope} label="remote host scope">
+				{#snippet children(RemoteHostScope)}
+					<RemoteHostScope />
+				{/snippet}
+			</DeferredSurface>
+		{/if}
 		<ActiveLiveSessionsButton onOpenManager={onOpenPortForwards} />
-		<UpdateStatusButton />
+		{#if browserMockSurfaces && updatesEnabled}
+			<DeferredSurface load={browserMockSurfaces.updateButton} label="update status">
+				{#snippet children(UpdateStatusButton)}
+					<UpdateStatusButton />
+				{/snippet}
+			</DeferredSurface>
+		{/if}
 		<Button type="button" variant="ghost" size="icon" aria-label="Open workspaces" onclick={onOpenLauncher}>
 			<FolderOpen />
 		</Button>

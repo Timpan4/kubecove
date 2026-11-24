@@ -7,7 +7,7 @@ import {
 	forEachYamlErrorLensDiagnostic,
 	yamlDiagnostics,
 } from "@/components/yamlCodeViewerDiagnostics";
-import { buildYamlValueDecorations } from "@/components/yamlCodeViewerExtensions";
+import { buildYamlValueDecorations, updateYamlValueDecorations } from "@/components/yamlCodeViewerExtensions";
 import { mapKubernetesYamlDiagnostics } from "@/features/resource-detail/yamlLintDiagnostics";
 import type { KubernetesYamlLintDiagnostic } from "@/lib/types";
 import { benchmark } from "./benchmark";
@@ -55,11 +55,32 @@ const lensDiagnostics: Diagnostic[] = [
 const editorDocument = Text.of(yaml.split("\n"));
 const initialEditorState = EditorState.create({ doc: editorDocument });
 const replicaOffset = yaml.indexOf("replicas: 4") + "replicas: ".length;
-const changedEditorState = initialEditorState.update({
+const transaction = initialEditorState.update({
 	changes: { from: replicaOffset, to: replicaOffset + 1, insert: "8" },
-}).state;
+});
+const changedEditorState = transaction.state;
 const initialDecorations = buildYamlValueDecorations(initialEditorState);
 const changedDecorations = buildYamlValueDecorations(changedEditorState);
+function decorationRanges(set: ReturnType<typeof buildYamlValueDecorations>) {
+	const result = [];
+	for (let cursor = set.iter(); cursor.value; cursor.next()) {
+		result.push([cursor.from, cursor.to, cursor.value.spec.class]);
+	}
+	return result;
+}
+
+const split = changedEditorState.update({
+	changes: [
+		{ from: replicaOffset, insert: "\n  value: " },
+		{ from: changedEditorState.doc.length, insert: "\nfinal: false" },
+	],
+});
+const join = split.state.update({ changes: { from: replicaOffset, to: replicaOffset + 1 } });
+let retained = initialDecorations;
+for (const edit of [transaction, split, join]) {
+	retained = updateYamlValueDecorations(retained, edit);
+	assert.deepEqual(decorationRanges(retained), decorationRanges(buildYamlValueDecorations(edit.state)));
+}
 let mappedLensCount = 0;
 forEachYamlErrorLensDiagnostic(lensDiagnostics, editorDocument, () => {
 	mappedLensCount += 1;
@@ -118,6 +139,10 @@ describe("F21 lint result application with folded F17 and F23, plus F22 editor u
 
 	benchmark("F22 full decoration rebuild after a document transaction", () => {
 		buildYamlValueDecorations(changedEditorState);
+	});
+
+	benchmark("F22 incremental decoration update for a single-line edit", () => {
+		updateYamlValueDecorations(initialDecorations, transaction);
 	});
 
 	benchmark("F22 edited document serialization for the update listener", () => {

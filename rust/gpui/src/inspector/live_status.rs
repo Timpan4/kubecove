@@ -149,7 +149,7 @@ impl Inspector {
             } else {
                 self.live.refresh_error.clone()
             },
-            ..details(&self.watch_contexts(), &self.live.reports())
+            ..details(self.watch_contexts(), &self.live.reports())
         }
     }
 
@@ -167,14 +167,14 @@ impl Inspector {
             .gap(px(8.))
             .bg(Tokens::background().opacity(0.5))
             .child(div().size(px(6.)).rounded_full().bg(match status {
-                LiveStatus::Live => super::events::tw::emerald400(1.),
+                LiveStatus::Live => Palette::emerald400(),
                 LiveStatus::RefreshFailed => Tokens::destructive(),
-                LiveStatus::CatchingUp => super::events::tw::sky300(),
+                LiveStatus::CatchingUp => Palette::sky300(),
                 LiveStatus::Connecting | LiveStatus::NotConnected => Tokens::muted_foreground(),
                 LiveStatus::Reconnecting
                 | LiveStatus::LiveLimited
                 | LiveStatus::PollingLimited
-                | LiveStatus::Refreshing => super::events::tw::amber400(1.),
+                | LiveStatus::Refreshing => Palette::amber400(),
             }))
             .child(
                 ui::xs(status.label())

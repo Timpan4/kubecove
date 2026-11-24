@@ -1,4 +1,5 @@
 import type {
+	RbacAccessReviewIdentity,
 	RbacBindingSummary,
 	RbacInspectionSummary,
 	RbacRiskIndicator,
@@ -7,7 +8,7 @@ import type {
 	RbacSubjectSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
-import { automaticServiceAccountGroups, splitServiceAccountUsername } from "./principal";
+import { principalOf } from "./principal";
 import type { RbacView } from "./surfaceModel";
 
 export type RbacRiskBucket = "all" | "high" | "medium" | "low" | "none" | "unknown";
@@ -21,7 +22,11 @@ export type RbacCockpitItem =
 ;
 type RbacNamespaceAccessRow = RbacInspectionSummary["namespaceAccess"][number];
 
-interface RbacRiskIndex {
+export interface RbacBindingIndex {
+	bindings: RbacBindingSummary[];
+	bindingsByNamespace: Map<string | undefined, RbacBindingSummary[]>;
+	bindingsByRole: Map<string, RbacBindingSummary[]>;
+	bindingsByUser: Map<string, RbacBindingSummary[]>;
 	bindingsByGroup: Map<string, RbacBindingSummary[]>;
 	bindingsByServiceAccount: Map<string, RbacBindingSummary[]>;
 	bindingOrder: Map<RbacBindingSummary, number>;
@@ -33,16 +38,32 @@ export function objectKey(category: RbacView, item: { kind?: string; name?: stri
 	return `${category}:${item.kind ?? category}:${item.namespace ?? "_"}:${item.name ?? ("namespace" in item ? item.namespace : "_")}`;
 }
 
-export function cockpitItems(data: RbacInspectionSummary, category: RbacView): RbacCockpitItem[] {
-	const riskIndex = category === "Bindings" || category === "Service Accounts"
-		? buildRbacRiskIndex(data)
-		: undefined;
-	const rows: Array<ServiceAccountSummary | RbacRoleSummary | RbacBindingSummary | RbacNamespaceAccessRow> =
-		category === "Roles" ? data.roles
-			: category === "Cluster Roles" ? data.clusterRoles
-			: category === "Bindings" ? [...data.roleBindings, ...data.clusterRoleBindings]
-			: category === "Service Accounts" ? data.serviceAccounts
-			: data.namespaceAccess;
+export function cockpitItems(
+	data: RbacInspectionSummary,
+	category: RbacView,
+	index?: RbacBindingIndex,
+): RbacCockpitItem[] {
+	// Bindings and Service Accounts need the binding index for risks. Bindings also take their rows from it.
+	let riskIndex: RbacBindingIndex | undefined;
+	let rows: Array<ServiceAccountSummary | RbacRoleSummary | RbacBindingSummary | RbacNamespaceAccessRow>;
+	switch (category) {
+		case "Roles":
+			rows = data.roles;
+			break;
+		case "Cluster Roles":
+			rows = data.clusterRoles;
+			break;
+		case "Bindings":
+			riskIndex = index ?? buildRbacBindingIndex(data);
+			rows = riskIndex.bindings;
+			break;
+		case "Service Accounts":
+			riskIndex = index ?? buildRbacBindingIndex(data);
+			rows = data.serviceAccounts;
+			break;
+		default:
+			rows = data.namespaceAccess;
+	}
 	const keyed = rows.map((item) => {
 		const risks = resolvedRisks(data, riskIndex, category, item);
 		const name = "name" in item ? item.name : item.namespace;
@@ -64,7 +85,7 @@ export function cockpitItems(data: RbacInspectionSummary, category: RbacView): R
 
 function resolvedRisks(
 	data: RbacInspectionSummary,
-	riskIndex: RbacRiskIndex | undefined,
+	riskIndex: RbacBindingIndex | undefined,
 	category: RbacView,
 	item: ServiceAccountSummary | RbacRoleSummary | RbacBindingSummary | RbacNamespaceAccessRow,
 ): RbacRiskIndicator[] {
@@ -76,7 +97,7 @@ function resolvedRisks(
 	if (category !== "Service Accounts" || !riskIndex) return item.risks;
 	// SAFETY: cockpitItems selects only serviceAccounts for the Service Accounts category.
 	const account = item as ServiceAccountSummary;
-	const bindings = bindingsForServiceAccount(riskIndex, account);
+	const bindings = bindingsForIdentity(riskIndex, { kind: "serviceAccount", namespace: account.namespace, name: account.name });
 	const inherited = bindings.flatMap(
 		(binding) => riskIndex.bindingRisks.get(binding) ?? binding.risks,
 	);
@@ -103,7 +124,7 @@ function referencedRoleRisks(
 	binding: RbacBindingSummary,
 ): RbacRiskIndicator[] {
 	const role = rolesByReference.get(roleReferenceKey(
-		binding.roleRefKind,
+		binding.roleRefKind === "Role" ? "Role" : "ClusterRole",
 		binding.roleRefName,
 		binding.namespace,
 	));
@@ -119,10 +140,10 @@ function bindingServiceAccountKey(namespace: string | undefined, name: string): 
 	return `${optionalNamespaceKey(namespace)}\0${name}`;
 }
 
-function roleReferenceKey(kind: string, name: string, namespace: string | undefined): string {
+export function roleReferenceKey(kind: string, name: string, namespace: string | undefined): string {
 	return kind === "Role"
 		? `Role\0${optionalNamespaceKey(namespace)}\0${name}`
-		: `ClusterRole\0${name}`;
+		: `${kind}\0${name}`;
 }
 
 function optionalNamespaceKey(namespace: string | undefined): string {
@@ -135,7 +156,7 @@ function pushMapValue<K, V>(map: Map<K, V[]>, key: K, value: V): void {
 	else map.set(key, [value]);
 }
 
-function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
+export function buildRbacBindingIndex(data: RbacInspectionSummary): RbacBindingIndex {
 	const rolesByReference = new Map<string, RbacRoleSummary>();
 	for (const role of data.roles) {
 		const key = roleReferenceKey("Role", role.name, role.namespace);
@@ -146,6 +167,9 @@ function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
 		if (!rolesByReference.has(key)) rolesByReference.set(key, role);
 	}
 
+	const bindingsByNamespace = new Map<string | undefined, RbacBindingSummary[]>();
+	const bindingsByRole = new Map<string, RbacBindingSummary[]>();
+	const bindingsByUser = new Map<string, RbacBindingSummary[]>();
 	const bindingsByGroup = new Map<string, RbacBindingSummary[]>();
 	const bindingsByServiceAccount = new Map<string, RbacBindingSummary[]>();
 	const bindingOrder = new Map<RbacBindingSummary, number>();
@@ -153,40 +177,43 @@ function buildRbacRiskIndex(data: RbacInspectionSummary): RbacRiskIndex {
 	const bindings = [...data.roleBindings, ...data.clusterRoleBindings];
 	for (const [index, binding] of bindings.entries()) {
 		bindingOrder.set(binding, index);
+		pushMapValue(bindingsByNamespace, binding.namespace, binding);
+		pushMapValue(bindingsByRole, roleReferenceKey(binding.roleRefKind, binding.roleRefName, binding.namespace), binding);
 		bindingRisks.set(binding, [...binding.risks, ...referencedRoleRisks(rolesByReference, binding)]);
 		for (const subject of binding.subjects) {
-			let account: { namespace?: string; name: string } | null = null;
-			if (subject.kind === "ServiceAccount") account = subject;
-			else if (subject.kind === "User") account = splitServiceAccountUsername(subject.name);
-			if (account) {
-				pushMapValue(
-					bindingsByServiceAccount,
-					bindingServiceAccountKey(account.namespace, account.name),
-					binding,
-				);
+			if (subject.kind === "ServiceAccount") {
+				pushMapValue(bindingsByServiceAccount, bindingServiceAccountKey(subject.namespace, subject.name), binding);
+			} else if (subject.kind === "User") {
+				pushMapValue(bindingsByUser, subject.name, binding);
 			} else if (subject.kind === "Group") {
 				pushMapValue(bindingsByGroup, subject.name, binding);
 			}
 		}
 	}
 
-	return { bindingsByGroup, bindingsByServiceAccount, bindingOrder, bindingRisks };
+	return { bindings, bindingsByNamespace, bindingsByRole, bindingsByUser, bindingsByGroup, bindingsByServiceAccount, bindingOrder, bindingRisks };
 }
 
-function bindingsForServiceAccount(
-	riskIndex: RbacRiskIndex,
-	account: ServiceAccountSummary,
+export function bindingsForIdentity(
+	index: RbacBindingIndex,
+	identity: RbacAccessReviewIdentity,
 ): RbacBindingSummary[] {
-	const bindings = new Set(
-		riskIndex.bindingsByServiceAccount.get(
-			bindingServiceAccountKey(account.namespace, account.name),
-		) ?? [],
-	);
-	for (const group of automaticServiceAccountGroups(account.namespace)) {
-		for (const binding of riskIndex.bindingsByGroup.get(group) ?? []) bindings.add(binding);
+	const bindings = new Set<RbacBindingSummary>();
+	const { username, account, groups } = principalOf(identity);
+
+	if (username !== undefined) {
+		for (const binding of index.bindingsByUser.get(username) ?? []) bindings.add(binding);
+	}
+	if (account) {
+		for (const binding of index.bindingsByServiceAccount.get(bindingServiceAccountKey(account.namespace, account.name)) ?? []) {
+			bindings.add(binding);
+		}
+	}
+	for (const group of groups) {
+		for (const binding of index.bindingsByGroup.get(group) ?? []) bindings.add(binding);
 	}
 	return Array.from(bindings).sort(
-		(a, b) => (riskIndex.bindingOrder.get(a) ?? 0) - (riskIndex.bindingOrder.get(b) ?? 0),
+		(a, b) => (index.bindingOrder.get(a) ?? 0) - (index.bindingOrder.get(b) ?? 0),
 	);
 }
 

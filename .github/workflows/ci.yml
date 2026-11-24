@@ -79,7 +79,10 @@ jobs:
                   const scope = {
                     docs: /\.md$|^docs\//i.test(path),
                     frontend: /\.(css|html|js|jsx|json|mjs|cjs|svelte|ts|tsx|mts|cts)$|(^|\/)bun\.lock$|^(src|public|e2e|scripts)\//i.test(path),
-                    rust: /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^rust\/|^tests\/|^src\/lib\/[^/]+-workspace\.json$/i.test(path),
+                    // Rust reads no Markdown, and only the Kubernetes fixtures and the GPUI
+                    // workspace and overview mocks outside rust/.
+                    rust: !/^rust\/.*\.md$/i.test(path) &&
+                      /\.rs$|(^|\/)(Cargo\.(lock|toml)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/|^rust\/|^tests\/fixtures\/kubernetes\/|^src\/lib\/([^/]+-workspace|tauri-dev-mock-overview)\.json$/i.test(path),
                     nix: /\.nix$|(^|\/)(Cargo\.(lock|toml)|flake\.lock|bun\.lock|package\.json|vite\.config\.ts|svelte\.config\.js)$/i.test(path),
                   };
                   // Unknown paths fail toward more coverage, never a silently green gate.
@@ -93,28 +96,30 @@ jobs:
             }
             for (const [key, value] of Object.entries(required)) core.setOutput(key, String(value));
             // These tasks share one matrix; frontend checks keep their own job.
-            const desktop = 'rust :!rust/gpui :!rust/server';
-            // The GPUI tests compile in the workspace fixtures the web client uses.
-            const gpui = 'rust :!rust/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile';
+            // No crate reads the Markdown notes under rust/.
+            const notes = "':(exclude,glob)rust/**/*.md'";
+            const desktop = `rust :!rust/gpui :!rust/server ${notes}`;
+            // The GPUI tests compile in the workspace and overview fixtures the web client uses.
+            const gpui = `rust :!rust/server ${notes} src/lib/*-workspace.json src/lib/tauri-dev-mock-overview.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile`;
             // The server also embeds the browser build. The frontend tree is left out on
             // purpose: with it, every frontend push to main would upload the server cache
             // again (896 MB after run 43325597142). Without it, a build recompiles the
             // crates that embed the assets: each Cargo step of the server task finished
             // in under 20 s that way in run 43393348258.
-            const server = 'rust :!rust/gpui';
+            const server = `rust :!rust/gpui ${notes}`;
             // Pass reuse covers verification inputs separately from compiler bundles.
             // Root .c* trees cover .cargo/.config, without unrelated .github workflows.
             // CI workflow and the local native setup it calls are explicit key inputs.
-            const common = "tests scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
+            // Under tests/, Rust embeds only the Kubernetes fixtures.
+            const common = "tests/fixtures/kubernetes scripts/ci-rust-pass.mjs ':(top,glob)*' ':(top,glob).c*/**'";
             const desktopPass = `${desktop} ${common}`;
             const gpuiPass = `${gpui} ${common}`;
             // text_fit also reads the browser-mock fixture that e2e/parity/visual exports from src.
             const gpuiTestPass = `${gpuiPass} src e2e/parity/visual e2e/fixtures/exec-credential-plugin.mjs`;
-            // cargo tree reads the separate server manifest and lockfile.
-            const backendPass = `${server} ${common}`;
             // The server embeds dist/, builds and typechecks the browser, runs the
             // local HTTP/WS harness, and checks the Grafana dashboard's queries.
-            const serverPass = `${backendPass} src public e2e scripts deploy .agents/skills/verify-kubecove/scripts/processes.ts`;
+            // Its dependency-tree check reads the server manifest and lockfile.
+            const serverPass = `${server} ${common} src public e2e scripts deploy tests/server-command-contract.test.ts .agents/skills/verify-kubecove/scripts/processes.ts`;
             const tasks = [
               { task: 'docs', scope: 'docs' },
               { task: 'frontend-e2e', scope: 'frontend' },
@@ -126,12 +131,17 @@ jobs:
               { task: 'gpui-clippy', scope: 'rust', workspace: 'rust/gpui', inputs: gpui, passInputs: gpuiPass },
               // Frontend changes select gpui-test too: text_fit reads the browser-mock fixture.
               { task: 'gpui-test', scope: 'frontend-or-rust', workspace: 'rust/gpui', inputs: gpui, passInputs: gpuiTestPass },
-              { task: 'server-backend', scope: 'frontend-or-rust', workspace: 'rust', inputs: desktop, passInputs: backendPass },
               { task: 'server', scope: 'frontend-or-rust', workspace: 'rust/server', inputs: server, passInputs: serverPass },
             ];
             const include = tasks.filter(({ scope }) => scope === 'frontend-or-rust'
               ? required.frontend || required.rust : required[scope]);
             core.setOutput('matrix', JSON.stringify({ include }));
+
+      # The Nix job appears only after every matrix task finishes. Cancel obsolete CI reads
+      # this step's conclusion to learn sooner whether a main run selected it.
+      - name: Select Nix build
+        if: ${{ github.event_name != 'pull_request' && steps.detect.outputs.nix == 'true' }}
+        run: echo "Nix build selected"
 
   frontend:
     name: Frontend checks
@@ -336,12 +346,12 @@ jobs:
       - name: Test Rust
         id: test-rust
         if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --workspace --manifest-path rust/Cargo.toml --features desktop-release
+        run: mbx test --workspace --manifest-path rust/Cargo.toml --locked --features desktop-release
 
       - name: Lint Rust
         id: lint-rust
         if: ${{ (matrix.task == 'rust') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx clippy --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
+        run: mbx clippy --workspace --manifest-path rust/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
       - name: Lint GPUI
         id: lint-gpui
@@ -387,6 +397,17 @@ jobs:
           if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi
           run_phase "E2E automation and startup" "$RUNNER_TEMP/gpui-e2e.log" --features e2e --test native -- automation:: e2e_interlock::
 
+      # The headless server must not link the GPUI client or any windowing or webview stack.
+      - name: Verify GUI-free dependency tree
+        id: dependency-tree
+        if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
+        run: |
+          set -euo pipefail
+          cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt
+          if grep -E '^(gpui|kubecove-gpui|wgpu|winit|wayland|x11|x11rb|xkbcommon|tauri|gtk[0-9]*|gdk[0-9]*|webkit2gtk|wry)(-[[:alnum:]_-]+)? v' server-dependencies.txt; then
+            exit 1
+          fi
+
       # Runs before the browser UI is built: the API-only server must build without it.
       - name: Verify API-only server
         id: api-only
@@ -400,22 +421,9 @@ jobs:
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         env:
           KUBECOVE_PUBLIC_RUNTIME: web
+          # No step reads the gzip and Brotli size report, so the build skips compressing for it.
+          KUBECOVE_SKIP_BUNDLE_REPORT: "1"
         run: bun run build
-
-      - name: Verify GUI-free dependency tree
-        id: dependency-tree
-        if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
-        run: |
-          set -euo pipefail
-          cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt
-          if grep -E '^(tauri |tauri-|gtk |gtk-sys |webkit2gtk |wry )' server-dependencies.txt; then
-            exit 1
-          fi
-
-      - name: Test GUI-free backend crates
-        id: test-backend
-        if: ${{ (matrix.task == 'server-backend') && steps.decide-pass.outputs.skip != 'true' }}
-        run: mbx test --locked --workspace --no-default-features --manifest-path rust/Cargo.toml
 
       - name: Build headless server
         id: build-server

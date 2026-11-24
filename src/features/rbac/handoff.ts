@@ -25,6 +25,22 @@ export function requiredPermissionForResource(resource: ResourceSummary, verb: s
 	return { kind: "resource", verb: operation, apiGroup, resource: plural, namespace: resource.namespaced === false ? null : namespace, name: resource.name };
 }
 
+export interface RbacHandoffStep {
+	/** Key of the last handoff applied. Clearing the handoff resets it to "". */
+	key: string;
+	apply: boolean;
+}
+
+/**
+ * Decides whether a handoff populates the verifier form. The same action applies again
+ * only after the pending handoff clears, so a repeated click repopulates an edited form.
+ */
+export function stepRbacHandoff(appliedKey: string, handoff: RbacVerifierHandoff | undefined): RbacHandoffStep {
+	if (!handoff) return { key: "", apply: false };
+	const key = JSON.stringify(handoff);
+	return { key, apply: key !== appliedKey };
+}
+
 export function openRbacVerifier(handoff: RbacVerifierHandoff): void {
 	if (globalThis.window === undefined) return;
 	window.dispatchEvent(new CustomEvent<RbacVerifierHandoff>(OPEN_RBAC_VERIFIER_EVENT, { detail: handoff }));

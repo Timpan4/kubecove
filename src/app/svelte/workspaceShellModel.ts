@@ -318,7 +318,7 @@ export function sidebarSelectionNode(
 export function collectSelectedAncestorIds(
 	groups: SidebarTreeGroup[],
 	selectedNode: TreeNodeId | null,
-	getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined,
+	getLazyNamespaceChildren?: (node: TreeNode) => TreeNode[] | undefined,
 ): Set<string> {
 	if (!selectedNode) return new Set<string>();
 	const selectedId = nodeIdToString(selectedNode);
@@ -326,13 +326,11 @@ export function collectSelectedAncestorIds(
 		for (const node of nodes) {
 			const id = nodeIdToString(node.id);
 			if (id === selectedId) return [];
-			const childAncestorIds = findAncestorIds(
-				getLazyChildren?.(node) ?? node.children ?? [],
-			);
-			if (childAncestorIds) return [id, ...childAncestorIds];
-			// A folded namespace's custom-resource children may be unloaded.
-			if (node.id.type === "namespace" && selectedNode.section === "namespaces" &&
-				node.id.namespace === selectedNode.namespace) return [id];
+			const containsSelection = node.id.type === "namespace" &&
+				selectedNode.section === node.id.section && node.id.namespace === selectedNode.namespace;
+			const children = containsSelection ? getLazyNamespaceChildren?.(node) ?? node.children : node.children;
+			const childAncestorIds = children ? findAncestorIds(children) : null;
+			if (childAncestorIds || containsSelection) return [id, ...(childAncestorIds ?? [])];
 		}
 		return null;
 	};

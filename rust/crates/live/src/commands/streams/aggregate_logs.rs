@@ -7,7 +7,7 @@ use crate::models::AppErrorKind;
 use crate::models::{
     AggregatedLogStreamRequest, AppError, LogLineSource, StreamMessage, StreamStatus,
 };
-use crate::runtime::{Channel, JoinHandle};
+use crate::runtime::Channel;
 use futures_util::StreamExt;
 use k8s_openapi::{
     api::{
@@ -20,12 +20,16 @@ use kube::{
     Client,
     api::{Api, ListParams, LogParams, WatchEvent, WatchParams},
 };
+use kubecove_kube::commands::SessionScope;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     time::Duration,
 };
 
+use tokio::task::{AbortHandle, Id, JoinError, JoinSet};
+
 const MAX_AGGREGATED_LOG_SOURCES: usize = 50;
+const RECONNECT_DELAY: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 struct LogStreamOptions {
@@ -42,18 +46,37 @@ pub struct LogSourceKey {
 
 #[derive(Default)]
 struct SourceStreams {
-    handles: HashMap<LogSourceKey, JoinHandle<()>>,
-    /// Sources spawned in the current target set. Respawns follow live output only,
-    /// so a completed container does not re-replay its tail every relist.
+    tasks: JoinSet<()>,
+    handles: HashMap<LogSourceKey, AbortHandle>,
+    /// A source only replays its tail when it first enters the selected set.
     attached: BTreeSet<LogSourceKey>,
+    /// Sources that a pod event or watch renewal asked to retry while their task still
+    /// ran or cooled down. They reconnect when that task finishes.
+    retry: BTreeSet<LogSourceKey>,
 }
 
-impl Drop for SourceStreams {
-    fn drop(&mut self) {
-        for handle in self.handles.values() {
-            handle.abort();
-        }
+impl SourceStreams {
+    /// Forgets the finished task `id` and returns its source.
+    fn retire(&mut self, id: Id) -> Option<LogSourceKey> {
+        let source = self
+            .handles
+            .iter()
+            .find(|(_, handle)| handle.id() == id)
+            .map(|(source, _)| source.clone())?;
+        self.handles.remove(&source);
+        Some(source)
     }
+}
+
+struct AggregateLogs {
+    client: Client,
+    namespace: String,
+    options: LogStreamOptions,
+    channel: Channel<StreamMessage>,
+    stream_id: String,
+    streams: SourceStreams,
+    pods: PodSources,
+    selected: Vec<LogSourceKey>,
 }
 
 pub(super) async fn run_aggregated_log_stream(
@@ -77,114 +100,250 @@ pub(super) async fn run_aggregated_log_stream(
             return;
         }
     };
-    let pods: Api<Pod> = Api::namespaced(client.clone(), &request.namespace);
-    let options = LogStreamOptions {
-        batch_lines: request.batch_lines,
-        tail_lines: Some(super::clamp_tail_lines(request.tail_lines)),
-        since_seconds: request.since_seconds,
+    let pods = Api::namespaced(client.clone(), &request.namespace);
+    let mut logs = AggregateLogs {
+        client,
+        namespace: request.namespace,
+        options: LogStreamOptions {
+            batch_lines: request.batch_lines,
+            tail_lines: Some(super::clamp_tail_lines(request.tail_lines)),
+            since_seconds: request.since_seconds,
+        },
+        channel,
+        stream_id,
+        streams: SourceStreams::default(),
+        pods: PodSources::default(),
+        selected: Vec::new(),
     };
-    let mut source_streams = SourceStreams::default();
-    loop {
-        let list = match pods.list(&ListParams::default().labels(&selector)).await {
-            Ok(list) => list,
-            Err(err) => {
-                if !send_status(
-                    &channel,
-                    &stream_id,
-                    StreamStatus::Reconnecting,
-                    format!("Log pod list failed: {err}"),
-                ) {
-                    return;
-                }
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                continue;
-            }
-        };
-        let resource_version = list
-            .metadata
-            .resource_version
-            .clone()
-            .unwrap_or_else(|| "0".to_string());
-        let (sources, total_sources) = log_sources_from_pods(&list.items);
-        reconcile_sources(
-            &mut source_streams,
-            sources,
-            client.clone(),
-            request.namespace.clone(),
-            options.clone(),
-            channel.clone(),
-            stream_id.clone(),
-        );
-        if !send_status(
-            &channel,
-            &stream_id,
-            StreamStatus::Connected,
-            aggregate_status_message(total_sources, source_streams.handles.len()),
-        ) {
-            return;
-        }
+    logs.watch_pods(&pods, &selector).await;
+}
 
-        let params = WatchParams::default()
-            .labels(&selector)
+impl AggregateLogs {
+    async fn watch_pods(&mut self, pods: &Api<Pod>, selector: &str) {
+        let list_params = ListParams::default().labels(selector);
+        let watch_params = WatchParams::default()
+            .labels(selector)
             .timeout(super::watch::WATCH_TIMEOUT_SECS);
-        match pods.watch(&params, &resource_version).await {
-            Ok(stream) => {
-                let mut stream = stream.boxed();
-                while let Some(event) = stream.next().await {
-                    match event {
-                        Ok(event) => {
-                            if matches!(
-                                event,
-                                WatchEvent::Added(_)
-                                    | WatchEvent::Modified(_)
-                                    | WatchEvent::Deleted(_)
-                            ) {
-                                break;
+        let mut cursor = None;
+        loop {
+            let needs_list = cursor.is_none();
+            if needs_list {
+                match pods.list(&list_params).await {
+                    Ok(list) => {
+                        cursor = usable_version(list.metadata.resource_version);
+                        self.pods = PodSources::from_pods(&list.items);
+                        if !self.sync_sources(None) {
+                            return;
+                        }
+                    }
+                    Err(err) => {
+                        if !self.reconnecting(format!("Log pod list failed: {err}")) {
+                            return;
+                        }
+                        self.wait_joining_sources(Duration::from_secs(2)).await;
+                        continue;
+                    }
+                }
+            }
+
+            match pods
+                .watch(&watch_params, cursor.as_deref().unwrap_or("0"))
+                .await
+            {
+                Ok(stream) => {
+                    if !needs_list {
+                        // A renewed watch retries finished sources, as a relist does.
+                        self.reconcile_sources();
+                        if !self.connected() {
+                            return;
+                        }
+                    }
+                    let mut stream = stream.boxed();
+                    loop {
+                        let event = tokio::select! {
+                            event = stream.next() => event,
+                            finished = self.streams.tasks.join_next_with_id(), if !self.streams.tasks.is_empty() => {
+                                // A finished source waits for a pod event or the watch
+                                // renewal before it reconnects. Reconnecting here would
+                                // request a waiting or completed container's log every second.
+                                // A retry asked for while the task ran is honored now.
+                                if let Some(finished) = finished {
+                                    self.source_finished(finished);
+                                }
+                                continue;
                             }
-                            if let WatchEvent::Error(status) = event {
+                        };
+                        match event {
+                            Some(Ok(WatchEvent::Error(status))) => {
+                                if status.code == 410 {
+                                    cursor = None;
+                                }
                                 let message = if status.message.is_empty() {
                                     "Kubernetes pod watch returned an error".to_string()
                                 } else {
                                     status.message
                                 };
-                                if !send_status(
-                                    &channel,
-                                    &stream_id,
-                                    StreamStatus::Reconnecting,
-                                    message,
-                                ) {
+                                if !self.reconnecting(message) {
                                     return;
                                 }
                                 break;
                             }
-                        }
-                        Err(err) => {
-                            if !send_status(
-                                &channel,
-                                &stream_id,
-                                StreamStatus::Reconnecting,
-                                format!("Log pod watch failed: {err}"),
-                            ) {
-                                return;
+                            Some(Ok(event)) => {
+                                cursor =
+                                    usable_version(super::watch::watch_resource_version(&event));
+                                let previous_total = self.pods.total;
+                                let pod_event = !matches!(event, WatchEvent::Bookmark(_));
+                                if self.pods.apply(event) {
+                                    if !self.sync_sources(Some(previous_total)) {
+                                        return;
+                                    }
+                                } else if pod_event {
+                                    // A status change, such as a restarted container, can
+                                    // make a finished source's log readable again.
+                                    self.reconcile_sources();
+                                }
                             }
-                            break;
+                            Some(Err(err)) => {
+                                if !self.watch_failed(&mut cursor, &err) {
+                                    return;
+                                }
+                                break;
+                            }
+                            None => break,
                         }
                     }
                 }
+                Err(err) => {
+                    if !self.watch_failed(&mut cursor, &err) {
+                        return;
+                    }
+                }
             }
-            Err(err) => {
-                if !send_status(
-                    &channel,
-                    &stream_id,
-                    StreamStatus::Reconnecting,
-                    format!("Log pod watch failed: {err}"),
-                ) {
-                    return;
+            self.wait_joining_sources(RECONNECT_DELAY).await;
+        }
+    }
+
+    /// Waits `delay` while joining finished source tasks. A denied watch fails before it
+    /// streams, so with list-only RBAC the loop only relists and waits here. Without joining,
+    /// a finished source keeps its handle, relists never reconnect it, and the tasks of
+    /// departed pods pile up in the `JoinSet`.
+    async fn wait_joining_sources(&mut self, delay: Duration) {
+        let wait = tokio::time::sleep(delay);
+        tokio::pin!(wait);
+        loop {
+            tokio::select! {
+                () = &mut wait => return,
+                Some(finished) = self.streams.tasks.join_next_with_id(), if !self.streams.tasks.is_empty() => {
+                    self.source_finished(finished);
                 }
             }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
     }
+
+    fn watch_failed(&self, cursor: &mut Option<String>, error: &kube::Error) -> bool {
+        // An expired cursor needs a relist. So does a denied watch: RBAC can allow listing
+        // pods but not watching them, and only a relist then finds new pods.
+        if matches!(error, kube::Error::Api(status) if matches!(status.code, 403 | 410)) {
+            *cursor = None;
+        }
+        self.reconnecting(format!("Log pod watch failed: {error}"))
+    }
+
+    fn reconnecting(&self, message: String) -> bool {
+        send_status(
+            &self.channel,
+            &self.stream_id,
+            StreamStatus::Reconnecting,
+            message,
+        )
+    }
+
+    fn connected(&self) -> bool {
+        send_status(
+            &self.channel,
+            &self.stream_id,
+            StreamStatus::Connected,
+            aggregate_status_message(self.pods.total, self.streams.handles.len()),
+        )
+    }
+
+    fn sync_sources(&mut self, previous_total: Option<usize>) -> bool {
+        let desired = self.pods.selected();
+        let changed = desired != self.selected;
+        self.selected = desired;
+        self.reconcile_sources();
+        (!changed && previous_total == Some(self.pods.total)) || self.connected()
+    }
+
+    /// Retries every selected source: a source whose task still runs or cools down is marked
+    /// to retry when it finishes. Only pod events, relists and watch renewals call this.
+    fn reconcile_sources(&mut self) {
+        let desired = std::mem::take(&mut self.selected);
+        self.streams
+            .attached
+            .retain(|source| desired.binary_search(source).is_ok());
+        self.streams
+            .retry
+            .retain(|source| desired.binary_search(source).is_ok());
+        self.streams.handles.retain(|source, handle| {
+            let retained = desired.binary_search(source).is_ok();
+            if !retained {
+                handle.abort();
+            }
+            retained
+        });
+        for source in &desired {
+            if self.streams.handles.contains_key(source) {
+                self.streams.retry.insert(source.clone());
+            } else {
+                self.streams.retry.remove(source);
+                self.spawn_source(source.clone());
+            }
+        }
+        self.selected = desired;
+    }
+
+    /// Forgets a finished task and reconnects only its own source, if a retry was asked for.
+    /// Reconciling every source here would mark the others still cooling down for retry, and
+    /// sources that finish at different times would then keep re-arming each other.
+    fn source_finished(&mut self, finished: Result<(Id, ()), JoinError>) {
+        let id = finished.map_or_else(|error| error.id(), |(id, ())| id);
+        if let Some(source) = self.streams.retire(id)
+            && self.streams.retry.remove(&source)
+        {
+            self.spawn_source(source);
+        }
+    }
+
+    fn spawn_source(&mut self, source: LogSourceKey) {
+        let mut options = self.options.clone();
+        if !self.streams.attached.insert(source.clone()) {
+            options.tail_lines = Some(0);
+        }
+        let stream = stream_log_source(
+            self.client.clone(),
+            self.namespace.clone(),
+            source.clone(),
+            options,
+            self.channel.clone(),
+            self.stream_id.clone(),
+        );
+        let scope = SessionScope::current();
+        let handle = self.streams.tasks.spawn(async move {
+            if let Some(scope) = scope {
+                scope.run(stream).await;
+            } else {
+                stream.await;
+            }
+            // Instant EOF or an unavailable container must not spin on log GETs.
+            tokio::time::sleep(RECONNECT_DELAY).await;
+        });
+        self.streams.handles.insert(source, handle);
+    }
+}
+
+fn usable_version(version: Option<String>) -> Option<String> {
+    version.filter(|version| !version.is_empty() && version != "0")
 }
 
 async fn resolve_target_selector(
@@ -294,97 +453,97 @@ fn map_label_selector(selector: &BTreeMap<String, String>) -> String {
         .join(",")
 }
 
-fn log_sources_from_pods(pods: &[Pod]) -> (Vec<LogSourceKey>, usize) {
-    let mut sources = pods
-        .iter()
-        .filter(|pod| pod.metadata.deletion_timestamp.is_none())
-        .flat_map(log_sources_from_pod)
-        .collect::<Vec<_>>();
-    sources.sort();
-    let total = sources.len();
-    sources.truncate(MAX_AGGREGATED_LOG_SOURCES);
-    (sources, total)
+#[derive(Default)]
+struct PodSources {
+    containers: BTreeMap<String, Vec<String>>,
+    total: usize,
+}
+
+impl PodSources {
+    fn from_pods(pods: &[Pod]) -> Self {
+        let mut sources = Self::default();
+        for pod in pods {
+            sources.update(pod);
+        }
+        sources
+    }
+
+    fn apply(&mut self, event: WatchEvent<Pod>) -> bool {
+        match event {
+            WatchEvent::Added(pod) | WatchEvent::Modified(pod) => self.update(&pod),
+            WatchEvent::Deleted(pod) => pod_name(&pod).is_some_and(|name| self.remove(name)),
+            WatchEvent::Bookmark(_) | WatchEvent::Error(_) => false,
+        }
+    }
+
+    fn update(&mut self, pod: &Pod) -> bool {
+        let Some(name) = pod_name(pod) else {
+            return false;
+        };
+        let Some(spec) = pod
+            .spec
+            .as_ref()
+            .filter(|_| pod.metadata.deletion_timestamp.is_none())
+        else {
+            return self.remove(name);
+        };
+        let containers = spec
+            .containers
+            .iter()
+            .map(|container| container.name.trim())
+            .filter(|name| !name.is_empty());
+        let previous = self.containers.get(name).map_or(&[][..], Vec::as_slice);
+        if containers.clone().eq(previous.iter().map(String::as_str)) {
+            return false;
+        }
+        let mut containers = containers.map(str::to_owned).collect::<Vec<_>>();
+        containers.sort_unstable();
+        if containers.as_slice() == previous {
+            return false;
+        }
+        self.total = self.total - previous.len() + containers.len();
+        if containers.is_empty() {
+            self.containers.remove(name);
+        } else {
+            self.containers.insert(name.to_owned(), containers);
+        }
+        true
+    }
+
+    fn remove(&mut self, name: &str) -> bool {
+        if let Some(previous) = self.containers.remove(name) {
+            self.total -= previous.len();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn selected(&self) -> Vec<LogSourceKey> {
+        self.containers
+            .iter()
+            .flat_map(|(pod, containers)| containers.iter().map(move |container| (pod, container)))
+            .take(MAX_AGGREGATED_LOG_SOURCES)
+            .map(|(pod, container)| LogSourceKey {
+                pod_name: pod.clone(),
+                container: container.clone(),
+            })
+            .collect()
+    }
+}
+
+fn pod_name(pod: &Pod) -> Option<&str> {
+    pod.metadata
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
 }
 
 #[cfg(feature = "bench-support")]
 pub fn benchmark_log_sources_from_pods(pods: &[Pod]) -> (Vec<LogSourceKey>, usize) {
-    log_sources_from_pods(pods)
-}
-
-fn log_sources_from_pod(pod: &Pod) -> Vec<LogSourceKey> {
-    let Some(pod_name) = pod
-        .metadata
-        .name
-        .as_ref()
-        .map(|name| name.trim())
-        .filter(|name| !name.is_empty())
-    else {
-        return Vec::new();
-    };
-    let Some(spec) = &pod.spec else {
-        return Vec::new();
-    };
-    spec.containers
-        .iter()
-        .map(|container| container.name.trim())
-        .filter(|container| !container.is_empty())
-        .map(|container| LogSourceKey {
-            pod_name: pod_name.to_string(),
-            container: container.to_string(),
-        })
-        .collect()
-}
-
-fn reconcile_sources(
-    source_streams: &mut SourceStreams,
-    sources: Vec<LogSourceKey>,
-    client: Client,
-    namespace: String,
-    options: LogStreamOptions,
-    channel: Channel<StreamMessage>,
-    stream_id: String,
-) {
-    let desired = sources.into_iter().collect::<BTreeSet<_>>();
-    source_streams
-        .attached
-        .retain(|source| desired.contains(source));
-    let stale = source_streams
-        .handles
-        .keys()
-        .filter(|source| !desired.contains(*source))
-        .cloned()
-        .collect::<Vec<_>>();
-    for source in stale {
-        if let Some(handle) = source_streams.handles.remove(&source) {
-            handle.abort();
-        }
-    }
-    source_streams
-        .handles
-        .retain(|_, handle| !handle.inner().is_finished());
-    for source in desired {
-        if source_streams.handles.contains_key(&source) {
-            continue;
-        }
-        let mut spawn_options = options.clone();
-        if source_streams.attached.contains(&source) {
-            // Respawn after a stream break: follow new output only. Omitting
-            // tailLines would replay the container's full history, and a
-            // repeated tail would replay the same lines every relist.
-            spawn_options.tail_lines = Some(0);
-        } else {
-            source_streams.attached.insert(source.clone());
-        }
-        let handle = crate::runtime::spawn(stream_log_source(
-            client.clone(),
-            namespace.clone(),
-            source.clone(),
-            spawn_options,
-            channel.clone(),
-            stream_id.clone(),
-        ));
-        source_streams.handles.insert(source, handle);
-    }
+    let sources = PodSources::from_pods(pods);
+    (sources.selected(), sources.total)
 }
 
 async fn stream_log_source(
@@ -493,229 +652,5 @@ fn aggregate_status_message(total_sources: usize, active_sources: usize) -> Stri
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Failure mode: source errors always use LogLines, so clients that omit or
-    // disable batchLines never see the error. Preserve the source in both modes.
-    #[tokio::test]
-    async fn source_errors_honor_batch_lines_opt_in() {
-        use std::sync::{Arc, Mutex};
-
-        for flag in [None, Some(false), Some(true)] {
-            let mut request = serde_json::json!({
-                "clusterContext": "test", "namespace": "default",
-                "targetKind": "Deployment", "targetName": "api"
-            });
-            if let Some(flag) = flag {
-                request["batchLines"] = flag.into();
-            }
-            let request: AggregatedLogStreamRequest = serde_json::from_value(request).unwrap();
-            let received = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
-            let sink = Arc::clone(&received);
-            let channel = Channel::new(move |message| {
-                let message = serde_json::to_value(message).unwrap();
-                sink.lock().unwrap().push(message);
-                Ok(())
-            });
-            let (service, mut handle) = tower_test::mock::pair::<
-                http::Request<kube::client::Body>,
-                http::Response<kube::client::Body>,
-            >();
-            let stream = stream_log_source(
-                Client::new(service, "default"),
-                "default".into(),
-                LogSourceKey {
-                    pod_name: "api".into(),
-                    container: "app".into(),
-                },
-                LogStreamOptions {
-                    batch_lines: request.batch_lines,
-                    tail_lines: None,
-                    since_seconds: None,
-                },
-                channel,
-                "logs".into(),
-            );
-            let respond = async {
-                let (_, send) = handle.next_request().await.unwrap();
-                send.send_response(http::Response::builder().status(403).body(kube::client::Body::from(
-                    br#"{"apiVersion":"v1","kind":"Status","status":"Failure","message":"denied","reason":"Forbidden","code":403}"#.to_vec(),
-                )).unwrap());
-            };
-            tokio::join!(stream, respond);
-            let messages = received.lock().unwrap();
-            assert_eq!(messages.len(), 1);
-            let message = &messages[0];
-            assert_eq!(message["streamId"], "logs");
-            assert_eq!(
-                message["source"],
-                serde_json::json!({"podName": "api", "container": "app"})
-            );
-            let line = if request.batch_lines {
-                assert_eq!(message["type"], "logLines");
-                assert_eq!(message["lines"].as_array().unwrap().len(), 1);
-                &message["lines"][0]
-            } else {
-                assert_eq!(message["type"], "logLine");
-                &message["line"]
-            };
-            assert!(line.as_str().unwrap().starts_with("log stream error: "));
-            assert!(line.as_str().unwrap().contains("denied"));
-        }
-    }
-
-    #[tokio::test]
-    async fn audit_departed_log_sources_release_replay_bookkeeping() {
-        let source = LogSourceKey {
-            pod_name: "old-pod".into(),
-            container: "app".into(),
-        };
-        let mut streams = SourceStreams::default();
-        streams.attached.insert(source);
-        let (service, _handle) = tower_test::mock::pair::<
-            http::Request<kube::client::Body>,
-            http::Response<kube::client::Body>,
-        >();
-        reconcile_sources(
-            &mut streams,
-            Vec::new(),
-            Client::new(service, "default"),
-            "default".into(),
-            LogStreamOptions {
-                batch_lines: false,
-                tail_lines: Some(10),
-                since_seconds: None,
-            },
-            Channel::new(|_| Ok(())),
-            "logs".into(),
-        );
-        assert!(streams.attached.is_empty());
-    }
-    use k8s_openapi::{
-        api::core::v1::{Container, PodSpec, ServiceSpec},
-        apimachinery::pkg::apis::meta::v1::{LabelSelectorRequirement, Time},
-    };
-    use kube::core::ObjectMeta;
-
-    fn pod(name: &str, containers: &[&str]) -> Pod {
-        Pod {
-            metadata: ObjectMeta {
-                name: Some(name.to_string()),
-                ..Default::default()
-            },
-            spec: Some(PodSpec {
-                containers: containers
-                    .iter()
-                    .map(|name| Container {
-                        name: (*name).to_string(),
-                        ..Default::default()
-                    })
-                    .collect(),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn deployment_selector_supports_match_labels_and_expressions() {
-        let selector = LabelSelector {
-            match_labels: Some(BTreeMap::from([(
-                "app.kubernetes.io/name".to_string(),
-                "api".to_string(),
-            )])),
-            match_expressions: Some(vec![
-                LabelSelectorRequirement {
-                    key: "tier".to_string(),
-                    operator: "In".to_string(),
-                    values: Some(vec!["web".to_string(), "worker".to_string()]),
-                },
-                LabelSelectorRequirement {
-                    key: "canary".to_string(),
-                    operator: "DoesNotExist".to_string(),
-                    values: None,
-                },
-            ]),
-        };
-
-        assert_eq!(
-            selector_from_label_selector(&selector).expect("selector"),
-            "app.kubernetes.io/name=api,tier in (web,worker),!canary",
-        );
-    }
-
-    #[test]
-    fn deployment_selector_rejects_empty_or_invalid_expressions() {
-        assert_eq!(
-            selector_from_label_selector(&LabelSelector::default())
-                .expect_err("empty selector")
-                .message,
-            "Deployment selector is empty",
-        );
-        let selector = LabelSelector {
-            match_labels: None,
-            match_expressions: Some(vec![LabelSelectorRequirement {
-                key: "tier".to_string(),
-                operator: "In".to_string(),
-                values: None,
-            }]),
-        };
-        assert_eq!(
-            selector_from_label_selector(&selector)
-                .expect_err("missing values")
-                .message,
-            "Deployment selector In expression needs values",
-        );
-    }
-
-    #[test]
-    fn service_selector_requires_selector_backed_service() {
-        let selector = BTreeMap::from([
-            ("app".to_string(), "api".to_string()),
-            ("tier".to_string(), "web".to_string()),
-        ]);
-        let service = Service {
-            spec: Some(ServiceSpec {
-                selector: Some(selector),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        assert_eq!(
-            service_label_selector(&service).expect("selector"),
-            "app=api,tier=web",
-        );
-
-        let empty = Service {
-            spec: Some(ServiceSpec {
-                selector: None,
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        assert_eq!(
-            service_label_selector(&empty)
-                .expect_err("selectorless")
-                .kind,
-            AppErrorKind::Validation,
-        );
-    }
-
-    #[test]
-    fn log_sources_skip_deleting_pods_and_cap_results() {
-        let mut deleting = pod("api-old", &["app"]);
-        deleting.metadata.deletion_timestamp =
-            Some(Time(k8s_openapi::jiff::Timestamp::from_second(0).unwrap()));
-        let pods = std::iter::once(deleting)
-            .chain((0..60).map(|index| pod(&format!("api-{index:02}"), &["app"])))
-            .collect::<Vec<_>>();
-
-        let (sources, total) = log_sources_from_pods(&pods);
-
-        assert_eq!(total, 60);
-        assert_eq!(sources.len(), MAX_AGGREGATED_LOG_SOURCES);
-        assert_eq!(sources[0].pod_name, "api-00");
-        assert!(sources.iter().all(|source| source.container == "app"));
-    }
-}
+#[path = "aggregate_logs_tests.rs"]
+mod tests;

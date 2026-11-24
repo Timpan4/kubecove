@@ -37,6 +37,9 @@ installMode = "currentUser"
 
 [features]
 frame-profile = []
+# The developer topology harness with synthetic data. Debug builds always include it;
+# a release build includes it only with this feature, as the frames run needs.
+topology-spike = []
 # The E2E flavor (ADR 0035): element observation, the agent automation endpoint and the
 # pinned kubeconfig. Release builds never enable it.
 e2e = [

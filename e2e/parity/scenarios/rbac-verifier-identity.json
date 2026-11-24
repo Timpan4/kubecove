@@ -83,6 +83,79 @@
 					"outcome": "allowed"
 				}
 			]
+		},
+		{
+			"id": "rbac.service-account-namespace-required",
+			"title": "A ServiceAccount without a namespace disables Verify, says why, and hides the default namespace account grants as unknown",
+			"steps": [
+				{
+					"action": "openPage",
+					"page": "RBAC"
+				},
+				{
+					"action": "selectRbacCategory",
+					"category": "Roles"
+				},
+				{
+					"action": "selectRbacItem",
+					"title": "Role/payments-reader"
+				},
+				{
+					"action": "coverageClick",
+					"label": "ServiceAccount"
+				},
+				{
+					"action": "coverageFill",
+					"label": "Identity name",
+					"value": "deployer"
+				},
+				{
+					"action": "coverageFill",
+					"label": "ServiceAccount namespace",
+					"value": ""
+				},
+				{
+					"action": "coverageText",
+					"text": "Enter the ServiceAccount namespace to verify.",
+					"visible": true
+				},
+				{
+					"action": "expectRbacVerifyEnabled",
+					"enabled": false
+				},
+				{
+					"action": "coverageText",
+					"text": "Unknown · The ServiceAccount namespace is missing.",
+					"visible": true
+				},
+				{
+					"action": "expectNoRbacGrant",
+					"grant": "get, list, watch · core/pods, services, configmaps"
+				},
+				{
+					"action": "coverageText",
+					"text": "payments · ServiceAccount deployer (namespace required)",
+					"visible": true
+				},
+				{
+					"action": "coverageFill",
+					"label": "ServiceAccount namespace",
+					"value": "default"
+				},
+				{
+					"action": "expectRbacVerifyEnabled",
+					"enabled": true
+				},
+				{
+					"action": "coverageText",
+					"text": "Enter the ServiceAccount namespace to verify.",
+					"visible": false
+				},
+				{
+					"action": "expectRbacGrant",
+					"grant": "get, list, watch · core/pods, services, configmaps"
+				}
+			]
 		}
 	]
 }

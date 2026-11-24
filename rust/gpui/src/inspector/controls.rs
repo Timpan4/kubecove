@@ -2,12 +2,14 @@
 //! `src/components/ui/svelte/classes.ts` and `diffLineClassName` in
 //! `yamlTabDiff.ts`.
 
-use super::events::tw;
+use super::windowed::Windowed;
 use crate::control_motion::{self, HoverFill, hover_fill};
-use crate::theme::{MONO, Tokens, oklch};
+use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use crate::unified_diff::{DiffLine, DiffLineKind};
-use gpui_kit::{Div, FontWeight, Hsla, SharedString, div, prelude::*, px};
+use gpui_kit::{Div, FontWeight, HighlightStyle, Hsla, SharedString, div, prelude::*, px};
+use std::ops::Range;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Variant {
@@ -170,8 +172,8 @@ pub(super) fn icon_button(name: &str, color: Hsla) -> Div {
 pub(super) fn diff_colors(kind: DiffLineKind) -> (Hsla, Hsla) {
     let clear = gpui_kit::transparent_black();
     match kind {
-        DiffLineKind::Add => (tw::emerald500(0.12), tw::emerald300()),
-        DiffLineKind::Remove => (Tokens::destructive().opacity(0.12), red300()),
+        DiffLineKind::Add => (Palette::emerald500(0.12), Palette::emerald300()),
+        DiffLineKind::Remove => (Tokens::destructive().opacity(0.12), Palette::red300()),
         DiffLineKind::Hunk => (Tokens::primary().opacity(0.1), Tokens::primary()),
         DiffLineKind::Header => (Tokens::muted().opacity(0.35), Tokens::muted_foreground()),
         DiffLineKind::Context | DiffLineKind::Meta | DiffLineKind::Empty => {
@@ -180,30 +182,59 @@ pub(super) fn diff_colors(kind: DiffLineKind) -> (Hsla, Hsla) {
     }
 }
 
-pub(super) fn red300() -> Hsla {
-    oklch(0.808, 0.114, 19.571, 1.)
+/// One block diff line: `<div class="whitespace-pre px-3 {diffLineClassName}">`,
+/// so its tint spans the full width. `highlights` color its YAML syntax.
+pub(super) fn diff_row(
+    line: &DiffLine,
+    height: f32,
+    highlights: Option<&[(Range<usize>, HighlightStyle)]>,
+) -> Div {
+    let (background, foreground) = diff_colors(line.kind);
+    let row = div()
+        .h(px(height))
+        .px(px(12.))
+        .whitespace_nowrap()
+        .bg(background)
+        .text_color(foreground)
+        .when(line.kind == DiffLineKind::Header, |row| {
+            row.font_weight(FontWeight::SEMIBOLD)
+        });
+    match highlights {
+        Some(highlights) => row.child(
+            gpui_kit::StyledText::new(line.text.clone())
+                .with_highlights(highlights.iter().cloned()),
+        ),
+        None => row.child(line.text.clone()),
+    }
 }
 
-/// The YAML dry-run diff: `<div class="whitespace-pre px-3 {diffLineClassName}">`
-/// block lines, so each tint spans the full width.
-pub(super) fn diff_lines(lines: &[DiffLine], line_height: f32) -> impl IntoElement {
+pub(super) type DiffHighlights = Arc<[Vec<(Range<usize>, HighlightStyle)>]>;
+
+/// Block diff lines `height` high, built only where the ancestor scroller's
+/// clip shows them, so a full diff of any length costs a viewport of rows.
+/// `highlights` holds each line's syntax colors, by line index.
+pub(super) fn windowed_diff_rows(
+    lines: Arc<[DiffLine]>,
+    height: f32,
+    highlights: Option<DiffHighlights>,
+) -> Div {
+    let tops = (0..=lines.len()).map(|row| row as f32 * height).collect();
+    Windowed::fixed_rows(tops, move |row, _, _| {
+        let colors = highlights
+            .as_ref()
+            .and_then(|highlights| highlights.get(row))
+            .map(Vec::as_slice);
+        diff_row(&lines[row], height, colors).into_any_element()
+    })
+}
+
+/// The YAML dry-run diff in its scroller.
+pub(super) fn diff_lines(lines: Arc<[DiffLine]>, line_height: f32) -> impl IntoElement {
     div()
         .font_family(MONO)
         .text_size(px(12.))
         .line_height(px(line_height))
-        .children(lines.iter().map(|line| {
-            let (background, foreground) = diff_colors(line.kind);
-            div()
-                .h(px(line_height))
-                .px(px(12.))
-                .whitespace_nowrap()
-                .bg(background)
-                .text_color(foreground)
-                .when(line.kind == DiffLineKind::Header, |text| {
-                    text.font_weight(FontWeight::SEMIBOLD)
-                })
-                .child(line.text.clone())
-        }))
+        .child(windowed_diff_rows(lines, line_height, None))
 }
 
 /// `<pre class="text-xs leading-5">` of `<span class={diffLineClassName}>`:

@@ -4,7 +4,8 @@
 //! or Space activates it, as the web's native buttons do.
 
 use super::Inspector;
-use super::table_columns::{Column, cell, resource_id};
+use super::table::RowHandle;
+use super::table_columns::{Column, cell};
 use crate::table_sort::Column as SortColumn;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -33,11 +34,10 @@ pub(super) fn group_row_id(key: &str) -> String {
     format!("group-row:{key}")
 }
 
-/// The element id of a row's pin button. It ends in the row's context, as the
-/// row's id does.
-pub(super) fn pin_id(row: &ResourceSummary) -> String {
-    let id = resource_id(row);
-    format!("pin:{}", id.strip_prefix("resource:").unwrap_or(&id))
+/// The element id of the pin button of the row whose `resource_id` is `id`. It
+/// ends in the row's context, as the row's id does.
+pub(super) fn pin_id_of(id: &str) -> String {
+    format!("pin:{}", id.strip_prefix("resource:").unwrap_or(id))
 }
 
 impl Inspector {
@@ -192,10 +192,16 @@ impl Inspector {
     }
 
     /// The pin column's button, which pins or unpins the row's resource.
-    pub(super) fn pin_cell(&self, row: &ResourceSummary, cx: &mut Context<Self>) -> Div {
-        let target = row.clone();
-        let id = pin_id(row);
+    pub(super) fn pin_cell(
+        &self,
+        row: &ResourceSummary,
+        handle: &RowHandle,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let target = handle.clone();
+        let id = pin_id_of(&handle.id);
         let focus = self.table_tab_stop(&id, cx);
+        let pinned = self.resource_pinned(row);
         cell(
             Column::Pin,
             div()
@@ -209,17 +215,15 @@ impl Inspector {
                 .focus(|style| style.border_color(Tokens::ring()))
                 .aria_label(format!(
                     "{} {} {}",
-                    if self.resource_pinned(row) {
-                        "Unpin"
-                    } else {
-                        "Pin"
-                    },
+                    if pinned { "Unpin" } else { "Pin" },
                     row.kind,
                     row.name
                 ))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_resource_pin(&target, cx);
+                    if let Some(resource) = this.table_row(&target) {
+                        this.toggle_resource_pin(&resource, cx);
+                    }
                     cx.stop_propagation();
                 }))
                 .flex()
@@ -229,7 +233,7 @@ impl Inspector {
                 .child(ui::icon(
                     "pin",
                     14.,
-                    if self.resource_pinned(row) {
+                    if pinned {
                         Tokens::primary()
                     } else {
                         Tokens::foreground()

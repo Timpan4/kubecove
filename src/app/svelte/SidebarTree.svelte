@@ -136,11 +136,12 @@
 				? String(resourceKindsQuery.error)
 				: "",
 	);
+	const expandedIds = $derived(new Set(expandedSections));
 	const expandedNamespaces = $derived(
 		(namespacesQuery.data ?? [])
 			.map((namespace) => namespace.name)
 			.filter((namespace) =>
-				expandedSections.includes(
+				expandedIds.has(
 					nodeIdToString({ type: "namespace", section: "namespaces", namespace }),
 				),
 			),
@@ -176,7 +177,7 @@
 			: new Set<string>();
 	});
 	let customResourceSearch = $state("");
-	function getLazyChildren(node: TreeNode) {
+	function getLazyNamespaceChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
 		const loading = namespaceKindsLoading.active(node.id.namespace);
 		const customResources =
@@ -205,7 +206,7 @@
 	}));
 	const sidebarSelectedNode = $derived(sidebarSelectionNode(selectedNode, groups));
 	const selectedAncestorIds = $derived(
-		collectSelectedAncestorIds(groups, sidebarSelectedNode, getLazyChildren),
+		collectSelectedAncestorIds(groups, sidebarSelectedNode, getLazyNamespaceChildren),
 	);
 	const isNamespaceListSelected = $derived(
 		selectedNode?.type === "section" && selectedNode.section === "namespaces",
@@ -287,10 +288,10 @@
 							revealKey={treeVisible && revealKey === selectionKey ? revealKey : null}
 							onReveal={() => (revealKey = null)}
 							{selectedAncestorIds}
-							{expandedSections}
+							{expandedIds}
 							onNodeSelect={selectFromTree}
 							{onSectionToggle}
-							{getLazyChildren}
+							{getLazyNamespaceChildren}
 							{customResourceSearch}
 							onCustomResourceSearchChange={(value) => (customResourceSearch = value)}
 						/>

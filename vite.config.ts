@@ -8,12 +8,13 @@ import { frontendBundleReportPlugin } from "./scripts/frontend-bundle-report.ts"
 export default defineConfig(({ command }) => {
 	const releaseChannel = process.env.KUBECOVE_PUBLIC_RELEASE_CHANNEL === "stable" ? "stable" : "dev";
 	const profiling = process.env.KUBECOVE_PUBLIC_PROFILE === "true";
+	const skipBundleReport = process.env.KUBECOVE_SKIP_BUNDLE_REPORT === "1";
 	const devMocks = command === "serve" && process.env.KUBECOVE_PUBLIC_RUNTIME !== "web";
 	// Settings -> Diagnostics interaction recordings mirror to e2e/artifacts while serving.
 	const devInteractionsEndpoint = command === "serve" ? "/__kubecove/dev-interactions" : "";
 	return {
 		plugins: [
-			svelte(), tailwindcss(), frontendBundleReportPlugin(releaseChannel, profiling),
+			svelte(), tailwindcss(), frontendBundleReportPlugin(releaseChannel, profiling, skipBundleReport),
 			devInteractionsEndpoint ? devInteractionsPlugin(devInteractionsEndpoint) : null,
 		],
 		resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },

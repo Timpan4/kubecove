@@ -2104,15 +2104,12 @@ name = "kubecove-host"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "futures-util",
  "kubecove-kube",
  "kubecove-models",
- "reqwest",
  "serde",
  "serde_json",
  "sysinfo",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -2190,7 +2187,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower-service",
- "yaml_serde",
 ]
 
 [[package]]

@@ -36,7 +36,7 @@ impl Inspector {
             _ if phase.shown() => Some("Loading Custom Resources"),
             _ if !phase.ready() => None,
             CustomLoad::Loading => None,
-            CustomLoad::Ready | CustomLoad::Idle if !self.live.kinds.is_empty() => {
+            CustomLoad::Ready | CustomLoad::Idle if !self.live.kinds().is_empty() => {
                 Some("Custom Resources added")
             }
             CustomLoad::Ready | CustomLoad::Idle => None,
@@ -89,7 +89,12 @@ impl Inspector {
             && let Some(chosen) = &mut self.kind_selection.chosen
             && chosen.is_empty()
         {
-            chosen.extend(self.live.kinds.iter().map(super::kind_selection::identity));
+            chosen.extend(
+                self.live
+                    .kinds()
+                    .iter()
+                    .map(super::kind_selection::identity),
+            );
             return !chosen.is_empty();
         }
         false

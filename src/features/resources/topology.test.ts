@@ -174,6 +174,22 @@ describe("topology selection", () => {
 			"api-rs-to-pod-2",
 		]);
 	});
+	test("keeps a pod collapsed when its owner is absent from the partial topology", () => {
+		const pod = node("Pod", "api-1");
+		const standalonePod = node("Pod", "lonely");
+		const partial: ResourceTopology = {
+			nodes: [pod, standalonePod],
+			edges: [{ id: "missing-owner", source: "Deployment:api", target: "Pod:api-1", relation: "owns" }],
+			warnings: [],
+		};
+		const expansionOf = (selectedNodeId: string) =>
+			view(partial, selectedNodeId, false).nodes.find(
+				(item) => item.type === "standaloneKindGroup" && item.data.kind === "Pod",
+			)?.data.expanded;
+
+		expect(expansionOf("Pod:api-1")).toBe(false);
+		expect(expansionOf("Pod:lonely")).toBe(true);
+	});
 });
 
 describe("Svelte topology layout", () => {

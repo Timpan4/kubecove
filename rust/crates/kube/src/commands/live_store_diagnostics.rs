@@ -1,9 +1,7 @@
-use super::{
-    AtomicU64, CacheEntry, ClusterLiveStore, FluxOwnershipIndex, Ordering, ResourceTopology,
-    SharedCache,
-};
+use super::{CacheEntry, ClusterLiveStore, FluxOwnershipIndex, ResourceTopology, SharedCache};
 pub(super) use crate::models::BackendCacheDiagnosticSnapshot as CacheDiagnosticSnapshot;
 use std::mem::size_of;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub(super) struct CacheCounters {
@@ -124,6 +122,9 @@ impl<T: Send + Sync + CachePayloadWeight + 'static> SharedCache<T> {
             if let Some(ready) = retained {
                 snapshot.retained_items += ready.value.retained_items();
                 snapshot.shallow_payload_bytes += ready.value.shallow_payload_bytes();
+                if let Some(slots) = &ready.slots {
+                    snapshot.shallow_payload_bytes += slots.shallow_payload_bytes();
+                }
             }
         }
         snapshot

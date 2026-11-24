@@ -84,6 +84,7 @@ credential-plugin-path = ["kubecove-kube/credential-plugin-path"]
 bench-support = [
     "kubecove-kube/bench-support", "kubecove-inspection/bench-support",
     "kubecove-live/bench-support", "kubecove-gitops/bench-support", "kubecove-host/bench-support",
+    "dep:kubecove-mcp", "kubecove-mcp/bench-support",
     "dep:base64", "dep:flate2", "dep:futures-util", "tokio/rt-multi-thread",
 ]
 # The native client's E2E flavor pins its kubeconfig.

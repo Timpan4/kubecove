@@ -75,3 +75,24 @@ export function riskyCount(
 ): number {
 	return items.filter((item) => item.risks.length > 0).length;
 }
+
+export function riskBadgeClass(risks: RbacRiskIndicator[]): string {
+	if (risks.some((risk) => risk.level === "high")) {
+		return "border-destructive/35 bg-destructive/10 text-destructive";
+	}
+	if (risks.some((risk) => risk.level === "medium")) {
+		return "border-amber-500/35 bg-amber-500/10 text-amber-600 dark:text-amber-300";
+	}
+	if (risks.some((risk) => risk.level === "unknown")) {
+		return "border-muted-foreground/35 bg-muted text-muted-foreground";
+	}
+	return "";
+}
+
+export function riskRailClass(risks: RbacRiskIndicator[]): string {
+	if (risks.some((risk) => risk.level === "high")) return "border-l-destructive";
+	if (risks.some((risk) => risk.level === "medium")) return "border-l-amber-500";
+	if (risks.some((risk) => risk.level === "low")) return "border-l-sky-500";
+	if (risks.some((risk) => risk.level === "unknown")) return "border-l-muted-foreground";
+	return "border-l-emerald-500";
+}

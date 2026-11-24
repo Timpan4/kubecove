@@ -17,22 +17,25 @@ mod map;
 pub mod multi_context;
 #[path = "cases/navigation.rs"]
 mod navigation;
+#[cfg(any(debug_assertions, feature = "topology-spike"))]
 #[path = "cases/topology_spike.rs"]
 mod topology_spike;
 #[path = "cases/views.rs"]
 mod views;
 
+/// A release build has the topology harness cases only with the
+/// `topology-spike` feature, as it has the harness.
 pub fn all_cases() -> impl Iterator<Item = &'static Case> {
-    CASES
+    let cases = CASES
         .iter()
         .chain(extra::CASES)
         .chain(VIEW_CASES)
         .chain(interactions::CASES)
         .chain(navigation::CASES)
-        .chain(controls::CASES)
-        .chain(topology_spike::CASES)
-        .chain(map::CASES)
-        .chain(multi_context::CASES)
+        .chain(controls::CASES);
+    #[cfg(any(debug_assertions, feature = "topology-spike"))]
+    let cases = cases.chain(topology_spike::CASES);
+    cases.chain(map::CASES).chain(multi_context::CASES)
 }
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{

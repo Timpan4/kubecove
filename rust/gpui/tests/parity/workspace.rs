@@ -127,6 +127,14 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
             reveal(window, RBAC_TOP, "rbac-verb", cx);
             replace_text(window, cx, "rbac-verb", string(step, "verb"));
         }
+        "expectRbacVerifyEnabled" => assert_eq!(
+            window.find("rbac-verify").description(),
+            Some(if step["enabled"] == true {
+                "enabled"
+            } else {
+                "disabled"
+            })
+        ),
         "expectRbacVerdict" => assert_eq!(
             window.find("rbac-verdict").label(),
             Some(string(step, "outcome"))

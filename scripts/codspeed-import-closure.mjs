@@ -7,7 +7,7 @@ import { parseSync, resolveConfig, Visitor } from "vite";
 // The benchmark configuration's own run-time reads that were checked by hand. This module
 // only lists benchmarks/, and each benchmark file selects itself. A source change
 // invalidates the audit and makes every benchmark run until reviewed again.
-const auditedConfigReads = new Map([["scripts/codspeed-benchmark-suites.mjs", "637b42167de9beadc642e9f6fabc46f2ba0bad0f515222ba89534e2e68cff7bc"]]);
+const auditedConfigReads = new Map([["scripts/codspeed-benchmark-suites.mjs", "ef4fecb02e2662fae71d8742b2875026c9731785952a0f4bd19d624167957c6c"]]);
 
 // Parse source without executing it or building benchmarks. Vite owns extension,
 // directory, package and alias resolution, matching the benchmark configuration.

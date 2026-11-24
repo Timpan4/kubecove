@@ -168,11 +168,17 @@ pub struct Palette;
 
 #[allow(dead_code)]
 impl Palette {
+    pub fn emerald200() -> Hsla {
+        oklch(0.905, 0.093, 164.15, 1.0)
+    }
     pub fn emerald300() -> Hsla {
         oklch(0.845, 0.143, 164.978, 1.0)
     }
     pub fn emerald500(alpha: f32) -> Hsla {
         oklch(0.696, 0.17, 162.48, alpha)
+    }
+    pub fn amber200() -> Hsla {
+        oklch(0.924, 0.12, 95.746, 1.0)
     }
     pub fn amber300() -> Hsla {
         oklch(0.879, 0.169, 91.605, 1.0)
@@ -194,6 +200,9 @@ impl Palette {
     }
     pub fn red300() -> Hsla {
         oklch(0.808, 0.114, 19.571, 1.0)
+    }
+    pub fn red500(alpha: f32) -> Hsla {
+        oklch(0.637, 0.237, 25.331, alpha)
     }
     pub fn emerald400() -> Hsla {
         oklch(0.765, 0.177, 163.223, 1.0)

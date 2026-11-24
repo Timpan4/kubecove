@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe } from "vitest";
 import {
 	buildSidebarTree,
+	collectSelectedAncestorIds,
 	resourceBrowserAvailableKinds,
 } from "@/app/svelte/workspaceShellModel";
 import {
@@ -14,6 +15,7 @@ import {
 	filterCustomResourceKinds,
 	pendingCustomResourceNamespaces,
 } from "@/components/sidebar-tree-helpers";
+import type { TreeNode, TreeNodeId } from "@/lib/tree-nav";
 import { kindKey } from "@/lib/kind-identity";
 import type {
 	DiscoveredResourceKind,
@@ -151,6 +153,23 @@ assert(
 	),
 );
 
+const lastNamespace = namespaces[namespaces.length - 1];
+const lateSelection: TreeNodeId = { type: "kind", section: "namespaces", namespace: lastNamespace, group: "Workloads", kind: "Pod" };
+function childrenForNamespace(node: TreeNode) {
+	const name = node.id.namespace;
+	return name ? buildExpandedNamespaceChildren(name, resourceSets.get(name) ?? [], errorSets.get(name), pendingNamespaces.has(name)) : undefined;
+}
+const requested: string[] = [];
+const ancestors = collectSelectedAncestorIds(fullTree, lateSelection, (node) => {
+	requested.push(node.id.namespace ?? "");
+	return childrenForNamespace(node);
+});
+assert.deepEqual(requested, [lastNamespace]);
+assert.deepEqual([...ancestors], [
+	`namespace::namespaces::${lastNamespace}`,
+	`group::namespaces::${lastNamespace}::Workloads`,
+]);
+
 describe("F26 lazy sidebar children with folded F27 query maps and F28 present kinds", () => {
 	benchmark(
 		"F26 eager custom-resource discovery tree roots (1k namespaces / 100 kinds)",
@@ -168,6 +187,10 @@ describe("F26 lazy sidebar children with folded F27 query maps and F28 present k
 			});
 		},
 	);
+
+	benchmark("F26 selected descendants near the end of the collapsed namespace tree", () => {
+		collectSelectedAncestorIds(fullTree, lateSelection, childrenForNamespace);
+	});
 
 	benchmark("F26 shallow namespace nodes without collapsed children", () => {
 		for (const namespace of namespaces)

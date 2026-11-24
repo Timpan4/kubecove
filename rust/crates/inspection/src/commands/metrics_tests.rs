@@ -117,7 +117,7 @@ fn overflowing_container_memory_is_unavailable() {
         {"usage": {"memory": "1"}},
         {"usage": {"memory": "1"}}
     ]});
-    assert_eq!(container_usage_totals(&data).1, None);
+    assert_eq!(container_usage_totals(data.get("containers")).1, None);
 }
 
 #[test]

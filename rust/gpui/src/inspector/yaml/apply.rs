@@ -13,6 +13,7 @@ use kubecove_lib::models::{
     AppError, ResourceSummary, YamlApplyPreview, YamlApplyRequest, YamlViewMode,
 };
 use std::cell::OnceCell;
+use std::sync::Arc;
 
 const COMPACT_DIFF_LINES: usize = 24;
 
@@ -24,11 +25,12 @@ pub(super) struct Review {
     pub show_full: bool,
 }
 
+/// The lines are shared with the diff's windowed rows, which read them at prepaint.
 struct ReviewDiff {
-    lines: Vec<DiffLine>,
+    lines: Arc<[DiffLine]>,
     hidden: usize,
     label: OnceCell<SharedString>,
-    clean: OnceCell<Vec<DiffLine>>,
+    clean: OnceCell<Arc<[DiffLine]>>,
 }
 
 impl ReviewDiff {
@@ -40,7 +42,7 @@ impl ReviewDiff {
         };
         lines.truncate(lines.len() - hidden);
         Self {
-            lines,
+            lines: lines.into(),
             hidden,
             label: OnceCell::new(),
             clean: OnceCell::new(),
@@ -49,7 +51,7 @@ impl ReviewDiff {
 }
 
 impl Review {
-    pub(super) fn diff(&self, git: bool) -> (&[DiffLine], SharedString, usize) {
+    pub(super) fn diff(&self, git: bool) -> (Arc<[DiffLine]>, SharedString, usize) {
         let diff = if self.show_full {
             &self.full
         } else {
@@ -81,7 +83,7 @@ impl Review {
                     .collect()
             })
         };
-        (lines, label.clone(), diff.hidden)
+        (lines.clone(), label.clone(), diff.hidden)
     }
 }
 

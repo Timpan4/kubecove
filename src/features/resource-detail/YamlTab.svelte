@@ -17,7 +17,6 @@
 		SelectTrigger,
 		SelectValue,
 		Spinner,
-		TabsContent,
 		Tooltip,
 		TooltipContent,
 		TooltipTrigger,
@@ -75,7 +74,6 @@
 	const draftLoading = loadingDelay(() => yamlLoadingDraft);
 </script>
 
-<TabsContent value="yaml" class="min-h-0">
 		{#if loading.active}
 			{#if loading.shown}
 				<div class="flex min-h-32 items-center justify-center gap-2 text-muted-foreground">
@@ -360,4 +358,3 @@
 				{/if}
 			</div>
 		{/if}
-	</TabsContent>

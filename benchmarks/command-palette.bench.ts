@@ -7,6 +7,9 @@ import {
 	buildGlobalSearchFetchKeys,
 	buildPaletteResourceSearchIndex,
 	filterNamespaces,
+	buildNamespaceSearchIndex,
+	NAMESPACE_RESULT_CAP,
+	RESOURCE_RESULT_CAP,
 } from "@/features/command-palette/entries";
 import { filterResourceSearchIndex } from "@/features/resources/helpers";
 import { kindKey } from "@/lib/kind-identity";
@@ -123,45 +126,22 @@ const paletteIndex = buildPaletteResourceSearchIndex(
 	argoRows,
 	cachedEntries,
 );
-const typedResourceResults = filterResourceSearchIndex(
-	paletteIndex,
-	"resource-99",
-	"",
-).slice(0, 50);
-const typedNamespaceResults = filterNamespaces(
-	namespaces,
-	"namespace-99",
-).slice(0, 8);
-const unboundedResourceMatches = filterResourceSearchIndex(
-	paletteIndex,
-	"resource-99",
-	"",
-);
-const unboundedNamespaceMatches = filterNamespaces(namespaces, "namespace-99");
-const uppercaseResourceResults = filterResourceSearchIndex(
-	paletteIndex,
-	"RESOURCE-99",
-	"",
-).slice(0, 50);
-const uppercaseNamespaceResults = filterNamespaces(
-	namespaces,
-	"NAMESPACE-99",
-).slice(0, 8);
-const noResourceResults = filterResourceSearchIndex(
-	paletteIndex,
-	"no-such-resource",
-	"",
-);
-const noNamespaceResults = filterNamespaces(namespaces, "no-such-namespace");
+const namespaceIndex = buildNamespaceSearchIndex(namespaces);
+const term = "resource-";
+const namespaceTerm = "namespace-";
+const unboundedResourceMatches = filterResourceSearchIndex(paletteIndex, term, "");
+const unboundedNamespaceMatches = namespaces.filter((name) => name.toLowerCase().includes(namespaceTerm));
+const typedResourceResults = visibleResourceResults(term);
+const typedNamespaceResults = visibleNamespaceResults(namespaceTerm);
 
 function visibleResourceResults(query: string): ResourceSummary[] {
 	return query.trim()
-		? filterResourceSearchIndex(paletteIndex, query, "").slice(0, 50)
+		? filterResourceSearchIndex(paletteIndex, query, "", RESOURCE_RESULT_CAP)
 		: [];
 }
 
 function visibleNamespaceResults(query: string): string[] {
-	return query.trim() ? filterNamespaces(namespaces, query).slice(0, 8) : [];
+	return query.trim() ? filterNamespaces(namespaceIndex, query) : [];
 }
 
 const firstCacheIndex = buildDedupedResourceSearchIndex(resourceSets);
@@ -170,14 +150,14 @@ assert.equal(cachedEntries.length, 2);
 assert.equal(argoRows.length, 2_500);
 assert.equal(firstCacheIndex.length, 7_500);
 assert.equal(paletteIndex.length, 12_500);
-assert(typedResourceResults.length <= 50 && typedResourceResults.length > 0);
-assert(typedNamespaceResults.length <= 8 && typedNamespaceResults.length > 0);
-assert.deepEqual(typedResourceResults, unboundedResourceMatches.slice(0, 50));
-assert.deepEqual(typedNamespaceResults, unboundedNamespaceMatches.slice(0, 8));
-assert.deepEqual(uppercaseResourceResults, typedResourceResults);
-assert.deepEqual(uppercaseNamespaceResults, typedNamespaceResults);
-assert.equal(noResourceResults.length, 0);
-assert.equal(noNamespaceResults.length, 0);
+assert(unboundedResourceMatches.length > RESOURCE_RESULT_CAP);
+assert(unboundedNamespaceMatches.length > NAMESPACE_RESULT_CAP);
+assert.deepEqual(typedResourceResults, unboundedResourceMatches.slice(0, RESOURCE_RESULT_CAP));
+assert.deepEqual(typedNamespaceResults, unboundedNamespaceMatches.slice(0, NAMESPACE_RESULT_CAP));
+assert.deepEqual(visibleResourceResults(term.toUpperCase()), typedResourceResults);
+assert.deepEqual(visibleNamespaceResults(namespaceTerm.toUpperCase()), typedNamespaceResults);
+assert.equal(visibleResourceResults("no-such-resource").length, 0);
+assert.equal(visibleNamespaceResults("no-such-namespace").length, 0);
 assert.deepEqual(visibleResourceResults(""), []);
 assert.deepEqual(visibleResourceResults(" \t "), []);
 assert.deepEqual(visibleNamespaceResults(""), []);
@@ -240,6 +220,16 @@ describe("F36 palette cache harvest, F37 retained typing, and folded F38 search 
 			visibleNamespaceResults(" \t ");
 		},
 	);
+
+	benchmark("F37 broad query with production caps", () => {
+		visibleResourceResults(term);
+		visibleNamespaceResults(namespaceTerm);
+	});
+
+	benchmark("F37 broad query with uncapped scans as a comparison", () => {
+		filterResourceSearchIndex(paletteIndex, term, "").slice(0, RESOURCE_RESULT_CAP);
+		namespaces.filter((name) => name.toLowerCase().includes(namespaceTerm)).slice(0, NAMESPACE_RESULT_CAP);
+	});
 
 	benchmark(
 		"F38 provider-wide Flux keys beside workspace-scoped Kubernetes keys",

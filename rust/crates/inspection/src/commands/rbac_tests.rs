@@ -256,8 +256,7 @@ fn missing_role_reason_tracks_inventory_coverage() {
     let mut complete = vec![binding.clone()];
     inherit_binding_risks(
         &mut complete,
-        &[],
-        &[],
+        &RoleIndex::new(&[], &[]),
         &RbacCoverageStatus::Complete,
         &RbacCoverageStatus::Complete,
     );
@@ -266,10 +265,87 @@ fn missing_role_reason_tracks_inventory_coverage() {
     let mut partial = vec![binding];
     inherit_binding_risks(
         &mut partial,
-        &[],
-        &[],
+        &RoleIndex::new(&[], &[]),
         &RbacCoverageStatus::Partial,
         &RbacCoverageStatus::Complete,
     );
     assert_eq!(partial[0].risks[0].label, "Referenced role unavailable");
+}
+
+#[test]
+fn same_named_roles_pass_only_their_own_risks_to_bindings() {
+    fn role(namespace: Option<&str>, kind: &str, label: &str) -> RbacRoleSummary {
+        RbacRoleSummary {
+            cluster: "kind-dev".to_string(),
+            kind: kind.to_string(),
+            name: "reader".to_string(),
+            namespace: namespace.map(str::to_string),
+            age: "1h".to_string(),
+            created_at: None,
+            rules_count: 0,
+            risks: vec![RbacRiskIndicator {
+                level: RbacRiskLevel::High,
+                label: label.to_string(),
+                reason: format!("{label} reason"),
+            }],
+            rules: Vec::new(),
+        }
+    }
+    fn binding(
+        name: &str,
+        kind: &str,
+        namespace: Option<&str>,
+        role_ref_kind: &str,
+    ) -> RbacBindingSummary {
+        RbacBindingSummary {
+            cluster: "kind-dev".to_string(),
+            kind: kind.to_string(),
+            name: name.to_string(),
+            namespace: namespace.map(str::to_string),
+            age: "1h".to_string(),
+            created_at: None,
+            role_ref_kind: role_ref_kind.to_string(),
+            role_ref_name: "reader".to_string(),
+            subjects: Vec::new(),
+            risks: Vec::new(),
+        }
+    }
+    fn labels(binding: &RbacBindingSummary) -> Vec<&str> {
+        binding
+            .risks
+            .iter()
+            .map(|risk| risk.label.as_str())
+            .collect()
+    }
+
+    let roles = vec![
+        role(Some("payments"), "Role", "Payments role risk"),
+        role(Some("shipping"), "Role", "Shipping role risk"),
+    ];
+    let cluster_roles = vec![role(None, "ClusterRole", "Cluster role risk")];
+    let mut bindings = vec![
+        binding("payments-readers", "RoleBinding", Some("payments"), "Role"),
+        binding("shipping-readers", "RoleBinding", Some("shipping"), "Role"),
+        binding("cluster-readers", "ClusterRoleBinding", None, "ClusterRole"),
+        // A namespaced binding to a ClusterRole must not pick up the same-named
+        // namespaced Role in its own namespace.
+        binding(
+            "payments-cluster-readers",
+            "RoleBinding",
+            Some("payments"),
+            "ClusterRole",
+        ),
+    ];
+
+    inherit_binding_risks(
+        &mut bindings,
+        &RoleIndex::new(&roles, &cluster_roles),
+        &RbacCoverageStatus::Complete,
+        &RbacCoverageStatus::Complete,
+    );
+
+    assert_eq!(labels(&bindings[0]), vec!["Payments role risk"]);
+    assert_eq!(labels(&bindings[1]), vec!["Shipping role risk"]);
+    assert_eq!(labels(&bindings[2]), vec!["Cluster role risk"]);
+    assert_eq!(labels(&bindings[3]), vec!["Cluster role risk"]);
 }

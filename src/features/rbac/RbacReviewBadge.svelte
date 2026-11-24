@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from "@/components/ui/svelte";
 	import type { RbacInspectionSummary } from "@/lib/types";
-	import type { RbacCockpitItem } from "./cockpitModel";
+	import type { RbacBindingIndex, RbacCockpitItem } from "./cockpitModel";
 	import {
 		findRbacReviewRecord,
 		isReviewableRbacCategory,
@@ -11,10 +11,12 @@
 
 	let {
 		inspection,
+		bindingIndex,
 		entry,
 		records,
 	}: {
 		inspection: RbacInspectionSummary;
+		bindingIndex: RbacBindingIndex;
 		entry: RbacCockpitItem;
 		records: RbacReviewRecord[];
 	} = $props();
@@ -22,7 +24,7 @@
 	const record = $derived(
 		findRbacReviewRecord(records, inspection.cluster, entry.key),
 	);
-	const status = $derived(reviewStatus(record, inspection, entry));
+	const status = $derived(reviewStatus(record, inspection, entry, bindingIndex));
 	const label = $derived(
 		status === "stale"
 			? "Review stale"

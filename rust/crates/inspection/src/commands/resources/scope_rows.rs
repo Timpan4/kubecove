@@ -1,7 +1,7 @@
 use crate::commands::helpers::FluxOwnershipIndex;
 use crate::models::ResourceSummary;
 use serde::{Serialize, Serializer};
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 #[cfg(test)]
 mod tests {
@@ -60,6 +60,31 @@ mod tests {
             );
         }
         assert!(!batches[0][0].git_ops_ownership_partial);
+    }
+
+    #[test]
+    fn shared_rows_keep_delimited_identity_order_and_last_duplicate() {
+        let rows: Vec<ResourceSummary> = serde_json::from_value(json!([
+            {"cluster": "a", "kind": "Pod", "name": "base", "age": "1m"},
+            {"cluster": "a-b", "kind": "Pod", "name": "dash", "age": "1m"},
+            {"cluster": "a0", "kind": "Pod", "name": "digit", "age": "1m"},
+            {"cluster": "a:custom", "kind": "Pod", "name": "duplicate", "age": "1m"},
+            {"cluster": "a", "kind": "custom:Pod", "name": "duplicate", "age": "2m"}
+        ]))
+        .unwrap();
+        let shared = SharedRows::new(vec![Arc::new(rows)], &FluxOwnershipIndex::default(), &[]);
+        assert_eq!(
+            shared
+                .iter()
+                .map(|row| (row.name.as_str(), row.age.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("dash", "1m"),
+                ("digit", "1m"),
+                ("base", "1m"),
+                ("duplicate", "2m")
+            ],
+        );
     }
 
     #[tokio::test]
@@ -125,6 +150,53 @@ mod tests {
     }
 }
 
+fn identity_parts(row: &ResourceSummary) -> [&str; 6] {
+    [
+        row.cluster.as_str(),
+        row.kind.as_str(),
+        row.api_version.as_deref().unwrap_or(""),
+        row.plural.as_deref().unwrap_or(""),
+        row.namespace.as_deref().unwrap_or(""),
+        row.name.as_str(),
+    ]
+}
+
+fn delimited_bytes<'a>(parts: &'a [&str]) -> impl Iterator<Item = u8> + 'a {
+    parts
+        .iter()
+        .enumerate()
+        .flat_map(|(index, part)| (index != 0).then_some(b':').into_iter().chain(part.bytes()))
+}
+
+fn compare_identity(left: &ResourceSummary, right: &ResourceSummary) -> Ordering {
+    let left = identity_parts(left);
+    let right = identity_parts(right);
+    for (index, (&a, &b)) in left.iter().zip(&right).enumerate() {
+        if a == b {
+            continue;
+        }
+        if index + 1 == left.len() {
+            return a.cmp(b);
+        }
+        if let Some(rest) = a.as_bytes().strip_prefix(b.as_bytes()) {
+            let next = rest[0];
+            if next != b':' {
+                return next.cmp(&b':');
+            }
+            return delimited_bytes(&left[index..]).cmp(delimited_bytes(&right[index..]));
+        }
+        if let Some(rest) = b.as_bytes().strip_prefix(a.as_bytes()) {
+            let next = rest[0];
+            if next != b':' {
+                return b':'.cmp(&next);
+            }
+            return delimited_bytes(&left[index..]).cmp(delimited_bytes(&right[index..]));
+        }
+        return a.cmp(b);
+    }
+    Ordering::Equal
+}
+
 enum RowRef {
     Cached(usize, usize),
     Changed(usize),
@@ -146,16 +218,15 @@ impl SharedRows {
         let mut unique = Vec::with_capacity(batches.iter().map(|batch| batch.len()).sum());
         for (batch_index, batch) in batches.iter().enumerate() {
             for (row_index, row) in batch.iter().enumerate() {
-                unique.push((super::row_key(row), (batch_index, row_index)));
+                unique.push((row, (batch_index, row_index)));
             }
         }
         // For equal keys, put the last row first so deduplication retains it.
-        unique.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
-        unique.dedup_by(|a, b| a.0 == b.0);
+        unique.sort_unstable_by(|a, b| compare_identity(a.0, b.0).then_with(|| b.1.cmp(&a.1)));
+        unique.dedup_by(|a, b| compare_identity(a.0, b.0).is_eq());
         let mut rows = Vec::with_capacity(unique.len());
         let mut changed = Vec::new();
-        for (_, (batch, row)) in unique {
-            let summary = &batches[batch][row];
+        for (summary, (batch, row)) in unique {
             if let Some(summary) = index.enriched_summary(summary, namespaces) {
                 rows.push(RowRef::Changed(changed.len()));
                 changed.push(summary);
@@ -172,6 +243,10 @@ impl SharedRows {
 
     pub(super) fn len(&self) -> usize {
         self.rows.len()
+    }
+
+    pub(super) fn iter(&self) -> impl ExactSizeIterator<Item = &ResourceSummary> {
+        self.rows.iter().map(|row| self.get(row))
     }
 
     fn get(&self, row: &RowRef) -> &ResourceSummary {
@@ -200,6 +275,6 @@ impl SharedRows {
 
 impl Serialize for SharedRows {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(self.rows.iter().map(|row| self.get(row)))
+        serializer.collect_seq(self.iter())
     }
 }

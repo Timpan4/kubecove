@@ -7,12 +7,16 @@ import {
 	buildFlowTopologyLayout,
 	buildFlowTopologySelectionIndex,
 	getFlowTopologyBounds,
+	flowTopologyFitForViewport,
+	prepareFlowTopologyFit,
+	topologyTranslateExtentFromBounds,
 } from "@/features/resources/topology-implementation";
 import {
 	buildFlowTopologyLayoutState,
 	buildFlowTopologyView,
 	buildFlowTopologyViewFromLayoutState,
 } from "@/features/resources/topology-view";
+import type { FlowTopologyNode } from "@/features/resources/topology-types";
 import { benchmark } from "./benchmark";
 import {
 	buildBranchingTopology,
@@ -217,6 +221,51 @@ assert(
 	),
 );
 
+const retainedFit = prepareFlowTopologyFit(fullView.graph.nodes, fullView.graph.edges, null);
+assert.deepEqual(flowTopologyFitForViewport(retainedFit, "ownership:1440x900", viewports[1]), resizedFitPlan);
+assert.deepEqual(topologyTranslateExtentFromBounds(fullBounds, viewports[0]), fullView.translateExtent);
+
+// Hand-computed expectations from fixed positions, not from the helpers under test.
+// The child sits at (700, 300) relative to a parent at (100, 50), so its absolute
+// origin is (800, 350). A parent offset dropped from the bounds moves `left` and `top`.
+const knownParent: FlowTopologyNode = {
+	id: "known-parent",
+	type: "ownershipResource",
+	position: { x: 100, y: 50 },
+	width: 220,
+	height: 88,
+	data: { resource: null, label: "parent", selected: false, connected: false },
+};
+const knownChild: FlowTopologyNode = {
+	id: "known-child",
+	parentId: "known-parent",
+	type: "ownershipResource",
+	position: { x: 700, y: 300 },
+	width: 220,
+	height: 88,
+	data: { resource: null, label: "child", selected: false, connected: false },
+};
+const knownBounds = getFlowTopologyBounds([knownParent, knownChild]);
+assert.deepEqual(knownBounds, { left: 100, top: 50, right: 1020, bottom: 438, width: 920, height: 388 });
+const knownFit = prepareFlowTopologyFit([knownParent, knownChild], [], null);
+const knownResized = flowTopologyFitForViewport(knownFit, "known:1440x900", viewports[1]);
+assert(knownResized);
+// Width fit: 8% padding on each side, so usable width is 0.84 * 1440 and the
+// centre is (560, 244). The zoom (1.3148) sits inside the 0.12 to 1.4 clamp.
+const knownZoom = (1440 * 0.84) / 920;
+const nearly = (actual: number, expected: number) => assert(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
+nearly(knownResized.viewport.zoom, knownZoom);
+nearly(knownResized.viewport.x, 720 - 560 * knownZoom);
+nearly(knownResized.viewport.y, 450 - 244 * knownZoom);
+// Pan padding is 42% of each viewport side, clamped to 180 to 720. Zoom slack is
+// viewport size / 0.12. For 1440x900 that gives x padding 604.8 and slack 12000,
+// y padding 378 and slack 7500.
+const knownExtent = topologyTranslateExtentFromBounds(knownBounds, viewports[1]);
+nearly(knownExtent[0][0], 100 - 604.8 - 12_000);
+nearly(knownExtent[0][1], 50 - 378 - 7_500);
+nearly(knownExtent[1][0], 1020 + 604.8 + 12_000);
+nearly(knownExtent[1][1], 438 + 378 + 7_500);
+
 describe("F07 graph layout and F09 retained topology selection (500 apps / 1k nodes)", () => {
 	benchmark("F07 layout construction per selection (50 full rebuilds)", () => {
 		for (const selectedId of selectedIds)
@@ -263,6 +312,13 @@ describe("F07 graph layout and F09 retained topology selection (500 apps / 1k no
 				expandedStandaloneKinds,
 				viewportSize: viewports[0],
 			});
+		}
+	});
+
+	benchmark("F10 resize only with retained graph bounds and fit identity", () => {
+		for (const [index, viewport] of viewports.entries()) {
+			topologyTranslateExtentFromBounds(fullBounds, viewport);
+			flowTopologyFitForViewport(retainedFit, String(index), viewport);
 		}
 	});
 

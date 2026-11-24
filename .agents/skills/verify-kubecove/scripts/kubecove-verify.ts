@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Drives KubeCove browser dev mode (typed IPC mocks, `mock-dev` context) for verification runs.
+// Drives KubeCove browser dev mode (typed IPC mocks) for verification runs.
 // Every run owns one Vite process group and one headless Chrome process group, recorded by PID and leader start time.
 import { existsSync, readdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -21,6 +21,9 @@ const required = (name: string) => {
 	if (value === undefined) throw new Error(`--${name} is required`);
 	return value;
 };
+// The browser mock client (src/lib/tauri.ts) marks <html> when the mock runtime initializes, and
+// src/main-svelte.ts marks it once the app has mounted, so a failed mount never reads as ready.
+const READY_SELECTOR = "html[data-kubecove-dev-mocks][data-kubecove-mounted]";
 const hasTarget = () => Boolean(flag("role") || flag("label") || flag("text") || flag("selector"));
 
 function runIdFromArgs() {
@@ -75,7 +78,7 @@ async function launch() {
 		// Once cleanup has started, start nothing it would miss. Each check runs in the same tick as its spawn.
 		if (stopping) throw new Error("launch interrupted before Vite started");
 		// `--port` and `--strictPort` override vite.config.ts, so a server already on 1430 is never touched.
-		const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, TAURI_DEV_HOST: undefined } });
+		const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, KUBECOVE_PUBLIC_RUNTIME: undefined } });
 		Object.assign(state, { vitePid: vite.pid, viteStartedAt: startIdentity(vite.pid) });
 		await saveState(state);
 		if (stopping) throw new Error("launch interrupted before Chrome started");
@@ -86,8 +89,8 @@ async function launch() {
 		await waitFor("Vite to serve the KubeCove index", async (signal) => (await (await fetch(url, { signal })).text()).includes("<title>KubeCove</title>"));
 		await withPage(state, async (page) => {
 			await page.goto(url);
-			// Ready means usable: the launcher has loaded the browser mock kubeconfig context.
-			await page.getByText("mock-dev", { exact: true }).first().waitFor();
+			// Ready means usable: the mock runtime initialized and the app mounted.
+			await page.locator(READY_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs });
 		});
 		// Inside the try: a launch that cannot record itself fails and stops what it started.
 		await record(state, { action: "launch", url: state.url, head: state.head });
@@ -158,7 +161,7 @@ async function browserCommand(state: RunState, action: string | undefined) {
 			await page.goto(state.url);
 			await page.evaluate(() => localStorage.clear());
 			await page.reload();
-			await page.getByText("mock-dev", { exact: true }).first().waitFor();
+			await page.locator(READY_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs });
 		} else if (action === "click") await target(page).click();
 		else if (action === "fill") await target(page).fill(required("value"));
 		else if (action === "press") await (hasTarget() ? target(page).press(required("key")) : page.keyboard.press(required("key")));
@@ -199,7 +202,11 @@ async function doctor(state: RunState) {
 	// A request and its body read share one deadline, so a stalled server fails the check instead of hanging doctor.
 	checks.indexServed = await fetch(state.url, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then(async (response) => (await response.text()).includes("<title>KubeCove</title>")).catch(() => false);
 	checks.cdp = checks.chromePid && await fetch(`${state.cdpUrl}/json/version`, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then((response) => response.ok).catch(() => false);
-	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => page.url().startsWith(state.url) && (await page.evaluate(() => !("__TAURI_INTERNALS__" in window)))).catch(() => false));
+	// Neither marker depends on the view, so this reports a mounted mock runtime whichever view shows.
+	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => {
+		if (!page.url().startsWith(state.url)) return false;
+		return page.locator(READY_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs }).then(() => true, () => false);
+	}).catch(() => false));
 	const healthy = Object.values(checks).every(Boolean);
 	console.log(JSON.stringify({ healthy, runId: state.runId, url: state.url, launchedAt: state.head, evidenceDir: state.evidenceDir, checks }, null, 2));
 	if (!healthy) process.exitCode = 1;

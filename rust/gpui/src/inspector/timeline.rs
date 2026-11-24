@@ -6,14 +6,14 @@ pub(super) use model::State;
 
 use super::Inspector;
 use super::detail::ResourceDetail;
-use super::events::{EventsLoad, badge, tone_colors, tw};
+use super::events::{EventsLoad, badge, tone_colors};
 use super::loading::{LoadingDelays, Phase};
 use super::windowed::Windowed;
 use crate::incident::{self, SignalTone};
 use crate::incident_timeline::{self as entries, TimelineItem};
 use crate::preferences::TimestampTimezone;
 use crate::targets::TestSupportExt;
-use crate::theme::{MONO, Tokens};
+use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::{Context, Div, FontWeight, Hsla, div, prelude::*, px};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -21,10 +21,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 /// `incidentToneClass`: the `border-l-4` color and background.
 fn signal_accent(tone: SignalTone) -> (Hsla, Hsla) {
     match tone {
-        SignalTone::Error => (tw::red500(1.), tw::red500(0.05)),
-        SignalTone::Warning => (tw::amber500(1.), tw::amber500(0.05)),
-        SignalTone::Info => (tw::sky500(1.), tw::sky500(0.05)),
-        SignalTone::Success => (tw::emerald500(1.), tw::emerald500(0.05)),
+        SignalTone::Error => (Palette::red500(1.), Palette::red500(0.05)),
+        SignalTone::Warning => (Palette::amber500(1.), Palette::amber500(0.05)),
+        SignalTone::Info => (Palette::sky500(1.), Palette::sky500(0.05)),
+        SignalTone::Success => (Palette::emerald500(1.), Palette::emerald500(0.05)),
         SignalTone::Neutral => (Tokens::muted(), Tokens::background().opacity(0.5)),
     }
 }
@@ -108,8 +108,8 @@ pub(super) fn incident_signals(detail: &ResourceDetail, loading: &LoadingDelays)
 fn tone_text(tone: SignalTone) -> Hsla {
     match tone {
         SignalTone::Error => Tokens::destructive(),
-        SignalTone::Warning => tw::amber300(),
-        SignalTone::Info => tw::sky300(),
+        SignalTone::Warning => Palette::amber300(),
+        SignalTone::Info => Palette::sky300(),
         SignalTone::Neutral | SignalTone::Success => Tokens::foreground(),
     }
 }
@@ -117,9 +117,9 @@ fn tone_text(tone: SignalTone) -> Hsla {
 /// `cardToneClass`: border and background.
 fn card_tone(tone: SignalTone) -> (Hsla, Hsla) {
     match tone {
-        SignalTone::Error => (tw::red500(0.2), tw::red500(0.05)),
-        SignalTone::Warning => (tw::amber500(0.2), tw::amber500(0.05)),
-        SignalTone::Info => (tw::sky500(0.2), tw::sky500(0.05)),
+        SignalTone::Error => (Palette::red500(0.2), Palette::red500(0.05)),
+        SignalTone::Warning => (Palette::amber500(0.2), Palette::amber500(0.05)),
+        SignalTone::Info => (Palette::sky500(0.2), Palette::sky500(0.05)),
         SignalTone::Neutral | SignalTone::Success => {
             (Tokens::border(), Tokens::background().opacity(0.3))
         }

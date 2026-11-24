@@ -43,15 +43,28 @@ pub struct Identity {
 }
 
 impl Identity {
+    /// `missingServiceAccountNamespace`: `review_identity` substitutes
+    /// `default` for a blank namespace, so a review would target another account.
+    pub fn missing_namespace(&self) -> bool {
+        self.kind == IdentityKind::ServiceAccount
+            && self
+                .namespace
+                .as_deref()
+                .is_none_or(|namespace| namespace.trim().is_empty())
+    }
+
     /// `identityLabel`.
     pub fn label(&self) -> String {
         if self.name.is_empty() {
             return "No identity selected".into();
         }
+        if self.missing_namespace() {
+            return format!("ServiceAccount {} (namespace required)", self.name);
+        }
         match self.kind {
             IdentityKind::ServiceAccount => format!(
                 "system:serviceaccount:{}:{}",
-                self.namespace.as_deref().unwrap_or("default"),
+                self.namespace.as_deref().unwrap_or_default(),
                 self.name
             ),
             IdentityKind::Group => format!("Group/{}", self.name),
@@ -177,6 +190,14 @@ const FAMILIES: [(RbacFamily, &str); 4] = [
 
 /// `observedPermissions`, for the same identity the verifier would review.
 pub fn observed(data: &RbacInspectionSummary, identity: &Identity) -> Observed {
+    // The binding lookup would read a blank namespace as `default` and show another account's grants.
+    if identity.missing_namespace() {
+        return Observed {
+            grants: vec![],
+            unknown: true,
+            reason: Some("The ServiceAccount namespace is missing.".into()),
+        };
+    }
     let principal = Principal::of(&identity.review_identity());
     let incomplete: Vec<&str> = FAMILIES
         .iter()

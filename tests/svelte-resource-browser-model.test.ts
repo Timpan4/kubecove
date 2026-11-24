@@ -967,7 +967,7 @@ describe("svelte resource browser model", () => {
 
 	test("scrolls selected Svelte table rows into view", () => {
 		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
+			"src/features/resources/ResourceTablePane.svelte",
 			"utf8",
 		);
 
@@ -981,11 +981,11 @@ describe("svelte resource browser model", () => {
 
 	test("keeps Svelte resource table collapsible beside the ownership map", () => {
 		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
+			"src/features/resources/ResourceTablePane.svelte",
 			"utf8",
 		);
 
-		expect(source).toContain("let tablePanelOpen = $state(true)");
+		expect(readFileSync("src/features/resources/resourceBrowserScope.svelte.ts", "utf8")).toContain("tablePanelOpen: true");
 		expect(source).toContain('aria-label="Collapse resource table"');
 		expect(source).toContain('aria-label="Show resource table"');
 		expect(source).toContain("<Table2");
@@ -993,7 +993,7 @@ describe("svelte resource browser model", () => {
 
 	test("keeps Svelte resource table icons and spans aligned", () => {
 		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
+			"src/features/resources/ResourceTablePane.svelte",
 			"utf8",
 		);
 
@@ -1043,7 +1043,7 @@ describe("svelte resource browser model", () => {
 		);
 
 	expect(source).toContain("const inspectorOpen = $derived(Boolean(selectedResource))");
-	expect(source).toContain("inspectorOpen && mapPanelOpen && tablePanelOpen");
+	expect(source).toContain("inspectorOpen && scope.mapPanelOpen && scope.tablePanelOpen");
 	expect(source).toContain("grid min-h-0 min-w-0 flex-1");
 	expect(source).toContain("grid-rows-[minmax(400px,1fr)_minmax(400px,1fr)]");
 	expect(source).toContain(
@@ -1168,19 +1168,21 @@ describe("svelte resource browser model", () => {
 			"utf8",
 		);
 
-		expect(source).toContain("initialOwnershipMapOpen(initialPathState, getSettingsSnapshot().showOwnershipMapByDefault)");
-		expect(source).toContain("initialOwnershipMapOpen(pathState, getSettingsSnapshot().showOwnershipMapByDefault)");
+		const scope = readFileSync("src/features/resources/resourceBrowserScope.svelte.ts", "utf8");
+		const map = readFileSync("src/features/resources/ResourceBrowserMapPane.svelte", "utf8");
+		expect(scope).toContain("initialOwnershipMapOpen(options.initialPathState, getSettingsSnapshot().showOwnershipMapByDefault)");
+		expect(scope).toContain("initialOwnershipMapOpen(pathState, getSettingsSnapshot().showOwnershipMapByDefault)");
 		expect(source).toContain("settingsStore");
 		expect(source).toContain("$settingsStore.showFullTopologyOnSelection");
 		expect(source).toContain("{showFullTopologyOnSelection}");
 		expect(source).toContain("onMapToggle={closeMapPanel}");
-		expect(source).toContain('aria-label="Show ownership map"');
-		expect(source).toContain("[writing-mode:vertical-rl]");
+		expect(map).toContain('aria-label="Show ownership map"');
+		expect(map).toContain("[writing-mode:vertical-rl]");
 	});
 
 	test("renders Svelte sortable resource table headers for data columns", () => {
 		const source = readFileSync(
-			"src/features/resources/ResourceBrowser.svelte",
+			"src/features/resources/ResourceTablePane.svelte",
 			"utf8",
 		);
 
@@ -1267,10 +1269,12 @@ describe("svelte resource browser model", () => {
 		const surfacesSource = readFileSync("src/features/incidents/IncidentView.svelte", "utf8");
 
 		expect(browserSource).toContain('initialHealthFilter = "all"');
-		expect(browserSource).toContain("healthFilter: initialHealthFilter");
-		expect(browserSource).toContain("healthFilter = pathState?.healthFilter ?? initialHealthFilter");
+		const scope = readFileSync("src/features/resources/resourceBrowserScope.svelte.ts", "utf8");
+		const navigation = readFileSync("src/app/svelte/workspaceNavigationController.svelte.ts", "utf8");
+		expect(scope).toContain("healthFilter: options.initialHealthFilter");
+		expect(scope).toContain("healthFilter = pathState?.healthFilter ?? options.initialHealthFilter");
 		expect(shellSource).toContain("resourceInitialHealthFilter");
-		expect(shellSource).toContain('initialHealthFilter: HealthFilter = "all"');
+		expect(navigation).toContain('initialHealthFilter: HealthFilter = "all"');
 		expect(shellSource).toContain("initialHealthFilter={resourceInitialHealthFilter}");
 		expect(surfacesSource).toContain("incidentResourcesHealthFilterFor(incidentFilter)");
 		expect(surfacesSource).toContain(

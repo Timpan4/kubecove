@@ -1,5 +1,4 @@
 <script lang="ts">
-	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		AlertTriangle,
 		Check,
@@ -8,7 +7,6 @@
 		KeyRound,
 		Link2,
 		RefreshCw,
-		Search,
 		ShieldCheck,
 	} from "lucide-svelte";
 	import FriendlyError from "@/components/FriendlyError.svelte";
@@ -18,21 +16,17 @@
 		Button,
 		Card,
 		CardContent,
-		Input,
 	} from "@/components/ui/svelte";
-	import { createTauriClient, reviewRbacAccess } from "@/lib/tauri";
 	import type {
-		RbacAccessReviewRequest,
-		RbacAccessReviewResult,
 		RbacBindingSummary,
 		RbacInspectionSummary,
 		RbacNamespaceAccessSummary,
-		RbacRiskIndicator,
 		RbacRoleSummary,
 		ServiceAccountSummary,
 	} from "@/lib/types";
 	import { cnfast } from "@/lib/utils";
 	import {
+		buildRbacBindingIndex,
 		cockpitItems,
 		filterCockpitItems,
 		ruleText,
@@ -42,34 +36,18 @@
 		type RbacRiskBucket,
 	} from "./cockpitModel";
 	import type { RbacVerifierHandoff } from "./handoff";
-	import { grantSummary, identityDefaults, inspectorIdentity, observedPermissions, reviewIdentity, type InspectorIdentity } from "./observedPermissions";
+	import { grantSummary, identityLabel, observedPermissions, type InspectorIdentity } from "./observedPermissions";
+	import RbacQueueFilters from "./RbacQueueFilters.svelte";
+	import RbacReviewQueue from "./RbacReviewQueue.svelte";
+	import RbacVerifier from "./RbacVerifier.svelte";
+	import { rbacVerifier } from "./rbacVerifier.svelte";
 	import RbacReviewBadge from "./RbacReviewBadge.svelte";
 	import RbacReviewPanel from "./RbacReviewPanel.svelte";
 	import type { RbacReviewRecord } from "./reviewModel";
-	import { riskSummaryLabel } from "./risk";
-	import { bindingSources, queueSummary, queueTags } from "./queueModel";
+	import { riskBadgeClass, riskRailClass, riskSummaryLabel } from "./risk";
+	import { bindingSources } from "./queueModel";
 	import type { RbacView } from "./surfaceModel";
 
-	const categories: RbacView[] = [
-		"Namespace Access",
-		"Roles",
-		"Cluster Roles",
-		"Bindings",
-		"Service Accounts",
-	];
-	const riskFilters: Array<[RbacRiskBucket, string]> = [
-		["all", "All"],
-		["high", "High"],
-		["medium", "Medium"],
-		["low", "Low"],
-		["none", "No flags"],
-		["unknown", "Unknown"],
-	];
-	const identityOptions: Array<[InspectorIdentity["kind"], string]> = [
-		["serviceAccount", "ServiceAccount"],
-		["user", "User"],
-		["group", "Group"],
-	];
 
 	let {
 		query,
@@ -105,41 +83,11 @@
 		onReviewRecordsChange: (records: RbacReviewRecord[]) => void;
 	} = $props();
 
-	const client = createTauriClient();
 	let bucket = $state<RbacRiskBucket>("all");
 	let selectedKey = $state<string | undefined>();
 	let search = $state("");
 	let visible = $state(50);
 	let copied = $state(false);
-	// Which identity the verifier checks: the selected object, the manual form, or a drilled-in subject.
-	type IdentitySource =
-		| { kind: "selection" }
-		| { kind: "manual" }
-		| { kind: "subject"; identity: InspectorIdentity };
-	type SubmittedReview = { timestamp: string; identity: string; target: string };
-	type AccessReview =
-		| { kind: "none" }
-		| { kind: "checking"; submitted: SubmittedReview }
-		| { kind: "done"; submitted: SubmittedReview; result: RbacAccessReviewResult }
-		| { kind: "failed"; submitted: SubmittedReview; message: string };
-	let identitySource = $state<IdentitySource>({ kind: "selection" });
-	let handoffPromoted = $state(false);
-	// Raw state keeps object identity, which verify() compares to drop stale results.
-	let accessReview = $state.raw<AccessReview>({ kind: "none" });
-	const reviewing = $derived(accessReview.kind === "checking");
-	let verb = $state("get");
-	let resource = $state("pods");
-	let apiGroup = $state("");
-	let subresource = $state("");
-	let resourceName = $state("");
-	let namespace = $state("");
-	let targetKind = $state<"resource" | "nonResource">("resource");
-	let nonResourceUrl = $state("/healthz");
-	let handoffKey = $state("");
-	let identityKind = $state<"serviceAccount" | "user" | "group">("user");
-	let identityName = $state("");
-	let identityNamespace = $state("default");
-	let identityGroups = $state("system:authenticated");
 
 	$effect(() => {
 		if (!initialState) return;
@@ -147,34 +95,10 @@
 		selectedKey = initialState.selectedObjectKey;
 	});
 
-	$effect(() => {
-		const handoff = verifierHandoff;
-		if (!handoff) return;
-		const nextKey = JSON.stringify(handoff);
-		if (handoffKey === nextKey) return;
-		handoffKey = nextKey;
-		handoffPromoted = true;
-		const handoffIdentity = inspectorIdentity(handoff.identity);
-		identitySource = handoffIdentity ? { kind: "subject", identity: handoffIdentity } : { kind: "manual" };
-		if (handoff.target.kind === "resource") {
-			targetKind = "resource";
-			verb = handoff.target.verb;
-			resource = handoff.target.resource;
-			apiGroup = handoff.target.apiGroup ?? "";
-			namespace = handoff.target.namespace ?? "";
-			subresource = handoff.target.subresource ?? "";
-			resourceName = handoff.target.name ?? "";
-		} else {
-			targetKind = "nonResource";
-			verb = handoff.target.verb;
-			nonResourceUrl = handoff.target.nonResourceUrl;
-		}
-		accessReview = { kind: "none" };
-		onVerifierHandoffConsumed?.();
-	});
 
 	const data = $derived(query.data);
-	const allItems = $derived(data ? cockpitItems(data, view) : []);
+	const bindingIndex = $derived(data ? buildRbacBindingIndex(data) : null);
+	const allItems = $derived(data && bindingIndex ? cockpitItems(data, view, bindingIndex) : []);
 	const items = $derived(filterCockpitItems(allItems, bucket, search));
 	const selected = $derived(selectedCockpitItem(items, selectedKey));
 	const coverage = $derived(data?.coverage ?? []);
@@ -209,64 +133,24 @@
 				}
 			: null,
 	);
-	const activeIdentity = $derived<InspectorIdentity>(
-		identitySource.kind === "subject"
-			? identitySource.identity
-			: identitySource.kind === "selection" && selectedIdentity
-				? selectedIdentity
-				: manualIdentityValue(),
-	);
+	const verifier = rbacVerifier({
+		data: () => data,
+		selectedIdentity: () => selectedIdentity,
+		handoff: () => verifierHandoff,
+		onHandoffConsumed: () => onVerifierHandoffConsumed?.(),
+	});
+	const activeIdentity = $derived(verifier.activeIdentity);
 	const observed = $derived(
-		data && activeIdentity.name
-			? observedPermissions(data, activeIdentity)
+		data && bindingIndex && activeIdentity.name
+			? observedPermissions(data, activeIdentity, bindingIndex)
 			: null,
 	);
 	const selectedSources = $derived(
-		data && selected ? bindingSources(data, selected) : [],
+		bindingIndex && selected ? bindingSources(bindingIndex, selected) : [],
 	);
-	const fingerprint = $derived(
-		JSON.stringify({
-			cluster: data?.cluster,
-			refreshedAt: data?.refreshedAt,
-			activeIdentity,
-			targetKind,
-			verb,
-			apiGroup,
-			resource,
-			namespace,
-			subresource,
-			resourceName,
-			nonResourceUrl,
-		}),
-	);
-
-	$effect(() => {
-		void fingerprint;
-		accessReview = { kind: "none" };
-	});
-
-	function manualIdentityValue(): InspectorIdentity {
-		if (identityKind === "serviceAccount") {
-			return {
-				kind: "serviceAccount",
-				name: identityName.trim(),
-				namespace: identityNamespace.trim(),
-			};
-		}
-		if (identityKind === "group") {
-			return { kind: "group", name: identityName.trim() };
-		}
-		return {
-			kind: "user",
-			name: identityName.trim(),
-			groups: uniqueGroups(identityGroups),
-		};
-	}
-
 	function select(key: string) {
 		selectedKey = key;
-		identitySource = { kind: "selection" };
-		handoffPromoted = false;
+		verifier.useSelection(true);
 		onStateChange?.({ riskBucket: bucket, selectedObjectKey: key });
 	}
 
@@ -275,7 +159,7 @@
 		search = "";
 		visible = 50;
 		selectedKey = undefined;
-		identitySource = { kind: "selection" };
+		verifier.useSelection();
 		onStateChange?.({ riskBucket: bucket, selectedObjectKey: undefined });
 		onViewChange?.(next);
 	}
@@ -286,115 +170,11 @@
 		onStateChange?.({ riskBucket: next, selectedObjectKey: selectedKey });
 	}
 
-	function beginIdentity(kind: "serviceAccount" | "user" | "group" = "user") {
-		identitySource = { kind: "manual" };
-		identityKind = kind;
-		identityName = "";
-		identityNamespace = "default";
-		identityGroups = identityDefaults(kind).join(", ");
-	}
-
-	// An identity typed while the selection falls back to the form makes it manual, so the form stays editable.
-	function editManualIdentity() {
-		identitySource = { kind: "manual" };
-	}
-
-	function inspectSubject(subject: {
-		kind: string;
-		name: string;
-		namespace?: string;
-	}) {
-		identitySource = {
-			kind: "subject",
-			identity: {
-				kind:
-					subject.kind === "ServiceAccount"
-						? "serviceAccount"
-						: subject.kind === "Group"
-							? "group"
-							: "user",
-				name: subject.name,
-				namespace: subject.namespace,
-			},
-		};
-	}
-
 	function copyEvidence() {
 		if (!selected) return;
 		void navigator.clipboard?.writeText(JSON.stringify(selected.item, null, 2));
 		copied = true;
 		setTimeout(() => (copied = false), 1500);
-	}
-
-	async function verify() {
-		if (
-			!data ||
-			!activeIdentity.name ||
-			!verb.trim() ||
-			(targetKind === "resource"
-				? !resource.trim()
-				: !nonResourceUrl.trim().startsWith("/"))
-		) {
-			return;
-		}
-		const identity = reviewIdentity(activeIdentity);
-		const target =
-			targetKind === "resource"
-				? {
-						kind: "resource" as const,
-						verb: verb.trim(),
-						resource: resource.trim(),
-						apiGroup: apiGroup.trim(),
-						namespace: namespace.trim() || null,
-						subresource: subresource.trim() || undefined,
-						name: resourceName.trim() || undefined,
-					}
-				: {
-						kind: "nonResource" as const,
-						verb: verb.trim(),
-						nonResourceUrl: nonResourceUrl.trim(),
-					};
-		const request: RbacAccessReviewRequest = {
-			clusterContext: data.cluster,
-			identity,
-			target,
-			requestId: "rbac-review",
-			cancelScope: "rbac-review",
-		};
-		const submitted: SubmittedReview = {
-			timestamp: new Date().toISOString(),
-			identity: JSON.stringify(identity),
-			target: JSON.stringify(target),
-		};
-		// Any input change resets accessReview, so a result for an older request is dropped here.
-		const checking: AccessReview = { kind: "checking", submitted };
-		accessReview = checking;
-		try {
-			const result = await reviewRbacAccess(client, request);
-			if (accessReview === checking) accessReview = { kind: "done", submitted, result };
-		} catch (error) {
-			if (accessReview === checking) {
-				accessReview = {
-					kind: "failed",
-					submitted,
-					message: error instanceof Error ? error.message : String(error),
-				};
-			}
-		}
-	}
-
-	function categoryCount(inspection: RbacInspectionSummary, category: RbacView) {
-		if (category === "Namespace Access") return inspection.namespaceAccess.length;
-		if (category === "Roles") return inspection.roles.length;
-		if (category === "Cluster Roles") return inspection.clusterRoles.length;
-		if (category === "Bindings") {
-			return inspection.roleBindings.length + inspection.clusterRoleBindings.length;
-		}
-		return inspection.serviceAccounts.length;
-	}
-
-	function riskCount(next: RbacRiskBucket) {
-		return filterCockpitItems(allItems, next, "").length;
 	}
 
 	function selectedReach(): string {
@@ -404,16 +184,6 @@
 			observed.grants.map((grant) => grant.namespace).filter(Boolean),
 		);
 		return `${namespaces.size} namespace${namespaces.size === 1 ? "" : "s"}`;
-	}
-
-	function identityLabel(identity: InspectorIdentity): string {
-		if (!identity.name) return "No identity selected";
-		if (identity.kind === "serviceAccount") {
-			return `system:serviceaccount:${identity.namespace ?? "default"}:${identity.name}`;
-		}
-		return identity.kind === "group"
-			? `Group/${identity.name}`
-			: `User/${identity.name}`;
 	}
 
 	function sourceLabel(binding: RbacBindingSummary): string {
@@ -465,27 +235,6 @@
 		return "roleBindings" in item;
 	}
 
-	function riskRailClass(risks: RbacRiskIndicator[]): string {
-		if (risks.some((risk) => risk.level === "high")) return "border-l-destructive";
-		if (risks.some((risk) => risk.level === "medium")) return "border-l-amber-500";
-		if (risks.some((risk) => risk.level === "low")) return "border-l-sky-500";
-		if (risks.some((risk) => risk.level === "unknown")) return "border-l-muted-foreground";
-		return "border-l-emerald-500";
-	}
-
-	function riskBadgeClass(risks: RbacRiskIndicator[]): string {
-		if (risks.some((risk) => risk.level === "high")) {
-			return "border-destructive/35 bg-destructive/10 text-destructive";
-		}
-		if (risks.some((risk) => risk.level === "medium")) {
-			return "border-amber-500/35 bg-amber-500/10 text-amber-600 dark:text-amber-300";
-		}
-		if (risks.some((risk) => risk.level === "unknown")) {
-			return "border-muted-foreground/35 bg-muted text-muted-foreground";
-		}
-		return "";
-	}
-
 	function coverageClass(status: "complete" | "partial" | "unavailable") {
 		if (status === "complete") return "text-emerald-600 dark:text-emerald-300";
 		if (status === "partial") return "text-amber-600 dark:text-amber-300";
@@ -500,16 +249,6 @@
 		return `refreshed ${new Date(value).toLocaleString()}`;
 	}
 
-	function uniqueGroups(value: string): string[] {
-		return [
-			...new Set(
-				value
-					.split(",")
-					.map((group) => group.trim())
-					.filter(Boolean),
-			),
-		];
-	}
 </script>
 
 <SurfaceFrame
@@ -520,7 +259,7 @@
 	errorLabel="RBAC inspection unavailable"
 >
 	{@const inspection = data}
-	{#if inspection}
+	{#if inspection && bindingIndex}
 		<div class="flex min-h-0 flex-col gap-3">
 			<div class="flex flex-wrap items-center gap-2">
 				<Badge variant="outline" class="border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
@@ -555,51 +294,16 @@
 						<Button size="sm" variant="outline" onclick={() => query.refetch?.()}>
 							<RefreshCw data-icon /> Refresh
 						</Button>
-						<Button size="sm" onclick={() => beginIdentity()}>
+						<Button size="sm" onclick={() => verifier.beginIdentity()}>
 							<ShieldCheck data-icon /> Investigate identity
 						</Button>
 					</div>
 				</CardContent>
 			</Card>
 
-			<Card size="sm" elevation="flat" class="gap-0 py-0">
-				<CardContent class="flex flex-col gap-2 px-2 py-2 xl:flex-row xl:items-center">
-					<div class="flex min-w-0 items-center gap-1 overflow-x-auto" aria-label="RBAC categories">
-						<span class="shrink-0 px-1 text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Explore</span>
-						{#each categories as category}
-							<Button
-								size="sm"
-								variant={view === category ? "secondary" : "ghost"}
-								class={cnfast("shrink-0", view === category && "text-foreground")}
-								aria-pressed={view === category}
-								onclick={() => setView(category)}
-							>
-								{category}
-								<Badge variant="outline" class="h-4 px-1.5 tabular-nums">{categoryCount(inspection, category)}</Badge>
-							</Button>
-						{/each}
-					</div>
-					<div class="flex min-w-0 flex-1 flex-wrap items-center gap-1 xl:justify-end">
-						<span class="px-1 text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Risk</span>
-						{#each riskFilters as [riskBucket, label]}
-							<Button
-								size="xs"
-								variant={bucket === riskBucket ? "default" : "outline"}
-								aria-pressed={bucket === riskBucket}
-								onclick={() => setBucket(riskBucket)}
-							>
-								{label} <span class="tabular-nums opacity-75">{riskCount(riskBucket)}</span>
-							</Button>
-						{/each}
-						<div class="relative min-w-48 flex-1 xl:max-w-72">
-							<Search class="pointer-events-none absolute left-2 top-1.5 size-3.5 text-muted-foreground" />
-							<Input class="pl-7" bind:value={search} placeholder={`Search ${view.toLowerCase()}…`} />
-						</div>
-					</div>
-				</CardContent>
-			</Card>
+			<RbacQueueFilters {inspection} {view} {allItems} {bucket} bind:search {setView} {setBucket} />
 
-			{#if handoffPromoted}
+			{#if verifier.handoffPromoted}
 				<div class="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
 					<AlertTriangle class="size-4 text-amber-600 dark:text-amber-300" />
 					<div class="mr-auto">
@@ -613,50 +317,7 @@
 			{/if}
 
 			<div class="grid min-h-[calc(100vh-18rem)] gap-3 xl:grid-cols-[minmax(21rem,2fr)_minmax(35rem,3fr)]">
-				<Card size="sm" elevation="flat" class="min-h-0 gap-0 py-0">
-					<div class="flex items-start gap-3 border-b border-border px-3 py-3">
-						<div class="min-w-0 flex-1">
-							<p class="text-sm font-semibold">{view === "Service Accounts" ? "Service account review queue" : `${view} review queue`}</p>
-							<p class="mt-0.5 text-xs text-muted-foreground">Highest risk · most findings · namespace and name</p>
-						</div>
-						<Badge variant="secondary" class="tabular-nums">{items.length}</Badge>
-					</div>
-					<div class="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-						{#each items.slice(0, visible) as item (item.key)}
-							<button
-								class={cnfast(
-									"w-full rounded-md border border-l-[3px] bg-card p-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[.995] motion-reduce:transition-none",
-									riskRailClass(item.risks),
-									selected?.key === item.key && "border-primary/70 bg-primary/5 ring-1 ring-primary/40",
-								)}
-								aria-pressed={selected?.key === item.key}
-								onclick={() => select(item.key)}
-							>
-								<div class="flex items-start gap-2">
-									<div class="min-w-0 flex-1">
-										<p class="truncate text-sm font-semibold">{item.kind}/{item.name}</p>
-										<p class="truncate text-xs text-muted-foreground">{item.namespace ?? "cluster scope"}</p>
-									</div>
-									<div class="flex shrink-0 flex-col items-end gap-1">
-										<Badge variant="outline" class={riskBadgeClass(item.risks)}>{riskSummaryLabel(item.risks)}</Badge>
-										<RbacReviewBadge {inspection} entry={item} records={reviewRecords} />
-									</div>
-								</div>
-								<div class="mt-2 flex flex-wrap gap-1">
-									{#each queueTags(inspection, item) as tag}
-										<Badge variant="outline" class="h-4 rounded-sm px-1.5 font-normal">{tag}</Badge>
-									{/each}
-								</div>
-								<p class="mt-2 truncate text-xs text-muted-foreground">{queueSummary(item)}</p>
-							</button>
-						{:else}
-							<div class="p-6 text-center text-sm text-muted-foreground">No matching RBAC objects.</div>
-						{/each}
-						{#if visible < items.length}
-							<Button class="w-full" variant="outline" size="sm" onclick={() => (visible += 50)}>Load 50 more</Button>
-						{/if}
-					</div>
-				</Card>
+				<RbacReviewQueue {inspection} {bindingIndex} {view} {items} {selected} bind:visible {select} {reviewRecords} />
 
 				<Card size="sm" elevation="flat" class="min-h-0 gap-0 py-0">
 					<div class="flex flex-wrap items-start gap-3 border-b border-border px-3 py-3">
@@ -671,7 +332,7 @@
 						</div>
 						{#if selected}
 							<Badge variant="outline" class={riskBadgeClass(selected.risks)}>{riskSummaryLabel(selected.risks)}</Badge>
-							<RbacReviewBadge {inspection} entry={selected} records={reviewRecords} />
+							<RbacReviewBadge {inspection} {bindingIndex} entry={selected} records={reviewRecords} />
 						{/if}
 						<Button size="sm" variant="outline" onclick={copyEvidence} disabled={!selected}>
 							{#if copied}<Check data-icon /> Copied{:else}<Clipboard data-icon /> Copy evidence{/if}
@@ -746,7 +407,7 @@
 											</div>
 											<div class="divide-y divide-border px-2">
 												{#each selected.item.subjects as subject}
-													<button class="flex w-full items-center gap-2 py-2 text-left text-xs hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onclick={() => inspectSubject(subject)}>
+													<button class="flex w-full items-center gap-2 py-2 text-left text-xs hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onclick={() => verifier.inspectSubject(subject)}>
 														<span class="min-w-0 flex-1 truncate">{subject.kind}/{subject.namespace ? `${subject.namespace}/` : ""}{subject.name}</span>
 														<span class="text-muted-foreground">Investigate</span><ChevronRight class="size-3" />
 													</button>
@@ -800,82 +461,13 @@
 								{#if selected}
 									<RbacReviewPanel
 										{inspection}
+										{bindingIndex}
 										entry={selected}
 										records={reviewRecords}
 										onRecordsChange={onReviewRecordsChange}
 									/>
 								{/if}
-								<section class={cnfast("rounded-md border bg-card", handoffPromoted && "border-amber-500/50 ring-1 ring-amber-500/20")}>
-									<div class="border-b border-border px-3 py-2.5">
-										<div class="flex items-center gap-2">
-											<ShieldCheck class="size-4 text-primary" />
-											<p class="text-sm font-semibold">Verify exact action</p>
-										</div>
-										<p class="mt-1 text-xs text-muted-foreground">Live SubjectAccessReview. Manual only.</p>
-									</div>
-									<div class="space-y-2.5 p-3">
-										{#if identitySource.kind !== "manual" && activeIdentity.name}
-											<div class="rounded-sm border bg-muted/25 p-2">
-												<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Identity</p>
-												<p class="mt-1 break-all text-xs font-medium">{identityLabel(activeIdentity)}</p>
-												<Button class="mt-2" size="xs" variant="outline" onclick={() => beginIdentity(activeIdentity.kind)}>Change identity</Button>
-											</div>
-										{:else}
-											<div class="flex flex-wrap gap-1">
-											{#each identityOptions as identityOption}
-												<Button size="xs" variant={identityKind === identityOption[0] ? "default" : "outline"} onclick={() => beginIdentity(identityOption[0])}>{identityOption[1]}</Button>
-												{/each}
-											</div>
-											<Input bind:value={identityName} oninput={editManualIdentity} aria-label="Identity name" placeholder={identityKind === "group" ? "Group" : "Identity name"} />
-											{#if identityKind === "serviceAccount"}
-												<Input bind:value={identityNamespace} oninput={editManualIdentity} aria-label="ServiceAccount namespace" placeholder="Namespace" />
-											{:else if identityKind === "user"}
-												<Input bind:value={identityGroups} oninput={editManualIdentity} aria-label="Groups" placeholder="Groups, comma-separated" />
-											{/if}
-										{/if}
-
-										<div class="flex gap-1">
-											<Button size="xs" variant={targetKind === "resource" ? "default" : "outline"} onclick={() => (targetKind = "resource")}>Resource</Button>
-											<Button size="xs" variant={targetKind === "nonResource" ? "default" : "outline"} onclick={() => (targetKind = "nonResource")}>Non-resource</Button>
-										</div>
-										<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-											<Input bind:value={verb} aria-label="Verb" placeholder="Verb" />
-											{#if targetKind === "resource"}
-												<Input bind:value={resource} aria-label="Resource" placeholder="Resource" />
-												<Input bind:value={apiGroup} aria-label="API group, blank for core" placeholder="API group (core)" />
-												<Input bind:value={namespace} aria-label="Namespace, blank for cluster" placeholder="Namespace (cluster if blank)" />
-												<Input bind:value={subresource} aria-label="Subresource, optional" placeholder="Subresource" />
-												<Input bind:value={resourceName} aria-label="Resource name, optional" placeholder="Resource name" />
-											{:else}
-												<Input bind:value={nonResourceUrl} aria-label="Non-resource URL" placeholder="/path" />
-											{/if}
-										</div>
-										<Button
-											class="w-full"
-											size="sm"
-											disabled={reviewing || !activeIdentity.name || !verb.trim() || (targetKind === "resource" ? !resource.trim() : !nonResourceUrl.trim().startsWith("/"))}
-											onclick={verify}
-										>
-											<ShieldCheck data-icon /> {reviewing ? "Verifying…" : "Verify access"}
-										</Button>
-										<p class="text-[0.625rem] text-muted-foreground">Result is never inferred from observed grants.</p>
-									</div>
-								</section>
-
-								{#if accessReview.kind !== "none"}
-									{@const submitted = accessReview.submitted}
-									{@const review = accessReview.kind === "done" ? accessReview.result : null}
-									<section class="rounded-md border p-3">
-										<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Latest verification</p>
-										{#if review}
-											<p class={cnfast("mt-2 text-sm font-semibold capitalize", review.outcome === "allowed" && "text-emerald-600 dark:text-emerald-300", review.outcome === "denied" && "text-destructive", review.outcome === "noOpinion" && "text-amber-600 dark:text-amber-300")}>{review.outcome === "noOpinion" ? "No opinion" : review.outcome}</p>
-											{#if review.reason}<p class="mt-1 text-xs text-muted-foreground">{review.reason}</p>{/if}
-											{#if review.evaluationError}<p class="mt-1 text-xs text-destructive">{review.evaluationError}</p>{/if}
-										{/if}
-										{#if accessReview.kind === "failed"}<p class="mt-2 text-xs text-destructive">Verifier unavailable · {accessReview.message}</p>{/if}
-										<p class="mt-2 break-words text-[0.625rem] text-muted-foreground">{inspection.cluster} · <TimestampText value={submitted.timestamp} precision="second" /><br />{submitted.identity}<br />{submitted.target}</p>
-									</section>
-								{/if}
+								<RbacVerifier model={verifier} cluster={inspection.cluster} />
 
 								<section class="rounded-md border p-3">
 									<p class="text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground">Input coverage</p>

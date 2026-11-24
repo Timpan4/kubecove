@@ -209,7 +209,8 @@ pub fn panel() -> Div {
 /// Badge base: `inline-flex h-5 items-center justify-center overflow-hidden
 /// whitespace-nowrap px-2 text-[10px] font-medium`. Overflowing text stays
 /// centered and clips on both sides, as in the web.
-fn badge_frame(border: Hsla, background: Hsla) -> Div {
+/// The `Badge` box: `h-5 rounded-full border px-2`.
+pub fn badge_frame(border: Hsla, background: Hsla) -> Div {
     div()
         .flex()
         .flex_none()
@@ -231,10 +232,10 @@ fn badge_text(content: impl Into<SharedString>, foreground: Hsla) -> Div {
         .text_color(foreground)
 }
 
-fn badge(
-    border: Hsla,
-    background: Hsla,
-    foreground: Hsla,
+/// `Badge` (`text-[10px] font-medium`) in explicit (border, background,
+/// foreground) colors.
+pub fn badge(
+    (border, background, foreground): (Hsla, Hsla, Hsla),
     content: impl Into<SharedString>,
 ) -> Div {
     badge_frame(border, background).child(badge_text(content, foreground).flex_none())
@@ -243,9 +244,11 @@ fn badge(
 /// `Badge variant="outline"`.
 pub fn outline_badge(content: impl Into<SharedString>) -> Div {
     badge(
-        Tokens::border(),
-        Tokens::input().opacity(0.3),
-        Tokens::foreground(),
+        (
+            Tokens::border(),
+            Tokens::input().opacity(0.3),
+            Tokens::foreground(),
+        ),
         content,
     )
 }
@@ -273,7 +276,7 @@ pub enum Tone {
 
 /// Status badges from `src/components/status-badge-styles.ts`.
 pub fn status_badge(tone: Tone, content: impl Into<SharedString>) -> Div {
-    let (border, background, foreground) = match tone {
+    let colors = match tone {
         Tone::Success => (
             Palette::emerald500(0.3),
             Palette::emerald500(0.15),
@@ -295,7 +298,7 @@ pub fn status_badge(tone: Tone, content: impl Into<SharedString>) -> Div {
             Tokens::foreground(),
         ),
     };
-    badge(border, background, foreground, content)
+    badge(colors, content)
 }
 
 /// `Button variant="outline"` body; the caller adds id, size and handlers.

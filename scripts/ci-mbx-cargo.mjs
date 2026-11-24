@@ -6,7 +6,7 @@ import { join } from "node:path";
 const { GITHUB_PATH, GITHUB_ENV } = process.env;
 if (!GITHUB_PATH || !GITHUB_ENV) throw new Error("Cargo activation requires a GitHub Actions job");
 
-// mbx 1.29.2 installs its Cargo shim under the platform's local data directory.
+// mbx 1.30.0 installs its Cargo shim under the platform's local data directory.
 let dataDirectory;
 if (process.platform === "win32") {
   dataDirectory = process.env.LOCALAPPDATA;

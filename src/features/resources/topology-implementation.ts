@@ -10,6 +10,7 @@ import type {
 import { ownershipNodeHandles } from "./topology-edge-layer";
 import {
 	buildTopologyGraph,
+	type TopologyGraph,
 	selectedTopologyPath,
 	selectedTopologyRootSubtree,
 } from "./topology-graph";
@@ -22,6 +23,7 @@ import {
 	NODE_WIDTH,
 	topologyColumnDepth,
 	topologyLayoutOrder,
+	topologySortKeys,
 } from "./topology-layout";
 import { buildStandaloneGroups } from "./topology-standalone-groups";
 import {
@@ -200,9 +202,10 @@ export function buildFlowTopology(
 	mode: TopologyMode = "ownership",
 	options: BuildFlowTopologyOptions = {},
 ): FlowTopology {
+	const graph = buildTopologyGraph(topology);
 	return applyFlowTopologySelectionWithIndex(
-		buildFlowTopologyLayout(topology, selectedNodeId, mode, options),
-		buildFlowTopologySelectionIndex(topology),
+		layoutFlowTopologyGraph(graph, selectedNodeId, mode, options),
+		{ graph },
 		selectedNodeId,
 	);
 }
@@ -213,16 +216,20 @@ export function buildFlowTopologyLayout(
 	mode: TopologyMode = "ownership",
 	options: BuildFlowTopologyOptions = {},
 ): FlowTopology {
-	const graph = buildTopologyGraph(topology);
-	const depthById = compactDirectEdgeDepths(graph, topologyColumnDepth(topology));
-	const orderById = topologyLayoutOrder(graph.nodes, topology, depthById);
-	const positions = buildTopologyPositions(
-		graph,
-		depthById,
-		orderById,
-		SVELTE_TOPOLOGY_LAYOUT,
-	);
-	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
+	return layoutFlowTopologyGraph(buildTopologyGraph(topology), selectedNodeIdForExpansion, mode, options);
+}
+
+export function layoutFlowTopologyGraph(
+	graph: TopologyGraph,
+	selectedNodeIdForExpansion: string | null,
+	mode: TopologyMode = "ownership",
+	options: BuildFlowTopologyOptions = {},
+): FlowTopology {
+	const sortKeys = topologySortKeys(graph);
+	const depthById = compactDirectEdgeDepths(graph, topologyColumnDepth(graph));
+	const orderById = topologyLayoutOrder(graph, depthById, sortKeys);
+	const compareNodes = compareNodesByLayoutOrder(orderById, depthById, sortKeys.compare);
+	const positions = buildTopologyPositions(graph, depthById, compareNodes, SVELTE_TOPOLOGY_LAYOUT);
 	const standaloneGroups =
 		mode === "networkFlow"
 			? {
@@ -341,9 +348,7 @@ export function buildFlowTopologyLayout(
 	return { nodes: [...groupNodes, ...nodes], edges };
 }
 
-export function buildFlowTopologySelectionIndex(
-	topology: ResourceTopology,
-): FlowTopologySelectionIndex {
+export function buildFlowTopologySelectionIndex(topology: ResourceTopology): FlowTopologySelectionIndex {
 	return { graph: buildTopologyGraph(topology) };
 }
 
@@ -464,26 +469,16 @@ export function getTopologyTranslateExtent(
 	nodes: FlowTopologyNode[],
 	viewportSize: OwnershipMapViewportSize,
 ): CoordinateExtent {
-	if (viewportSize.width <= 0 || viewportSize.height <= 0 || nodes.length === 0) {
-		return ZERO_TRANSLATE_EXTENT;
-	}
+	return topologyTranslateExtentFromBounds(getFlowTopologyBounds(nodes), viewportSize);
+}
 
+export function topologyTranslateExtentFromBounds(
+	bounds: FlowTopologyBounds | null,
+	viewportSize: OwnershipMapViewportSize,
+): CoordinateExtent {
+	if (!bounds || viewportSize.width <= 0 || viewportSize.height <= 0) return ZERO_TRANSLATE_EXTENT;
+	const { left, top, right, bottom } = bounds;
 	const padding = ownershipMapBoundaryPadding(viewportSize);
-	const nodesById = new Map(nodes.map((node) => [node.id, node]));
-	let left = Number.POSITIVE_INFINITY;
-	let top = Number.POSITIVE_INFINITY;
-	let right = Number.NEGATIVE_INFINITY;
-	let bottom = Number.NEGATIVE_INFINITY;
-
-	for (const node of nodes) {
-		const position = absoluteTopologyNodePosition(nodesById, node);
-		left = Math.min(left, position.x);
-		top = Math.min(top, position.y);
-		right = Math.max(right, position.x + nodeDimension(node, "width"));
-		bottom = Math.max(bottom, position.y + nodeDimension(node, "height"));
-	}
-
-	if (![left, top, right, bottom].every(Number.isFinite)) return ZERO_TRANSLATE_EXTENT;
 	const zoomSlack = {
 		x: viewportSize.width / SVELTE_MIN_ZOOM,
 		y: viewportSize.height / SVELTE_MIN_ZOOM,
@@ -494,15 +489,14 @@ export function getTopologyTranslateExtent(
 	];
 }
 
-export function topologyViewportFitKey(
+function topologyViewportFitKey(
 	nodes: FlowTopologyNode[],
 	nodesToFit: FlowTopologyNode[],
 	edges: FlowTopologyEdge[],
 	selectedNodeId: string | null,
-	viewportKey: string,
+	fittingSelection: boolean,
 ): string {
 	const nodesById = new Map(nodes.map((node) => [node.id, node]));
-	const fittingSelection = nodesToFit.some((node) => node.data.selected || node.data.connected);
 	const nodeParts = nodesToFit
 		.map((node) => {
 			const position = absoluteTopologyNodePosition(nodesById, node);
@@ -517,13 +511,11 @@ export function topologyViewportFitKey(
 			].join(":");
 		})
 		.sort();
-	const edgeParts = edges.map((edge) => edge.id).sort();
 	return [
 		fittingSelection ? "selected" : "all",
 		selectedNodeId ?? "",
-		viewportKey,
 		nodeParts.join("|"),
-		fittingSelection ? "" : edgeParts.join("|"),
+		fittingSelection ? "" : edges.map((edge) => edge.id).sort().join("|"),
 	].join("::");
 }
 
@@ -533,6 +525,38 @@ export interface FlowTopologyFitPlan {
 	focused: boolean;
 }
 
+export function prepareFlowTopologyFit(
+	nodes: FlowTopologyNode[],
+	edges: FlowTopologyEdge[],
+	selectedNodeId: string | null,
+) {
+	const selectedPathNodes = selectedNodeId
+		? nodes.filter((node) => node.data.selected || node.data.connected)
+		: [];
+	const focused = selectedPathNodes.length > 0;
+	const nodesToFit = focused ? selectedPathNodes : nodes;
+	const bounds = getFlowTopologyBounds(nodes, nodesToFit);
+	if (!bounds) return null;
+	return {
+		bounds,
+		key: topologyViewportFitKey(nodes, nodesToFit, edges, selectedNodeId, focused),
+		focused,
+	};
+}
+
+export function flowTopologyFitForViewport(
+	fit: ReturnType<typeof prepareFlowTopologyFit>,
+	viewportKey: string,
+	viewportSize: OwnershipMapViewportSize,
+): FlowTopologyFitPlan | null {
+	if (!fit || viewportSize.width <= 0 || viewportSize.height <= 0) return null;
+	return {
+		key: `${viewportKey}::${fit.key}`,
+		viewport: widthFitFlowTopologyViewport(fit.bounds, viewportSize),
+		focused: fit.focused,
+	};
+}
+
 export function buildFlowTopologyFitPlan(
 	nodes: FlowTopologyNode[],
 	edges: FlowTopologyEdge[],
@@ -540,21 +564,5 @@ export function buildFlowTopologyFitPlan(
 	viewportKey: string,
 	viewportSize: OwnershipMapViewportSize,
 ): FlowTopologyFitPlan | null {
-	const selectedPathNodes = selectedNodeId
-		? nodes.filter((node) => node.data.selected || node.data.connected)
-		: [];
-	const nodesToFit = selectedPathNodes.length > 0 ? selectedPathNodes : nodes;
-	const bounds = getFlowTopologyBounds(nodes, nodesToFit);
-	if (!bounds || viewportSize.width <= 0 || viewportSize.height <= 0) return null;
-	return {
-		key: topologyViewportFitKey(
-			nodes,
-			nodesToFit,
-			edges,
-			selectedNodeId,
-			viewportKey,
-		),
-		viewport: widthFitFlowTopologyViewport(bounds, viewportSize),
-		focused: selectedPathNodes.length > 0,
-	};
+	return flowTopologyFitForViewport(prepareFlowTopologyFit(nodes, edges, selectedNodeId), viewportKey, viewportSize);
 }

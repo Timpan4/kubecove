@@ -23,6 +23,7 @@
 		resourceStatusTone,
 	} from "./helpers";
 	import type { IncidentSignal, IncidentSignalValuePart } from "./helpers";
+	import { metadataBadgeStyle, incidentToneClass, toneBadgeVariant, compactToneBadgeClass, restartsTone, containerTone, containerReadyLabel, containerStateLabel } from "./detailPresentation";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
 
 	let {
@@ -43,15 +44,7 @@
 		requiredPermission,
 		metadataLabelsExpanded = $bindable(false),
 		metadataAnnotationsExpanded = $bindable(false),
-		toneBadgeVariant,
-		compactToneBadgeClass,
-		restartsTone,
-		incidentToneClass,
 		formatFullTimestamp,
-		metadataBadgeStyle,
-		containerTone,
-		containerReadyLabel,
-		containerStateLabel,
 	} = $props();
 	const detailsLoading = loadingDelay(() => detailsQuery.isPending);
 	const signalsLoading = loadingDelay(() => eventsQuery.isPending);

@@ -26,34 +26,31 @@ pub(crate) fn managed_resource(value: &Value) -> ArgoManagedResource {
         live_state: None,
     }
 }
-pub(crate) fn state(value: Option<&Value>, redact: bool) -> Option<Value> {
-    value
-        .and_then(|state| match state {
-            Value::String(text) => serde_json::from_str::<Value>(text)
+fn redacted_state(value: Value) -> Value {
+    let mut state = match value {
+        Value::String(text) => {
+            serde_json::from_str::<Value>(&text)
                 .ok()
                 // A JSON string literal is still unstructured text, so it takes the text path below.
                 .filter(|parsed| !parsed.is_string())
                 .or_else(|| {
-                    serde_yaml::from_str::<Value>(text)
+                    serde_yaml::from_str::<Value>(&text)
                         .ok()
                         .filter(|parsed| parsed.is_object() || parsed.is_array())
                 })
-                .or_else(|| {
+                .unwrap_or_else(|| {
                     // Unparseable text cannot be redacted structurally; withhold it if it may be a Secret.
-                    Some(if redact && text.contains("Secret") {
+                    if text.contains("Secret") {
                         Value::String("[REDACTED]".into())
                     } else {
-                        Value::String(text.clone())
-                    })
-                }),
-            _ => Some(state.clone()),
-        })
-        .map(|mut state| {
-            if redact {
-                redact_secret_fields(&mut state);
-            }
-            state
-        })
+                        Value::String(text)
+                    }
+                })
+        }
+        value => value,
+    };
+    redact_secret_fields(&mut state);
+    state
 }
 /// Desired and normalized live documents feed the Argo diff, which always uses apply-clean
 /// YAML regardless of the YAML view setting. Raw live state keeps server fields for the Live view.
@@ -85,13 +82,13 @@ fn history(value: &Value) -> ArgoApplicationHistory {
 }
 
 fn inspector_from_application(
-    application: &DynamicObject,
+    application: &mut DynamicObject,
 ) -> Result<ArgoApplicationInspector, AppError> {
     let data = application
         .data
-        .as_object()
+        .as_object_mut()
         .ok_or_else(|| AppError::new("invalid Application data", AppErrorKind::Serialization))?;
-    let status = data.get("status").cloned();
+    let status = data.remove("status");
     let source = status.as_ref();
     let resources: Vec<_> = source
         .and_then(|value| value.get("resources"))
@@ -185,25 +182,27 @@ fn kubernetes_comparison(resource: ArgoManagedResource) -> ArgoResourceCompariso
     }
 }
 
-pub(crate) fn connected_comparison(value: &Value) -> ArgoResourceComparison {
-    let is_secret = value.get("kind").and_then(Value::as_str) == Some("Secret");
+pub(crate) fn connected_comparison(value: &mut Value) -> ArgoResourceComparison {
+    let resource = managed_resource(value);
+    let modified = value.get("modified").and_then(Value::as_bool);
+    let is_secret = resource.kind.as_deref() == Some("Secret");
     // Unstructured Secret state cannot be redacted field by field, so it is withheld whole.
-    let redacted_state = |key: &str| match state(value.get(key), true) {
+    let mut take_state = |key: &str| match value.get_mut(key).map(Value::take).map(redacted_state) {
         Some(Value::String(_)) if is_secret => Some(Value::String("[REDACTED]".into())),
         other => other,
     };
-    let live_state = redacted_state("liveState");
+    let live_state = take_state("liveState");
     ArgoResourceComparison {
-        resource: managed_resource(value),
-        target_state: redacted_state("targetState").map(apply_clean_state),
+        resource,
+        target_state: take_state("targetState").map(apply_clean_state),
         // Without Argo's normalized live state, the diff falls back to cleaned raw live state.
-        normalized_live_state: redacted_state("normalizedLiveState")
+        normalized_live_state: take_state("normalizedLiveState")
             .filter(|state| !state.is_null())
             .or_else(|| live_state.clone())
             .map(apply_clean_state),
         live_state,
-        predicted_live_state: redacted_state("predictedLiveState"),
-        modified: value.get("modified").and_then(Value::as_bool),
+        predicted_live_state: take_state("predictedLiveState"),
+        modified,
         exact: Some(true),
         provenance: Some("argocd-managed-resource".into()),
         ..Default::default()
@@ -218,14 +217,20 @@ pub(super) fn connected_inspector(
     managed: Option<Value>,
 ) -> ArgoApplicationInspector {
     redact_secret_fields(&mut response);
-    let status = response.get("status").cloned();
+    let status = response
+        .as_object_mut()
+        .and_then(|data| data.remove("status"));
     let (resources, comparisons) = match managed {
         Some(mut managed) => {
             redact_secret_fields(&mut managed);
+            let field = if managed.get("items").is_some() {
+                "items"
+            } else {
+                "managedResources"
+            };
             let comparisons: Vec<_> = managed
-                .get("items")
-                .or_else(|| managed.get("managedResources"))
-                .and_then(Value::as_array)
+                .get_mut(field)
+                .and_then(Value::as_array_mut)
                 .into_iter()
                 .flatten()
                 .map(connected_comparison)
@@ -329,7 +334,7 @@ pub(crate) fn kubernetes_inspector_from_object(
     workspace_id: Option<String>,
 ) -> Result<ArgoApplicationInspector, AppError> {
     redact_secret_fields(&mut object.data);
-    let mut inspector = inspector_from_application(&object)?;
+    let mut inspector = inspector_from_application(&mut object)?;
     inspector.application.context = Some(cluster_context.to_string());
     inspector.application.workspace_id = workspace_id;
     Ok(inspector)

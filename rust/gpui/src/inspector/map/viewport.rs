@@ -148,15 +148,11 @@ impl Inspector {
     /// `autoPanOnNodeFocus`: a node that focus reaches while outside the viewport
     /// is centered at the current zoom. Nodes that overlap the viewport stay put.
     /// Runs before the page renders, so the render shows the new viewport.
-    pub(super) fn pan_map_node_into_view(&mut self, key: &SharedString) {
+    pub(super) fn pan_map_node_into_view(&mut self, target: &super::focus::NodeTarget) {
         let Some(view) = self.map.cache.clone() else {
             return;
         };
-        let Some(node) = view
-            .nodes
-            .iter()
-            .find(|node| node_id(&node.item, &self.map) == *key)
-        else {
+        let Some(node) = view.nodes.iter().find(|node| target.matches(&node.item)) else {
             return;
         };
         let (width, height) = self.map.size.get();

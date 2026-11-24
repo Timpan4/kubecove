@@ -10,6 +10,8 @@ description = "KubeCove read-only MCP tools and their HTTP endpoint (ADR 0028)"
 [features]
 # The desktop app's own loopback listener; the server mounts the endpoint in its router.
 loopback = ["dep:axum"]
+# Exposes the resource paging and describe helpers to the backend benchmarks.
+bench-support = []
 
 [dependencies]
 kubecove-models = { path = "../models" }
@@ -21,7 +23,6 @@ rmcp = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 http = { workspace = true }
@@ -35,6 +36,7 @@ base64 = { workspace = true }
 axum = { workspace = true, optional = true }
 
 [dev-dependencies]
+serde_yaml = { workspace = true }
 kubecove-kube = { path = "../kube", features = ["test-support"] }
 kube = { workspace = true }
 tower = { workspace = true }

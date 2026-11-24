@@ -130,24 +130,25 @@ export function filterNavigationEntries(
 	return entries.filter((entry) => entry.searchText.includes(term));
 }
 
-export function filterNamespaces(namespaces: string[], query: string): string[] {
-	const term = query.trim().toLowerCase();
-	if (!term) return namespaces;
-	return namespaces.filter((namespace) =>
-		namespace.toLowerCase().includes(term),
-	);
+export const RESOURCE_RESULT_CAP = 50;
+export const NAMESPACE_RESULT_CAP = 8;
+
+export function buildNamespaceSearchIndex(namespaces: readonly string[]) {
+	return namespaces.map((name) => ({ name, searchText: name.toLowerCase() }));
 }
 
-export function dedupeResources(rows: ResourceSummary[]): ResourceSummary[] {
-	const seen = new Set<string>();
-	const result: ResourceSummary[] = [];
-	for (const row of rows) {
-		const key = resourceKey(row);
-		if (seen.has(key)) continue;
-		seen.add(key);
-		result.push(row);
+export function filterNamespaces(
+	index: ReturnType<typeof buildNamespaceSearchIndex>,
+	query: string,
+	limit = NAMESPACE_RESULT_CAP,
+): string[] {
+	const term = query.trim().toLowerCase();
+	const names: string[] = [];
+	for (const entry of index) {
+		if (names.length >= limit) break;
+		if (entry.searchText.includes(term)) names.push(entry.name);
 	}
-	return result;
+	return names;
 }
 
 export function buildDedupedResourceSearchIndex(

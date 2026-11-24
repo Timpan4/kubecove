@@ -69,18 +69,6 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
         }
     }
 
-    let mut pods_by_namespace: HashMap<&str, Vec<_>> = HashMap::new();
-    for (id, input) in &resources_by_id {
-        if input.summary.kind == "Pod"
-            && let Some(namespace) = input.summary.namespace.as_deref()
-        {
-            pods_by_namespace
-                .entry(namespace)
-                .or_default()
-                .push((id, input));
-        }
-    }
-
     let mut slices_by_service: HashMap<(&str, &str), Vec<_>> = HashMap::new();
     for slice in &endpoint_slices {
         if let Some(service_name) = slice.service_name.as_deref() {
@@ -88,6 +76,29 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
                 .entry((&slice.namespace, service_name))
                 .or_default()
                 .push(slice);
+        }
+    }
+
+    let mut selector_pods = SelectorPods::new();
+    for service in &services {
+        let namespace = service.namespace.as_str();
+        if !slices_by_service.contains_key(&(namespace, service.name.as_str())) {
+            for (key, value) in &service.selector {
+                selector_pods.entry((namespace, key, value)).or_default();
+            }
+        }
+    }
+    if !selector_pods.is_empty() {
+        for (id, input) in &resources_by_id {
+            if input.summary.kind == "Pod"
+                && let Some(namespace) = input.summary.namespace.as_deref()
+            {
+                for (key, value) in &input.labels {
+                    if let Some(pods) = selector_pods.get_mut(&(namespace, key, value)) {
+                        pods.push((id, input));
+                    }
+                }
+            }
         }
     }
 
@@ -166,8 +177,7 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
         }
 
         if service_slices.is_empty()
-            && !service.selector.is_empty()
-            && let Some(pods) = pods_by_namespace.get(service.namespace.as_str())
+            && let Some(pods) = selector_candidates(&selector_pods, service)
         {
             for &(pod_id, pod) in pods {
                 if !selector_matches(&service.selector, &pod.labels) {
@@ -231,6 +241,25 @@ pub(crate) fn build_network_flow_topology(inputs: NetworkTopologyInputs) -> Reso
         edges,
         warnings,
     }
+}
+
+type PodCandidate<'a> = (&'a String, &'a TopologyInputResource);
+type SelectorPods<'a> = HashMap<(&'a str, &'a str, &'a str), Vec<PodCandidate<'a>>>;
+
+fn selector_candidates<'index, 'resource>(
+    index: &'index SelectorPods<'resource>,
+    service: &'resource NetworkService,
+) -> Option<&'index [PodCandidate<'resource>]> {
+    let namespace = service.namespace.as_str();
+    service
+        .selector
+        .iter()
+        .map(|(key, value)| {
+            index
+                .get(&(namespace, key, value))
+                .map_or(&[][..], Vec::as_slice)
+        })
+        .min_by_key(|pods| pods.len())
 }
 
 fn selector_matches(

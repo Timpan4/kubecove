@@ -19,12 +19,13 @@
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import type { ResourceSummary, ResourceTopology, TopologyMode } from "@/lib/types";
 	import {
-		buildFlowTopologyLayoutState,
-		buildFlowTopologyViewFromLayoutState,
-		selectedStandaloneExpansionId as resolveSelectedStandaloneExpansionId,
 		type FlowTopologyNode,
 	} from "./topology";
 	import { buildFlowTopologyEdgeLayer, buildFlowTopologyPulses } from "./topology-edge-layer";
+	import { buildTopologyGraph } from "./topology-graph";
+	import { getFlowTopologyBounds, topologyTranslateExtentFromBounds } from "./topology-implementation";
+	import { buildFlowTopologyLayoutStateFromGraph, selectFlowTopology, selectedStandaloneExpansionIdForGraph } from "./topology-view";
+	import { TOPOLOGY_METRICS, type ResourceMetricIndex } from "@/lib/resource-metrics";
 	import MapContextSelect from "./MapContextSelect.svelte";
 	import OwnershipMapEdgeLayer from "./OwnershipMapEdgeLayer.svelte";
 	import OwnershipMapPulseLayer from "./OwnershipMapPulseLayer.svelte";
@@ -41,6 +42,7 @@
 
 	let {
 		topology,
+		metricsIndex,
 		isLoading,
 		isError,
 		error,
@@ -57,6 +59,7 @@
 		onMapContextChange = () => {},
 	}: {
 		topology: ResourceTopology | undefined;
+		metricsIndex?: ResourceMetricIndex;
 		isLoading: boolean;
 		isError: boolean;
 		error: unknown;
@@ -74,6 +77,7 @@
 		onMapContextChange?: (context: string) => void;
 	} = $props();
 	setContext(RESOURCE_ACTIVITY_CURRENT, () => updatesCurrent);
+	setContext(TOPOLOGY_METRICS, () => metricsIndex);
 	const loading = loadingDelay(() => isLoading);
 
 	let viewportWidth = $state(0);
@@ -94,34 +98,27 @@
 	});
 	let expandedStandaloneKinds = $state<Set<string>>(new Set());
 	const hasViewportSize = $derived(viewportWidth > 0 && viewportHeight > 0);
+	const topologyGraph = $derived(topology ? buildTopologyGraph(topology) : null);
 	const selectedStandaloneExpansionId = $derived(
-		topology ? resolveSelectedStandaloneExpansionId(topology, selectedNodeId) : null,
+				topologyGraph ? selectedStandaloneExpansionIdForGraph(topologyGraph, selectedNodeId) : null,
 	);
 	const topologyLayoutState = $derived(
-		topology
-			? buildFlowTopologyLayoutState(
-					topology,
+		topologyGraph
+			? buildFlowTopologyLayoutStateFromGraph(
+					topologyGraph,
 					mode,
 					expandedStandaloneKinds,
 					selectedStandaloneExpansionId,
 				)
 			: null,
 	);
-	const topologyView = $derived(
-		topologyLayoutState
-			? buildFlowTopologyViewFromLayoutState(topologyLayoutState, {
-					mode,
-					selectedNodeId,
-					showFullTopologyOnSelection,
-					expandedStandaloneKinds,
-					viewportSize: hasViewportSize
-						? { width: viewportWidth, height: viewportHeight }
-						: undefined,
-				})
-			: null,
-	);
-	const graph = $derived(topologyView?.graph ?? null);
-	const translateExtent = $derived(topologyView?.translateExtent);
+	const graph = $derived(topologyLayoutState
+		? selectFlowTopology(topologyLayoutState, { selectedNodeId, showFullTopologyOnSelection })
+		: null);
+	const bounds = $derived(graph ? getFlowTopologyBounds(graph.nodes) : null);
+	const translateExtent = $derived(topologyTranslateExtentFromBounds(
+		bounds, { width: viewportWidth, height: viewportHeight },
+	));
 	const onlyRenderVisibleElements = $derived(
 		graph
 			? graph.nodes.length + graph.edges.length >= VISIBLE_ELEMENT_RENDER_THRESHOLD

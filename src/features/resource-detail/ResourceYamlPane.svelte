@@ -277,12 +277,14 @@ import { mapKubernetesYamlDiagnostics } from "./yamlLintDiagnostics";
 		yamlForceConflictsForResource = false;
 		yamlShowFullDiff = false;
 		try {
-			const draft = await readResourceYaml(client, resource, {
+			// The editor (CodeMirror) stores line breaks as \n. Normalizing the baseline too keeps the dirty check
+			// (draft !== baseline) from flipping on the first edit or staying dirty after undo.
+			const draft = (await readResourceYaml(client, resource, {
 				kubeconfigSourceKey,
 				yamlViewMode: "applyClean",
 				yamlEncoding,
 				cancellable: createFiniteReadRequest(finiteReadScope(yamlQueryKey), "yaml-draft"),
-			});
+			})).replace(/\r\n?/g, "\n");
 			if (phase !== loading) return;
 			yamlDraftBase = draft;
 			yamlDraft = draft;

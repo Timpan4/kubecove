@@ -17,7 +17,12 @@ impl Inspector {
         // Cancels the comparison of the resource that had the focus.
         state.comparison = Fetch::Idle;
         cx.notify();
+        // Leaving the focus shows every change again, some perhaps for the first time.
+        self.ensure_argo_editors(window, cx);
         let Some(index) = index else {
+            return;
+        };
+        let Some(state) = self.argo_tab_state() else {
             return;
         };
         let ArgoLoad::Ready(view) = &state.load else {
@@ -70,26 +75,15 @@ impl Inspector {
                         let change =
                             crate::argo_app::change(&resource, std::slice::from_ref(&comparison));
                         if let ArgoLoad::Ready(view) = &mut state.load {
-                            use gpui_kit::{AppContext, component::input::EditorState};
-                            state.editors[index] = (
-                                cx.new(|cx| {
-                                    EditorState::new(window, cx)
-                                        .language("yaml")
-                                        .line_number(true)
-                                        .default_value(change.desired.clone())
-                                }),
-                                cx.new(|cx| {
-                                    EditorState::new(window, cx)
-                                        .language("yaml")
-                                        .line_number(true)
-                                        .default_value(change.live.clone())
-                                }),
-                            );
-                            state.highlights[index] = super::super::highlight::lines(
+                            // `ensure_argo_editors` rebuilds them from the new documents.
+                            if let Some(editors) = state.editors.get_mut(index) {
+                                *editors = None;
+                            }
+                            state.highlights[index] = Arc::from(super::super::highlight::lines(
                                 &mut this.argo.highlighter,
                                 change.diff.as_deref().unwrap_or_default(),
                                 &gpui_kit::component::Theme::global(cx).highlight_theme,
-                            );
+                            ));
                             view.changes[index] = change;
                         }
                         if let Some(snapshot) = &mut state.inspector {
@@ -100,6 +94,7 @@ impl Inspector {
                     Ok(_) => Fetch::Failed("Comparison returned a different resource".into()),
                     Err(error) => Fetch::Failed(error.message),
                 };
+                this.ensure_argo_editors(window, cx);
                 cx.notify();
             });
         });

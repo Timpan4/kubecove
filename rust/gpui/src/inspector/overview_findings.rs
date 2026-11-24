@@ -270,7 +270,7 @@ impl Inspector {
             .flex()
             .flex_col()
             .gap(px(4.))
-            .child(div().flex().child(super::delivery_ui::badge(
+            .child(div().flex().child(ui::badge(
                 (color.opacity(0.4), Tokens::input().opacity(0.3), color),
                 status.to_owned(),
             )))

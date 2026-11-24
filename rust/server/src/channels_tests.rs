@@ -5,6 +5,14 @@ fn pop(hub: &ChannelHub) -> Value {
     serde_json::from_str(&hub.pop().unwrap()).unwrap()
 }
 
+fn ready_contains(hub: &ChannelHub, id: u64) -> bool {
+    hub.pending
+        .lock()
+        .expect("channel hub lock")
+        .ready
+        .contains(&id)
+}
+
 // Failure modes: byte eviction must report loss before replay; JSON escaping must
 // count toward the budget; draining must release capacity; oversized frames must
 // not close the producer or move a gap before older retained messages; evicting
@@ -65,6 +73,42 @@ fn oversized_message_reports_a_gap_without_closing_the_channel() {
 }
 
 #[test]
+fn oversized_send_to_idle_channel_marks_gap_ready_until_drained() {
+    let hub = Arc::new(ChannelHub::default());
+    let channel = hub.channel::<String>(1);
+    assert!(!ready_contains(&hub, 1));
+    channel.send("x".repeat(RETAINED_BYTES)).unwrap();
+    assert!(ready_contains(&hub, 1));
+    assert_eq!(
+        pop(&hub),
+        json!({"type":"channel_gap","channelId":1,"dropped":1})
+    );
+    assert!(!ready_contains(&hub, 1));
+    assert!(hub.pop().is_none());
+}
+
+#[test]
+fn oversized_send_after_last_retained_message_keeps_channel_ready_until_gap_drains() {
+    let hub = Arc::new(ChannelHub::default());
+    let channel = hub.channel::<String>(1);
+    for n in 0..RETAINED_MESSAGES {
+        channel.send(n.to_string()).unwrap();
+    }
+    channel.send("x".repeat(RETAINED_BYTES)).unwrap();
+    assert!(ready_contains(&hub, 1));
+    for n in 0..RETAINED_MESSAGES {
+        assert_eq!(pop(&hub)["message"], n.to_string());
+        assert!(ready_contains(&hub, 1));
+    }
+    assert_eq!(
+        pop(&hub),
+        json!({"type":"channel_gap","channelId":1,"dropped":1})
+    );
+    assert!(!ready_contains(&hub, 1));
+    assert!(hub.pop().is_none());
+}
+
+#[test]
 fn evicting_queued_gaps_preserves_loss_counts_and_order() {
     let hub = Arc::new(ChannelHub::default());
     let channel = hub.channel::<String>(1);
@@ -96,6 +140,72 @@ fn a_replenished_channel_cannot_starve_another_channel() {
     first.send(3).unwrap();
     assert_eq!(pop(&hub)["channelId"], 2);
     assert_eq!(pop(&hub)["message"], 3);
+}
+
+#[test]
+fn ready_channels_wrap_by_id_and_keep_the_exact_text_envelope() {
+    let hub = Arc::new(ChannelHub::default());
+    let low = hub.channel::<&str>(10);
+    let _idle = hub.channel::<&str>(20);
+    let middle = hub.channel::<&str>(30);
+    let high = hub.channel::<&str>(40);
+    middle.send("first").unwrap();
+    assert_eq!(pop(&hub)["channelId"], 30);
+    low.send("last\n").unwrap();
+    high.send("removed").unwrap();
+    hub.remove(40);
+    let high = hub.channel::<&str>(40);
+    high.send("next").unwrap();
+    assert_eq!(pop(&hub)["message"], "next");
+    assert_eq!(
+        hub.pop().unwrap().as_str(),
+        r#"{"channelId":10,"message":"last\n","type":"channel"}"#
+    );
+    assert!(hub.pop().is_none());
+}
+
+#[test]
+#[ignore = "manual timing comparison in release mode"]
+fn measure_sparse_channels_with_batched_logs() {
+    use kubecove_lib::models::StreamMessage;
+    use std::{
+        hint::black_box,
+        time::{Duration, Instant},
+    };
+
+    let hub = Arc::new(ChannelHub::default());
+    let idle_count = u64::try_from(RETAINED_MESSAGES).unwrap();
+    for id in 0..idle_count {
+        drop(hub.channel::<StreamMessage>(id));
+    }
+    let active = [idle_count, idle_count + 1].map(|id| hub.channel::<StreamMessage>(id));
+    let batch = StreamMessage::LogLines {
+        stream_id: "logs".into(),
+        lines: vec!["pod initialized\tcontainer started".into(); RETAINED_MESSAGES],
+        source: None,
+    };
+    // Untimed: a representative batch must arrive as a channel frame, not a gap.
+    active[0].send(batch.clone()).unwrap();
+    assert_eq!(pop(&hub)["type"], "channel");
+    assert!(hub.pop().is_none());
+    // Each round prefills one batch per active channel outside the timed part,
+    // so the timed part measures only draining the queued frames.
+    let mut drain = Duration::ZERO;
+    for _ in 0..RETAINED_MESSAGES {
+        for channel in &active {
+            channel.send(batch.clone()).unwrap();
+        }
+        let started = Instant::now();
+        for _ in &active {
+            black_box(hub.pop().unwrap());
+        }
+        drain += started.elapsed();
+        assert!(hub.pop().is_none());
+    }
+    eprintln!(
+        "drained {} log batches with {idle_count} idle channels in {drain:?}",
+        RETAINED_MESSAGES * active.len(),
+    );
 }
 
 #[test]

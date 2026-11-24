@@ -27,6 +27,7 @@ fn expired_entries_are_pruned_without_losing_in_use_or_failed_reload_values() {
                         },
                         completed_at: old,
                         dirty: false,
+                        slots: None,
                     }),
                 );
             }
@@ -403,6 +404,7 @@ fn ready_cache_entries_are_bounded() {
 
         assert_eq!(cache.len(), MAX_CACHE_ENTRIES);
         assert_eq!(cache.ready_len(), MAX_CACHE_ENTRIES);
+        assert_eq!(cache.ready_len(), cache.ready_count_bookkeeping());
     });
 }
 
@@ -433,6 +435,7 @@ fn ready_cache_budget_keeps_dirty_entries_over_clean_entries() {
         }
 
         assert_eq!(cache.ready_len(), MAX_CACHE_ENTRIES);
+        assert_eq!(cache.ready_len(), cache.ready_count_bookkeeping());
         assert!(cache.has_key("dirty"));
     });
 }
@@ -455,6 +458,7 @@ fn ready_cache_budget_evicts_oldest_clean_entries_first() {
         }
 
         assert_eq!(cache.ready_len(), MAX_CACHE_ENTRIES);
+        assert_eq!(cache.ready_len(), cache.ready_count_bookkeeping());
         assert!(!cache.has_key("key-0"));
         assert!(!cache.has_key("key-1"));
         assert!(cache.has_key(&format!("key-{}", MAX_CACHE_ENTRIES + 1)));

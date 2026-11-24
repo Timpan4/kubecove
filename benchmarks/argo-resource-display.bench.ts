@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { describe } from "vitest";
 import { applicationSpecFromYaml } from "@/features/gitops/argo-application-yaml";
 import {
-	argoDocumentText,
+	COMPACT_ARGO_DIFF_LINES,
+	projectArgoResourceComparison,
 	highlightedArgoDiffSegments,
 	resolveArgoResourceComparison,
 } from "@/features/gitops/argo-resource-display";
 import {
-	argoComparisonDocument,
 	argoComparisonIndex,
 	argoReconciliationResources,
 	argoResourceIdentityKey,
@@ -108,6 +108,17 @@ assert.equal(
 	(firstSpec.sources as unknown[]).length,
 	2,
 );
+// Every key differs, so the unified diff runs well past the compact cutoff.
+const longDiffTarget = Array.from(
+	{ length: 40 },
+	(_, index) => `key-${index}: target-${index}`,
+).join("\n");
+const longDiffLive = Array.from(
+	{ length: 40 },
+	(_, index) => `key-${index}: live-${index}`,
+).join("\n");
+const longDiffLines = buildArgoResourceDiff(longDiffTarget, longDiffLive);
+assert(longDiffLines.length > COMPACT_ARGO_DIFF_LINES);
 
 describe("Argo resource display F48–F49", () => {
 	benchmark(
@@ -123,21 +134,29 @@ describe("Argo resource display F48–F49", () => {
 					selectedResourceKey,
 					selectedComparison,
 				);
-				const documents = argoComparisonDocument(resource, comparison);
+				const { desired, normalizedLive } = projectArgoResourceComparison(resource, comparison);
 				if (
 					resource.requiresPruning &&
 					!expandedRemovalKeys.has(argoResourceIdentityKey(resource) ?? "")
 				)
 					continue;
-				const desired = argoDocumentText(documents.desired);
-				const normalizedLive = argoDocumentText(documents.normalizedLive);
 				if (!desired || !normalizedLive) continue;
-				for (const line of buildArgoResourceDiff(desired, normalizedLive)) {
+				for (const line of buildArgoResourceDiff(desired, normalizedLive).slice(0, COMPACT_ARGO_DIFF_LINES)) {
 					highlightedArgoDiffSegments(line);
 				}
 			}
 		},
 	);
+
+	benchmark("F48 long Argo diff highlights the compact slice", () => {
+		for (const line of longDiffLines.slice(0, COMPACT_ARGO_DIFF_LINES)) {
+			highlightedArgoDiffSegments(line);
+		}
+	});
+
+	benchmark("F48 long Argo diff highlights every expanded line", () => {
+		for (const line of longDiffLines) highlightedArgoDiffSegments(line);
+	});
 
 	benchmark(
 		"F49 parse each changed application YAML once and handle malformed fallback",

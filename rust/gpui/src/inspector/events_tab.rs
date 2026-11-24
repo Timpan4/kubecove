@@ -2,7 +2,7 @@
 //! its `xl:` layout (the capture viewport is 1440px wide).
 
 use super::detail::ResourceDetail;
-use super::events::{EventsLoad, badge, outline, tw};
+use super::events::{EventsLoad, badge, outline};
 use super::loading::LoadingDelays;
 use super::windowed::row_id;
 use super::{Inspector, controls, timestamp_text};
@@ -11,7 +11,7 @@ use crate::incident::{self, EventFilter};
 use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
 use crate::targets::TestSupportExt;
-use crate::theme::Tokens;
+use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::Input;
 use gpui_kit::{
@@ -126,14 +126,22 @@ fn exact_time(event: &ResourceEventSummary, timezone: TimestampTimezone) -> Stri
 fn event_row(event: &ResourceEventSummary, index: usize, timezone: TimestampTimezone) -> Div {
     let warning = warning(event);
     let (dot, ring) = if warning {
-        (tw::amber400(1.), tw::amber400(0.12))
+        (Palette::amber400(), Palette::amber400().opacity(0.12))
     } else {
-        (tw::emerald400(1.), tw::emerald400(0.12))
+        (Palette::emerald400(), Palette::emerald400().opacity(0.12))
     };
     let tone = if warning {
-        (tw::amber500(0.4), tw::amber500(0.1), tw::amber200())
+        (
+            Palette::amber500(0.4),
+            Palette::amber500(0.1),
+            Palette::amber200(),
+        )
     } else {
-        (tw::emerald500(0.3), tw::emerald500(0.1), tw::emerald200())
+        (
+            Palette::emerald500(0.3),
+            Palette::emerald500(0.1),
+            Palette::emerald200(),
+        )
     };
     // `grid-cols-[5.75rem_0.75rem_minmax(0,1fr)_7rem] gap-2 px-3 py-2`.
     div()
@@ -278,9 +286,9 @@ pub(super) fn events_tab(
             )]))
     });
     let warnings = tile_value(summary.warnings.to_string()).text_color(if summary.warnings > 0 {
-        tw::amber200()
+        Palette::amber200()
     } else {
-        tw::emerald200()
+        Palette::emerald200()
     });
     let normal = summary.total - summary.warnings;
     let slide = control_motion::Slide::new();
@@ -430,22 +438,22 @@ pub(super) fn events_tab(
                 .gap(px(6.))
                 .child(badge(
                     (
-                        tw::emerald500(0.3),
+                        Palette::emerald500(0.3),
                         Tokens::input().opacity(0.3),
-                        tw::emerald200(),
+                        Palette::emerald200(),
                     ),
                     10.,
-                    Some(tw::emerald400(1.)),
+                    Some(Palette::emerald400()),
                     format!("Normal {normal}"),
                 ))
                 .child(badge(
                     (
-                        tw::amber500(0.4),
+                        Palette::amber500(0.4),
                         Tokens::input().opacity(0.3),
-                        tw::amber200(),
+                        Palette::amber200(),
                     ),
                     10.,
-                    Some(tw::amber400(1.)),
+                    Some(Palette::amber400()),
                     format!("Warnings {}", summary.warnings),
                 ))
                 .child(badge(

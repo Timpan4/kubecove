@@ -19,10 +19,10 @@
 		revealKey = null,
 		onReveal,
 		selectedAncestorIds = new Set<string>(),
-		expandedSections,
+		expandedIds,
 		onNodeSelect,
 		onSectionToggle,
-		getLazyChildren,
+		getLazyNamespaceChildren,
 		customResourceSearch = "",
 		onCustomResourceSearchChange,
 	}: {
@@ -32,10 +32,10 @@
 		revealKey?: string | null;
 		onReveal?: () => void;
 		selectedAncestorIds?: ReadonlySet<string>;
-		expandedSections: string[];
+		expandedIds: ReadonlySet<string>;
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
-		getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined;
+		getLazyNamespaceChildren?: (node: TreeNode) => TreeNode[] | undefined;
 		customResourceSearch?: string;
 		onCustomResourceSearchChange?: (value: string) => void;
 	} = $props();
@@ -43,7 +43,7 @@
 	const id = $derived(nodeIdToString(node.id));
 	const selectedKey = $derived(selectedNode ? nodeIdToString(selectedNode) : null);
 	const isSelected = $derived(selectedKey === id);
-	const isExpanded = $derived(expandedSections.includes(id));
+	const isExpanded = $derived(expandedIds.has(id));
 	const hidesSelection = $derived(!isExpanded && selectedAncestorIds.has(id));
 	// Svelte's element types do not list the ARIA 1.3 `aria-description` attribute yet, so it is spread.
 	const selectionHint = $derived<Record<string, string>>(
@@ -52,7 +52,7 @@
 	const hasChildren = $derived(
 		node.id.type === "namespace" || Boolean(node.children?.length),
 	);
-	const children = $derived(isExpanded ? (getLazyChildren?.(node) ?? node.children) : node.children);
+	const children = $derived(isExpanded ? (getLazyNamespaceChildren?.(node) ?? node.children) : node.children);
 	/** The Custom Resources section shows a search input above its kinds. */
 	const hasSearch = $derived(node.id.type === "section" && node.id.section === "discovered");
 	const isDisabled = $derived(node.disabled === true);
@@ -270,10 +270,10 @@
 							{revealKey}
 							{onReveal}
 							{selectedAncestorIds}
-							{expandedSections}
+							{expandedIds}
 							{onNodeSelect}
 							{onSectionToggle}
-							{getLazyChildren}
+							{getLazyNamespaceChildren}
 							{customResourceSearch}
 							{onCustomResourceSearchChange}
 						/>

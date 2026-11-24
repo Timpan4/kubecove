@@ -20,6 +20,7 @@ fn connected_inspection_eagerly_compares_and_redacts_nested_secrets() {
                 "liveState": {"kind": "Secret", "stringData": {"password": "plaintext"}, "metadata": {"annotations": {
                     "kubectl.kubernetes.io/last-applied-configuration": "{\"data\":{\"password\":\"plaintext\"}}"
                 }}},
+                "predictedLiveState": "unstructured plaintext",
                 "modified": true
             }]
         })),
@@ -41,6 +42,8 @@ fn connected_inspection_eagerly_compares_and_redacts_nested_secrets() {
         value["conditions"][0]["nested"]["data"]["key"],
         "[REDACTED]"
     );
+    assert_eq!(value["status"]["conditions"], value["conditions"]);
+    assert_eq!(value["comparisons"][0]["predictedLiveState"], "[REDACTED]");
     assert!(!value.to_string().contains("plaintext"));
 }
 
@@ -140,10 +143,10 @@ fn connected_comparison_diff_documents_are_apply_clean() {
 #[test]
 fn non_json_secret_state_is_redacted() {
     let yaml = serde_json::json!("kind: Secret\ndata:\n  password: plaintext\n");
-    let redacted = state(Some(&yaml), true).unwrap();
+    let redacted = redacted_state(yaml);
     assert_eq!(redacted["data"]["password"], "[REDACTED]");
     let broken = serde_json::json!("kind: Secret\n\tdata: [plaintext");
-    assert_eq!(state(Some(&broken), true).unwrap(), "[REDACTED]");
+    assert_eq!(redacted_state(broken), "[REDACTED]");
 }
 
 #[test]

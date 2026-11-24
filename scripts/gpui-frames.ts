@@ -138,11 +138,14 @@ for (const [name, expected] of [
 ] as const) {
 	if (resolve(env[name] ?? "") !== expected) throw new Error(`${name} must use this worktree's directory: ${expected}`);
 }
+// Archived source snapshots from before the feature existed reject `--features topology-spike`.
+const declaresSpike = /^topology-spike\s*=/m.test(await readFile(manifest, "utf8"));
 const cargo = [
 	"cargo",
 	"test",
 	"--release",
 	"--locked",
+	...(declaresSpike ? ["--features", "topology-spike"] : []),
 	"--manifest-path",
 	manifest,
 	"--test",

@@ -133,7 +133,7 @@ jobs:
       - name: Key the Rust cache by its inputs
         id: rust-cache
         if: ${{ inputs.build != '' }}
-        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml rust ':!rust/server' 'src/lib/*-workspace.json' .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile
+        run: node scripts/ci-rust-cache-key.mjs parity${{ inputs.coverage && '-coverage' || '' }} .github/workflows/parity-suite.yml rust ':!rust/server' ':(exclude,glob)rust/**/*.md' 'src/lib/*-workspace.json' src/lib/tauri-dev-mock-overview.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile
 
       # Only one main build per key saves objects. Shards use the binary artifact.
       - name: Cache Rust builds

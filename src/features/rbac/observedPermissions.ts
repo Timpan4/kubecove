@@ -1,5 +1,5 @@
 import type { RbacAccessReviewIdentity, RbacBindingSummary, RbacInspectionSummary, RbacRoleSummary, RbacRuleSummary } from "@/lib/types";
-import { subjectMatcher } from "./principal";
+import { bindingsForIdentity, buildRbacBindingIndex, type RbacBindingIndex } from "./cockpitModel";
 
 export interface InspectorIdentity {
 	kind: "serviceAccount" | "user" | "group";
@@ -30,8 +30,10 @@ export interface ObservedPermissionResult {
 export function observedPermissions(
 	inspection: RbacInspectionSummary,
 	identity: InspectorIdentity,
+	index: RbacBindingIndex = buildRbacBindingIndex(inspection),
 ): ObservedPermissionResult {
-	const applies = subjectMatcher(reviewIdentity(identity));
+	// The binding lookup would read a blank namespace as `default` and show another account's grants.
+	if (missingServiceAccountNamespace(identity)) return { grants: [], unknown: true, reason: "The ServiceAccount namespace is missing." };
 	const coverage = new Map(inspection.coverage.map((item) => [item.family, item.status]));
 	const incomplete = (["roles", "clusterRoles", "roleBindings", "clusterRoleBindings"] as const)
 		.filter((family) => coverage.get(family) !== "complete");
@@ -39,8 +41,7 @@ export function observedPermissions(
 	for (const role of [...inspection.roles, ...inspection.clusterRoles]) roles.set(roleKey(role.kind, role.name, role.namespace), role);
 	const grants: ObservedGrant[] = [];
 	let missing = false;
-	for (const binding of [...inspection.roleBindings, ...inspection.clusterRoleBindings]) {
-		if (!binding.subjects.some(applies)) continue;
+	for (const binding of bindingsForIdentity(index, reviewIdentity(identity))) {
 		const role = roles.get(roleKey(binding.roleRefKind, binding.roleRefName, binding.roleRefKind === "Role" ? binding.namespace : undefined));
 		if (!role) { missing = true; continue; }
 		const scope = binding.kind === "ClusterRoleBinding" ? "cluster" : "namespace";
@@ -67,11 +68,23 @@ export function inspectorIdentity(identity: RbacAccessReviewIdentity | undefined
 	return { kind: "user", name: identity.username, groups: identity.groups };
 }
 
+/** `reviewIdentity` substitutes `default` for a blank ServiceAccount namespace, so a review would target another account. */
+export function missingServiceAccountNamespace(identity: InspectorIdentity): boolean {
+	return identity.kind === "serviceAccount" && !identity.namespace?.trim();
+}
+
 /** The verifier's request identity: a blank namespace reads as `default`, a user without groups gets `identityDefaults`. */
 export function reviewIdentity(identity: InspectorIdentity): RbacAccessReviewIdentity {
 	if (identity.kind === "serviceAccount") return { kind: "serviceAccount", name: identity.name, namespace: identity.namespace || "default" };
 	if (identity.kind === "group") return { kind: "group", group: identity.name };
 	return { kind: "user", username: identity.name, groups: identity.groups?.length ? identity.groups : identityDefaults("user", identity.name) };
+}
+
+export function identityLabel(identity: InspectorIdentity): string {
+	if (!identity.name) return "No identity selected";
+	if (missingServiceAccountNamespace(identity)) return `ServiceAccount ${identity.name} (namespace required)`;
+	if (identity.kind === "serviceAccount") return `system:serviceaccount:${identity.namespace}:${identity.name}`;
+	return identity.kind === "group" ? `Group/${identity.name}` : `User/${identity.name}`;
 }
 
 /** `verbs · groups/resources`, then `· names: …` when the rule is limited to named objects. */

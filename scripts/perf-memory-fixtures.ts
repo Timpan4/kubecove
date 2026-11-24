@@ -1,7 +1,7 @@
 import { parse, stringify } from "yaml";
 import { buildFlowTopologyLayout } from "../src/features/resources/topology-implementation";
 import { buildResourceTableModel, buildResourceTableProjection, type ResourceTableState } from "../src/features/resources/resourceTableModel";
-import { mergeResourceMetrics } from "../src/lib/resource-metrics";
+import { resourceMetricFor, resourceMetricIndex } from "../src/lib/resource-metrics";
 import { resources } from "../src/lib/tauri-dev-mock-data";
 import type { ResourceMetricsSummary, ResourceSummary, ResourceTopology } from "../src/lib/types";
 
@@ -18,11 +18,25 @@ function jsonBytes<T>(value: T) {
 function characterize(label: string, rows: ResourceSummary[]) {
 	const source = { rows: rows.length, jsonBytes: jsonBytes(rows) };
 	let started = performance.now();
-	const metrics: ResourceMetricsSummary = {
-		cluster: "fixture", availability: { status: "available" }, warnings: [], nodes: [], workloads: [],
-		pods: rows.map((row, index) => ({ kind: row.kind, cluster: row.cluster, name: row.name, namespace: row.namespace, cpuMillicores: index, memoryBytes: index * 1024, sourcePods: [] })),
-	};
-	const merged = mergeResourceMetrics(rows, metrics);
+	// One metrics read per context, as the UI makes: the index joins each sample to rows of the context it was read from.
+	const metrics = new Map<string, ResourceMetricsSummary>();
+	rows.forEach((row, index) => {
+		let summary = metrics.get(row.cluster);
+		if (!summary) {
+			summary = { cluster: row.cluster, availability: { status: "available" }, warnings: [], nodes: [], workloads: [], pods: [] };
+			metrics.set(row.cluster, summary);
+		}
+		summary.pods.push({ kind: row.kind, cluster: row.cluster, name: row.name, namespace: row.namespace, cpuMillicores: index, memoryBytes: index * 1024, sourcePods: [] });
+	});
+	const metricIndex = resourceMetricIndex([...metrics].map(([clusterContext, summary]) => ({ clusterContext, summary })));
+	// Rows keep their identity when no metric applies, as the UI's lookup does.
+	let matched = 0;
+	const merged = rows.map((row) => {
+		const metric = resourceMetricFor(metricIndex, row);
+		if (metric) matched += 1;
+		return metric && metric !== row.metrics ? { ...row, metrics: metric } : row;
+	});
+	if (matched !== rows.length) throw new Error(`${label}: ${rows.length - matched} of ${rows.length} rows found no metric sample`);
 	const metricsMs = performance.now() - started;
 	started = performance.now();
 	const projection = buildResourceTableProjection(merged);
@@ -62,7 +76,7 @@ function characterize(label: string, rows: ResourceSummary[]) {
 	return {
 		label, source,
 		derived: { searchIndex: projection.searchIndex.length, mergedRows: merged.length, displayRows: model.displayRows.length, pageRows: model.pageRows.length, tableEntries: model.entries.length, topologyNodes: topology.nodes.length, topologyEdges: topology.edges.length, ...flowCounts },
-		payloadEstimates: { metricsJsonBytes: jsonBytes(metrics), mergedRowsJsonBytes: jsonBytes(merged), projectionJsonBytes: jsonBytes(projection), topologyJsonBytes: jsonBytes(topology), yamlUtf8Bytes: new TextEncoder().encode(yaml).byteLength, parsedYamlJsonBytes: jsonBytes(yamlDocument) },
+		payloadEstimates: { metricsJsonBytes: jsonBytes([...metrics.values()]), mergedRowsJsonBytes: jsonBytes(merged), projectionJsonBytes: jsonBytes(projection), topologyJsonBytes: jsonBytes(topology), yamlUtf8Bytes: new TextEncoder().encode(yaml).byteLength, parsedYamlJsonBytes: jsonBytes(yamlDocument) },
 		durations: { metricsMs, projectionMs, topologyMs, yamlMs, repeatedSearchSort: operations },
 		memory: { tableMemory, topologyOpenMemory, topologyClosedMemory, yamlMemory },
 	};

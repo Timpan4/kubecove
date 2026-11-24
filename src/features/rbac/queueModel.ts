@@ -1,16 +1,14 @@
 import type {
 	RbacBindingSummary,
-	RbacInspectionSummary,
 	RbacNamespaceAccessSummary,
 	RbacRoleSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
-import type { RbacCockpitItem } from "./cockpitModel";
-import { serviceAccountMatcher } from "./principal";
+import { bindingsForIdentity, roleReferenceKey, type RbacBindingIndex, type RbacCockpitItem } from "./cockpitModel";
 import { subjectListLabel } from "./risk";
 
 export function queueTags(
-	inspection: RbacInspectionSummary,
+	index: RbacBindingIndex,
 	entry: RbacCockpitItem,
 ): string[] {
 	if (
@@ -19,7 +17,7 @@ export function queueTags(
 	) {
 		const account = entry.item;
 		return [
-			`${bindingSources(inspection, entry).length} bindings`,
+			`${bindingSources(index, entry).length} bindings`,
 			`${account.secretsCount} secrets`,
 			account.automountToken === false ? "token off" : "token posture",
 		];
@@ -58,35 +56,26 @@ export function queueSummary(entry: RbacCockpitItem): string {
 }
 
 export function bindingSources(
-	inspection: RbacInspectionSummary,
+	index: RbacBindingIndex,
 	entry: RbacCockpitItem,
 ): RbacBindingSummary[] {
-	const bindings = [
-		...inspection.roleBindings,
-		...inspection.clusterRoleBindings,
-	];
 	if (
 		entry.category === "Service Accounts" &&
 		isServiceAccountSummary(entry.item)
 	) {
-		const applies = serviceAccountMatcher(entry.item.namespace, entry.item.name);
-		return bindings.filter((binding) => binding.subjects.some(applies));
+		const { name, namespace } = entry.item;
+		return bindingsForIdentity(index, { kind: "serviceAccount", name, namespace });
 	}
 	if (
 		(entry.category === "Roles" || entry.category === "Cluster Roles") &&
 		isRbacRoleSummary(entry.item)
 	) {
 		const role = entry.item;
-		return bindings.filter(
-			(binding) =>
-				binding.roleRefKind === role.kind &&
-				binding.roleRefName === role.name &&
-				(role.kind !== "Role" || binding.namespace === role.namespace),
-		);
+		return index.bindingsByRole.get(roleReferenceKey(role.kind, role.name, role.namespace)) ?? [];
 	}
 	if (entry.category === "Bindings" && isRbacBindingSummary(entry.item))
 		return [entry.item];
-	return bindings.filter((binding) => binding.namespace === entry.namespace);
+	return index.bindingsByNamespace.get(entry.namespace) ?? [];
 }
 
 function isRbacRoleSummary(

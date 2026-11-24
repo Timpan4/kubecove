@@ -125,7 +125,7 @@ pub(super) fn secondary_badge(content: impl Into<SharedString>) -> Div {
 /// `Badge variant="outline"` with tone classes. `ui::outline_badge` fixes its
 /// text to the foreground, so the tone goes on the text itself.
 fn tinted_outline(color: Hsla, border: Hsla, content: impl Into<SharedString>) -> Div {
-    super::delivery_ui::badge((border, Tokens::input().opacity(0.3), color), content)
+    ui::badge((border, Tokens::input().opacity(0.3), color), content)
 }
 
 /// `healthStateLabel`.

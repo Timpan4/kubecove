@@ -1,5 +1,5 @@
 import { lintKeymap } from "@codemirror/lint";
-import { type Extension, RangeSetBuilder, StateField } from "@codemirror/state";
+import { type Extension, type Range, RangeSetBuilder, StateField, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 
 const yamlIndentDepthClassCount = 6;
@@ -12,6 +12,7 @@ type EditorDoc = {
 };
 
 type StateLike = { doc: EditorDoc };
+type DecorationBuilder = Pick<RangeSetBuilder<Decoration>, "add">;
 
 export async function loadYamlCodeViewerExtensions(): Promise<readonly Extension[]> {
 	if (!yamlCodeViewerExtensionsPromise) {
@@ -28,9 +29,7 @@ async function buildYamlCodeViewerExtensions(): Promise<readonly Extension[]> {
 			return buildYamlValueDecorations(state);
 		},
 		update(decorations, transaction) {
-			return transaction.docChanged && transaction.state
-				? buildYamlValueDecorations(transaction.state)
-				: decorations;
+			return updateYamlValueDecorations(decorations, transaction);
 		},
 		provide: (field) => EditorView.decorations.from(field),
 	});
@@ -170,16 +169,60 @@ export function buildYamlValueDecorations(
 	const viewState = state.doc;
 
 	for (let lineNumber = 1; lineNumber <= viewState.lines; lineNumber += 1) {
-		const line = viewState.line(lineNumber);
-		addIndentDecorations(builder, line.from, line.text);
-		addLineValueDecorations(builder, line.from, line.text);
+		addLineDecorations(builder, viewState.line(lineNumber));
 	}
 
 	return builder.finish();
 }
 
+export function updateYamlValueDecorations(
+	decorations: DecorationSet,
+	transaction: Transaction,
+): DecorationSet {
+	if (!transaction.docChanged) return decorations;
+	const doc = transaction.newDoc;
+	let mapped = decorations.map(transaction.changes);
+	let firstLine = 0;
+	let lastLine = 0;
+
+	function rebuild() {
+		if (!firstLine) return;
+		const add: Range<Decoration>[] = [];
+		const builder: DecorationBuilder = { add: (from, to, value) => add.push(value.range(from, to)) };
+		for (let number = firstLine; number <= lastLine; number += 1) {
+			addLineDecorations(builder, doc.line(number));
+		}
+		mapped = mapped.update({
+			filterFrom: doc.line(firstLine).from,
+			filterTo: doc.line(lastLine).to,
+			filter: () => false,
+			add,
+		});
+	}
+
+	// Both endpoint lines can change classification when a newline is inserted or deleted.
+	transaction.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+		const from = doc.lineAt(fromB).number;
+		const to = doc.lineAt(toB).number;
+		if (firstLine && from <= lastLine) {
+			lastLine = Math.max(lastLine, to);
+			return;
+		}
+		rebuild();
+		firstLine = from;
+		lastLine = to;
+	});
+	rebuild();
+	return mapped;
+}
+
+function addLineDecorations(builder: DecorationBuilder, line: ReturnType<EditorDoc["line"]>) {
+	addIndentDecorations(builder, line.from, line.text);
+	addLineValueDecorations(builder, line.from, line.text);
+}
+
 function addIndentDecorations(
-	builder: RangeSetBuilder<Decoration>,
+	builder: DecorationBuilder,
 	lineFrom: number,
 	text: string,
 ) {
@@ -198,7 +241,7 @@ function addIndentDecorations(
 }
 
 function addLineValueDecorations(
-	builder: RangeSetBuilder<Decoration>,
+	builder: DecorationBuilder,
 	lineFrom: number,
 	text: string,
 ) {
@@ -219,7 +262,7 @@ function addLineValueDecorations(
 }
 
 function addScalarDecoration(
-	builder: RangeSetBuilder<Decoration>,
+	builder: DecorationBuilder,
 	lineFrom: number,
 	text: string,
 	start: number,

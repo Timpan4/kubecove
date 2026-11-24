@@ -7,7 +7,9 @@ import type {
 	ArgoResourceComparison,
 	JsonValue,
 } from "@/lib/types";
-import { argoResourceIdentityKey } from "./argo-workspace-model";
+import { argoComparisonDocument, argoResourceIdentityKey } from "./argo-workspace-model";
+
+export const COMPACT_ARGO_DIFF_LINES = 24;
 
 export type YamlDiffSegment = { text: string; className: string };
 
@@ -36,6 +38,24 @@ export function resolveArgoResourceComparison(
 		return selectedComparison;
 	}
 	return key === null ? null : (comparisonsByKey.get(key) ?? null);
+}
+
+export function projectArgoResourceComparison(
+	resource: ArgoManagedResource,
+	comparison: ArgoResourceComparison | null,
+) {
+	const documents = argoComparisonDocument(resource, comparison);
+	const desired = argoDocumentText(documents.desired);
+	const live = argoDocumentText(documents.live);
+	const normalizedLive = documents.normalizedLive === documents.live
+		? live
+		: argoDocumentText(documents.normalizedLive);
+	return {
+		desired, live, normalizedLive,
+		exact: comparison?.exact,
+		added: live === "" && desired !== "",
+		modified: documents.modified ?? desired !== normalizedLive,
+	};
 }
 
 const yamlDiffHighlighter = tagHighlighter([

@@ -22,8 +22,7 @@ import {
 	LARGE_QUERY_ROOTS,
 } from "../src/lib/queryKeys";
 import {
-	mergeResourceMetrics,
-	mergeTopologyMetrics,
+	resourceMetricFor,
 	resourceMetricIndex,
 } from "../src/lib/resource-metrics";
 import type {
@@ -262,19 +261,21 @@ const metricTopology: ResourceTopology = {
 	edges: [],
 	warnings: [],
 };
-type MetricSamples = { duplicateIndexMs: number[]; sharedIndexMs: number[] };
-const metricSamples: MetricSamples = { duplicateIndexMs: [], sharedIndexMs: [] };
+// Each sample builds the index once and looks up every table row and topology node, as the UI does per read.
+type MetricSamples = { lookupMs: number[] };
+const metricSamples: MetricSamples = { lookupMs: [] };
+const metricContexts = [{ clusterContext: metrics.cluster, summary: metrics }];
+let matchedLookups = 0;
 for (let index = 0; index < 20; index += 1) {
 	started = performance.now();
-	mergeResourceMetrics(metricResources, metrics);
-	mergeTopologyMetrics(metricTopology, metrics);
-	metricSamples.duplicateIndexMs.push(performance.now() - started);
-
-	started = performance.now();
-	const metricIndex = resourceMetricIndex(metrics);
-	mergeResourceMetrics(metricResources, metrics, metricIndex);
-	mergeTopologyMetrics(metricTopology, metrics, metricIndex);
-	metricSamples.sharedIndexMs.push(performance.now() - started);
+	const metricIndex = resourceMetricIndex(metricContexts);
+	for (const resource of metricResources) {
+		if (resourceMetricFor(metricIndex, resource)) matchedLookups += 1;
+	}
+	for (const node of metricTopology.nodes) {
+		if (resourceMetricFor(metricIndex, node.summary)) matchedLookups += 1;
+	}
+	metricSamples.lookupMs.push(performance.now() - started);
 }
 
 const queryTimeouts = new VirtualTimeouts();
@@ -350,12 +351,9 @@ console.log(
 			},
 			resourceMetrics: {
 				metrics: metricTotal,
-				samples: metricSamples.duplicateIndexMs.length,
-				duplicateIndexP75Ms: Number(percentile(metricSamples.duplicateIndexMs, 0.75).toFixed(2)),
-				sharedIndexP75Ms: Number(percentile(metricSamples.sharedIndexMs, 0.75).toFixed(2)),
-				sharedIndexP75Speedup: Number(
-					(percentile(metricSamples.duplicateIndexMs, 0.75) / percentile(metricSamples.sharedIndexMs, 0.75)).toFixed(2),
-				),
+				samples: metricSamples.lookupMs.length,
+				indexedLookupP75Ms: Number(percentile(metricSamples.lookupMs, 0.75).toFixed(2)),
+				matchedLookups,
 			},
 			largeQueryRetention: {
 				queryMemoryBeforeCollection, queryMemoryAfterCollection,

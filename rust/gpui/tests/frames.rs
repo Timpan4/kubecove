@@ -107,11 +107,18 @@ impl Driver {
     }
 
     /// An unmeasured step: draw, act on that frame, then settle.
+    ///
+    /// The next frame ends every control transition and sidebar fold the step
+    /// started, as the visual and parity drivers' settled pages show. The
+    /// executor clock is real here, so a 150 ms fold would otherwise still clip
+    /// the branch's rows on the following step, and motion a `prepare` step
+    /// started would run on into the measured input.
     pub fn act(&mut self, action: impl FnOnce(&mut gpui_kit::Window, &mut gpui_kit::App)) {
         self.cx
             .update_window(self.handle, |_, window, cx| {
                 window.render_frame(cx);
                 action(window, cx);
+                kubecove_gpui::control_motion::Moving::finish(cx);
             })
             .unwrap();
         self.cx.tick();

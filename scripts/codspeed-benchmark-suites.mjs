@@ -58,6 +58,7 @@ const splitBenchmarks = [
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F07 ownership layout (build once)",
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F09 indexed selection (50 updates)",
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F09 selection + resize (retained layout, 50 updates)",
+			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F10 resize only with retained graph bounds and fit identity",
 			"F07 graph layout and F09 retained topology selection (500 apps / 1k nodes) > F10 full and focused fit plans across viewport geometry"
 		],
 		"seconds": 17.924
@@ -72,6 +73,10 @@ const splitBenchmarks = [
 			"F01 F02 F03 resource arrival and retained table state (10k rows) > F01 multi-hop ownership projection on arrival",
 			"F01 F02 F03 resource arrival and retained table state (10k rows) > F03 kind filter + F01 projection for versioned CRDs",
 			"F01 F02 F03 resource arrival and retained table state (10k rows) > buildResourceTableModel repeated variants (reused projection)",
+			"F01 F02 F03 resource arrival and retained table state (10k rows) > F02 sort-only with retained membership, table work only",
+			"F01 F02 F03 resource arrival and retained table state (10k rows) > F02 sort-only with repeated membership lookup, table work only",
+			"F01 F02 F03 resource arrival and retained table state (10k rows) > F02 sort-only with retained membership and map scope",
+			"F01 F02 F03 resource arrival and retained table state (10k rows) > F02 grouping-only with retained sorted rows",
 			"F01 F02 F03 resource arrival and retained table state (10k rows) > F02 row selection (reused display and page)",
 			"F01 F02 F03 resource arrival and retained table state (10k rows) > F02 retained model on multi-hop ownership projection",
 			"multi-context resource table (10k rows x 1 contexts) > buildResourceSearchIndex, cached rows (1 contexts)",

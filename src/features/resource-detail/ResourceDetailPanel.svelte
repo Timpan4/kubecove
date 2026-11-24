@@ -1,4 +1,6 @@
 <script module lang="ts">
+	const loadYamlPane = () => import("./ResourceYamlPane.svelte");
+	const loadArgoPane = () => import("@/features/gitops/ArgoApplicationDetails.svelte");
 	let execTabImport: Promise<typeof import("./ExecTab.svelte")> | undefined;
 
 	function loadExecTab() {
@@ -21,30 +23,21 @@
 		formatExactTimeOnly,
 		formatExactTimestamp,
 	} from "@/components/timestamp-format";
-	import { diagnosticLog } from "@/lib/diagnostics";
 	import { messageFromError } from "@/lib/error-redaction";
-	import {
-		closeStreamChannel,
-		createStreamChannel,
-		startResourceEventWatch,
-		startResourceWatch,
-		stopStream,
-		type TauriClient,
-	} from "@/lib/tauri";
+	import { diagnosticLog } from "@/lib/diagnostics";
+	import type { TauriClient } from "@/lib/tauri";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
+	import { resourceDetailWatches } from "./resourceDetailWatches.svelte";
 	import type {
 		ArgoApplicationSummary,
 		ResourceDetailsFull,
 		ResourceEventSummary,
 		ResourceSummary,
-		StreamMessage,
 		YamlEncoding,
 		YamlViewMode,
 	} from "@/lib/types";
 	import type { PathStateResourceDetailState } from "@/lib/path-state";
 	import { argoApplicationReads } from "@/lib/argo-application-inspection";
-	import { createLiveReadRefresh } from "@/lib/live-view-refresh";
-	import { queryMatchers, type QueryMatch } from "@/lib/queryKeys";
-	import { isTransientQueryError } from "@/lib/query-retry";
 	import { RESOURCE_RECOVERY_INTERVAL } from "@/lib/resource-watch";
 	import type { WorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
@@ -55,27 +48,21 @@
 		buildIncidentSignals,
 		getConditionRows,
 		getContainerStatusRows,
-		isCleanCompletedContainer,
-		type ContainerStatusRow,
 	} from "./helpers";
 	import {
 		buildResourceDetailReadSpec,
 		resourceDetailsQuery,
 		resourceEventsQuery,
 	} from "./resourceDetailReadSpec";
-	import ArgoApplicationDetails from "@/features/gitops/ArgoApplicationDetails.svelte";
-	import { CHIP_BADGE_STYLES, type ChipVariant } from "./constants";
 	import DetailsTab from "./DetailsTab.svelte";
 	import DeploymentRevisionsTab from "./DeploymentRevisionsTab.svelte";
 	import EventsTab from "./EventsTab.svelte";
 	import PortForwardTab from "./PortForwardTab.svelte";
 	import ResourceActionsTab from "./ResourceActionsTab.svelte";
 	import ResourceLogsPane from "./ResourceLogsPane.svelte";
-	import ResourceYamlPane from "./ResourceYamlPane.svelte";
 	import { sortIncidentEvents } from "./incident-events";
 	import {
 		buildIncidentTimeline,
-		type IncidentTimelineTone,
 	} from "./incident-timeline";
 	import type { ParsedLogLine } from "./log-helpers";
 	import {
@@ -144,9 +131,6 @@
 	$effect(() => {
 		visitedTabs.add(activeTab);
 	});
-	let realtimeWatchError = $state<string | null>(null);
-	let realtimeEventsWatchError = $state<string | null>(null);
-	let eventsWatchPhase = $state<"opening" | "connected" | "recovering">("opening");
 	const showEventsWarnings = $derived(
 		activeTab === "details" || activeTab === "events",
 	);
@@ -202,7 +186,18 @@
 				execTabLoadError = cause;
 			});
 	}
-	const detailsQueryKey = $derived(readSpec.detailsQueryKey);
+	const watches = resourceDetailWatches(
+		() => client,
+		queryClient,
+		() => detailsEnabled ? {
+			resource, watchKey: readSpec.resourceWatchKey, detailsQueryKey: readSpec.detailsQueryKey,
+			argoReads: argoApplicationReadsMatch, source: kubeconfigSourceKey,
+		} : null,
+		() => eventsEnabled ? {
+			key: resourceKey, source: kubeconfigSourceKey, read: untrack(() => readSpec),
+		} : null,
+		() => { if (activeTab === "yaml") resourceRefreshVersion += 1; },
+	);
 
 	$effect(() => {
 		const key = resourceKey;
@@ -223,7 +218,7 @@
 	);
 	const eventsQuery = createQuery<ResourceEventSummary[]>(() => ({
 		...resourceEventsQuery(client, readSpec, eventsUid, eventsEnabled && eventsReady, queryClient),
-		refetchInterval: eventsWatchPhase !== "connected"
+		refetchInterval: !watches.eventsConnected
 			? (query) => query.state.status === "success" ? RESOURCE_RECOVERY_INTERVAL : false
 			: false,
 	}));
@@ -305,143 +300,6 @@
 		});
 	});
 
-	$effect(() => {
-		if (!detailsEnabled) return;
-		let cancelled = false;
-		let streamId: string | null = null;
-		const watchKey = readSpec.resourceWatchKey;
-		let needsCatchUp = false;
-		const details = queryMatchers.exact(detailsQueryKey);
-		const argoReads = argoApplicationReadsMatch;
-		const reads: QueryMatch = argoReads ? (query) => details(query) || argoReads(query) : details;
-		const refresh = createLiveReadRefresh(queryClient, reads, () => {
-			if (activeTab === "yaml") resourceRefreshVersion += 1;
-		});
-		const channel = createStreamChannel((event: StreamMessage) => {
-			if (cancelled) return;
-			if (event.type === "error") {
-				realtimeWatchError = event.message;
-				needsCatchUp = true;
-				return;
-			}
-			if (event.type === "status") {
-				if (event.status === "connected") {
-					realtimeWatchError = null;
-					if (needsCatchUp) {
-						needsCatchUp = false;
-						refresh.notify();
-					}
-				} else needsCatchUp = true;
-				return;
-			}
-			if (event.type !== "resourceChanged") return;
-			if (event.target.name && event.target.name !== resource.name) return;
-			if (
-				resource.namespace &&
-				event.target.namespace &&
-				event.target.namespace !== resource.namespace
-			) {
-				return;
-			}
-			refresh.notify();
-		}, client);
-		void startResourceWatch(
-			client,
-			resource.cluster,
-			[watchKey],
-			channel,
-			kubeconfigSourceKey,
-		)
-			.then((id) => {
-				if (cancelled) {
-					void stopStream(client, id);
-					return;
-				}
-				streamId = id;
-			})
-			.catch((cause: unknown) => {
-				if (cancelled) return;
-				realtimeWatchError = cause instanceof Error ? cause.message : String(cause);
-			});
-		return () => {
-			cancelled = true;
-			refresh.dispose();
-			if (streamId) void stopStream(client, streamId);
-			closeStreamChannel(channel);
-		};
-	});
-
-	$effect(() => {
-		if (!eventsEnabled) return;
-		let cancelled = false;
-		let retireAttempt: (() => void) | undefined;
-		let retryTimer: ReturnType<typeof setTimeout> | undefined;
-		const source = kubeconfigSourceKey;
-		const scope = resourceKey;
-		const { eventsQueryKey, eventWatch: target } = untrack(() => readSpec);
-		const refresh = createLiveReadRefresh(queryClient, queryMatchers.prefix(eventsQueryKey));
-		diagnosticLog("detail.events.watch", { key: scope });
-		eventsWatchPhase = "opening";
-		realtimeEventsWatchError = null;
-		function receive(event: StreamMessage) {
-			if (event.type === "error") {
-				realtimeEventsWatchError = messageFromError(event.message);
-				eventsWatchPhase = "recovering";
-				return;
-			}
-			if (event.type === "status") {
-				if (event.status === "connected") {
-					realtimeEventsWatchError = null;
-					const needsCatchUp = eventsWatchPhase !== "connected";
-					eventsWatchPhase = "connected";
-					if (needsCatchUp) refresh.notify();
-				} else eventsWatchPhase = "recovering";
-				return;
-			}
-			if (event.type === "stopped") {
-				retireAttempt?.();
-				eventsWatchPhase = "recovering";
-				retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);
-				return;
-			}
-			if (event.type === "resourceEventsChanged") refresh.notify();
-		}
-		function connect() {
-			retryTimer = undefined;
-			let closed = false;
-			let streamId: string | null = null;
-			const channel = createStreamChannel((event: StreamMessage) => {
-				if (!closed) receive(event);
-			}, client);
-			const close = () => {
-				if (closed) return;
-				closed = true;
-				closeStreamChannel(channel);
-				if (streamId) void stopStream(client, streamId).catch(() => {});
-			};
-			retireAttempt = close;
-			void startResourceEventWatch(client, target.cluster, target.kind, target.name, target.namespace, channel, source)
-				.then((id) => {
-					if (closed) void stopStream(client, id).catch(() => {});
-					else streamId = id;
-				})
-				.catch((cause: unknown) => {
-					if (cancelled || closed) return;
-					close();
-					realtimeEventsWatchError = messageFromError(cause);
-					eventsWatchPhase = "recovering";
-					if (isTransientQueryError(cause)) retryTimer = setTimeout(connect, RESOURCE_RECOVERY_INTERVAL);
-				});
-		}
-		connect();
-		return () => {
-			cancelled = true;
-			if (retryTimer !== undefined) clearTimeout(retryTimer);
-			refresh.dispose();
-			retireAttempt?.();
-		};
-	});
-
 	function formatLogTime(timestamp: string | undefined): string {
 		return formatExactTimeOnly(timestamp, timestampTimezone) ?? "-";
 	}
@@ -456,80 +314,6 @@
 
 	function formatEventCompactTime(event: ResourceEventSummary): string {
 		return formatExactTimeOnly(event.lastSeenAt, timestampTimezone, "second") ?? event.lastSeen;
-	}
-
-	function hashMetadataKeyToHue(key: string): number {
-		let hash = 0;
-		for (let index = 0; index < key.length; index += 1) {
-			hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
-		}
-		return hash % 360;
-	}
-
-	function metadataBadgeStyle(key: string): string {
-		const hue = hashMetadataKeyToHue(key);
-		return [
-			`background-color: hsl(${hue} 70% 22% / 0.38)`,
-			`border-color: hsl(${hue} 72% 52% / 0.46)`,
-			`color: hsl(${hue} 88% 78%)`,
-		].join("; ");
-	}
-
-	function incidentToneClass(tone: IncidentTimelineTone | "success"): string {
-		switch (tone) {
-			case "error":
-				return "border-l-red-500 bg-red-500/5";
-			case "warning":
-				return "border-l-amber-500 bg-amber-500/5";
-			case "info":
-				return "border-l-sky-500 bg-sky-500/5";
-			case "success":
-				return "border-l-emerald-500 bg-emerald-500/5";
-			case "neutral":
-				return "border-l-muted bg-background/50";
-		}
-	}
-
-	function toneBadgeVariant(tone: ChipVariant): "secondary" | "destructive" | "outline" {
-		return CHIP_BADGE_STYLES[tone].variant;
-	}
-
-	function toneBadgeClass(tone: ChipVariant, extra = ""): string {
-		return `${CHIP_BADGE_STYLES[tone].className} ${extra}`.trim();
-	}
-
-	function compactToneBadgeClass(tone: ChipVariant): string {
-		return toneBadgeClass(tone, "rounded-full px-2 py-0 text-[0.6875rem] shadow-none");
-	}
-
-	function restartsTone(restarts: number | undefined): ChipVariant {
-		return restarts !== undefined && restarts > 0 ? "warning" : "neutral";
-	}
-
-	function containerTone(container: ContainerStatusRow): ChipVariant {
-		if (isCleanCompletedContainer(container)) return "neutral";
-		if (container.exitCode !== undefined && container.exitCode !== 0) return "error";
-		if (
-			container.state === "waiting" ||
-			(container.lastExitCode !== undefined && container.lastExitCode !== 0)
-		) {
-			return "warning";
-		}
-		if (container.ready === false) return "error";
-		if (container.ready === true || container.state === "running") return "success";
-		return "neutral";
-	}
-
-	function containerReadyLabel(container: ContainerStatusRow): string {
-		if (isCleanCompletedContainer(container)) return "Completed";
-		if (container.ready === undefined) return "Not reported";
-		return container.ready ? "Yes" : "No";
-	}
-
-	function containerStateLabel(container: ContainerStatusRow): string {
-		const state = container.state ?? "-";
-		const reason = container.reason ?? container.lastReason;
-		return reason && state !== "-" ? `${state} - ${reason}` : (reason ?? state);
 	}
 
 	function tabChanged(value: string) {
@@ -565,14 +349,14 @@
 		<TabsTrigger value="yaml">YAML</TabsTrigger>
 	</TabsList>
 
-	{#if realtimeWatchError}
+	{#if watches.resourceError}
 		<p class="text-muted-foreground text-xs">
-			Realtime watch failed: {realtimeWatchError}. Showing the last loaded data.
+			Realtime watch failed: {watches.resourceError}. Showing the last loaded data.
 		</p>
 	{/if}
-	{#if showEventsWarnings && realtimeEventsWatchError}
+	{#if showEventsWarnings && watches.eventsError}
 		<p class="text-muted-foreground text-xs">
-			Events watch failed: {realtimeEventsWatchError}
+			Events watch failed: {watches.eventsError}
 		</p>
 	{/if}
 	{#if showEventsWarnings && eventsQuery.isRefetchError}
@@ -599,30 +383,30 @@
 		requiredPermission={detailReadPermission}
 		bind:metadataLabelsExpanded
 		bind:metadataAnnotationsExpanded
-		{toneBadgeVariant}
-		{compactToneBadgeClass}
-		{restartsTone}
-		{incidentToneClass}
 		{formatFullTimestamp}
-		{metadataBadgeStyle}
-		{containerTone}
-		{containerReadyLabel}
-		{containerStateLabel}
 	/>{/if}
 
-	{#if visitedTabs.has("yaml")}<ResourceYamlPane
-		{client}
-		{resource}
-		{dynamicKind}
-		{kubeconfigSourceKey}
-		detailsYaml={resourceYaml}
-		{detailsEnabled}
-		active={activeTab === "yaml"}
-		refreshVersion={resourceRefreshVersion}
-		bind:yamlViewMode
-		bind:yamlEncoding
-		bind:yamlShowFullDiff
-	/>{/if}
+	{#if visitedTabs.has("yaml")}
+		<TabsContent value="yaml" class="min-h-0">
+		<DeferredSurface load={loadYamlPane} label="YAML" showStatus={activeTab === "yaml"}>
+			{#snippet children(ResourceYamlPane)}
+				<ResourceYamlPane
+					{client}
+					{resource}
+					{dynamicKind}
+					{kubeconfigSourceKey}
+					detailsYaml={resourceYaml}
+					{detailsEnabled}
+					active={activeTab === "yaml"}
+					refreshVersion={resourceRefreshVersion}
+					bind:yamlViewMode
+					bind:yamlEncoding
+					bind:yamlShowFullDiff
+				/>
+			{/snippet}
+		</DeferredSurface>
+		</TabsContent>
+	{/if}
 
 	{#if visitedTabs.has("events")}<EventsTab
 		{eventsQuery}
@@ -692,13 +476,17 @@
 	{/if}
 	{#if isArgoApplication && visitedTabs.has("argo")}
 		<TabsContent value="argo" class="min-h-0">
-			<ArgoApplicationDetails
-					resourceSummary={resource}
-					applicationSummary={argoApplicationSummary}
-					applicationDetails={detailsQuery.data ?? null}
-					{workspaceReadContext}
-					active={activeTab === "argo"}
-				/>
+			<DeferredSurface load={loadArgoPane} label="Argo CD">
+				{#snippet children(ArgoApplicationDetails)}
+					<ArgoApplicationDetails
+							resourceSummary={resource}
+							applicationSummary={argoApplicationSummary}
+							applicationDetails={detailsQuery.data ?? null}
+							{workspaceReadContext}
+							active={activeTab === "argo"}
+						/>
+				{/snippet}
+			</DeferredSurface>
 		</TabsContent>
 	{/if}
 	<TabsContent value="operations">

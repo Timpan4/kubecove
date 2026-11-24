@@ -227,10 +227,12 @@ export function filterResourceSearchIndex(
 	index: ResourceSearchEntry[],
 	search: string,
 	argoAppFilter: string,
+	limit = Infinity,
 ): ResourceSummary[] {
 	const term = search.trim().toLowerCase();
 	const rows: ResourceSummary[] = [];
 	for (const entry of index) {
+		if (rows.length >= limit) break;
 		if (argoAppFilter && !entry.gitOpsFilterKeys.includes(argoAppFilter)) {
 			continue;
 		}

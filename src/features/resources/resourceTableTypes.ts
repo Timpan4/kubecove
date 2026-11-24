@@ -90,6 +90,11 @@ export interface ResourceTableModel {
 	};
 }
 
+export type ResourceTableMembership = Pick<
+	ResourceTableModel,
+	"scopedRows" | "filteredRows" | "groupedByGitOps" | "multiContext" | "gitOpsFilters" | "healthSummary"
+>;
+
 export type ResourceTableDisplay = Pick<
 	ResourceTableModel,
 	| "scopedRows"

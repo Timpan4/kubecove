@@ -213,8 +213,11 @@ async fn secret_values_never_leave_through_describe_or_yaml() {
         body["fields"]["data"]["password"].is_string(),
         "the key stays visible"
     );
-    let (yaml, _) = call(&endpoint, "get_resource_yaml", arguments).await;
-    for text in [&described, &yaml] {
+    let (yaml_response, yaml) = call(&endpoint, "get_resource_yaml", arguments).await;
+    let document: Value = serde_yaml::from_str(yaml["yaml"].as_str().unwrap()).unwrap();
+    assert_eq!(body["fields"]["data"], document["data"]);
+    assert_eq!(body["fields"]["type"], document["type"]);
+    for text in [&described, &yaml_response] {
         assert!(!text.contains(SECRET_VALUE));
         assert!(!text.contains(&STANDARD.encode(SECRET_VALUE)));
     }

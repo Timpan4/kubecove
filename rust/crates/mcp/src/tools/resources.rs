@@ -7,11 +7,14 @@ use crate::{
     kinds::{ResolvedKind, resolve_kind},
 };
 use kubecove_inspection::commands::{
-    dynamic_resource_details_from, resource_details_from, resource_events_from,
-    resource_scope_from, resource_yaml_from,
+    dynamic_resource_details_from, resource_events_from, resource_yaml_from,
+    resources::{
+        PreparedResourceDetails, ResourceScopeResponse, dynamic_resource_details_document_from,
+        resource_details_document_from, resource_scope_shared_from,
+    },
 };
 use kubecove_kube::commands::ClusterAccess;
-use kubecove_models::{AppError, AppErrorKind, ResourceDetailsFull, YamlViewMode};
+use kubecove_models::{AppError, AppErrorKind, ResourceSummary, YamlViewMode};
 use serde_json::{Map, Value, json};
 
 // kubectl stores the complete previous document here; it repeats the spec and can be large.
@@ -31,7 +34,7 @@ pub async fn list_resources(
     )
     .await?;
     let request = kind.list_request(arguments.namespace);
-    let mut rows = resource_scope_from(
+    let scope = resource_scope_shared_from(
         &access,
         cluster.clone(),
         vec![request],
@@ -42,18 +45,34 @@ pub async fn list_resources(
         .name_contains
         .map(|text| text.to_ascii_lowercase())
         .filter(|text| !text.is_empty());
-    rows.retain(|row| {
-        name_filter
-            .as_deref()
-            .is_none_or(|text| row.name.to_ascii_lowercase().contains(text))
-            && (arguments.health == args::HealthFilter::All || compact::is_unhealthy(row))
-    });
-    rows.sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
-    let mut body = page(rows, arguments.limit, arguments.offset)?
-        .into_json("resources", |row| compact::resource(&row));
+    let mut body = page_resource_rows(&scope, arguments.limit, arguments.offset, |row| {
+        resource_row_matches(name_filter.as_deref(), arguments.health, row)
+    })?;
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
+}
+
+/// `name_filter` must already be lowercase. Shared with the backend benchmarks so they
+/// measure the same predicate `list_resources` applies.
+pub fn resource_row_matches(
+    name_filter: Option<&str>,
+    health: args::HealthFilter,
+    row: &ResourceSummary,
+) -> bool {
+    name_filter.is_none_or(|text| row.name.to_ascii_lowercase().contains(text))
+        && (health == args::HealthFilter::All || compact::is_unhealthy(row))
+}
+
+pub fn page_resource_rows(
+    scope: &ResourceScopeResponse,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    filter: impl Fn(&ResourceSummary) -> bool,
+) -> Result<Map<String, Value>, AppError> {
+    let mut rows: Vec<_> = scope.rows().filter(|row| filter(row)).collect();
+    rows.sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
+    Ok(page(rows, limit, offset)?.into_json("resources", compact::resource))
 }
 
 struct Target {
@@ -90,27 +109,25 @@ async fn target(context: &McpContext, arguments: args::ResourceArgs) -> Result<T
     })
 }
 
-async fn details(target: &Target) -> Result<ResourceDetailsFull, AppError> {
+async fn details(target: &Target) -> Result<PreparedResourceDetails, AppError> {
     match &target.kind {
         ResolvedKind::Builtin(kind) => {
-            resource_details_from(
+            resource_details_document_from(
                 &target.access,
-                target.cluster.clone(),
-                kind.kind.to_owned(),
-                target.name.clone(),
-                target.namespace.clone(),
+                &target.cluster,
+                kind.kind,
+                &target.name,
+                target.namespace.as_deref(),
             )
             .await
         }
         ResolvedKind::Custom(kind) => {
-            dynamic_resource_details_from(
+            dynamic_resource_details_document_from(
                 &target.access,
-                target.cluster.clone(),
-                kind.clone(),
-                target.name.clone(),
-                target.namespace.clone(),
-                Some(YamlViewMode::Kubectl),
-                None,
+                &target.cluster,
+                kind,
+                &target.name,
+                target.namespace.as_deref(),
             )
             .await
         }
@@ -137,25 +154,7 @@ pub async fn describe_resource(
         uid,
     )
     .await;
-    let mut body = Map::new();
-    body.insert("context".into(), target.cluster.into());
-    body.insert("summary".into(), compact::resource(&details.summary));
-    body.insert("metadata".into(), metadata(&details.metadata));
-    // The redacted YAML is the source for spec and other top-level fields, so Secret
-    // data is never read from anywhere else. They sit under `fields` so a custom
-    // resource's own `context` or `summary` cannot replace this envelope's.
-    if let Value::Object(document) = yaml_document(&details.yaml)? {
-        let fields: Map<String, Value> = document
-            .into_iter()
-            .filter(|(key, _)| {
-                !matches!(key.as_str(), "apiVersion" | "kind" | "metadata" | "status")
-            })
-            .collect();
-        body.insert("fields".into(), Value::Object(fields));
-    }
-    if let Some(status) = details.status {
-        body.insert("status".into(), status);
-    }
+    let mut body = describe_resource_body(target.cluster, details);
     match events {
         Ok(events) => {
             body.insert(
@@ -173,6 +172,26 @@ pub async fn describe_resource(
         Err(error) => return Err(error),
     }
     Ok(Value::Object(body))
+}
+
+pub fn describe_resource_body(
+    cluster: String,
+    details: PreparedResourceDetails,
+) -> Map<String, Value> {
+    let mut body = Map::new();
+    body.insert("context".into(), cluster.into());
+    body.insert("summary".into(), compact::resource(&details.summary));
+    body.insert("metadata".into(), metadata(&details.metadata));
+    if let Value::Object(mut fields) = details.document {
+        for key in ["apiVersion", "kind", "metadata", "status"] {
+            fields.remove(key);
+        }
+        body.insert("fields".into(), Value::Object(fields));
+    }
+    if let Some(status) = details.status {
+        body.insert("status".into(), status);
+    }
+    body
 }
 
 pub async fn get_resource_yaml(
@@ -193,15 +212,21 @@ pub async fn get_resource_yaml(
             )
             .await?
         }
-        ResolvedKind::Custom(_) => details(&target).await?.yaml,
+        ResolvedKind::Custom(kind) => {
+            dynamic_resource_details_from(
+                &target.access,
+                target.cluster.clone(),
+                kind.clone(),
+                target.name,
+                target.namespace,
+                Some(YamlViewMode::Kubectl),
+                None,
+            )
+            .await?
+            .yaml
+        }
     };
     Ok(json!({"context": target.cluster, "yaml": yaml}))
-}
-
-fn yaml_document(yaml: &str) -> Result<Value, AppError> {
-    serde_yaml::from_str(yaml).map_err(|error| {
-        AppError::new(error.to_string(), AppErrorKind::Serialization).with_source(error)
-    })
 }
 
 fn metadata(metadata: &Value) -> Value {
