@@ -69,13 +69,16 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		accessReview = { kind: "none" };
 		options.onHandoffConsumed();
 	});
-	const activeIdentity = $derived<InspectorIdentity>(
-		identitySource.kind === "subject"
-			? identitySource.identity
-			: identitySource.kind === "selection" && selectedIdentity
-				? selectedIdentity
-				: manualIdentityValue(),
-	);
+	const activeIdentity: InspectorIdentity = $derived.by(() => {
+		if (identitySource.kind === "subject") return identitySource.identity;
+		if (identitySource.kind === "selection" && selectedIdentity) return selectedIdentity;
+		return manualIdentityValue();
+	});
+	const canVerify = $derived.by(() => {
+		if (!data || !activeIdentity.name || !verb.trim()) return false;
+		if (targetKind === "resource") return resource.trim() !== "";
+		return nonResourceUrl.trim().startsWith("/");
+	});
 	const fingerprint = $derived(
 		JSON.stringify({
 			cluster: data?.cluster,
@@ -128,6 +131,13 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		identitySource = { kind: "manual" };
 	}
 
+	// Subjects of any other kind are users, matching how the RBAC inspector lists them.
+	function subjectIdentityKind(kind: string): InspectorIdentity["kind"] {
+		if (kind === "ServiceAccount") return "serviceAccount";
+		if (kind === "Group") return "group";
+		return "user";
+	}
+
 	function inspectSubject(subject: {
 		kind: string;
 		name: string;
@@ -136,12 +146,7 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		identitySource = {
 			kind: "subject",
 			identity: {
-				kind:
-					subject.kind === "ServiceAccount"
-						? "serviceAccount"
-						: subject.kind === "Group"
-							? "group"
-							: "user",
+				kind: subjectIdentityKind(subject.kind),
 				name: subject.name,
 				namespace: subject.namespace,
 			},
@@ -149,16 +154,7 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 	}
 
 	async function verify() {
-		if (
-			!data ||
-			!activeIdentity.name ||
-			!verb.trim() ||
-			(targetKind === "resource"
-				? !resource.trim()
-				: !nonResourceUrl.trim().startsWith("/"))
-		) {
-			return;
-		}
+		if (!data || !canVerify) return;
 		const identity = reviewIdentity(activeIdentity);
 		const target =
 			targetKind === "resource"
@@ -227,6 +223,7 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		get handoffPromoted() { return handoffPromoted; },
 		get accessReview() { return accessReview; },
 		get reviewing() { return reviewing; },
+		get canVerify() { return canVerify; },
 		get verb() { return verb; },
 		set verb(value: typeof verb) { verb = value; },
 		get resource() { return resource; },

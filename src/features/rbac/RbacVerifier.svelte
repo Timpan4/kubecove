@@ -65,7 +65,7 @@
 		<Button
 			class="w-full"
 			size="sm"
-			disabled={model.reviewing || !activeIdentity.name || !model.verb.trim() || (model.targetKind === "resource" ? !model.resource.trim() : !model.nonResourceUrl.trim().startsWith("/"))}
+			disabled={model.reviewing || !model.canVerify}
 			onclick={model.verify}
 		>
 			<ShieldCheck data-icon /> {model.reviewing ? "Verifying…" : "Verify access"}
