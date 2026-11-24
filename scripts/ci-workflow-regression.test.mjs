@@ -518,7 +518,8 @@ test("every file a crate embeds from outside rust/ selects, re-keys and re-runs 
     const source = readFileSync(new URL(file, repository), "utf8");
     for (const [, relative] of source.matchAll(/include_(?:str|bytes)!\(\s*"([^"]+)"\s*,?\s*\)/g)) {
       const resolved = join(dirname(file), relative).replaceAll("\\", "/");
-      if (!resolved.startsWith("rust/")) embeds.set(resolved, file);
+      // A fixture can have several consumers; each one's tasks must stay covered.
+      if (!resolved.startsWith("rust/")) embeds.set(resolved, [...(embeds.get(resolved) ?? []), file]);
     }
   }
   for (const path of ["tests/fixtures/kubernetes/pod-running.json", "src/lib/tauri-dev-mock-overview.json", "src/lib/settings-integration-workspace.json", "index.html"]) {
@@ -528,16 +529,16 @@ test("every file a crate embeds from outside rust/ selects, re-keys and re-runs 
   const tasks = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map((task) => [task.task, task]));
   const parity = readFileSync(new URL("../.github/workflows/parity-suite.yml", import.meta.url), "utf8");
   const parityKey = listed(/ci-rust-cache-key\.mjs .+ \.github\/workflows\/parity-suite\.yml (rust .+)$/m.exec(parity)[1]);
-  for (const [path, file] of embeds) {
-    assert.ok(listed(path).has(path), `${file} embeds untracked ${path}`);
+  for (const [path, files] of embeds) {
+    assert.ok(listed(path).has(path), `${files.join(", ")} embeds untracked ${path}`);
     // GPUI and the server also compile the root crates, so a root embed counts for every task.
-    const gpuiEmbed = file.startsWith("rust/gpui/");
-    const compiling = gpuiEmbed ? ["gpui-clippy", "gpui-test"] : file.startsWith("rust/server/") ? ["server"] : Object.keys(tasks);
+    const gpuiEmbed = files.some((file) => file.startsWith("rust/gpui/"));
+    const compiling = new Set(files.flatMap((file) => file.startsWith("rust/gpui/") ? ["gpui-clippy", "gpui-test"] : file.startsWith("rust/server/") ? ["server"] : Object.keys(tasks)));
     const selected = (await detect([path])).matrix.include.map(({ task }) => task);
     for (const name of compiling) {
       assert.ok(selected.includes(name), `${path} does not select ${name}`);
       assert.ok(listed(tasks[name].passInputs).has(path), `${name} pass inputs miss ${path}`);
-      if (gpuiEmbed) assert.ok(listed(tasks[name].inputs).has(path), `${name} compiler inputs miss ${path}`);
+      if (gpuiEmbed && name.startsWith("gpui-")) assert.ok(listed(tasks[name].inputs).has(path), `${name} compiler inputs miss ${path}`);
     }
     if (gpuiEmbed) assert.ok(parityKey.has(path), `the parity build key misses ${path}`);
   }
@@ -681,7 +682,7 @@ test("the server dependency check rejects GPUI and GUI stacks and passes the cur
   const server = packages("rust/server/Cargo.lock");
   const gpuiLock = packages("rust/gpui/Cargo.lock");
   const gpui = gpuiLock.filter((name) => name.includes("gpui"));
-  const windowing = ["wgpu", "wgpu-hal", "wayland-client", "x11rb", "xkbcommon"];
+  const windowing = ["wgpu", "wgpu-hal", "wayland-client", "x11", "x11rb", "xkbcommon"];
   assert.ok(server.includes("kubecove-server") && gpui.includes("kubecove-gpui") && gpui.includes("gpui-kit") && gpui.includes("gpui-pre"));
   for (const name of windowing) assert.ok(gpuiLock.includes(name), `the GPUI lockfile no longer has ${name}`);
   const root = mkdtempSync(join(tmpdir(), "kubecove-ci-dependency-tree-"));

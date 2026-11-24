@@ -210,6 +210,8 @@ test("cancels superseded CI as soon as the newer run selects the same tasks and 
   }
   const detecting = { name: "Detect CI changes", status: "in_progress", conclusion: null };
   assert.deepEqual((await exercise([original, replacement], { jobs: { 1: [detecting], 2: [rust] }, hiddenNix: [1, 2], nixStep: { 1: "skipped", 2: "success" } })).cancelled, [], "the older run's selection is still running");
+  const marked = { ...detecting, steps: [{ name: "Select Nix build", status: "completed", conclusion: "success" }] };
+  assert.deepEqual((await exercise([original, replacement], { jobs: { 1: [rust], 2: [rust, marked] }, hiddenNix: [1, 2], nixStep: { 1: "success" } })).cancelled, [], "the newer run's Detect job has not published its outputs");
 });
 
 // Superseded Parity and CodSpeed main runs used to run their shards until the newer run's

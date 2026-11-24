@@ -12,11 +12,14 @@ const ciPath = ".github/workflows/ci.yml";
 
 // CI's Nix job appears only after every matrix task finishes. Until then, the Detect job's
 // "Select Nix build" step says whether the run selected it. A missing or unfinished step leaves
-// the selection unknown, which retains the run.
+// the selection unknown, which retains the run. The step finishes before its job publishes the
+// outputs the Nix job reads, so only a successful Detect job makes the selection known.
 function nixSelected(runJobs) {
   const nix = runJobs.find((job) => job.name === "Nix build");
   if (nix) return nix.conclusion !== "skipped";
-  const marker = runJobs.find((job) => job.name === "Detect CI changes")?.steps?.find((step) => step.name === "Select Nix build");
+  const detect = runJobs.find((job) => job.name === "Detect CI changes");
+  if (detect?.conclusion !== "success") return undefined;
+  const marker = detect.steps?.find((step) => step.name === "Select Nix build");
   if (marker?.status !== "completed" || !["success", "skipped"].includes(marker.conclusion)) return undefined;
   return marker.conclusion === "success";
 }
