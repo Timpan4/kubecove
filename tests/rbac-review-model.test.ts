@@ -43,6 +43,37 @@ function review(data: RbacInspectionSummary): RbacReviewRecord {
 	return { clusterContext: data.cluster, objectKey: entry.key, evidenceFingerprint, disposition: "expected", note: " Confirmed reader access ", reviewedAt: "2026-08-24T10:00:00Z" };
 }
 
+// Literals were computed on main's reviewModel and cockpitModel with this exact fixture. Persisted reviews
+// compare against these strings, so a change here invalidates every saved rbac-v1 review.
+function pinnedInspection(cluster = "kind-dev"): RbacInspectionSummary {
+	// Inline literal, no cast: the type checker verifies this fixture against RbacInspectionSummary.
+	const rule = { verbs: ["get"], apiGroups: [""], resources: ["pods"], resourceNames: [], nonResourceUrls: [], risks: [] };
+	return {
+		cluster,
+		warnings: [],
+		coverage: [],
+		serviceAccounts: [{ cluster, name: "api", namespace: "team", age: "1d", secretsCount: 0, imagePullSecretsCount: 0, risks: [] }],
+		roles: [{ cluster, kind: "Role", name: "reader", namespace: "team", age: "1d", rulesCount: 1, risks: [], rules: [rule] }],
+		clusterRoles: [{ cluster, kind: "ClusterRole", name: "viewer", age: "1d", rulesCount: 1, risks: [], rules: [{ ...rule, verbs: ["list"], resources: ["namespaces"] }] }],
+		roleBindings: [
+			{ cluster, kind: "RoleBinding", name: "read", namespace: "team", age: "1d", roleRefKind: "Role", roleRefName: "reader", subjects: [{ kind: "ServiceAccount", name: "api", namespace: "team" }], risks: [] },
+			{ cluster, kind: "RoleBinding", name: "decoy", namespace: "other", age: "1d", roleRefKind: "ClusterRole", roleRefName: "viewer", subjects: [{ kind: "ServiceAccount", name: "api", namespace: "other" }], risks: [] },
+		],
+		clusterRoleBindings: [{ cluster, kind: "ClusterRoleBinding", name: "view-api", age: "1d", roleRefKind: "ClusterRole", roleRefName: "viewer", subjects: [{ kind: "ServiceAccount", name: "api", namespace: "team" }], risks: [] }],
+		namespaceAccess: [{ cluster, namespace: "team", serviceAccounts: 1, roles: 1, roleBindings: 1, boundSubjects: [], risks: [] }],
+	};
+}
+
+describe("RBAC evidence fingerprints", () => {
+	test("keep the rbac-v1 values main persisted for a Role and a ServiceAccount with inherited bindings", () => {
+		const data = pinnedInspection();
+		const serviceAccount = cockpitItems(data, "Service Accounts")[0];
+		if (!serviceAccount) throw new Error("expected service account entry");
+		expect(buildRbacEvidenceFingerprint(data, roleEntry(data))).toBe("rbac-v1-3oa15f05e1o52");
+		expect(buildRbacEvidenceFingerprint(data, serviceAccount)).toBe("rbac-v1-fau57i88uz26");
+	});
+});
+
 describe("RBAC review model", () => {
 	test("marks matching review active and changed evidence stale", () => {
 		const data = inspection();
