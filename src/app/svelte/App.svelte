@@ -255,7 +255,7 @@
 
 <CopyToast />
 {#if browserMockSurfaces}
-	<DeferredSurface load={browserMockSurfaces.appEffects} label="browser mock effects" showStatus={false}>
+	<DeferredSurface load={browserMockSurfaces.appEffects} label="browser mock effects" showPending={false}>
 		{#snippet children(BrowserMockAppEffects)}
 			<BrowserMockAppEffects />
 		{/snippet}

@@ -7,12 +7,15 @@
 		load,
 		label,
 		showStatus = true,
+		showPending = true,
 		children,
 		onRetry = () => window.location.reload(),
 	}: {
 		load: () => Promise<{ default: T }>;
 		label: string;
 		showStatus?: boolean;
+		// False hides only the loading text; a failure still shows its reload action.
+		showPending?: boolean;
 		children: Snippet<[T]>;
 		onRetry?: () => void;
 	} = $props();
@@ -36,7 +39,7 @@
 </script>
 
 {#if loading.active}
-	{#if showStatus && loading.shown}<p role="status" class="p-4 text-sm text-muted-foreground">Loading {label}…</p>{/if}
+	{#if showStatus && showPending && loading.shown}<p role="status" class="p-4 text-sm text-muted-foreground">Loading {label}…</p>{/if}
 {:else if result.status === "loaded"}
 	{@render children(result.value)}
 {:else if showStatus && result.status === "failed"}
