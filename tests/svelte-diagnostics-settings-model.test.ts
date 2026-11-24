@@ -55,7 +55,7 @@ describe("svelte diagnostics settings model", () => {
 			"utf8",
 		);
 		const settingsSource = readFileSync(
-			"src/app/svelte/SettingsSurface.svelte",
+			"src/app/svelte/settingsCatalog.ts",
 			"utf8",
 		);
 

@@ -2,9 +2,8 @@
 	import { ChevronRight, FolderOpen, Menu, Search, Settings } from "lucide-svelte";
 	import ClusterSelector from "@/components/ClusterSelector.svelte";
 	import { Button } from "@/components/ui/svelte";
-	import RemoteHostScope from "@/features/remote-connection/RemoteHostScope.svelte";
+	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
-	import UpdateStatusButton from "./UpdateStatusButton.svelte";
 
 	const IS_MAC = /Mac/i.test(globalThis.navigator?.userAgent ?? "");
 	const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K";
@@ -70,9 +69,17 @@
 		{@render location()}
 	</nav>
 	<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
-		<RemoteHostScope />
+		{#if browserMockSurfaces}
+			{#await browserMockSurfaces.remoteHostScope() then { default: RemoteHostScope }}
+				<RemoteHostScope />
+			{/await}
+		{/if}
 		<ActiveLiveSessionsButton onOpenManager={onOpenPortForwards} />
-		<UpdateStatusButton />
+		{#if browserMockSurfaces}
+			{#await browserMockSurfaces.updateButton() then { default: UpdateStatusButton }}
+				<UpdateStatusButton />
+			{/await}
+		{/if}
 		<Button type="button" variant="ghost" size="icon" aria-label="Open workspaces" onclick={onOpenLauncher}>
 			<FolderOpen />
 		</Button>
