@@ -2,7 +2,7 @@
 	import TimestampText from "@/components/TimestampText.svelte";
 	import { Badge, Button, Textarea } from "@/components/ui/svelte";
 	import type { RbacInspectionSummary } from "@/lib/types";
-	import type { RbacCockpitItem } from "./cockpitModel";
+	import type { RbacBindingIndex, RbacCockpitItem } from "./cockpitModel";
 	import RbacReviewBadge from "./RbacReviewBadge.svelte";
 	import {
 		buildRbacEvidenceFingerprint,
@@ -17,11 +17,13 @@
 
 	let {
 		inspection,
+		bindingIndex,
 		entry,
 		records,
 		onRecordsChange,
 	}: {
 		inspection: RbacInspectionSummary;
+		bindingIndex: RbacBindingIndex;
 		entry: RbacCockpitItem;
 		records: RbacReviewRecord[];
 		onRecordsChange: (records: RbacReviewRecord[]) => void;
@@ -37,8 +39,8 @@
 				candidate.objectKey === entry.key,
 		),
 	);
-	const status = $derived(reviewStatus(record, inspection, entry));
-	const subjects = $derived(rbacReviewSubjectLabels(inspection, entry));
+	const status = $derived(reviewStatus(record, inspection, entry, bindingIndex));
+	const subjects = $derived(rbacReviewSubjectLabels(inspection, entry, bindingIndex));
 
 	$effect(() => {
 		const nextKey = `${inspection.cluster}:${entry.key}:${record?.reviewedAt ?? "none"}`;
@@ -49,7 +51,7 @@
 	});
 
 	function save(disposition: RbacReviewDisposition) {
-		const evidenceFingerprint = buildRbacEvidenceFingerprint(inspection, entry);
+		const evidenceFingerprint = buildRbacEvidenceFingerprint(inspection, entry, bindingIndex);
 		if (!evidenceFingerprint) return;
 		try {
 			onRecordsChange(
@@ -82,7 +84,7 @@
 				<p class="text-sm font-semibold">Reviewed context</p>
 				<p class="mt-1 text-xs text-muted-foreground">Manual annotation. Risk and evidence stay unchanged.</p>
 			</div>
-			<RbacReviewBadge {inspection} {entry} {records} />
+			<RbacReviewBadge {inspection} {bindingIndex} {entry} {records} />
 		</div>
 		<div class="space-y-2.5 p-3">
 			<div>

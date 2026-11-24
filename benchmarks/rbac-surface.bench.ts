@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe } from "vitest";
 import type { RbacRiskBucket } from "@/features/rbac/cockpitModel";
-import { cockpitItems, filterCockpitItems } from "@/features/rbac/cockpitModel";
+import { buildRbacBindingIndex, cockpitItems, filterCockpitItems } from "@/features/rbac/cockpitModel";
 import { observedPermissions } from "@/features/rbac/observedPermissions";
 import {
 	bindingSources,
@@ -16,6 +16,7 @@ import {
 } from "@/features/rbac/reviewModel";
 import type { RbacView } from "@/features/rbac/surfaceModel";
 import type { RbacInspectionSummary } from "@/lib/types";
+import { serviceAccountMatcher } from "@/features/rbac/principal";
 import { benchmark } from "./benchmark";
 import { rbacInspection, rbacRoleBindings } from "./rbac-benchmark-fixtures";
 
@@ -196,10 +197,19 @@ assert.equal(reviewRows.length, 50);
 assert.equal(reviewRecords.length, 20);
 assert(firstServiceAccount);
 
+const bindingIndex = buildRbacBindingIndex(rbacInspection);
+for (const entry of [...reviewRows, ...secondPageServiceAccounts]) {
+	if (!("imagePullSecretsCount" in entry.item)) continue;
+	const applies = serviceAccountMatcher(entry.item.namespace, entry.item.name);
+	const original = bindingIndex.bindings.filter((binding) => binding.subjects.some(applies));
+	assert.deepEqual(bindingSources(bindingIndex, entry), original);
+}
+
 describe("RBAC surface F39–F42", () => {
 	benchmark("F39 cold cockpit shaping across active categories", () => {
+		const index = buildRbacBindingIndex(rbacInspection);
 		for (const category of activeCategories) {
-			const items = cockpitItems(rbacInspection, category);
+			const items = cockpitItems(rbacInspection, category, index);
 			filterCockpitItems(items, "high", "");
 		}
 	});
@@ -222,16 +232,16 @@ describe("RBAC surface F39–F42", () => {
 				kind: "serviceAccount",
 				name: "account-42",
 				namespace: "namespace-42",
-			});
+			}, bindingIndex);
 			observedPermissions(rbacInspection, {
 				kind: "group",
 				name: "system:authenticated",
-			});
+			}, bindingIndex);
 			observedPermissions(rbacInspection, {
 				kind: "user",
 				name: "operator",
 				groups: ["system:authenticated"],
-			});
+			}, bindingIndex);
 		},
 	);
 
@@ -244,7 +254,7 @@ describe("RBAC surface F39–F42", () => {
 					rbacInspection.cluster,
 					entry.key,
 				);
-				reviewStatus(record, rbacInspection, entry);
+				reviewStatus(record, rbacInspection, entry, bindingIndex);
 			}
 		},
 	);
@@ -255,13 +265,13 @@ describe("RBAC surface F39–F42", () => {
 			for (const bucket of riskBuckets)
 				filterCockpitItems(allServiceAccounts, bucket, "");
 			for (const entry of reviewRows) {
-				queueTags(rbacInspection, entry);
+				queueTags(bindingIndex, entry);
 				queueSummary(entry);
 			}
 			if (firstServiceAccount)
-				bindingSources(rbacInspection, firstServiceAccount);
+				bindingSources(bindingIndex, firstServiceAccount);
 			for (const entry of secondPageServiceAccounts) {
-				queueTags(rbacInspection, entry);
+				queueTags(bindingIndex, entry);
 				queueSummary(entry);
 			}
 		},
