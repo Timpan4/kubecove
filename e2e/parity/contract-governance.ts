@@ -1,5 +1,5 @@
 import type { JsonObject } from "../../src/lib/types";
-import { type StepParsers, isString, oneOf, string, noPayload } from "./contract-values";
+import { type StepParsers, boolean, isString, oneOf, string, noPayload } from "./contract-values";
 
 const RBAC_CATEGORIES = ["Namespace Access", "Roles", "Cluster Roles", "Bindings", "Service Accounts"] as const;
 const RBAC_RISKS = ["All", "High", "Medium", "Low", "No flags", "Unknown"] as const;
@@ -25,6 +25,7 @@ export const governanceSteps = {
 	expectRbacGrant: (item) => ({ grant: string(item.grant) }),
 	expectNoRbacGrant: (item) => ({ grant: string(item.grant) }),
 	verifyRbacAccess: (item) => ({ verb: string(item.verb) }),
+	expectRbacVerifyEnabled: (item) => ({ enabled: boolean(item.enabled) }),
 	expectRbacVerdict: (item) => ({ outcome: oneOf(VERDICTS, item.outcome, "an access review outcome") }),
 	editRbacReviewNote: reviewNote,
 	expectRbacReviewNote: reviewNote,

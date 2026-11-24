@@ -36,6 +36,9 @@ export const rbacActions = {
 		await page.getByRole("textbox", { name: "Verb", exact: true }).fill(step.verb);
 		await page.getByRole("button", { name: "Verify access", exact: true }).click();
 	},
+	async expectRbacVerifyEnabled(page, step) {
+		await page.getByRole("button", { name: "Verify access", exact: true }).and(page.locator(step.enabled ? ":enabled" : ":disabled")).waitFor();
+	},
 	async expectRbacVerdict(page, step) {
 		const label = step.outcome === "noOpinion" ? "No opinion" : step.outcome;
 		await rbacSection(page, "Latest verification").locator("p.capitalize", { hasText: new RegExp(`^${label}$`) }).waitFor();
