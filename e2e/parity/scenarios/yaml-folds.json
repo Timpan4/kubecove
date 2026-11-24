@@ -12,7 +12,7 @@
         { "action": "showTab", "tab": "YAML" },
         { "action": "expectYamlEditorFillsPanel" },
         { "action": "resizeViewport", "width": 1440, "height": 1100 },
-        { "action": "expectYamlEditorFillsPanel" },
+        { "action": "expectYamlEditorFillsPanel", "grows": true },
         { "action": "editYaml" },
         { "action": "expectYamlEditorFillsPanel" }
       ]

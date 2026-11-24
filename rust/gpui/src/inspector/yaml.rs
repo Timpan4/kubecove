@@ -25,7 +25,8 @@ pub(super) use view::YamlView;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{App, Bounds, Context, Pixels, Point, SharedString, Window};
 
-use super::{Detail, Inspector};
+use super::Inspector;
+use super::detail::{Detail, DetailTab};
 
 /// A YAML editor over `text` with line numbers, which every YAML document view
 /// starts from. The detail panel's editor adds its folds and indent tints.
@@ -43,10 +44,15 @@ pub(super) fn viewer(
 
 impl Inspector {
     /// The rendered YAML input bounds and scroll offset for acceptance checks.
+    /// `None` unless the YAML tab is selected. Callers must render a frame
+    /// before reading this, because the bounds come from the last painted layout.
     pub fn yaml_editor_viewport(&self, cx: &App) -> Option<(Bounds<Pixels>, Point<Pixels>)> {
         let Detail::Ready(detail) = &self.detail else {
             return None;
         };
+        if detail.tab != DetailTab::Yaml {
+            return None;
+        }
         let editor = detail.editor.read(cx);
         Some((editor.input_bounds(), editor.scroll_offset()))
     }

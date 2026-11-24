@@ -7,6 +7,7 @@ use gpui_kit::{
     TextRenderingMode, px,
 };
 use std::borrow::Cow;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Default)]
@@ -18,6 +19,13 @@ struct WhitespaceGlyphs {
 struct WhitespaceLayout(Arc<WhitespaceGlyphs>);
 
 impl Global for WhitespaceLayout {}
+
+/// The detail body and editor viewport heights that the last
+/// `expectYamlEditorFillsPanel` measured, for a `grows` check on the next one.
+#[derive(Default)]
+struct YamlFillHistory(Mutex<Option<(Pixels, Pixels)>>);
+
+impl Global for YamlFillHistory {}
 
 impl PlatformTextSystem for WhitespaceLayout {
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> gpui_kit::Result<()> {
@@ -96,13 +104,18 @@ pub(super) fn with_marker_recording(
         cx.test_function_name(),
         Arc::new(WhitespaceLayout(glyphs.clone())),
     );
-    recording.update(|cx| cx.set_global(WhitespaceLayout(glyphs)));
+    recording.update(|cx| {
+        cx.set_global(WhitespaceLayout(glyphs));
+        cx.set_global(YamlFillHistory::default());
+    });
     Some(recording)
 }
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
         "expectYamlEditorFillsPanel" => {
+            let glyphs = cx.global::<WhitespaceLayout>().0.clone();
+            window.render_frame(cx);
             let body = window.find("detail-body").bounds();
             let frame = window.find("yaml-editor").bounds();
             let (editor, _) = gpui_kit::base::Root::read(window, cx)
@@ -115,14 +128,44 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 .expect("YAML editor is open");
             // The detail body has 16px bottom padding. The input has two 1px
             // borders (its own and the YAML frame) plus GPUI editor padding.
-            assert_eq!(body.bottom() - frame.bottom(), px(16.));
+            assert_eq!(
+                body.bottom() - frame.bottom(),
+                px(16.),
+                "detail body {body:?}, YAML frame {frame:?}"
+            );
             let inset = px(2.) + gpui_kit::component::Size::Medium.input_py();
-            assert_eq!(frame.bottom() - editor.bottom(), inset);
-            let glyphs = &cx.global::<WhitespaceLayout>().0;
+            assert_eq!(
+                frame.bottom() - editor.bottom(),
+                inset,
+                "YAML frame {frame:?}, editor viewport {editor:?}"
+            );
             assert!(
                 glyphs.dot.load(Ordering::Relaxed) && glyphs.arrow.load(Ordering::Relaxed),
-                "the YAML editor did not shape its whitespace markers"
+                "the YAML editor did not shape its whitespace markers in this frame (dot {}, arrow {})",
+                glyphs.dot.load(Ordering::Relaxed),
+                glyphs.arrow.load(Ordering::Relaxed),
             );
+            let history = cx.global::<YamlFillHistory>();
+            let previous = history
+                .0
+                .lock()
+                .unwrap()
+                .replace((body.size.height, editor.size.height));
+            if step["grows"].as_bool() == Some(true) {
+                let (panel, viewport) = previous.expect(
+                    "an earlier expectYamlEditorFillsPanel records the heights to grow from",
+                );
+                assert!(
+                    body.size.height > panel,
+                    "the detail body did not grow: {panel:?} to {:?}",
+                    body.size.height
+                );
+                assert!(
+                    editor.size.height > viewport,
+                    "the YAML editor viewport did not grow: {viewport:?} to {:?}",
+                    editor.size.height
+                );
+            }
         }
         "foldYamlLine" => fold(window, cx, number(step, "line") as usize),
         "expectYamlVisibleLines" => {

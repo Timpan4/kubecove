@@ -40,25 +40,29 @@ export const yamlEditorActions = {
 	async expectYamlDocument(page, step) {
 		if (!isDeepStrictEqual(parse(await yamlDocument(page)), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
 	},
-	async expectYamlEditorFillsPanel(page) {
+	async expectYamlEditorFillsPanel(page, step) {
 		const tab = page.getByRole("tabpanel", { name: "YAML", exact: true });
-		const editor = tab.locator(".cm-editor");
-		await editor.locator(".cm-highlightSpace").first().waitFor();
-		await editor.evaluate((element) => {
-			const panel = element.closest('[role="tabpanel"]');
-			const scroller = element.querySelector(".cm-scroller");
-			if (!panel || !scroller) throw new Error("Missing YAML tab or editor scroller");
-			const bottom = element.getBoundingClientRect().bottom;
-			// Match the editor's 1px frame plus browser rounding.
-			if (Math.abs(bottom - panel.getBoundingClientRect().bottom) > 1 ||
-				Math.abs(bottom - scroller.getBoundingClientRect().bottom) > 1) {
-				throw new Error("The YAML editor and its scroller must fill the available tab height");
+		// The editor mounts after its extensions load, so wait for it before taking the tab.
+		await tab.locator(".cm-editor").waitFor();
+		const panel = await tab.elementHandle();
+		if (!panel) throw new Error("Missing YAML tab");
+		// One wait over the geometry and the inline marker, so an indentation-only marker or a
+		// pre-resize frame cannot end it early.
+		let measured: YamlMeasurement;
+		try {
+			measured = (await (await page.waitForFunction(yamlEditorReady, panel)).jsonValue()) as YamlMeasurement;
+		} catch (error) {
+			const last = await panel.evaluate((element) => (element as YamlTabElement).lastMeasurement ?? null);
+			throw new Error(`The YAML editor did not fill its tab with an inline whitespace marker: ${JSON.stringify(last)}`, { cause: error });
+		}
+		const previous = measuredYamlEditors.get(page);
+		if (step.grows) {
+			if (!previous) throw new Error("An earlier expectYamlEditorFillsPanel must record the heights to grow from");
+			if (measured.panelHeight <= previous.panelHeight || measured.viewportHeight <= previous.viewportHeight) {
+				throw new Error(`The YAML editor did not grow: tab ${previous.panelHeight} to ${measured.panelHeight}px, viewport ${previous.viewportHeight} to ${measured.viewportHeight}px`);
 			}
-			const inlineSpace = [...element.querySelectorAll(".cm-highlightSpace")].find((space) => !space.closest(".kubecove-yaml-indent"));
-			if (!inlineSpace || getComputedStyle(inlineSpace).backgroundImage === "none") {
-				throw new Error("Expected a visible marker for whitespace inside a YAML line");
-			}
-		});
+		}
+		measuredYamlEditors.set(page, measured);
 	},
 	async foldYamlLine(page, step) {
 		// The fold gutter marks a line at the same height as its line number.
@@ -96,6 +100,42 @@ export const yamlEditorActions = {
 		await expectEditorDiagnostics(page, step.diagnostics);
 	},
 } satisfies Partial<WebActions>;
+
+/** Bounds in CSS pixels, read by `yamlEditorReady`. The bottoms are page positions. */
+type YamlMeasurement = { panelHeight: number; panelBottom: number; viewportHeight: number; viewportBottom: number; editorBottom: number; inlineMarker: string };
+
+/** The YAML tab's panel and viewport heights from the page's last `expectYamlEditorFillsPanel`. */
+const measuredYamlEditors = new WeakMap<Page, Pick<YamlMeasurement, "panelHeight" | "viewportHeight">>();
+
+/** The panel element, which `yamlEditorReady` stores its last measurement on for failure messages. */
+type YamlTabElement = Element & { lastMeasurement?: unknown };
+
+/**
+ * Runs in the page. Returns the measurement once the editor fills the tab and an inline
+ * whitespace marker is painted, and false otherwise, so `waitForFunction` polls until both hold.
+ */
+function yamlEditorReady(panel: Element | null) {
+	const element = panel?.querySelector<HTMLElement>(".cm-editor");
+	const scroller = element?.querySelector<HTMLElement>(".cm-scroller");
+	if (!panel || !element || !scroller) return false;
+	const panelBox = panel.getBoundingClientRect();
+	const editorBox = element.getBoundingClientRect();
+	const scrollerBox = scroller.getBoundingClientRect();
+	const inlineSpace = [...element.querySelectorAll<HTMLElement>(".cm-highlightSpace")].find((space) => !space.closest(".kubecove-yaml-indent"));
+	const inlineMarker = inlineSpace ? getComputedStyle(inlineSpace).backgroundImage : "none";
+	const measurement = {
+		panelHeight: panelBox.height,
+		panelBottom: panelBox.bottom,
+		viewportHeight: scrollerBox.height,
+		viewportBottom: scrollerBox.bottom,
+		editorBottom: editorBox.bottom,
+		inlineMarker,
+	};
+	(panel as YamlTabElement).lastMeasurement = measurement;
+	// Match the editor's 1px frame plus browser rounding.
+	const fills = Math.abs(editorBox.bottom - panelBox.bottom) <= 1 && Math.abs(editorBox.bottom - scrollerBox.bottom) <= 1;
+	return fills && inlineMarker !== "none" ? measurement : false;
+}
 
 /**
  * The whole document of the page's one YAML editor, from the accessor `YamlCodeEditor.svelte`
