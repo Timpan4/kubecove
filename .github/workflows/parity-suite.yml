@@ -138,7 +138,7 @@ jobs:
       # Only one main build per key saves objects. Shards use the binary artifact.
       - name: Cache Rust builds
         if: ${{ inputs.build != '' }}
-        uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
+        uses: jdx/mr-boxington-action@b3ef673bd77c5426927fe8836c6185cdae04c2dd # v1
         with:
           version: "1.30.0"
           working-directory: rust/gpui
