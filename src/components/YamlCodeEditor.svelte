@@ -4,6 +4,7 @@
 	import { foldGutter, syntaxHighlighting } from "@codemirror/language";
 	import { lintGutter, linter, type Diagnostic } from "@codemirror/lint";
 	import {
+		Annotation,
 		EditorState,
 		RangeSetBuilder,
 		StateEffect,
@@ -49,6 +50,8 @@
 	let host: HTMLDivElement | undefined = $state();
 	let view: EditorView | null = $state(null);
 
+	let editorValue = "";
+	const syncValue = Annotation.define<boolean>();
 	const setErrorLensDiagnostics = StateEffect.define<Diagnostic[]>();
 
 	class ErrorLensWidget extends WidgetType {
@@ -124,10 +127,10 @@
 			),
 			errorLensField,
 			EditorView.updateListener.of((update) => {
-				if (!update.docChanged) return;
-				const nextValue = update.state.doc.toString();
-				value = nextValue;
-				onChange?.(nextValue);
+				if (!update.docChanged || update.transactions.some((transaction) => transaction.annotation(syncValue))) return;
+				editorValue = update.state.doc.toString();
+				value = editorValue;
+				onChange?.(editorValue);
 			}),
 			...extraExtensions,
 		];
@@ -137,6 +140,7 @@
 		let cancelled = false;
 		void loadYamlCodeViewerExtensions().then((extraExtensions) => {
 			if (cancelled || !host) return;
+			editorValue = value;
 			const editor = new EditorView({
 				state: EditorState.create({
 					doc: value,
@@ -160,11 +164,11 @@
 	});
 
 	$effect(() => {
-		if (!view) return;
-		const currentValue = view.state.doc.toString();
-		if (value === currentValue) return;
+		if (!view || value === editorValue) return;
+		editorValue = value;
 		view.dispatch({
-			changes: { from: 0, to: currentValue.length, insert: value },
+			changes: { from: 0, to: view.state.doc.length, insert: editorValue },
+			annotations: syncValue.of(true),
 		});
 	});
 </script>
