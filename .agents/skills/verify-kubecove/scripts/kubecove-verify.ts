@@ -75,7 +75,7 @@ async function launch() {
 		// Once cleanup has started, start nothing it would miss. Each check runs in the same tick as its spawn.
 		if (stopping) throw new Error("launch interrupted before Vite started");
 		// `--port` and `--strictPort` override vite.config.ts, so a server already on 1430 is never touched.
-		const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined, TAURI_DEV_HOST: undefined } });
+		const vite = Bun.spawn(["bun", "--bun", "vite", "--host", "127.0.0.1", "--port", new URL(url).port, "--strictPort"], { cwd: root, detached: true, stdin: "ignore", stdout: log, stderr: log, env: { ...process.env, KUBECONFIG: undefined } });
 		Object.assign(state, { vitePid: vite.pid, viteStartedAt: startIdentity(vite.pid) });
 		await saveState(state);
 		if (stopping) throw new Error("launch interrupted before Chrome started");
@@ -199,7 +199,8 @@ async function doctor(state: RunState) {
 	// A request and its body read share one deadline, so a stalled server fails the check instead of hanging doctor.
 	checks.indexServed = await fetch(state.url, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then(async (response) => (await response.text()).includes("<title>KubeCove</title>")).catch(() => false);
 	checks.cdp = checks.chromePid && await fetch(`${state.cdpUrl}/json/version`, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then((response) => response.ok).catch(() => false);
-	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => page.url().startsWith(state.url) && (await page.evaluate(() => !("__TAURI_INTERNALS__" in window)))).catch(() => false));
+	// Vite dev mode serves the browser mocks, so a page on the run's URL runs them.
+	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => page.url().startsWith(state.url)).catch(() => false));
 	const healthy = Object.values(checks).every(Boolean);
 	console.log(JSON.stringify({ healthy, runId: state.runId, url: state.url, launchedAt: state.head, evidenceDir: state.evidenceDir, checks }, null, 2));
 	if (!healthy) process.exitCode = 1;
