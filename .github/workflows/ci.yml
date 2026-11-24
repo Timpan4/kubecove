@@ -404,7 +404,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt
-          if grep -E '^(gpui|kubecove-gpui|wgpu|wayland|x11|x11rb|xkbcommon|tauri|gtk|webkit2gtk|wry)(-[[:alnum:]_-]+)? v' server-dependencies.txt; then
+          if grep -E '^(gpui|kubecove-gpui|wgpu|winit|wayland|x11|x11rb|xkbcommon|tauri|gtk[0-9]*|gdk[0-9]*|webkit2gtk|wry)(-[[:alnum:]_-]+)? v' server-dependencies.txt; then
             exit 1
           fi
 

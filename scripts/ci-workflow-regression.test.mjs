@@ -697,7 +697,7 @@ test("the server dependency check rejects GPUI and GUI stacks and passes the cur
   };
   try {
     assert.equal(run(server), 0);
-    for (const name of [...gpui, ...windowing, "tauri", "tauri-runtime-wry", "gtk", "gtk-sys", "webkit2gtk", "wry"]) {
+    for (const name of [...gpui, ...windowing, "tauri", "tauri-runtime-wry", "gtk", "gtk-sys", "gtk4", "gdk4", "gdk-pixbuf", "winit", "webkit2gtk", "wry"]) {
       assert.equal(run([...server, name]), 1, name);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -35,7 +35,9 @@ const scripts = ["scripts/ci-rust-cache-key.mjs", "scripts/ci-mbx-cargo.mjs"];
 // Each pathspec that names files must match some. The scripts always match, so a check of
 // the combined listing would pass a mistyped pathspec and key the cache without that input.
 for (const pathspec of pathspecs) {
-  if (!pathspec.startsWith(":!") && !capture("git", ["ls-files", "--", pathspec])) throw new Error(`No tracked file matches: ${pathspec}`);
+  // Exclusions (":!path" or ":(exclude,…)path") name no files of their own.
+  const exclusion = pathspec.startsWith(":!") || /^:\([^)]*\bexclude\b/.test(pathspec);
+  if (!exclusion && !capture("git", ["ls-files", "--", pathspec])) throw new Error(`No tracked file matches: ${pathspec}`);
 }
 const inputs = capture("git", ["ls-files", "--stage", "--", ...scripts, ...pathspecs]);
 
