@@ -47,7 +47,7 @@
         "lucide-svelte": "1.0.1",
         "oxlint": "1.94.0",
         "playwright-core": "1.65.1",
-        "svelte": "5.58.0",
+        "svelte": "5.59.1",
         "svelte-check-native": "1.12.1",
         "tailwindcss": "4.3.5",
         "tsrs": "0.20.1-ts7.1.0-beta",
@@ -1068,7 +1068,7 @@
 
     "supports-color": ["supports-color@8.1.1", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q=="],
 
-    "svelte": ["svelte@5.58.0", "", { "dependencies": { "@jridgewell/remapping": "^2.3.5", "@jridgewell/sourcemap-codec": "^1.6.0", "@sveltejs/acorn-typescript": "^1.0.13", "@types/estree": "^1.0.9", "acorn": "^8.18.0", "aria-query": "5.3.1", "axobject-query": "^4.1.0", "clsx": "^2.1.1", "devalue": "^5.9.2", "esm-env": "^1.2.1", "esrap": "^2.4.2", "is-reference": "^3.0.3", "locate-character": "^3.0.0", "magic-string": "^0.30.11", "zimmerframe": "^1.1.2" } }, "sha512-rOMKTD9WP2C6ahWDmntey4p+JqUxtup1w9G3KdVuTbNGHi5u97iMw0CIc8a+F5rZtiH7x98kVniDlBRRR5e98w=="],
+    "svelte": ["svelte@5.59.1", "", { "dependencies": { "@jridgewell/remapping": "^2.3.5", "@jridgewell/sourcemap-codec": "^1.6.0", "@sveltejs/acorn-typescript": "^1.0.13", "@types/estree": "^1.0.9", "acorn": "^8.18.0", "aria-query": "5.3.1", "axobject-query": "^4.1.0", "clsx": "^2.1.1", "devalue": "^5.9.2", "esm-env": "^1.2.1", "esrap": "^2.4.2", "is-reference": "^3.0.3", "locate-character": "^3.0.0", "magic-string": "^0.30.11", "zimmerframe": "^1.1.2" } }, "sha512-ADG20W/jYSQut/79AavRRfbXQYebFKMVWT/xAbjVVZfZA4XzIoFfcpanEfYTyN+uWQUaPP+nstFx4qVKwEVnQQ=="],
 
     "svelte-check-native": ["svelte-check-native@1.12.1", "", { "optionalDependencies": { "svelte-check-native-darwin-arm64": "1.12.1", "svelte-check-native-darwin-x64": "1.12.1", "svelte-check-native-linux-arm64": "1.12.1", "svelte-check-native-linux-x64": "1.12.1", "svelte-check-native-win32-x64": "1.12.1" }, "peerDependencies": { "@typescript/native-preview": ">=7.0.0-dev.0", "typescript": "*" }, "optionalPeers": ["@typescript/native-preview", "typescript"], "bin": { "svelte-check-native": "bin/svelte-check-native.js" } }, "sha512-9CZW4cqJOswplZitR7W8sLuvWlYnyZ6AVIStrgtXOSGxD5pGZVQlbBk1a8CryI8Gx9DO68+96euGOoeDLGZdgQ=="],
 
