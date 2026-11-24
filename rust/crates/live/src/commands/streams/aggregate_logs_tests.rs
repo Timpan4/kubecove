@@ -613,11 +613,19 @@ async fn a_retried_source_does_not_re_arm_the_other_sources() {
         };
         modify("11");
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(log_requests(), 4, "a pod event retries both finished sources");
+        assert_eq!(
+            log_requests(),
+            4,
+            "a pod event retries both finished sources"
+        );
         // Both sources are cooling down, so this event asks each to retry once it ends.
         modify("12");
         tokio::time::sleep(Duration::from_secs(5)).await;
-        assert_eq!(log_requests(), 6, "each source retries once after its cooldown");
+        assert_eq!(
+            log_requests(),
+            6,
+            "each source retries once after its cooldown"
+        );
         tokio::time::sleep(Duration::from_secs(60)).await;
         assert_eq!(
             log_requests(),
@@ -644,7 +652,12 @@ async fn relists_under_a_denied_watch_reap_finished_sources() {
     // `api-a` stays; every relist replaces the other pod with a new one.
     let (server, logged) = serve_pods(
         requests,
-        |index| vec![pod("api-a", &["app"]), pod(&format!("api-churn-{index}"), &["app"])],
+        |index| {
+            vec![
+                pod("api-a", &["app"]),
+                pod(&format!("api-churn-{index}"), &["app"]),
+            ]
+        },
         None,
     );
 
@@ -659,7 +672,10 @@ async fn relists_under_a_denied_watch_reap_finished_sources() {
         .iter()
         .filter(|pod| *pod == "api-a")
         .count();
-    assert!(stable > 1, "a relist never reconnected the finished api-a source");
+    assert!(
+        stable > 1,
+        "a relist never reconnected the finished api-a source"
+    );
     // At most the two selected sources' tasks and the departed pod's task that the next
     // wait would join.
     assert!(

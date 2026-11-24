@@ -226,7 +226,7 @@ impl AggregateLogs {
     /// Waits `delay` while joining finished source tasks. A denied watch fails before it
     /// streams, so with list-only RBAC the loop only relists and waits here. Without joining,
     /// a finished source keeps its handle, relists never reconnect it, and the tasks of
-    /// departed pods pile up in the JoinSet.
+    /// departed pods pile up in the `JoinSet`.
     async fn wait_joining_sources(&mut self, delay: Duration) {
         let wait = tokio::time::sleep(delay);
         tokio::pin!(wait);
