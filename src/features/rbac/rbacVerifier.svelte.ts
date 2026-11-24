@@ -79,9 +79,11 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		if (identitySource.kind === "selection" && selectedIdentity) return selectedIdentity;
 		return manualIdentityValue();
 	});
+	// Verify stays disabled until the ServiceAccount names its namespace; the view says so.
+	const namespaceRequired = $derived(missingServiceAccountNamespace(activeIdentity));
 	const canVerify = $derived.by(() => {
 		if (!data || !activeIdentity.name || !verb.trim()) return false;
-		if (missingServiceAccountNamespace(activeIdentity)) return false;
+		if (namespaceRequired) return false;
 		if (targetKind === "resource") return resource.trim() !== "";
 		return nonResourceUrl.trim().startsWith("/");
 	});
@@ -230,6 +232,7 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		get accessReview() { return accessReview; },
 		get reviewing() { return reviewing; },
 		get canVerify() { return canVerify; },
+		get namespaceRequired() { return namespaceRequired; },
 		get verb() { return verb; },
 		set verb(value: typeof verb) { verb = value; },
 		get resource() { return resource; },
@@ -257,13 +260,3 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 		beginIdentity, editManualIdentity, inspectSubject, useSelection, verify,
 	};
 }
-
-export function identityLabel(identity: InspectorIdentity): string {
-		if (!identity.name) return "No identity selected";
-		if (identity.kind === "serviceAccount") {
-			return `system:serviceaccount:${identity.namespace ?? "default"}:${identity.name}`;
-		}
-		return identity.kind === "group"
-			? `Group/${identity.name}`
-			: `User/${identity.name}`;
-	}

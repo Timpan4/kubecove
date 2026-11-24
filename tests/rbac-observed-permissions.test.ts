@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { identityDefaults, inspectorIdentity, observedPermissions } from "../src/features/rbac/observedPermissions";
+import { identityDefaults, identityLabel, inspectorIdentity, observedPermissions } from "../src/features/rbac/observedPermissions";
 import type { RbacInspectionSummary } from "../src/lib/types";
 
 const base = (): RbacInspectionSummary => ({
@@ -87,6 +87,16 @@ describe("observed RBAC permissions", () => {
 				reason: "The ServiceAccount namespace is missing.",
 			});
 		}
+	});
+	// Failure mode: the read-only label shows `default` for a ServiceAccount that names no
+	// namespace, so the identity reads as complete while Verify stays disabled.
+	test("labels a ServiceAccount without a namespace as missing one, never as default", () => {
+		for (const namespace of [undefined, "", "  "]) {
+			const label = identityLabel({ kind: "serviceAccount", name: "api", namespace });
+			expect(label).not.toContain("default");
+			expect(label).toBe("ServiceAccount api (namespace required)");
+		}
+		expect(identityLabel({ kind: "serviceAccount", name: "api", namespace: "team" })).toBe("system:serviceaccount:team:api");
 	});
 	test("preserves handoff user groups for inspection and review", () => {
 		expect(inspectorIdentity({ kind: "user", username: "mira", groups: ["ops", "developers"] })).toEqual({

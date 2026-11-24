@@ -3,8 +3,8 @@
 	import TimestampText from "@/components/TimestampText.svelte";
 	import { Button, Input } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
-	import type { InspectorIdentity } from "./observedPermissions";
-	import { identityLabel, type rbacVerifier } from "./rbacVerifier.svelte";
+	import { identityLabel, type InspectorIdentity } from "./observedPermissions";
+	import type { rbacVerifier } from "./rbacVerifier.svelte";
 
 	let { model, cluster }: { model: ReturnType<typeof rbacVerifier>; cluster: string } = $props();
 	const activeIdentity = $derived(model.activeIdentity);
@@ -70,6 +70,9 @@
 		>
 			<ShieldCheck data-icon /> {model.reviewing ? "Verifying…" : "Verify access"}
 		</Button>
+		{#if model.namespaceRequired}
+			<p class="text-xs text-amber-700 dark:text-amber-200">{model.manual ? "Enter the ServiceAccount namespace to verify." : "A ServiceAccount namespace is required. Enter it with Change identity."}</p>
+		{/if}
 		<p class="text-[0.625rem] text-muted-foreground">Result is never inferred from observed grants.</p>
 	</div>
 </section>

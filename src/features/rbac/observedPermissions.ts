@@ -80,6 +80,13 @@ export function reviewIdentity(identity: InspectorIdentity): RbacAccessReviewIde
 	return { kind: "user", username: identity.name, groups: identity.groups?.length ? identity.groups : identityDefaults("user", identity.name) };
 }
 
+export function identityLabel(identity: InspectorIdentity): string {
+	if (!identity.name) return "No identity selected";
+	if (missingServiceAccountNamespace(identity)) return `ServiceAccount ${identity.name} (namespace required)`;
+	if (identity.kind === "serviceAccount") return `system:serviceaccount:${identity.namespace}:${identity.name}`;
+	return identity.kind === "group" ? `Group/${identity.name}` : `User/${identity.name}`;
+}
+
 /** `verbs · groups/resources`, then `· names: …` when the rule is limited to named objects. */
 export function grantSummary(grant: ObservedGrant): string {
 	const summary = `${grant.verbs.join(", ")} · ${grant.apiGroups.join(", ") || "core"}/${grant.resources.join(", ") || grant.nonResourceUrls.join(", ")}`;

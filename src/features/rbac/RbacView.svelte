@@ -36,11 +36,11 @@
 		type RbacRiskBucket,
 	} from "./cockpitModel";
 	import type { RbacVerifierHandoff } from "./handoff";
-	import { grantSummary, observedPermissions, type InspectorIdentity } from "./observedPermissions";
+	import { grantSummary, identityLabel, observedPermissions, type InspectorIdentity } from "./observedPermissions";
 	import RbacQueueFilters from "./RbacQueueFilters.svelte";
 	import RbacReviewQueue from "./RbacReviewQueue.svelte";
 	import RbacVerifier from "./RbacVerifier.svelte";
-	import { identityLabel, rbacVerifier } from "./rbacVerifier.svelte";
+	import { rbacVerifier } from "./rbacVerifier.svelte";
 	import RbacReviewBadge from "./RbacReviewBadge.svelte";
 	import RbacReviewPanel from "./RbacReviewPanel.svelte";
 	import type { RbacReviewRecord } from "./reviewModel";
