@@ -6,11 +6,13 @@
 	let {
 		load,
 		label,
+		showStatus = true,
 		children,
 		onRetry = () => window.location.reload(),
 	}: {
 		load: () => Promise<{ default: T }>;
 		label: string;
+		showStatus?: boolean;
 		children: Snippet<[T]>;
 		onRetry?: () => void;
 	} = $props();
@@ -31,10 +33,10 @@
 </script>
 
 {#if loading.active}
-	{#if loading.shown}<p role="status" class="p-4 text-sm text-muted-foreground">Loading {label}…</p>{/if}
+	{#if showStatus && loading.shown}<p role="status" class="p-4 text-sm text-muted-foreground">Loading {label}…</p>{/if}
 {:else if result.status === "loaded"}
 	{@render children(result.value)}
-{:else if result.status === "failed"}
+{:else if showStatus && result.status === "failed"}
 	<div role="alert" class="flex flex-col items-start gap-3 p-4 text-sm">
 		<p>Could not load {label}.</p>
 		<Button variant="outline" onclick={onRetry}>Reload to retry {label}</Button>

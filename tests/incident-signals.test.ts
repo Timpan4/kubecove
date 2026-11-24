@@ -432,7 +432,7 @@ describe("incident signal helpers", () => {
 
 	test("classifies waiting containers before generic not-ready containers", () => {
 		const source = readFileSync(
-			"src/features/resource-detail/ResourceDetailPanel.svelte",
+			"src/features/resource-detail/detailPresentation.ts",
 			"utf8",
 		);
 		const waitingIndex = source.indexOf('container.state === "waiting"');

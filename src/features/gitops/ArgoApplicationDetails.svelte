@@ -2,23 +2,21 @@
 	import { getArgoOperationTracker, argoTrackingKey } from "./argo-operation-tracker";
 	import { argoOperationProgress } from "./argo-operation-progress";
 	import FriendlyError from "@/components/FriendlyError.svelte";
-	import ArgoConnectionDialog from "./ArgoConnectionDialog.svelte";
+	import ArgoApplicationDelivery from "./ArgoApplicationDelivery.svelte";
+	import { argoBooleanAt as booleanAt, argoStatusValue as statusValue, argoStringAt as stringAt } from "./argo-application-display";
+	import ArgoApplicationConnection from "./ArgoApplicationConnection.svelte";
 	import ArgoOperationProgress from "./ArgoOperationProgress.svelte";
-	import ArgoResourceDiff from "./ArgoResourceDiff.svelte";
-	import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+	import ArgoReconciliationPane from "./ArgoReconciliationPane.svelte";
+	import { useQueryClient } from "@tanstack/svelte-query";
 	import {
 		ChevronDown,
 		CircleDot,
-		GitCompareArrows,
-		GitCommitHorizontal,
 		RefreshCw,
 		RotateCcw,
 		TriangleAlert,
 	} from "lucide-svelte";
-	import YamlCodeEditor from "@/components/YamlCodeEditor.svelte";
 	import HealthAssessmentBadge from "@/components/HealthAssessmentBadge.svelte";
 	import OperationScopeCard from "@/components/OperationScopeCard.svelte";
-	import TimestampText from "@/components/TimestampText.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -31,50 +29,25 @@
 		DialogDescription,
 		DialogHeader,
 		DialogTitle,
-		Empty,
-		EmptyDescription,
-		EmptyHeader,
-		EmptyTitle,
 		Field,
 		FieldLabel,
 		Input,
 		Popover,
 		PopoverContent,
 		PopoverTrigger,
-		SegmentedControl,
-		Select,
-		SelectContent,
-		SelectGroup,
-		SelectItem,
-		SelectTrigger,
-		SelectValue,
 		Spinner,
 		buttonClass,
 	} from "@/components/ui/svelte";
-	import { applicationSpecFromYaml, argoSyncPolicyLabel } from "./argo-application-yaml";
-	import {
-		argoDocumentText,
-		resolveArgoResourceComparison,
-	} from "./argo-resource-display";
-	import { finiteRead } from "@/lib/finite-read-lifecycle";
-	import { queryKeys } from "@/lib/queryKeys";
+	import { applicationSpecFromYaml } from "./argo-application-yaml";
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
-	import { settingsStore } from "@/lib/settings-store";
 	import { argoApplicationRef } from "@/lib/argo-application-inspection";
 	import { argoApplicationInspection } from "@/lib/argo-application-inspection.svelte";
-	import { argoConnectionPreferenceValue, normalizeArgoConnectionPreference } from "@/lib/argo-connection-policy";
-	import { createTauriClient, getArgoResourceComparison } from "@/lib/tauri";
+	import { createTauriClient } from "@/lib/tauri";
 	import type {
-		ArgoApplicationHistory,
 		ArgoApplicationRef,
 		ArgoApplicationSummary,
-		ArgoManagedResource,
 		ArgoOperationAction,
 		ArgoOperationRequest,
-		ArgoResourceComparison,
-		ArgoServerEndpoint,
-		JsonObject,
-		JsonValue,
 		ResourceDetailsFull,
 		ResourceSummary,
 	} from "@/lib/types";
@@ -86,16 +59,11 @@
 	} from "./argo-operation-presentation";
 	import {
 		applyArgoSyncDefaults,
-		argoComparisonDocument,
-		argoComparisonIndex,
 		argoHistoryKey,
-		argoReconciliationResources,
 		argoResourceCounts,
-		argoResourceIdentityKey,
 		argoSyncNeedsConfirmation,
 		defaultArgoSyncSettings,
 		preserveArgoHistorySelection,
-		preserveArgoResourceSelection,
 		withArgoSyncSettings,
 		type ArgoSyncSettings,
 	} from "./argo-workspace-model";
@@ -114,22 +82,13 @@
 		active: boolean;
 	} = $props();
 
-	type DiffView = "changes" | "target" | "live";
-
 	const client = createTauriClient();
 	const queryClient = useQueryClient();
 	const tracker = getArgoOperationTracker(queryClient);
 
-	const diffViewOptions: { value: DiffView; label: string }[] = [
-		{ value: "changes", label: "Changes" },
-		{ value: "target", label: "Desired" },
-		{ value: "live", label: "Live" },
-	];
-
 	const clusterContext = $derived(workspaceReadContext.clusterContext);
 	const workspaceId = $derived(workspaceReadContext.workspaceId);
 	const kubeconfigEnvVar = $derived(workspaceReadContext.kubeconfigSourceKey);
-	const redactSecrets = $derived($settingsStore.redactSecrets);
 	const matchingSummary = $derived(
 		applicationSummary &&
 			applicationSummary.cluster === clusterContext &&
@@ -156,17 +115,13 @@
 	const observationPending = $derived(trackedOperation?.phase === "unknown");
 	const lastOperationRequest = $derived(trackedOperation?.request ?? null);
 
-	let selectedResource = $state.raw<ArgoManagedResource | null>(null);
 	let selectedHistoryKey = $state<string | null>(null);
 	let rollbackHistoryId = $state<number | null>(null);
-	let diffView = $state<DiffView>("changes");
-	let expandedRemovalKeys = $state<string[]>([]);
 	let refreshMenuOpen = $state(false);
 	let syncMenuOpen = $state(false);
 	let advancedSync = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaults = $state<ArgoSyncSettings>({ ...defaultArgoSyncSettings });
 	let appliedSyncDefaultsKey = $state("");
-	let argoConnectionOpen = $state(false);
 	let confirmationName = $state("");
 	// The advanced-sync confirmation is open exactly while a sync waits for it.
 	let pendingSync = $state<ArgoSyncSettings | null>(null);
@@ -183,11 +138,7 @@
 	const transport = $derived(connectionPolicy.transport);
 	const connectionId = $derived(connectionPolicy.connectionId ?? "");
 	const connectionReady = $derived(inspection.current.ready);
-	const preferenceValue = $derived(
-		argoConnectionPreferenceValue(connectionPolicy.preference),
-	);
 	const selectedStatus = $derived(inspection.current.selectedStatus);
-	const selectedProfile = $derived(connectionPolicy.selectedProfile);
 	const application = $derived<ArgoApplicationRef>({
 		...applicationRequest,
 		...snapshot?.application,
@@ -195,58 +146,6 @@
 		workspaceId,
 	});
 	const managedResources = $derived(snapshot?.resources ?? []);
-	const reconciliationResources = $derived(argoReconciliationResources(managedResources));
-	const comparisonsByKey = $derived(argoComparisonIndex(snapshot?.comparisons ?? []));
-	const selectedResourceKey = $derived(
-		selectedResource ? argoResourceIdentityKey(selectedResource) : null,
-	);
-	const lazyComparisonEnabled = $derived(
-		Boolean(selectedResourceKey) &&
-			active &&
-			workspaceReadContext.sourceReady &&
-			connectionReady &&
-			transport === "connected" &&
-			snapshot?.transport === "connected",
-	);
-	const selectedComparisonQueryKey = $derived(
-		queryKeys.argoWorkspaceSelectedResource(
-			clusterContext,
-			workspaceId,
-			resourceSummary.name,
-			resourceSummary.namespace,
-			applicationRequest.uid,
-			redactSecrets,
-			transport,
-			connectionId,
-			selectedResource?.group,
-			selectedResource?.kind,
-			selectedResource?.namespace,
-			selectedResource?.name,
-			kubeconfigEnvVar,
-		),
-	);
-	const selectedComparison = createQuery(() => ({
-		...finiteRead({
-			queryKey: selectedComparisonQueryKey,
-			label: "argo.resource-comparison",
-			read: async (cancellable) => {
-				const request = inspection.current.request;
-				if (!selectedResource || !request) throw new Error("No selected resource");
-				return getArgoResourceComparison(
-					client,
-					{ ...request, resource: selectedResource },
-					cancellable,
-				);
-			},
-		}),
-		enabled: lazyComparisonEnabled,
-		staleTime: 30_000,
-		refetchInterval: lazyComparisonEnabled ? 15_000 : false,
-		refetchIntervalInBackground: false,
-		retry: false,
-		gcTime: redactSecrets ? undefined : 0,
-	}));
-
 	const scopeKey = $derived(
 		[
 			clusterContext,
@@ -262,7 +161,6 @@
 			(entry) => argoHistoryKey(application, entry) === selectedHistoryKey,
 		) ?? snapshot?.history[0] ?? null,
 	);
-	const diffResources = $derived(selectedResource ? [selectedResource] : reconciliationResources);
 	const counts = $derived(argoResourceCounts(managedResources));
 	const healthStatus = $derived(
 		statusValue(snapshot?.status, "health", "status") ??
@@ -298,21 +196,6 @@
 	);
 	const applicationSpec = $derived(applicationSpecFromYaml(applicationDetails?.yaml));
 	const primarySource = $derived(matchingSummary?.sources?.[0] ?? null);
-	const repository = $derived(
-		primarySource?.repoUrl ??
-			matchingSummary?.sourceRepo ??
-			stringAt(applicationSpec, "source", "repoURL") ??
-			stringAt(applicationSpec, "sources", "0", "repoURL") ??
-			"Repository unavailable",
-	);
-	const sourcePath = $derived(
-		primarySource?.path ??
-			primarySource?.chart ??
-			stringAt(applicationSpec, "source", "path") ??
-			stringAt(applicationSpec, "source", "chart") ??
-			stringAt(applicationSpec, "sources", "0", "path") ??
-			"Path unavailable",
-	);
 	const configuredRevision = $derived(
 		primarySource?.targetRevision ??
 			matchingSummary?.sourceRevision ??
@@ -320,30 +203,15 @@
 			stringAt(applicationSpec, "sources", "0", "targetRevision") ??
 			"Revision unavailable",
 	);
-	const destination = $derived(
-		matchingSummary?.destinationNamespace ??
-			stringAt(applicationSpec, "destination", "namespace") ??
-			matchingSummary?.destinationServer ??
-			stringAt(applicationSpec, "destination", "server") ??
-			"Destination unavailable",
-	);
 	const applicationSyncDefaults = $derived<ArgoSyncSettings>({
 		revision: "",
 		prune: booleanAt(applicationSpec, "syncPolicy", "automated", "prune") ?? false,
 		dryRun: false,
 		force: false,
 	});
-	const policy = $derived(argoSyncPolicyLabel(applicationSpec));
 	const loading = $derived(inspection.current.loading);
 	const loadingIndicator = loadingDelay(() => loading);
 	const dataError = $derived(inspection.current.error);
-	const snapshotFreshness = $derived(
-		snapshot?.connectedFallback
-			? "Connected Argo CD is unavailable; Kubernetes refreshes this fallback snapshot every 15 seconds while visible."
-			: snapshot?.transport === "connected"
-				? "Connected Argo CD refreshes this snapshot every 15 seconds while visible."
-				: "Kubernetes refreshes this snapshot every 15 seconds while visible.",
-	);
 	const busy = $derived(
 		Boolean(trackedOperation?.busy || (snapshot && (argoOperationProgress(snapshot).active || snapshot.refreshRequested))),
 	);
@@ -363,19 +231,12 @@
 	$effect(() => {
 		const nextScopeKey = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== nextScopeKey) {
-			selectedResource = null;
 			selectedHistoryKey = null;
 			rollbackHistoryId = null;
-			diffView = "changes";
-			expandedRemovalKeys = [];
 			closeSyncConfirmation();
 			appliedSyncDefaultsKey = "";
 		}
 		appliedScopeKey = nextScopeKey;
-	});
-	$effect(() => {
-		const next = preserveArgoResourceSelection(selectedResource, reconciliationResources);
-		if (next !== selectedResource) selectedResource = next;
 	});
 	$effect(() => {
 		const next = preserveArgoHistorySelection(
@@ -396,19 +257,6 @@
 			appliedSyncDefaultsKey = key;
 		}
 	});
-
-	function argoEndpointLabel(endpoint: ArgoServerEndpoint): string {
-		return endpoint.kind === "externalHttps"
-			? endpoint.url
-			: `${endpoint.namespace}/${endpoint.serviceName}:${endpoint.servicePort}`;
-	}
-
-	function setConnectionPreference(value: string) {
-		$settingsStore.setArgoConnectionPreference(
-			workspaceId,
-			normalizeArgoConnectionPreference(value),
-		);
-	}
 
 	function operation(action: ArgoOperationAction): ArgoOperationRequest {
 		return {
@@ -500,103 +348,6 @@
 		if (lastOperationRequest && !busy) void executeOperation(lastOperationRequest);
 	}
 
-	function selectResource(item: ArgoManagedResource) {
-		selectedResource = item;
-	}
-
-	function showAllChanges() {
-		selectedResource = null;
-	}
-
-	function resourceSelected(item: ArgoManagedResource): boolean {
-		if (!selectedResource) return false;
-		const selectedKey = argoResourceIdentityKey(selectedResource);
-		return selectedKey !== null && selectedKey === argoResourceIdentityKey(item);
-	}
-
-	function comparisonFor(item: ArgoManagedResource): ArgoResourceComparison | null {
-		return resolveArgoResourceComparison(
-			item,
-			comparisonsByKey,
-			snapshot?.transport,
-			selectedResourceKey,
-			selectedComparison.data,
-		);
-	}
-
-	function removalExpanded(item: ArgoManagedResource): boolean {
-		const key = argoResourceIdentityKey(item);
-		return key !== null && expandedRemovalKeys.includes(key);
-	}
-
-	function toggleRemoval(item: ArgoManagedResource) {
-		const key = argoResourceIdentityKey(item);
-		if (!key) return;
-		expandedRemovalKeys = expandedRemovalKeys.includes(key)
-			? expandedRemovalKeys.filter((itemKey) => itemKey !== key)
-			: [...expandedRemovalKeys, key];
-	}
-
-	function resourceLabel(item: ArgoManagedResource): string {
-		return `${item.kind ?? "Resource"} ${item.namespace ? `${item.namespace}/` : ""}${item.name ?? "unknown"}`;
-	}
-
-	function resourceModified(item: ArgoManagedResource): boolean {
-		const comparison = argoComparisonDocument(item, comparisonFor(item));
-		if (comparison.modified === true || comparison.modified === false) return comparison.modified;
-		return argoDocumentText(comparison.desired) !== argoDocumentText(comparison.normalizedLive);
-	}
-
-	function resourceAdded(item: ArgoManagedResource): boolean {
-		const comparison = argoComparisonDocument(item, comparisonFor(item));
-		return argoDocumentText(comparison.live) === "" && argoDocumentText(comparison.desired) !== "";
-	}
-
-	function historyRevision(entry: ArgoApplicationHistory): string {
-		return entry.revision ?? (entry.revisions.join(", ") || "Unknown revision");
-	}
-
-	function statusValue(value: JsonValue | undefined, ...path: string[]): string | null {
-		let current: JsonValue | undefined = value;
-		for (const key of path) {
-			if (!isRecord(current)) return null;
-			current = current[key];
-		}
-		return isString(current) && current.trim() ? current : null;
-	}
-
-	function valueAt(value: JsonValue | undefined, ...path: string[]): JsonValue | undefined {
-		let current = value;
-		for (const key of path) {
-			if (Array.isArray(current)) {
-				const index = Number(key);
-				if (!Number.isInteger(index)) return undefined;
-				current = current[index];
-				continue;
-			}
-			if (!isRecord(current)) return undefined;
-			current = current[key];
-		}
-		return current;
-	}
-
-	function stringAt(value: JsonValue | undefined, ...path: string[]): string | null {
-		const current = valueAt(value, ...path);
-		return isString(current) && current.trim() ? current : null;
-	}
-
-	function booleanAt(value: JsonValue | undefined, ...path: string[]): boolean | null {
-		const current = valueAt(value, ...path);
-		return current === true || current === false ? current : null;
-	}
-
-	function isRecord(value: JsonValue | undefined): value is JsonObject {
-		return value !== null && !Array.isArray(value) && Object(value) === value;
-	}
-
-	function isString(value: JsonValue | undefined): value is string {
-		return String(value) === value;
-	}
 
 </script>
 
@@ -704,46 +455,7 @@
 		</section>
 	{/if}
 
-	<div class="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-surface-1 p-3">
-		<Select value={preferenceValue} onValueChange={setConnectionPreference}>
-			<SelectTrigger class="w-72 max-w-full" ariaLabel="Argo CD inspection preference">
-				<SelectValue>
-					{connectionPolicy.preference.kind === "automatic"
-						? inspection.current.checkingProfiles
-							? "Automatic · Checking profiles"
-							: `Automatic · ${selectedProfile ? argoEndpointLabel(selectedProfile.endpoint) : "Kubernetes"}`
-						: connectionPolicy.preference.kind === "kubernetes"
-							? "Kubernetes"
-							: selectedProfile
-									? argoEndpointLabel(selectedProfile.endpoint)
-									: connectionPolicy.preference.profileId}
-				</SelectValue>
-			</SelectTrigger>
-			<SelectContent>
-				<SelectGroup>
-					<SelectItem value="automatic" label="Automatic">Automatic</SelectItem>
-					<SelectItem value="kubernetes" label="Kubernetes">Kubernetes</SelectItem>
-					{#each connectionPolicy.eligibleProfiles as profile}
-						<SelectItem value={`connected:${profile.id}`} label={argoEndpointLabel(profile.endpoint)}>{argoEndpointLabel(profile.endpoint)}</SelectItem>
-					{/each}
-				</SelectGroup>
-			</SelectContent>
-		</Select>
-		<div class="min-w-0 flex-1 text-xs text-muted-foreground">
-			{connectionPolicy.unavailable
-				? selectedStatus?.unavailableReason ?? "Reconnect this exact workspace profile."
-				: transport === "kubernetes"
-					? "Argo RBAC is not evaluated. Exact manifests require a connected profile."
-					: "Connected Argo CD authorization is evaluated during operation preflight."}
-		</div>
-		<Button type="button" size="sm" variant="outline" onclick={() => (argoConnectionOpen = true)}>
-			{connectionPolicy.eligibleProfiles.length > 0 ? "Manage connection" : "Connect Argo CD"}
-		</Button>
-	</div>
-	<ArgoConnectionDialog
-		bind:open={argoConnectionOpen}
-		scope={{ clusterContext, workspaceId, kubeconfigSourceKey: kubeconfigEnvVar }}
-	/>
+	<ArgoApplicationConnection {inspection} {workspaceReadContext} />
 
 	{#if snapshot}<ArgoOperationProgress inspector={snapshot} />{/if}
 	{#if operationMessage}
@@ -783,94 +495,17 @@
 		</div>
 	{/each}
 
-	<section class="rounded-lg border bg-surface-1 p-3">
-		<div class="flex items-center justify-between gap-2"><div><div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Change navigator</div><div class="mt-0.5 text-xs text-muted-foreground">Focus one reconciliation item or keep the complete snapshot.</div></div><Badge variant="outline">{reconciliationResources.length}</Badge></div>
-		<div class="mt-3 flex gap-2 overflow-x-auto pb-1">
-			<Button type="button" size="sm" variant={selectedResource ? "outline" : "secondary"} class="shrink-0" aria-pressed={!selectedResource} onclick={showAllChanges}>All changes</Button>
-			{#each reconciliationResources as item (argoResourceIdentityKey(item) ?? resourceLabel(item))}
-				<Button type="button" size="sm" variant={resourceSelected(item) ? "secondary" : "outline"} class="h-auto min-w-36 max-w-56 shrink-0 justify-start p-2 text-left" aria-pressed={resourceSelected(item)} onclick={() => selectResource(item)}>
-					<span class="min-w-0"><span class="block truncate text-xs font-medium">{item.kind ?? "Resource"} · {item.name ?? "unknown"}</span><span class="mt-0.5 flex flex-wrap gap-1"><Badge variant="outline">{item.status ?? "Unknown"}</Badge>{#if item.requiresPruning}<Badge variant="destructive">Prune</Badge>{/if}</span></span>
-				</Button>
-			{/each}
-		</div>
-	</section>
+	<ArgoReconciliationPane
+		{client} {applicationRequest} {scopeKey} {clusterContext} {workspaceId} {kubeconfigEnvVar}
+		{managedResources} {snapshot} request={inspection.current.request} sourceReady={workspaceReadContext.sourceReady}
+		{connectionReady} {transport} {connectionId} {active} {loading} {dataError}
+	>
+		{#snippet delivery()}
+			<ArgoApplicationDelivery {matchingSummary} {applicationSpec} {configuredRevision}
+				history={snapshot?.history ?? []} {application} {selectedHistoryKey} {selectedHistory} {selectHistory} />
+		{/snippet}
+	</ArgoReconciliationPane>
 
-	<section class="grid gap-3 @min-[36rem]:grid-cols-[minmax(0,1.35fr)_minmax(12rem,0.65fr)]">
-		<div class="min-w-0 rounded-lg border bg-surface-1 p-3">
-			<div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Delivery</div>
-			<div class="mt-3 grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 gap-y-2 text-xs">
-				<span class="text-muted-foreground">Repository</span><span class="min-w-0 break-all">{repository}</span>
-				<span class="text-muted-foreground">Path</span><span class="min-w-0 break-all">{sourcePath}</span>
-				<span class="text-muted-foreground">Revision</span><span class="min-w-0 break-all">{configuredRevision}</span>
-				<span class="text-muted-foreground">Destination</span><span class="min-w-0 break-all">{destination}</span>
-				<span class="text-muted-foreground">Policy</span><span>{policy}</span>
-			</div>
-		</div>
-		<div class="min-w-0 rounded-lg border bg-surface-1 p-3">
-			<div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCommitHorizontal class="size-3.5" /> Recent deployment</div>
-			{#if snapshot?.history.length}
-				{#if snapshot.history.length > 1}
-					<Select value={selectedHistoryKey ?? ""} onValueChange={selectHistory}>
-						<SelectTrigger class="mt-3 w-full" ariaLabel="Recent deployment"><SelectValue>{selectedHistory ? historyRevision(selectedHistory) : "Select deployment"}</SelectValue></SelectTrigger>
-						<SelectContent><SelectGroup>{#each snapshot.history as entry}<SelectItem value={argoHistoryKey(application, entry)} label={historyRevision(entry)}>{historyRevision(entry)}</SelectItem>{/each}</SelectGroup></SelectContent>
-					</Select>
-				{/if}
-				{#if selectedHistory}<div class="mt-3 break-all text-sm font-semibold">{historyRevision(selectedHistory)}</div><div class="mt-1 text-xs leading-relaxed text-muted-foreground"><TimestampText value={selectedHistory.deployedAt} fallback="No deployment timestamp" precision="second" /> by {selectedHistory.initiatedBy ?? "unknown"}</div>{/if}
-			{:else}
-				<div class="mt-3 text-xs text-muted-foreground">No deployment history reported.</div>
-			{/if}
-		</div>
-	</section>
-
-	<section class="min-w-0 rounded-lg border bg-surface-1 p-3">
-		<div class="flex flex-wrap items-start justify-between gap-2">
-			<div><div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><GitCompareArrows class="size-3.5" /> {selectedResource ? "Focused reconciliation" : "Application snapshot"}</div><div class="mt-1 break-all text-xs text-muted-foreground">{selectedResource ? resourceLabel(selectedResource) : `${diffResources.length} reconciliation ${diffResources.length === 1 ? "item" : "items"} in this snapshot.`} {snapshotFreshness}</div></div>
-			<div class="flex max-w-full flex-wrap items-center gap-2">{#if selectedResource}<Button type="button" size="xs" variant="outline" onclick={showAllChanges}>All changes</Button>{/if}<SegmentedControl value={diffView} options={diffViewOptions} onChange={(value) => (diffView = value)} ariaLabel="Reconciliation document view" size="sm" /></div>
-		</div>
-		<div class="mt-3 space-y-4">
-			{#if loadingIndicator.active}
-				{#if loadingIndicator.shown}<div class="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground" role="status"><Spinner /> Loading Application snapshot</div>{/if}
-			{:else if dataError}
-				<Empty><EmptyHeader><EmptyTitle>Application snapshot unavailable</EmptyTitle><EmptyDescription>Retry Application data before evaluating reconciliation state.</EmptyDescription></EmptyHeader></Empty>
-			{:else}
-				{#each diffResources as item (argoResourceIdentityKey(item) ?? resourceLabel(item))}
-				{@const comparison = comparisonFor(item)}
-				{@const documents = argoComparisonDocument(item, comparison)}
-				{@const removal = item.requiresPruning === true}
-				<article class="min-w-0 overflow-hidden rounded-lg border bg-background">
-					<div class="flex flex-wrap items-center gap-2 border-b bg-surface-1 px-3 py-2">
-						<div class="min-w-0 flex-1 truncate text-xs font-semibold" title={resourceLabel(item)}>{resourceLabel(item)}</div>
-						{#if removal}<Badge variant="destructive">Remove on sync</Badge>{:else if resourceAdded(item)}<Badge variant="outline" class="border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Added</Badge>{:else if resourceModified(item)}<Badge variant="outline" class="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">Modified</Badge>{:else}<Badge variant="secondary">In sync</Badge>{/if}
-						{#if removal}<Button type="button" size="xs" variant="ghost" aria-expanded={removalExpanded(item)} onclick={() => toggleRemoval(item)}>{removalExpanded(item) ? "Hide diff" : "Show diff"}</Button>{/if}
-						{#if !selectedResource}<Button type="button" size="xs" variant="ghost" onclick={() => selectResource(item)}>Focus</Button>{/if}
-					</div>
-					{#if removal}
-						<div class="bg-destructive/10 p-3 font-sans text-xs leading-relaxed"><div class="font-medium text-destructive">Live-only resource</div><div class="mt-1 text-muted-foreground">This resource is no longer present in desired revision. Sync with prune removes live object. Live YAML stays collapsed until Show diff is selected.</div></div>
-					{/if}
-					{#if removal && diffView !== "target" && !removalExpanded(item)}
-						<span class="sr-only">Live YAML collapsed.</span>
-					{:else if diffView === "target" && removal}
-						<div class="border-t p-3 font-sans text-xs leading-relaxed"><div class="font-medium">No desired manifest</div><div class="mt-1 text-muted-foreground">Selected revision no longer contains this resource.</div></div>
-					{:else if diffView === "changes" && argoDocumentText(documents.desired) && argoDocumentText(documents.normalizedLive)}
-						<div class="overflow-x-auto border-t font-mono text-[0.6875rem] leading-5">
-							<ArgoResourceDiff desired={argoDocumentText(documents.desired)} live={argoDocumentText(documents.normalizedLive)} />
-						</div>
-					{:else if diffView === "changes" && removal && argoDocumentText(documents.live)}
-						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>
-					{:else if diffView === "target" && argoDocumentText(documents.desired)}
-						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.desired)} editable={false} minHeight="180px" showErrorLens={false} /></div>
-					{:else if diffView === "live" && argoDocumentText(documents.live)}
-						<div class="border-t [&_.yaml-code-editor]:rounded-none [&_.yaml-code-editor]:border-0 [&_.yaml-code-editor]:shadow-none"><YamlCodeEditor value={argoDocumentText(documents.live)} editable={false} minHeight="180px" showErrorLens={false} /></div>
-					{:else}
-						<div class="border-t p-3 text-xs leading-relaxed text-muted-foreground">{comparison?.exact === false || transport === "kubernetes" ? "Exact target and live manifests are unavailable through Kubernetes fallback. Select a connected Argo CD profile for manifest comparison." : `No ${diffView === "target" ? "desired" : diffView === "live" ? "live" : "comparison"} manifest reported.`}</div>
-					{/if}
-				</article>
-				{:else}
-					<Empty><EmptyHeader><EmptyTitle>No pending changes</EmptyTitle><EmptyDescription>Inspector reports no out-of-sync, degraded, progressing, or removal resources.</EmptyDescription></EmptyHeader></Empty>
-				{/each}
-			{/if}
-		</div>
-	</section>
 </div>
 
 <Dialog open={confirmationOpen} onOpenChange={(open: boolean) => { if (!open) closeSyncConfirmation(); }}>

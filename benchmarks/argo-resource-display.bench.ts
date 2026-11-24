@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { describe } from "vitest";
 import { applicationSpecFromYaml } from "@/features/gitops/argo-application-yaml";
 import {
-	argoDocumentText,
+	COMPACT_ARGO_DIFF_LINES,
+	projectArgoResourceComparison,
 	highlightedArgoDiffSegments,
 	resolveArgoResourceComparison,
 } from "@/features/gitops/argo-resource-display";
 import {
-	argoComparisonDocument,
 	argoComparisonIndex,
 	argoReconciliationResources,
 	argoResourceIdentityKey,
@@ -123,16 +123,14 @@ describe("Argo resource display F48–F49", () => {
 					selectedResourceKey,
 					selectedComparison,
 				);
-				const documents = argoComparisonDocument(resource, comparison);
+				const { desired, normalizedLive } = projectArgoResourceComparison(resource, comparison);
 				if (
 					resource.requiresPruning &&
 					!expandedRemovalKeys.has(argoResourceIdentityKey(resource) ?? "")
 				)
 					continue;
-				const desired = argoDocumentText(documents.desired);
-				const normalizedLive = argoDocumentText(documents.normalizedLive);
 				if (!desired || !normalizedLive) continue;
-				for (const line of buildArgoResourceDiff(desired, normalizedLive)) {
+				for (const line of buildArgoResourceDiff(desired, normalizedLive).slice(0, COMPACT_ARGO_DIFF_LINES)) {
 					highlightedArgoDiffSegments(line);
 				}
 			}
