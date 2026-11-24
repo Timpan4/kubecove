@@ -9,6 +9,10 @@ pub(super) fn lines(
     lines: &[DiffLine],
     theme: &gpui_kit::component::highlighter::HighlightTheme,
 ) -> Vec<Highlights> {
+    // A change without a diff needs no parser, which compiles a query when built.
+    if lines.is_empty() {
+        return Vec::new();
+    }
     let parser = parser.get_or_insert_with(|| SyntaxHighlighter::new("yaml"));
     lines
         .iter()

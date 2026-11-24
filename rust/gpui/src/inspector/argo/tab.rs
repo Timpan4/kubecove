@@ -5,7 +5,7 @@ use super::super::controls::{self, Variant};
 use super::super::detail::{Detail, ResourceDetail};
 use super::super::feedback::Disclosure;
 use super::super::request::Fetch;
-use super::super::{Inspector, surface, yaml};
+use super::super::{Inspector, surface};
 use super::panels::{delivery, navigator};
 use super::snapshot::{DiffView, snapshot};
 use crate::argo_app::ArgoView;
@@ -18,6 +18,7 @@ use kubecove_lib::models::{AppError, ArgoApplicationInspector, ArgoApplicationRe
 use std::sync::Arc;
 
 mod comparison;
+mod editors;
 
 enum ArgoLoad {
     Loading,
@@ -39,14 +40,8 @@ pub(in crate::inspector) struct ArgoTab {
     pub(super) inspector: Option<ArgoApplicationInspector>,
     pub(super) operation: super::operations::Phase,
     pub(super) options: super::options::Options,
-    /// Each change's desired and live editors, by index into `changes`, built
-    /// by `ensure_argo_editors` the first time the change shows as YAML.
-    pub(super) editors: Vec<
-        Option<(
-            gpui_kit::Entity<gpui_kit::component::input::EditorState>,
-            gpui_kit::Entity<gpui_kit::component::input::EditorState>,
-        )>,
-    >,
+    /// Each change's desired and live editors, by index into `changes`.
+    pub(super) editors: Vec<editors::Editors>,
     /// The snapshot read. A reload builds a new tab state, which cancels it.
     _task: Option<Task<()>>,
     /// The focused resource's connected comparison. Its result lands in
@@ -105,16 +100,14 @@ impl Inspector {
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
             // The view, its diff highlights and its default prune are built off
-            // the UI thread, which lends the work its shared highlighter.
-            let parser = this
-                .update(cx, |this, _| this.argo.highlighter.take())
-                .ok()
-                .flatten();
-            let (parser, prepared) = cx
+            // the UI thread. The job owns its highlighter and reuses it across
+            // the snapshot's changes, so cancelling the job takes nothing from
+            // the UI.
+            let prepared = cx
                 .background_executor()
                 .spawn(async move {
-                    let mut parser = parser;
-                    let prepared = result.map(|inspector| {
+                    let mut parser = None;
+                    result.map(|inspector| {
                         let view = ArgoView::new(&inspector, &summary, &yaml);
                         let highlights: Vec<_> = view
                             .changes
@@ -128,14 +121,10 @@ impl Inspector {
                             })
                             .collect();
                         (Box::new(view), highlights, inspector)
-                    });
-                    (parser, prepared)
+                    })
                 })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
-                if this.argo.highlighter.is_none() {
-                    this.argo.highlighter = parser;
-                }
                 let Detail::Ready(detail) = &mut this.detail else {
                     return;
                 };
@@ -204,43 +193,6 @@ impl Inspector {
             comparison: Fetch::Idle,
             refresh_options: false,
         });
-    }
-
-    /// Creates the read-only editors of the changes the snapshot shows as YAML
-    /// documents, each the first time it shows. The Changes view shows diffs,
-    /// so it builds editors only for an expanded removal without one.
-    pub(in crate::inspector) fn ensure_argo_editors(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(state) = self.argo_tab_state() else {
-            return;
-        };
-        let ArgoLoad::Ready(view) = &state.load else {
-            return;
-        };
-        let count = view.changes.len();
-        state.editors.resize_with(count, || None);
-        let shown = match state.focus.filter(|index| *index < count) {
-            Some(index) => index..index + 1,
-            None => 0..count,
-        };
-        for index in shown {
-            let change = &view.changes[index];
-            let wanted = match state.view {
-                DiffView::Changes => state.expanded.contains(&index) && change.diff.is_none(),
-                DiffView::Target | DiffView::Live => true,
-            };
-            if !wanted || state.editors[index].is_some() {
-                continue;
-            }
-            let (desired, live) = (change.desired.clone(), change.live.clone());
-            state.editors[index] = Some((
-                cx.new(|cx| yaml::viewer(desired, window, cx)),
-                cx.new(|cx| yaml::viewer(live, window, cx)),
-            ));
-        }
     }
 }
 

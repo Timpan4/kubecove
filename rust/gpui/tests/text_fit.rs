@@ -24,8 +24,13 @@ fn main() {
 mod common;
 
 #[cfg(target_os = "linux")]
+#[path = "parity/scroll.rs"]
+mod parity_scroll;
+
+#[cfg(target_os = "linux")]
 mod text_fit {
     use crate::common::Fixture;
+    use crate::parity_scroll::reveal;
     use gpui_kit::test::TestWindowExt;
     use gpui_kit::{
         AnyWindowHandle, AppContext, Bounds, Font, FontWeight, HeadlessAppContext, Pixels, TextRun,
@@ -147,6 +152,50 @@ mod text_fit {
         }
     }
 
+    /// The number of lines `text` at `font_size`, `line_height` per line, wraps to in a text
+    /// box `bounds`, when the box is that many lines tall, so no line is clipped. The wrap
+    /// width and the height each allow the one device pixel of `shows_in_full`.
+    fn wraps_in_full(
+        window: &mut gpui_kit::Window,
+        text: &str,
+        font_size: f32,
+        line_height: f32,
+        bounds: Bounds<Pixels>,
+    ) -> Result<usize, String> {
+        let run = TextRun {
+            len: text.len(),
+            font: gpui_kit::font(SANS),
+            color: gpui_kit::black(),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let snapping = px(1. / window.scale_factor());
+        let lines = window
+            .text_system()
+            .shape_text(
+                text.to_owned().into(),
+                px(font_size),
+                &[run],
+                Some(bounds.size.width + snapping),
+                None,
+            )
+            .map_err(|error| format!("{text:?} did not shape: {error}"))?;
+        let count: usize = lines
+            .iter()
+            .map(|line| line.wrap_boundaries().len() + 1)
+            .sum();
+        let height = px(line_height) * count as f32;
+        if bounds.size.height + snapping >= height && bounds.size.height <= height + snapping {
+            Ok(count)
+        } else {
+            Err(format!(
+                "{text:?} wraps to {count} lines, {height:?} tall, in a {:?} box",
+                bounds.size
+            ))
+        }
+    }
+
     /// The Kind column fits "Deployment" without an ellipsis.
     fn deployment_kind_fits(fixture: &Path) {
         let (mut cx, handle) = open(fixture);
@@ -244,6 +293,66 @@ mod text_fit {
         });
     }
 
+    /// On the RBAC page, the amber notice that a manual ServiceAccount needs a namespace
+    /// stays inside the verifier card's column and is as tall as its wrapped lines, with the
+    /// steps of the `rbac.service-account-namespace-required` parity scenario.
+    fn rbac_namespace_notice_wraps(fixture: &Path) {
+        let (mut cx, handle) = open(fixture);
+        act(&mut cx, handle, |window, cx| window.click("nav:RBAC", cx));
+        act(&mut cx, handle, |window, cx| {
+            reveal(window, "page", "rbac-category:Roles", cx);
+            window.click("rbac-category:Roles", cx);
+        });
+        act(&mut cx, handle, |window, cx| {
+            let card = window
+                .within("rbac-queue")
+                .find_by_label("Role/payments-reader");
+            let Some(gpui_kit::ElementId::Name(id)) = card.path().last().cloned() else {
+                panic!("RBAC queue cards have named IDs");
+            };
+            reveal(window, "page", &id, cx);
+            window.click(id.to_string(), cx);
+        });
+        act(&mut cx, handle, |window, cx| {
+            reveal(window, "page", "rbac-identity-sa", cx);
+            window.click("rbac-identity-sa", cx);
+        });
+        act(&mut cx, handle, |window, cx| {
+            reveal(window, "page", "rbac-identity-name", cx);
+            window.click("rbac-identity-name", cx);
+            window.press("secondary-a", cx);
+            window.input("deployer", cx);
+        });
+        act(&mut cx, handle, |window, cx| {
+            reveal(window, "page", "rbac-identity-namespace", cx);
+            window.click("rbac-identity-namespace", cx);
+            window.press("secondary-a", cx);
+            window.press("backspace", cx);
+        });
+        act(&mut cx, handle, |window, _| {
+            let notice = window.find("rbac-namespace-required");
+            let text = notice.label().unwrap_or_default().to_owned();
+            assert_eq!(text, "Enter the ServiceAccount namespace to verify.");
+            let bounds = notice.bounds();
+            // The Verify button is `w-full` in the same column as the notice.
+            let column = window.find("rbac-verify").bounds();
+            let snapping = px(1. / window.scale_factor());
+            assert!(
+                bounds.left() + snapping >= column.left()
+                    && bounds.right() <= column.right() + snapping,
+                "RBAC namespace notice {bounds:?} runs past its column {column:?}"
+            );
+            // `ui::xs` sets a 16px line height.
+            match wraps_in_full(window, &text, XS_FONT_SIZE, 16., bounds) {
+                Ok(lines) => println!(
+                    "text_fit rbac-namespace-notice: {lines} line(s) in a {:?} wide box",
+                    bounds.size.width
+                ),
+                Err(problem) => panic!("RBAC namespace notice: {problem}"),
+            }
+        });
+    }
+
     fn compact_aggregate_headline_fits(fixture: &Path) {
         let (mut cx, handle) = open(fixture);
         for id in [
@@ -302,5 +411,7 @@ mod text_fit {
         println!("text_fit live-log-status-shows-in-full: passed");
         compact_aggregate_headline_fits(fixture);
         println!("text_fit compact-aggregate-headline-fits: passed");
+        rbac_namespace_notice_wraps(fixture);
+        println!("text_fit rbac-namespace-notice-wraps: passed");
     }
 }

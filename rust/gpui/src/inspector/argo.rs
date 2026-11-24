@@ -29,8 +29,6 @@ use gpui_kit::{Context, Window};
 /// The Argo CD state that outlives an open detail.
 pub(super) struct ArgoState {
     connections: connection::Connections,
-    /// The YAML highlighter the diff views share, built on first use.
-    highlighter: Option<gpui_kit::component::highlighter::SyntaxHighlighter>,
     /// The outcome observed for each Application's last operation.
     outcomes: std::collections::HashMap<String, outcomes::Outcome>,
     /// Submissions still in flight when their detail closed. Dropping them
@@ -43,7 +41,6 @@ impl ArgoState {
     pub(super) fn new(window: &mut Window, cx: &mut Context<Inspector>) -> Self {
         Self {
             connections: connection::Connections::new(window, cx),
-            highlighter: None,
             outcomes: Default::default(),
             submissions: Vec::new(),
         }

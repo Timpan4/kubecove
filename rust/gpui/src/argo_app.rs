@@ -181,6 +181,9 @@ pub struct Change {
     /// The diff's lines joined by newlines, its accessible label, joined once
     /// with the diff instead of on every render.
     pub diff_label: SharedString,
+    /// The diff's added and removed lines, counted once with the diff, so a
+    /// collapsed diff's summary does not rescan its hidden tail.
+    pub changed: usize,
     /// `comparison?.exact === false`: the fallback note applies.
     pub inexact: bool,
 }
@@ -232,6 +235,9 @@ pub(crate) fn change(
             .join("\n")
             .into()
     });
+    let changed = diff.as_deref().map_or(0, |lines| {
+        lines.iter().filter(|line| line.kind.changed()).count()
+    });
     let label = resource_label(resource);
     Change {
         key: key.unwrap_or_else(|| label.clone()),
@@ -248,6 +254,7 @@ pub(crate) fn change(
         live: live.into(),
         diff,
         diff_label,
+        changed,
         inexact: comparison.and_then(|comparison| comparison.exact) == Some(false),
     }
 }

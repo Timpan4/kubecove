@@ -1,7 +1,6 @@
 //! The "Application snapshot" section of `ArgoApplicationDetails.svelte`: one
-//! `<article>` per reconciliation resource, with `ArgoResourceDiff.svelte`
-//! for the Changes view. Read-only YAML editors and diff lines share the
-//! native YAML syntax highlighter.
+//! `<article>` per reconciliation resource. `body` renders what each article
+//! shows below its header.
 
 use super::super::Inspector;
 use super::super::controls::{self, Variant};
@@ -9,16 +8,16 @@ use super::super::delivery_ui as dui;
 use super::super::loading::Phase;
 use super::panels::{caps, panel};
 use super::tab::ArgoTab;
-use crate::argo_app::{ArgoView, Change, ChangeBadge};
+use crate::argo_app::{ArgoView, ChangeBadge};
 use crate::targets::TestSupportExt;
-use crate::theme::{MONO, Palette, Tokens};
+use crate::theme::{Palette, Tokens};
 use crate::ui::{self, Tone};
-use crate::unified_diff::{DiffLine, DiffLineKind};
-use gpui_kit::{AnyElement, Context, Div, SharedString, div, prelude::*, px};
-use std::sync::Arc;
+use body::article_body;
+use gpui_kit::{Context, Div, SharedString, div, prelude::*, px};
 
-/// `ArgoResourceDiff` shows this many lines until expanded.
-const DIFF_PREVIEW: usize = 24;
+mod body;
+
+pub(super) use body::Body;
 
 /// `diffViewOptions`.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -105,191 +104,6 @@ fn segmented(active: DiffView, cx: &mut Context<Inspector>) -> Div {
             );
             slide.option(option == active, segment)
         }))
-}
-
-/// `border-t p-3 text-xs leading-relaxed`, with an optional medium title.
-fn note(title: Option<&str>, text: &str) -> impl IntoElement {
-    div()
-        .id("argo-note")
-        .test_support()
-        .aria_label(title.unwrap_or(text).to_owned())
-        .aria_description(text.to_owned())
-        .p(px(12.))
-        .border_t_1()
-        .border_color(Tokens::border())
-        .when_some(title, |note, title| {
-            note.child(ui::medium(ui::text(title.to_owned(), 12., 19.5)))
-        })
-        .child(
-            ui::muted(ui::text(text.to_owned(), 12., 19.5))
-                .when(title.is_some(), |text| text.mt(px(4.))),
-        )
-}
-
-/// Read-only YAML with the web editor's 180px minimum viewport.
-fn yaml_text(index: usize, text: &SharedString, state: &ArgoTab, live: bool) -> AnyElement {
-    div()
-        .id(SharedString::from(format!("argo-yaml:{index}")))
-        .min_h(px(180.))
-        .p(px(12.))
-        .border_t_1()
-        .border_color(Tokens::border())
-        .overflow_x_scroll()
-        .font_family(MONO)
-        .text_size(px(12.))
-        .line_height(px(18.))
-        .whitespace_nowrap()
-        .test_support()
-        .aria_label(text.clone())
-        .children(
-            state
-                .editors
-                .get(index)
-                .and_then(Option::as_ref)
-                .map(|(desired, actual)| {
-                    gpui_kit::component::input::Editor::new(if live { actual } else { desired })
-                        .readonly(true)
-                        .aria_label("Argo CD resource YAML")
-                        .w_full()
-                        .h(px(180.))
-                }),
-        )
-        .into_any_element()
-}
-
-/// `ArgoResourceDiff.svelte` in its `overflow-x-auto border-t font-mono
-/// text-[0.6875rem] leading-5` wrapper. A full diff builds only the rows the
-/// detail body shows; its label is the whole diff, joined with the change.
-fn resource_diff(
-    index: usize,
-    lines: &Arc<[DiffLine]>,
-    label: &SharedString,
-    full: bool,
-    state: &ArgoTab,
-    cx: &mut Context<Inspector>,
-) -> Div {
-    let hidden_changed = lines
-        .iter()
-        .skip(DIFF_PREVIEW)
-        .filter(|line| matches!(line.kind, DiffLineKind::Add | DiffLineKind::Remove))
-        .count();
-    let highlights = state.highlights.get(index);
-    let body = div()
-        .id(SharedString::from(format!("argo-diff:{index}")))
-        .test_support()
-        .aria_label(label.clone())
-        .border_t_1()
-        .border_color(Tokens::border())
-        .font_family(MONO)
-        .text_size(px(11.))
-        .line_height(px(20.));
-    let body = if full {
-        body.child(controls::windowed_diff_rows(
-            lines.clone(),
-            20.,
-            highlights.cloned(),
-        ))
-    } else {
-        body.children(
-            lines
-                .iter()
-                .take(DIFF_PREVIEW)
-                .enumerate()
-                .map(|(i, line)| {
-                    controls::diff_row(
-                        line,
-                        20.,
-                        highlights.and_then(|lines| lines.get(i)).map(Vec::as_slice),
-                    )
-                }),
-        )
-    };
-    if lines.len() <= DIFF_PREVIEW {
-        return div().child(body);
-    }
-    div().child(body).child(
-        div()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .font_family(crate::theme::SANS)
-            .when(!full, |row| {
-                row.child(
-                    ui::muted(ui::xs(format!(
-                        "{} more lines ({hidden_changed} changed) hidden.",
-                        lines.len() - DIFF_PREVIEW
-                    )))
-                    .px(px(12.)),
-                )
-            })
-            .child(
-                dui::sm_button(
-                    Variant::Ghost,
-                    &if full {
-                        "Show fewer lines".to_owned()
-                    } else {
-                        format!("Show all {} lines", lines.len())
-                    },
-                )
-                .id(SharedString::from(format!("argo-diff-lines:{index}")))
-                .test_support()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    update(this, cx, |state| toggle(&mut state.full, index))
-                })),
-            ),
-    )
-}
-
-/// The article body below its header, by `diffView` (the `{#if}` chain).
-fn article_body(
-    view: &ArgoView,
-    state: &ArgoTab,
-    index: usize,
-    change: &Change,
-    cx: &mut Context<Inspector>,
-) -> Option<AnyElement> {
-    let removal = change.badge == ChangeBadge::Remove;
-    let expanded = state.expanded.contains(&index);
-    if removal && state.view != DiffView::Target && !expanded {
-        return None;
-    }
-    Some(match (state.view, change.diff.as_ref()) {
-        (DiffView::Target, _) if removal => note(
-            Some("No desired manifest"),
-            "Selected revision no longer contains this resource.",
-        )
-        .into_any_element(),
-        (DiffView::Changes, Some(lines)) => resource_diff(
-            index,
-            lines,
-            &change.diff_label,
-            state.full.contains(&index),
-            state,
-            cx,
-        )
-        .into_any_element(),
-        (DiffView::Changes, None) if removal && !change.live.is_empty() => {
-            yaml_text(index, &change.live, state, true)
-        }
-        (DiffView::Target, _) if !change.desired.is_empty() => yaml_text(index, &change.desired, state, false),
-        (DiffView::Live, _) if !change.live.is_empty() => yaml_text(index, &change.live, state, true),
-        (current, _) => note(
-            None,
-            &if change.inexact || view.kubernetes {
-                "Exact target and live manifests are unavailable through Kubernetes fallback. Select a connected Argo CD profile for manifest comparison.".to_owned()
-            } else {
-                format!(
-                    "No {} manifest reported.",
-                    match current {
-                        DiffView::Target => "desired",
-                        DiffView::Live => "live",
-                        DiffView::Changes => "comparison",
-                    }
-                )
-            },
-        )
-        .into_any_element(),
-    })
 }
 
 fn change_badge(badge: ChangeBadge) -> Div {
