@@ -421,6 +421,8 @@ jobs:
         if: ${{ (matrix.task == 'server') && steps.decide-pass.outputs.skip != 'true' }}
         env:
           KUBECOVE_PUBLIC_RUNTIME: web
+          # No step reads the gzip and Brotli size report, so the build skips compressing for it.
+          KUBECOVE_SKIP_BUNDLE_REPORT: "1"
         run: bun run build
 
       - name: Build headless server

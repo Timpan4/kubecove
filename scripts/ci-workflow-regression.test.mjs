@@ -661,6 +661,7 @@ test("each existing check remains in its selected task", () => {
     if (match[1] !== "Checkout") assert.match(match[2], /^ +if: \$\{\{ .+ \}\}$/m, match[1]);
   }
   assert.ok(step("Build browser UI").includes("KUBECOVE_PUBLIC_RUNTIME: web"));
+  assert.ok(step("Build browser UI").includes('KUBECOVE_SKIP_BUNDLE_REPORT: "1"'), "no server step reads the compressed bundle report");
   assert.ok(step("Build browser UI").includes("matrix.task == 'server'"));
   assert.ok(job("checks").indexOf("- name: Build browser UI") < job("checks").indexOf("- name: Test headless server"));
   // The API-only server must build in a checkout that has no built browser UI.
