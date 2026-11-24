@@ -221,6 +221,11 @@ describe("F36 palette cache harvest, F37 retained typing, and folded F38 search 
 		},
 	);
 
+	benchmark("F37 broad query with production caps", () => {
+		visibleResourceResults(term);
+		visibleNamespaceResults(namespaceTerm);
+	});
+
 	benchmark("F37 broad query with uncapped scans as a comparison", () => {
 		filterResourceSearchIndex(paletteIndex, term, "").slice(0, RESOURCE_RESULT_CAP);
 		namespaces.filter((name) => name.toLowerCase().includes(namespaceTerm)).slice(0, NAMESPACE_RESULT_CAP);
