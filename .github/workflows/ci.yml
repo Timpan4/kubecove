@@ -137,6 +137,12 @@ jobs:
               ? required.frontend || required.rust : required[scope]);
             core.setOutput('matrix', JSON.stringify({ include }));
 
+      # The Nix job appears only after every matrix task finishes. Cancel obsolete CI reads
+      # this step's conclusion to learn sooner whether a main run selected it.
+      - name: Select Nix build
+        if: ${{ github.event_name != 'pull_request' && steps.detect.outputs.nix == 'true' }}
+        run: echo "Nix build selected"
+
   frontend:
     name: Frontend checks
     needs:

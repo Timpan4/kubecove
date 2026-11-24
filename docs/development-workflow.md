@@ -112,9 +112,14 @@ The `Cancel obsolete CI` workflow cancels superseded main runs, validation for c
 manual validation on deleted branches. It reconciles on main pushes, PR closure,
 branch deletion and validation startup/completion, including reruns. Non-PR concurrency groups
 include the commit SHA so a late rerun of an old commit cannot cancel current
-validation, including manual feature-branch runs. Before cancelling an older main run, cleanup requires a current-main
-run of the same workflow and E2E mode with every previously selected job either
-pending, running or successful. A path filter or change selection that omits work
+validation, including manual feature-branch runs. Before cancelling an older main run, cleanup requires a
+pending, running or successful current-main run of the same workflow and E2E mode.
+Parity and CodSpeed run every job on main whatever changed, so that run alone
+replaces an older one, including shards that wait for its build. CI, E2E, tsrs and
+server packaging select jobs by what changed, so the current run must also select every job
+the older one did, with each pending, running or successful. CI's Nix job appears
+only after the matrix finishes, so the `Select Nix build` step of `Detect CI changes`
+reports the Nix selection earlier. A path filter or change selection that omits work
 preserves its latest relevant run. Release and publishing workflows stay outside
 this cleanup. Dispatches whose head name also names an existing tag are retained
 because the API does not distinguish that ambiguous ref.

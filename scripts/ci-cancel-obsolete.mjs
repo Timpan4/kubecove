@@ -4,6 +4,22 @@ const validationPaths = new Set([
   ".github/workflows/tsrs.yml", ".github/workflows/server-packaging.yml",
 ]);
 const activeStates = ["queued", "in_progress", "pending", "waiting", "requested"];
+// On main these workflows run every job whatever changed: Parity has no change selection on a
+// push, and CodSpeed selects its full baseline outside pull requests. Any newer run replaces all
+// of an older one, including the shards that start only after its build.
+const fullOnMain = new Set([".github/workflows/parity.yml", ".github/workflows/codspeed.yml"]);
+const ciPath = ".github/workflows/ci.yml";
+
+// CI's Nix job appears only after every matrix task finishes. Until then, the Detect job's
+// "Select Nix build" step says whether the run selected it. A missing or unfinished step leaves
+// the selection unknown, which retains the run.
+function nixSelected(runJobs) {
+  const nix = runJobs.find((job) => job.name === "Nix build");
+  if (nix) return nix.conclusion !== "skipped";
+  const marker = runJobs.find((job) => job.name === "Detect CI changes")?.steps?.find((step) => step.name === "Select Nix build");
+  if (marker?.status !== "completed" || !["success", "skipped"].includes(marker.conclusion)) return undefined;
+  return marker.conclusion === "success";
+}
 
 export async function cancelObsoleteRuns({ github, context, core }) {
   const repository = context.payload.repository;
@@ -17,29 +33,32 @@ export async function cancelObsoleteRuns({ github, context, core }) {
   const jobs = (run) => readOnce(`jobs:${run.id}`, () => github.paginate(github.rest.actions.listJobsForWorkflowRun, { ...repo, run_id: run.id, filter: "latest" }));
   const mode = (run) => run.path === ".github/workflows/e2e.yml" && run.event !== "push" ? "matrix" : "primary";
   async function replacedOnMain(run, sha) {
-    const replacements = await readOnce(`main-runs:${sha}`, () => github.paginate(
+    const replacements = (await readOnce(`main-runs:${sha}`, () => github.paginate(
       github.rest.actions.listWorkflowRunsForRepo, { ...repo, branch: repository.default_branch, head_sha: sha },
-    ));
+    ))).filter((replacement) => replacement.id !== run.id && replacement.path === run.path && replacement.head_sha === sha &&
+      replacement.head_branch === repository.default_branch && replacement.head_repository?.full_name === repository.full_name &&
+      (activeStates.includes(replacement.status) || replacement.conclusion === "success") &&
+      ["push", "schedule", "workflow_dispatch"].includes(replacement.event) && mode(replacement) === mode(run));
+    if (fullOnMain.has(run.path)) return replacements.length > 0;
+    // Other workflows select jobs by what changed. A CI push compares only its own
+    // before...after range, so the newer run must select every job the older one did.
     const visibleJobs = await jobs(run);
-    // Nix depends on the CI matrix. Its absence leaves downstream selection unknown.
-    if (run.path === ".github/workflows/ci.yml" && !visibleJobs.some((job) => job.name === "Nix build")) return false;
-    const originalJobs = visibleJobs.filter((job) => job.conclusion !== "skipped");
-    if (!originalJobs.length) return false;
-    if (run.path === ".github/workflows/ci.yml" &&
-        (originalJobs.find((job) => job.name === "Detect CI changes")?.conclusion !== "success" ||
-         !originalJobs.some((job) => job.name.startsWith("CI ") || job.name === "Nix build"))) return false;
-    if (run.path === ".github/workflows/codspeed.yml" &&
-        (originalJobs.find((job) => job.name === "Detect benchmark changes")?.conclusion !== "success" ||
-         !originalJobs.some((job) => job.name.startsWith("Run frontend benchmarks (") || job.name.startsWith("Run Rust benchmarks (")))) return false;
+    const required = new Set(visibleJobs.filter((job) => job.conclusion !== "skipped").map((job) => job.name));
+    if (!required.size) return false;
+    if (run.path === ciPath) {
+      const nix = nixSelected(visibleJobs);
+      if (nix === undefined || visibleJobs.find((job) => job.name === "Detect CI changes")?.conclusion !== "success") return false;
+      if (nix) required.add("Nix build");
+      if (![...required].some((name) => name.startsWith("CI ") || name === "Nix build")) return false;
+    }
     for (const replacement of replacements) {
-      if (replacement.id === run.id || replacement.path !== run.path || replacement.head_sha !== sha ||
-          replacement.head_branch !== repository.default_branch || replacement.head_repository?.full_name !== repository.full_name ||
-          (!activeStates.includes(replacement.status) && replacement.conclusion !== "success") ||
-          !["push", "schedule", "workflow_dispatch"].includes(replacement.event) || mode(replacement) !== mode(run)) continue;
-      const coverage = new Set((await jobs(replacement))
+      const replacementJobs = await jobs(replacement);
+      const coverage = new Set(replacementJobs
         .filter((job) => job.conclusion === "success" || activeStates.includes(job.status))
         .map((job) => job.name));
-      if (originalJobs.every((job) => coverage.has(job.name))) return true;
+      // A selected Nix job that is not visible yet still runs unless the run is cancelled.
+      if (run.path === ciPath && !replacementJobs.some((job) => job.name === "Nix build") && nixSelected(replacementJobs)) coverage.add("Nix build");
+      if ([...required].every((name) => coverage.has(name))) return true;
     }
     return false;
   }
