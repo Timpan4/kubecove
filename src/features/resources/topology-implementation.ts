@@ -229,7 +229,8 @@ export function layoutFlowTopologyGraph(
 	const depthById = compactDirectEdgeDepths(graph, topologyColumnDepth(graph));
 	const orderById = topologyLayoutOrder(graph, depthById, sortKeys);
 	const compareNodes = compareNodesByLayoutOrder(orderById, depthById, sortKeys.compare);
-	const positions = buildTopologyPositions(graph, depthById, compareNodes, SVELTE_TOPOLOGY_LAYOUT);
+	const sortedNodes = [...graph.nodes].sort(compareNodes);
+	const positions = buildTopologyPositions(graph, sortedNodes, depthById, compareNodes, SVELTE_TOPOLOGY_LAYOUT);
 	const standaloneGroups =
 		mode === "networkFlow"
 			? {
@@ -280,7 +281,7 @@ export function layoutFlowTopologyGraph(
 			zIndex: group.zIndex,
 		};
 	});
-	const nodes = [...graph.nodes].sort(compareNodes).filter((node) => {
+	const nodes = sortedNodes.filter((node) => {
 		if (!standaloneGroups.standaloneIds.has(node.id)) return true;
 		return standaloneGroups.groupIdByNodeId.has(node.id);
 	}).map<FlowTopologyNode>((node) => {

@@ -524,10 +524,14 @@ describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () 
 	});
 
 	benchmark("F02 sort-only with retained membership and map scope", () => {
+		let scopedMembershipRows = retainedMembership.filteredRows;
 		for (const variant of sortVariants) {
 			const rows = sortResourceTableRows(retainedMembership.filteredRows, variant.sort, variant.contexts);
 			const display = buildResourceTableDisplayFromMembership(retainedMembership, rows, variant);
-			mapFilter(retainedMapTopology, display.filteredRows, false);
+			// Map scope depends on membership identity, which a sort-only change retains.
+			if (display.filteredRows === scopedMembershipRows) continue;
+			scopedMembershipRows = display.filteredRows;
+			mapFilter(retainedMapTopology, scopedMembershipRows, false);
 		}
 	});
 
