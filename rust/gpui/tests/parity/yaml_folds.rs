@@ -7,7 +7,6 @@ use gpui_kit::{
     TextRenderingMode, px,
 };
 use std::borrow::Cow;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Default)]
@@ -23,7 +22,7 @@ impl Global for WhitespaceLayout {}
 /// The detail body and editor viewport heights that the last
 /// `expectYamlEditorFillsPanel` measured, for a `grows` check on the next one.
 #[derive(Default)]
-struct YamlFillHistory(Mutex<Option<(Pixels, Pixels)>>);
+struct YamlFillHistory(Option<(Pixels, Pixels)>);
 
 impl Global for YamlFillHistory {}
 
@@ -145,11 +144,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 glyphs.dot.load(Ordering::Relaxed),
                 glyphs.arrow.load(Ordering::Relaxed),
             );
-            let history = cx.global::<YamlFillHistory>();
-            let previous = history
+            let previous = cx
+                .global_mut::<YamlFillHistory>()
                 .0
-                .lock()
-                .unwrap()
                 .replace((body.size.height, editor.size.height));
             if step["grows"].as_bool() == Some(true) {
                 let (panel, viewport) = previous.expect(
