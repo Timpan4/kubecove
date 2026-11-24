@@ -3,6 +3,21 @@
   "context": "mock-dev",
   "scenarios": [
     {
+      "id": "yaml.editor-fills-panel",
+      "title": "The YAML editor fills the detail panel as the window grows and shows whitespace markers",
+      "steps": [
+        { "action": "resizeViewport", "width": 1440, "height": 900 },
+        { "action": "openResources" },
+        { "action": "openResource", "kind": "Pod", "namespace": "payments", "name": "payments-api-7d9c9b7f8d-k2r9p" },
+        { "action": "showTab", "tab": "YAML" },
+        { "action": "expectYamlEditorFillsPanel" },
+        { "action": "resizeViewport", "width": 1440, "height": 1100 },
+        { "action": "expectYamlEditorFillsPanel", "grows": true },
+        { "action": "editYaml" },
+        { "action": "expectYamlEditorFillsPanel" }
+      ]
+    },
+    {
       "id": "yaml.fold-whole-block",
       "title": "Folding a YAML block from the gutter hides every line of the block, including its last line and a block that ends the document",
       "steps": [

@@ -1,6 +1,6 @@
 import { lintKeymap } from "@codemirror/lint";
 import { type Extension, type Range, RangeSetBuilder, StateField, type Transaction } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, highlightWhitespace, keymap } from "@codemirror/view";
 
 const yamlIndentDepthClassCount = 6;
 // On a 5,518-line manifest a full rebuild was faster than mapping and
@@ -40,6 +40,7 @@ async function buildYamlCodeViewerExtensions(): Promise<readonly Extension[]> {
 	return [
 		yamlEditorTheme,
 		EditorView.lineWrapping,
+		highlightWhitespace(),
 		yamlValueDecorations,
 		keymap.of(lintKeymap),
 	];
@@ -70,11 +71,20 @@ const editorThemeStyles: Parameters<typeof EditorView.theme>[0] = {
 	},
 	".kubecove-yaml-indent": {
 		backgroundColor: "color-mix(in oklch, var(--kubecove-yaml-indent-color) 11%, transparent)",
+	},
+	".cm-highlightSpace": {
 		backgroundImage:
-			"radial-gradient(circle at 0.5ch 50%, color-mix(in oklch, var(--muted-foreground) 58%, transparent) 0 1px, transparent 1.3px)",
-		backgroundPosition: "0 0",
-		backgroundRepeat: "repeat-x",
-		backgroundSize: "1ch 100%",
+			"radial-gradient(circle at 50% 55%, color-mix(in oklch, var(--muted-foreground) 55%, transparent) 20%, transparent 0)",
+	},
+	".cm-highlightTab": {
+		backgroundImage: "none",
+		position: "relative",
+	},
+	".cm-highlightTab::before": {
+		content: '"→"',
+		position: "absolute",
+		right: "0",
+		color: "color-mix(in oklch, var(--muted-foreground) 55%, transparent)",
 	},
 	".kubecove-yaml-indent-0": {
 		"--kubecove-yaml-indent-color": "oklch(0.72 0.14 28)",

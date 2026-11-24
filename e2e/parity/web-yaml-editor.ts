@@ -40,6 +40,26 @@ export const yamlEditorActions = {
 	async expectYamlDocument(page, step) {
 		if (!isDeepStrictEqual(parse(await yamlDocument(page)), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
 	},
+	async expectYamlEditorFillsPanel(page, step) {
+		const tab = page.getByRole("tabpanel", { name: "YAML", exact: true });
+		// The editor mounts after its extensions load, so wait for it before taking the tab.
+		await tab.locator(".cm-editor").waitFor();
+		const panel = await tab.elementHandle();
+		if (!panel) throw new Error("Missing YAML tab");
+		const previous = measuredYamlEditors.get(page) ?? null;
+		if (step.grows && !previous) throw new Error("An earlier expectYamlEditorFillsPanel must record the heights to grow from");
+		// One wait over the geometry, the inline marker and, for `grows`, the growth, so a pre-resize
+		// frame cannot end it early.
+		const handle = await page.waitForFunction(yamlEditorReady, { panel, previous: step.grows ? previous : null }).catch(async (error) => {
+			// Best effort: the page or context may be gone, and that must not hide the wait failure.
+			const last = await panel.evaluate((element) => ("lastMeasurement" in element ? element.lastMeasurement : null)).catch(() => null);
+			throw new Error(`The YAML editor did not fill its tab with an inline whitespace marker${step.grows ? " and grow" : ""}: from ${JSON.stringify(step.grows ? previous : null)}, last ${JSON.stringify(last)}`, { cause: error });
+		});
+		const measured = await handle.jsonValue();
+		// waitForFunction resolves only on a truthy predicate result, so this is a type guard.
+		if (!measured) throw new Error("The YAML editor wait resolved without a measurement");
+		measuredYamlEditors.set(page, measured);
+	},
 	async foldYamlLine(page, step) {
 		// The fold gutter marks a line at the same height as its line number.
 		const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });
@@ -76,6 +96,46 @@ export const yamlEditorActions = {
 		await expectEditorDiagnostics(page, step.diagnostics);
 	},
 } satisfies Partial<WebActions>;
+
+/** Bounds in CSS pixels, read by `yamlEditorReady`. The bottoms are page positions. */
+type YamlMeasurement = { panelHeight: number; panelBottom: number; viewportHeight: number; viewportBottom: number; editorBottom: number; inlineMarker: string };
+
+/** The YAML tab's panel and viewport heights from the page's last `expectYamlEditorFillsPanel`. */
+type YamlHeights = Pick<YamlMeasurement, "panelHeight" | "viewportHeight">;
+
+/** The YAML tab's heights from the page's last `expectYamlEditorFillsPanel`, which a `grows` check compares against. */
+const measuredYamlEditors = new WeakMap<Page, YamlHeights>();
+
+/**
+ * Runs in the page. Returns the measurement once the editor fills the tab, an inline whitespace
+ * marker is painted and, when `previous` is set, both heights exceed it. Returns false otherwise,
+ * so `waitForFunction` polls until all hold.
+ */
+function yamlEditorReady(arg: { panel: Element | null; previous: YamlHeights | null }): YamlMeasurement | false {
+	const { panel, previous } = arg;
+	const element = panel?.querySelector<HTMLElement>(".cm-editor");
+	const scroller = element?.querySelector<HTMLElement>(".cm-scroller");
+	if (!panel || !element || !scroller) return false;
+	const panelBox = panel.getBoundingClientRect();
+	const editorBox = element.getBoundingClientRect();
+	const scrollerBox = scroller.getBoundingClientRect();
+	const inlineSpace = [...element.querySelectorAll<HTMLElement>(".cm-highlightSpace")].find((space) => !space.closest(".kubecove-yaml-indent"));
+	const inlineMarker = inlineSpace ? getComputedStyle(inlineSpace).backgroundImage : "none";
+	const measurement = {
+		panelHeight: panelBox.height,
+		panelBottom: panelBox.bottom,
+		viewportHeight: scrollerBox.height,
+		viewportBottom: scrollerBox.bottom,
+		editorBottom: editorBox.bottom,
+		inlineMarker,
+	};
+	// Kept on the panel so a failed wait can report the last frame it saw.
+	Object.assign(panel, { lastMeasurement: measurement });
+	// Match the editor's 1px frame plus browser rounding.
+	const fills = Math.abs(editorBox.bottom - panelBox.bottom) <= 1 && Math.abs(editorBox.bottom - scrollerBox.bottom) <= 1;
+	const grew = previous === null || (measurement.panelHeight > previous.panelHeight && measurement.viewportHeight > previous.viewportHeight);
+	return fills && inlineMarker !== "none" && grew ? measurement : false;
+}
 
 /**
  * The whole document of the page's one YAML editor, from the accessor `YamlCodeEditor.svelte`

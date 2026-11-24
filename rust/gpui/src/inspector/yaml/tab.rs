@@ -419,8 +419,8 @@ pub(in crate::inspector) fn yaml_tab(
     div()
         .flex()
         .flex_col()
-        .flex_1()
-        .min_h_0()
+        .flex_grow_1()
+        .flex_shrink_0()
         .gap(px(12.))
         .when(
             summary.kind == "Secret" && !preferences.redact_secrets,
@@ -577,15 +577,15 @@ pub(in crate::inspector) fn yaml_tab(
         .when_some(state.review().filter(|_| editing), |pane, review| {
             pane.child(dry_run_diff(review, style, cx))
         })
-        // `YamlCodeEditor minHeight`: 520px read-only, 420px while editing. GPUI's
-        // editor needs a definite height, so longer YAML scrolls inside it.
         .child(
             div()
                 .id("yaml-editor")
                 .test_support()
                 .relative()
-                .h(px(if editing { 420. } else { 520. }))
-                .flex_none()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h(px(260.))
                 .rounded(px(8.))
                 .border_1()
                 .border_color(Tokens::border())

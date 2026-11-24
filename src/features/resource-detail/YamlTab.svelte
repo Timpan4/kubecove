@@ -91,8 +91,8 @@
 				}}
 			/>
 		{:else}
-			<div class="flex flex-col gap-3">
-				<div class="flex flex-col gap-2">
+			<div class="flex min-h-0 flex-1 flex-col gap-3">
+				<div class="flex shrink-0 flex-col gap-2">
 					<div class="flex flex-wrap items-center justify-between gap-2">
 						<div class="flex min-w-0 flex-wrap items-center gap-2">
 							<Badge variant="outline" class="max-w-full truncate">{yamlApplyTarget}</Badge>
@@ -220,7 +220,7 @@
 				</div>
 
 				{#if yamlApplyDisabledReason}
-					<Alert>
+					<Alert class="shrink-0">
 						<AlertTitle>YAML apply unavailable</AlertTitle>
 						<AlertDescription>{yamlApplyDisabledReason}</AlertDescription>
 					</Alert>
@@ -235,7 +235,7 @@
 						}}
 					/>
 				{:else if yamlLintNotes.length > 0}
-					<Alert>
+					<Alert class="shrink-0">
 						<AlertTitle>YAML lint status</AlertTitle>
 						<AlertDescription>
 							<div class="flex flex-col gap-1">
@@ -257,7 +257,7 @@
 					/>
 				{/if}
 				{#if yamlPrepareError}
-					<div class="flex flex-col gap-2">
+					<div class="flex shrink-0 flex-col gap-2">
 						<FriendlyError
 							error={yamlPrepareRawError ?? yamlPrepareError}
 							context={{
@@ -294,7 +294,7 @@
 
 				{#if yamlEditing}
 					{#if yamlPreview}
-						<div class="rounded-md border bg-background/50">
+						<div class="shrink-0 rounded-md border bg-background/50">
 							<div class="flex items-center justify-between gap-2 border-b px-3 py-2">
 								<div class="text-xs font-medium">
 									Dry-run diff ({yamlShowFullDiff ? "full" : "compact"})
@@ -323,18 +323,19 @@
 						</div>
 					{/if}
 					<!-- Inert while applying, so the applied text stays the text on screen. -->
-					<div inert={yamlApplying} aria-busy={yamlApplying}>
-						<YamlCodeEditor
-							bind:value={yamlDraft}
-							editable
-							minHeight="420px"
-							extraDiagnostics={kubernetesYamlDiagnostics}
-							showErrorLens={yamlErrorLensEnabled}
-							onChange={clearYamlDraftFeedback}
-						/>
-					</div>
+					<YamlCodeEditor
+						bind:value={yamlDraft}
+						editable
+						fillHeight
+						minHeight="260px"
+						inert={yamlApplying}
+						aria-busy={yamlApplying}
+						extraDiagnostics={kubernetesYamlDiagnostics}
+						showErrorLens={yamlErrorLensEnabled}
+						onChange={clearYamlDraftFeedback}
+					/>
 					{#if yamlLintDiagnostics.length > 0}
-						<div class="rounded-md border bg-background/50">
+						<div class="shrink-0 rounded-md border bg-background/50">
 							<div class="border-b px-3 py-2 text-xs font-medium">YAML diagnostics</div>
 							<div class="flex flex-col divide-y">
 								{#each yamlLintDiagnostics as diagnostic (`${diagnostic.severity}:${diagnostic.source}:${diagnostic.message}:${diagnostic.fieldPath ?? ""}`)}
@@ -354,7 +355,7 @@
 						</div>
 					{/if}
 				{:else}
-					<YamlCodeEditor value={yamlText} minHeight="520px" />
+					<YamlCodeEditor value={yamlText} fillHeight minHeight="260px" />
 				{/if}
 			</div>
 		{/if}

@@ -1,4 +1,4 @@
-import { type StepParsers, boolean, count, isBoolean, isString, object, oneOf, string, strings, noPayload, withOptional } from "./contract-values";
+import { type StepParsers, boolean, count, isBoolean, isString, object, oneOf, optionalBoolean, string, strings, noPayload, withOptional } from "./contract-values";
 
 const LOG_LEVELS = ["ERR", "WRN", "INF", "DBG"] as const;
 
@@ -61,6 +61,8 @@ export const yamlSteps = {
 	replaceYamlDraft: (item) => ({ value: string(item.value) }),
 	expectYamlDocument: (item) => ({ value: string(item.value) }),
 	formatYaml: noPayload,
+	// `grows` compares the panel and editor viewport heights with the previous check's.
+	expectYamlEditorFillsPanel: (item) => withOptional({}, { grows: optionalBoolean(item.grows) }),
 	foldYamlLine: (item) => ({ line: count(item.line) }),
 	expectYamlVisibleLines: (item) => {
 		if (!Array.isArray(item.lines)) throw new Error("Expected visible line numbers");

@@ -70,7 +70,7 @@
 </script>
 
 {#if active && entries.length > 0}
-		<Card class="mb-3">
+		<Card class="mb-3 shrink-0">
 			<CardHeader>
 				<CardTitle>Secret data</CardTitle>
 				<CardDescription>Values stay masked until revealed. Revealed values clear after 60 seconds.</CardDescription>

@@ -327,16 +327,16 @@ impl Inspector {
                     div()
                         .flex()
                         .flex_col()
-                        .flex_1()
-                        .min_h_0()
+                        .when_else(
+                            detail.tab == DetailTab::Yaml,
+                            |body| body.flex_grow_1().flex_shrink_0(),
+                            |body| body.flex_1().min_h_0(),
+                        )
                         .when_some(reveal, |body, opacity| body.opacity(opacity))
                         .when(
                             matches!(
                                 detail.tab,
-                                DetailTab::Details
-                                    | DetailTab::Events
-                                    | DetailTab::Argo
-                                    | DetailTab::Yaml
+                                DetailTab::Details | DetailTab::Events | DetailTab::Argo
                             ),
                             |body| body.flex_none(),
                         )

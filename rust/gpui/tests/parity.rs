@@ -343,6 +343,8 @@ fn shared_inspection_scenarios(cx: &mut TestAppContext) {
         }
         let id = string(scenario, "id");
         let started = Instant::now();
+        let mut yaml_context = yaml_folds::with_marker_recording(cx, scenario);
+        let cx = yaml_context.as_mut().unwrap_or(cx);
         cx.update(gpui_kit::init);
         // As the web driver does, record a failing scenario and run the rest.
         let mut window = None;
