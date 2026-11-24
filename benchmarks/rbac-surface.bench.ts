@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe } from "vitest";
 import type { RbacRiskBucket } from "@/features/rbac/cockpitModel";
-import { buildRbacBindingIndex, cockpitItems, filterCockpitItems } from "@/features/rbac/cockpitModel";
+import {
+	bindingsForIdentity,
+	buildRbacBindingIndex,
+	cockpitItems,
+	filterCockpitItems,
+} from "@/features/rbac/cockpitModel";
 import { observedPermissions } from "@/features/rbac/observedPermissions";
 import {
 	bindingSources,
@@ -15,8 +20,16 @@ import {
 	reviewStatus,
 } from "@/features/rbac/reviewModel";
 import type { RbacView } from "@/features/rbac/surfaceModel";
-import type { RbacInspectionSummary } from "@/lib/types";
-import { serviceAccountMatcher } from "@/features/rbac/principal";
+import type {
+	RbacAccessReviewIdentity,
+	RbacBindingSummary,
+	RbacInspectionSummary,
+} from "@/lib/types";
+import {
+	serviceAccountMatcher,
+	serviceAccountUsername,
+	subjectMatcher,
+} from "@/features/rbac/principal";
 import { benchmark } from "./benchmark";
 import { rbacInspection, rbacRoleBindings } from "./rbac-benchmark-fixtures";
 
@@ -204,6 +217,75 @@ for (const entry of [...reviewRows, ...secondPageServiceAccounts]) {
 	const original = bindingIndex.bindings.filter((binding) => binding.subjects.some(applies));
 	assert.deepEqual(bindingSources(bindingIndex, entry), original);
 }
+
+// Edge subjects the sampled rows never reach: a canonical service-account
+// username bound as a User, a ServiceAccount subject with no namespace, and a
+// binding that names the same account both directly and through its group.
+const edgeAccountUsername = serviceAccountUsername("namespace-42", "account-42");
+const edgeBindings: RbacBindingSummary[] = [
+	{
+		cluster: rbacInspection.cluster,
+		kind: "RoleBinding",
+		name: "edge-user-username",
+		namespace: "namespace-42",
+		age: "1m",
+		roleRefKind: "Role",
+		roleRefName: "edge-role",
+		subjects: [{ kind: "User", name: edgeAccountUsername }],
+		risks: [],
+	},
+	{
+		cluster: rbacInspection.cluster,
+		kind: "RoleBinding",
+		name: "edge-missing-namespace",
+		namespace: "namespace-42",
+		age: "1m",
+		roleRefKind: "Role",
+		roleRefName: "edge-role",
+		subjects: [{ kind: "ServiceAccount", name: "account-42" }],
+		risks: [],
+	},
+	{
+		cluster: rbacInspection.cluster,
+		kind: "RoleBinding",
+		name: "edge-direct-and-group",
+		namespace: "namespace-42",
+		age: "1m",
+		roleRefKind: "Role",
+		roleRefName: "edge-role",
+		subjects: [
+			{ kind: "ServiceAccount", name: "account-42", namespace: "namespace-42" },
+			{ kind: "Group", name: "system:serviceaccounts:namespace-42" },
+		],
+		risks: [],
+	},
+];
+const edgeInspection: RbacInspectionSummary = {
+	...rbacInspection,
+	roleBindings: [...rbacInspection.roleBindings, ...edgeBindings],
+};
+const edgeIndex = buildRbacBindingIndex(edgeInspection);
+const edgeAccountIdentity: RbacAccessReviewIdentity = {
+	kind: "serviceAccount",
+	name: "account-42",
+	namespace: "namespace-42",
+};
+const edgeIdentities: RbacAccessReviewIdentity[] = [
+	edgeAccountIdentity,
+	{ kind: "user", username: edgeAccountUsername, groups: [] },
+	{ kind: "group", group: "system:serviceaccounts:namespace-42" },
+];
+for (const identity of edgeIdentities) {
+	const applies = subjectMatcher(identity);
+	const original = edgeIndex.bindings.filter((binding) => binding.subjects.some(applies));
+	const found = bindingsForIdentity(edgeIndex, identity);
+	assert.deepEqual(found, original);
+	assert.equal(new Set(found).size, found.length);
+}
+const edgeAccountBindings = bindingsForIdentity(edgeIndex, edgeAccountIdentity);
+assert(edgeAccountBindings.includes(edgeBindings[0]));
+assert.equal(edgeAccountBindings.includes(edgeBindings[1]), false);
+assert.equal(edgeAccountBindings.filter((binding) => binding === edgeBindings[2]).length, 1);
 
 describe("RBAC surface F39–F42", () => {
 	benchmark("F39 cold cockpit shaping across active categories", () => {
