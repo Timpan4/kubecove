@@ -262,7 +262,11 @@ impl Inspector {
                     .rounded(px(4.))
                     .border_1()
                     .border_color(Tokens::border())
-                    .child(surface::left_rule(risk_rail(std::slice::from_ref(risk)), 3., 3.))
+                    .child(surface::left_rule(
+                        risk_rail(std::slice::from_ref(risk)),
+                        3.,
+                        3.,
+                    ))
                     .child(
                         div()
                             .flex()
