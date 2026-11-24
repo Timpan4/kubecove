@@ -75,7 +75,7 @@ impl Inspector {
                 Tokens::background().opacity(0.35)
             })
             .pl(px(4.))
-            .child(surface::left_rule(rule).rounded_l(px(6.)))
+            .child(surface::left_rule(rule, 4., 5.))
             .child(
                 div()
                     .id(SharedString::from(format!("incident:{key}")))

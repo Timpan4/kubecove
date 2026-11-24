@@ -70,7 +70,7 @@ impl Inspector {
             .aria_label(label.into())
             .aria_description(if enabled { "enabled" } else { "disabled" })
             .track_focus(&focus)
-            .focus(|style| style.border_color(Tokens::ring()))
+            .focus_visible(|style| style.border_color(Tokens::ring()))
             .when(!enabled, |button| button.opacity(0.5))
             .when(enabled, |button| button.cursor_pointer())
             .on_click(cx.listener(move |this, _, window, cx| {

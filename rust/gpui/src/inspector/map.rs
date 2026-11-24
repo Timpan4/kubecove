@@ -23,7 +23,7 @@ use crate::topology::{self, Viewport};
 use crate::ui;
 use gpui_kit::{
     AnyElement, Context, Div, FocusHandle, KeyDownEvent, Pixels, Point, SharedString,
-    WeakFocusHandle, div, prelude::*, px,
+    WeakFocusHandle, Window, div, prelude::*, px,
 };
 use kubecove_lib::models::{AppError, AppErrorKind, ResourceSummary, ResourceTopology};
 use std::cell::{Cell, RefCell};
@@ -336,7 +336,7 @@ impl Inspector {
         self.map.cache = view;
     }
 
-    pub(super) fn map_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn map_panel(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = crate::frame_profile::scope("map", "build");
         let topology = match &self.map.topology {
             TopologyLoad::Ready(topology) => Some(topology),
@@ -373,7 +373,7 @@ impl Inspector {
                 .when_some(focus, |segment, focus| {
                     segment
                         .track_focus(&focus)
-                        .focus(|style| style.border_2().border_color(Tokens::ring()))
+                        .focus_visible(|style| style.border_color(Tokens::ring()))
                 })
                 .on_click(
                     cx.listener(move |this, _, window, cx| this.set_map_mode(network, window, cx)),
@@ -390,6 +390,8 @@ impl Inspector {
                 .h(px(28.))
                 .px(px(8.))
                 .rounded(px(6.))
+                .border_1()
+                .border_color(gpui_kit::transparent_black())
                 .when(active, |segment| segment.bg(Tokens::secondary()))
                 .child(ui::icon(icon, 14., Tokens::foreground()))
                 .child(ui::medium(ui::xs(label.to_owned())))
@@ -540,9 +542,11 @@ impl Inspector {
                                 .aria_label("skip graph")
                                 .text_color(Tokens::primary())
                                 .cursor_pointer()
+                                .border_b_1()
+                                .border_color(gpui_kit::transparent_black())
                                 .when_some(self.map.skip_link.as_ref(), |link, focus| {
-                                    link.track_focus(focus).focus(|style| {
-                                        style.border_b_1().border_color(Tokens::ring())
+                                    link.track_focus(focus).focus_visible(|style| {
+                                        style.border_color(Tokens::ring())
                                     })
                                 })
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -565,7 +569,7 @@ impl Inspector {
                         )
                         .child(ui::muted(ui::text(".", 11., 16.)))
                         .into_any_element(),
-                    self.map_viewport(view, cx),
+                    self.map_viewport(view, window, cx),
                     // Focus target after the graph. Tab skips it, so only "skip graph" lands here.
                     match &self.map.skip_target {
                         Some(target) => div()

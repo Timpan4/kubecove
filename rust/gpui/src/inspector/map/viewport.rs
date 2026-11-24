@@ -80,7 +80,7 @@ fn zoom_control(
     let button = match focus {
         Some(focus) if !disabled => button
             .track_focus(focus)
-            .focus(|style| style.border_2().border_color(Tokens::ring())),
+            .focus_visible(|style| style.bg(Tokens::muted())),
         _ => button,
     };
     // A click focuses the control, as a `<button>` does on the web.
@@ -233,6 +233,7 @@ impl Inspector {
     pub(super) fn map_viewport(
         &self,
         view: &Rc<topology::View>,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let super::TopologyLoad::Ready(topology) = &self.map.topology else {
@@ -306,6 +307,9 @@ impl Inspector {
                         } => group_card(kind, members.len(), *expanded, node.dimmed, z),
                     };
                     let id = node_id(&node.item, &self.map);
+                    let focus = self.map.node_focus(&node.item);
+                    let keyboard_focused = window.last_input_was_keyboard()
+                        && focus.is_some_and(|focus| focus.is_focused(window));
                     div()
                         .id(id.clone())
                         .test_support()
@@ -316,11 +320,8 @@ impl Inspector {
                         .w(px(node.width * z))
                         .h(px(node.height * z))
                         .cursor_pointer()
-                        .when_some(self.map.node_focus(&node.item), |item, focus| {
-                            item.track_focus(focus)
-                                .focus(|style| style.border_2().border_color(Tokens::ring()))
-                        })
-                        .children(selection_ring(node, z))
+                        .when_some(focus, |item, focus| item.track_focus(focus))
+                        .children(selection_ring(node, keyboard_focused, z))
                         .child(content)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             // The release of a pan lands on the node that moved under the pointer.

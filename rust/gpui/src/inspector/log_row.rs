@@ -369,7 +369,7 @@ fn one_line_row(
         .py(px(2.))
         .cursor_pointer()
         .hover(|row| row.bg(Tokens::muted().opacity(0.4)))
-        .focus(|row| row.bg(Tokens::muted().opacity(0.4)))
+        .focus_visible(|row| row.bg(Tokens::muted().opacity(0.4)))
         .when(open, |row| row.bg(Tokens::muted().opacity(0.5)))
         .child(row_edge(structure.level))
         .child(time_column(line, position, timezone))

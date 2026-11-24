@@ -293,13 +293,8 @@ pub(super) fn card(
         .on_click(
             cx.listener(move |this, _, window, cx| this.open_gitops_selection(&key, window, cx)),
         )
-        .child(
-            div()
-                .w(px(4.))
-                .flex_none()
-                .rounded_l(px(10.))
-                .bg(tone(selection)),
-        )
+        .pl(px(4.))
+        .child(super::surface::left_rule(tone(selection), 4., 9.))
         .child(
             div()
                 .flex()

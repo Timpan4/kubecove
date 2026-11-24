@@ -215,7 +215,7 @@ impl Inspector {
                         .track_focus(&self.map.context_trigger)
                         .key_context(CONTEXT)
                         .on_action(cx.listener(Self::leave_map_context))
-                        .focus(|style| style.border_color(Tokens::ring()))
+                        .focus_visible(|style| style.border_color(Tokens::ring()))
                         .h(px(32.))
                         .px(px(10.))
                         .gap(px(6.))

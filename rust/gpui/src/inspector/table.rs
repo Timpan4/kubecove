@@ -17,7 +17,8 @@ use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
 use crate::ui::{self, Tone};
 use gpui_kit::{
-    AnyElement, Context, Div, FocusHandle, KeyDownEvent, SharedString, div, prelude::*, px,
+    AnyElement, BoxShadow, Context, Div, FocusHandle, KeyDownEvent, SharedString, div, point,
+    prelude::*, px,
 };
 use kubecove_lib::models::ResourceSummary;
 
@@ -184,7 +185,17 @@ impl Inspector {
                         .min_w_0()
                         .cursor_pointer()
                         .track_focus(&focus)
-                        .focus(|style| style.border_2().border_color(Tokens::ring()))
+                        .rounded(px(4.))
+                        // `focus-visible:ring-2 ring-ring/50`: a shadow, so focus never moves the cell.
+                        .focus_visible(|style| {
+                            style.shadow(vec![BoxShadow {
+                                color: Tokens::ring().opacity(0.5),
+                                offset: point(px(0.), px(0.)),
+                                blur_radius: px(0.),
+                                spread_radius: px(2.),
+                                inset: false,
+                            }])
+                        })
                         .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                             if matches!(event.keystroke.key.as_str(), "enter" | "space") {
                                 if let Some(resource) = this.table_row(&target) {
