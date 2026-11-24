@@ -67,6 +67,11 @@ export function inspectorIdentity(identity: RbacAccessReviewIdentity | undefined
 }
 
 /** The verifier's request identity: a blank namespace reads as `default`, a user without groups gets `identityDefaults`. */
+/** `reviewIdentity` substitutes `default` for a blank ServiceAccount namespace, so a review would target another account. */
+export function missingServiceAccountNamespace(identity: InspectorIdentity): boolean {
+	return identity.kind === "serviceAccount" && !identity.namespace?.trim();
+}
+
 export function reviewIdentity(identity: InspectorIdentity): RbacAccessReviewIdentity {
 	if (identity.kind === "serviceAccount") return { kind: "serviceAccount", name: identity.name, namespace: identity.namespace || "default" };
 	if (identity.kind === "group") return { kind: "group", group: identity.name };

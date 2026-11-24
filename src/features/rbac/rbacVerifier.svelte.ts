@@ -1,7 +1,13 @@
 import { createTauriClient, reviewRbacAccess } from "@/lib/tauri";
 import type { RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary } from "@/lib/types";
 import { stepRbacHandoff, type RbacVerifierHandoff } from "./handoff";
-import { identityDefaults, inspectorIdentity, reviewIdentity, type InspectorIdentity } from "./observedPermissions";
+import {
+	identityDefaults,
+	inspectorIdentity,
+	missingServiceAccountNamespace,
+	reviewIdentity,
+	type InspectorIdentity,
+} from "./observedPermissions";
 
 interface RbacVerifierOptions {
 	data: () => RbacInspectionSummary | undefined;
@@ -75,6 +81,7 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 	});
 	const canVerify = $derived.by(() => {
 		if (!data || !activeIdentity.name || !verb.trim()) return false;
+		if (missingServiceAccountNamespace(activeIdentity)) return false;
 		if (targetKind === "resource") return resource.trim() !== "";
 		return nonResourceUrl.trim().startsWith("/");
 	});

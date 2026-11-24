@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { requiredPermissionForFriendlyError } from "../src/lib/friendly-errors";
 import { requiredPermissionForResource, stepRbacHandoff } from "../src/features/rbac/handoff";
+import { missingServiceAccountNamespace } from "../src/features/rbac/observedPermissions";
 
 const target = {
 	kind: "resource" as const,
@@ -30,6 +31,20 @@ describe("RBAC verifier handoff steps", () => {
 		const first = stepRbacHandoff("", handoff);
 		const other = { target: { ...target, verb: "delete" } };
 		expect(stepRbacHandoff(first.key, other).apply).toBe(true);
+	});
+});
+
+describe("RBAC verifier ServiceAccount identity", () => {
+	test("blocks ServiceAccount reviews without a nonblank namespace", () => {
+		expect(missingServiceAccountNamespace({ kind: "serviceAccount", name: "api", namespace: "" })).toBe(true);
+		expect(missingServiceAccountNamespace({ kind: "serviceAccount", name: "api", namespace: "   " })).toBe(true);
+		expect(missingServiceAccountNamespace({ kind: "serviceAccount", name: "api" })).toBe(true);
+	});
+
+	test("allows named namespaces and identities that have no namespace", () => {
+		expect(missingServiceAccountNamespace({ kind: "serviceAccount", name: "api", namespace: "team" })).toBe(false);
+		expect(missingServiceAccountNamespace({ kind: "user", name: "ada" })).toBe(false);
+		expect(missingServiceAccountNamespace({ kind: "group", name: "ops" })).toBe(false);
 	});
 });
 
