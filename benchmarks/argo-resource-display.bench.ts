@@ -108,6 +108,17 @@ assert.equal(
 	(firstSpec.sources as unknown[]).length,
 	2,
 );
+// Every key differs, so the unified diff runs well past the compact cutoff.
+const longDiffTarget = Array.from(
+	{ length: 40 },
+	(_, index) => `key-${index}: target-${index}`,
+).join("\n");
+const longDiffLive = Array.from(
+	{ length: 40 },
+	(_, index) => `key-${index}: live-${index}`,
+).join("\n");
+const longDiffLines = buildArgoResourceDiff(longDiffTarget, longDiffLive);
+assert(longDiffLines.length > COMPACT_ARGO_DIFF_LINES);
 
 describe("Argo resource display F48–F49", () => {
 	benchmark(
@@ -134,6 +145,16 @@ describe("Argo resource display F48–F49", () => {
 					highlightedArgoDiffSegments(line);
 				}
 			}
+		},
+	);
+
+	benchmark(
+		"F48 long Argo diff highlights the compact slice and the expanded lines",
+		() => {
+			for (const line of longDiffLines.slice(0, COMPACT_ARGO_DIFF_LINES)) {
+				highlightedArgoDiffSegments(line);
+			}
+			for (const line of longDiffLines) highlightedArgoDiffSegments(line);
 		},
 	);
 
