@@ -28,7 +28,7 @@ Run every command from the repository root. `bun install` must have run in this 
 
 - Starts `bun --bun vite --host 127.0.0.1 --port <free port> --strictPort` in its own process group, with `KUBECONFIG` unset.
 - Starts headless Chrome with a new profile in its own process group and connects over CDP. No window opens on the desktop.
-- Ready means usable: the launcher at `/#/workspaces` shows the `mock-dev` context. The command prints `"ready": true`, the URL, the evidence directory, and `export KUBECOVE_VERIFY_RUN=<id>`.
+- Ready means usable: the page carries the `html[data-kubecove-dev-mocks]` marker, which the browser mock client sets once it initializes. The command prints `"ready": true`, the URL, the evidence directory, and `export KUBECOVE_VERIFY_RUN=<id>`.
 - Pass `--run <id>` to choose the run id. Later commands find the run on their own while exactly one run exists. Otherwise pass `--run <id>` or set `KUBECOVE_VERIFY_RUN`.
 - On failure, or on Ctrl-C or SIGTERM before it is ready, launch stops what it started and keeps `vite.log` in the evidence directory.
 
@@ -42,7 +42,7 @@ Chrome comes from `KUBECOVE_VERIFY_CHROME`, then Playwright's pinned Chromium, t
 .agents/skills/verify-kubecove/scripts/kubecove-verify.ts doctor
 ```
 
-Run this read-only check first if a step fails. It checks process identity by start time, the commit at launch, Vite socket ownership on Linux, the page title, CDP connectivity, and that the page shows the `mock-dev` context, which renders only when the browser mocks run. Start a new run after changing `HEAD`.
+Run this read-only check first if a step fails. It checks process identity by start time, the commit at launch, Vite socket ownership on Linux, the page title, CDP connectivity, and that the page carries the `html[data-kubecove-dev-mocks]` marker, which the browser mock client sets only when the mock runtime initializes. The check does not read view text. Start a new run after changing `HEAD`.
 
 ## Drive
 
@@ -59,7 +59,7 @@ Actions:
 
 - `click`, `fill --value <text>`, `press --key <key>` (focused element unless a target is given), `wait [--state hidden]`.
 - `count`, `value` (input value). Both print the result as JSON.
-- `goto --path <path>`, `reload`, `reset` (clear `localStorage`, reload, wait for `mock-dev`), `viewport --width <px> --height <px>`.
+- `goto --path <path>`, `reload`, `reset` (clear `localStorage`, reload, wait for the `html[data-kubecove-dev-mocks]` marker), `viewport --width <px> --height <px>`.
 - `snapshot --path <file>` writes an ARIA snapshot of the target or the whole page. `text --path <file>` writes inner text. `screenshot --path <file>` writes a PNG of the target, or of the viewport without one; `--full` captures the whole page and takes no target.
 - `--timeout <ms>` overrides the default action timeout, which is the helpers' 30 s readiness timeout. It must be a positive number.
 
