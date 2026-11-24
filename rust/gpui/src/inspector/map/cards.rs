@@ -293,7 +293,10 @@ pub(super) fn group_card(kind: &str, count: usize, expanded: bool, dimmed: bool,
 /// The selection ring (`ring-2`/`ring-1`), keyboard focus ring, and glow (`::after` box shadow).
 /// Painted as an absolute overlay so focus and selection never shrink the card.
 pub(super) fn selection_ring(node: &FlowNode, keyboard_focused: bool, z: f32) -> Option<Div> {
-    let (width, ring, glow) = if node.selected {
+    let (width, ring, glow) = if node.selected && keyboard_focused {
+        // Selected and focused: a wider ring and stronger glow than selection alone.
+        (3., Tokens::primary(), Some((0.65, 14.)))
+    } else if node.selected {
         (2., Tokens::primary(), Some((0.42, 10.)))
     } else if keyboard_focused {
         (2., Tokens::primary().opacity(0.65), None)

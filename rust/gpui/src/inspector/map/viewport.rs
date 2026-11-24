@@ -308,8 +308,7 @@ impl Inspector {
                     };
                     let id = node_id(&node.item, &self.map);
                     let focus = self.map.node_focus(&node.item);
-                    let keyboard_focused = !node.selected
-                        && window.last_input_was_keyboard()
+                    let keyboard_focused = window.last_input_was_keyboard()
                         && focus.is_some_and(|focus| focus.is_focused(window));
                     div()
                         .id(id.clone())

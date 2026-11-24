@@ -45,7 +45,7 @@ impl Inspector {
                 "{}",
                 super::super::resources::detail_percent(self).round()
             ))
-            .focus(|style| style.bg(Tokens::border().opacity(0.5)))
+            .focus_visible(|style| style.bg(Tokens::border().opacity(0.5)))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.detail_dragging = true),
