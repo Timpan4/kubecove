@@ -42,7 +42,7 @@ Chrome comes from `KUBECOVE_VERIFY_CHROME`, then Playwright's pinned Chromium, t
 .agents/skills/verify-kubecove/scripts/kubecove-verify.ts doctor
 ```
 
-Run this read-only check first if a step fails. It checks process identity by start time, the commit at launch, Vite socket ownership on Linux, the page title, CDP connectivity and the absence of the retired desktop bridge. Start a new run after changing `HEAD`.
+Run this read-only check first if a step fails. It checks process identity by start time, the commit at launch, Vite socket ownership on Linux, the page title, CDP connectivity, and that the page shows the `mock-dev` context, which renders only when the browser mocks run. Start a new run after changing `HEAD`.
 
 ## Drive
 
