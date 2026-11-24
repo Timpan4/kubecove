@@ -215,7 +215,7 @@
 					<span class="sr-only">Live YAML collapsed.</span>
 				{:else if diffView === "target" && removal}
 					<div class="border-t p-3 font-sans text-xs leading-relaxed"><div class="font-medium">No desired manifest</div><div class="mt-1 text-muted-foreground">Selected revision no longer contains this resource.</div></div>
-				{:else if diffView === "changes" && documents.desired && documents.normalizedLive}
+				{:else if diffView === "changes" && documents.hasDiff}
 					<div class="overflow-x-auto border-t font-mono text-[0.6875rem] leading-5">
 						<ArgoResourceDiff desired={documents.desired} live={documents.normalizedLive} />
 					</div>
