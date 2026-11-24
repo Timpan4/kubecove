@@ -75,7 +75,7 @@ mod watch_with_held_snapshot {
         ClusterLiveStore,
         live_store::{ListSnapshot, ListedResources, WatchOrigin},
     };
-    use kubecove_lib::models::WatchResourceKind;
+    use kubecove_lib::models::{AppError, AppErrorKind, WatchResourceKind};
 
     static ROWS: LazyLock<Vec<ResourceSummary>> =
         LazyLock::new(|| resource_cache_fixture().expected_rows().to_vec());
@@ -140,8 +140,48 @@ mod watch_with_held_snapshot {
         (store, held, kind, WatchEvent::Deleted(object(head, "12")))
     }
 
+    // Untimed: the deletion the benchmark times must remove the target from the
+    // cache while the held snapshot keeps it. A loader that errors proves the
+    // read is served from the cache.
+    fn assert_deletion_reads_from_cache() {
+        let (store, held, kind, event) = fixture();
+        let target = &ROWS[0];
+        store.apply_watch_event(
+            "fixture",
+            "catalog-cluster",
+            &kind,
+            WatchOrigin {
+                namespace: None,
+                position: Some("11"),
+            },
+            &event,
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let cached = runtime
+            .block_on(store.typed_resources(
+                "fixture".into(),
+                "catalog-cluster".into(),
+                "Pod".into(),
+                None,
+                || async {
+                    Err::<ListedResources, _>(AppError::new(
+                        "cache-only check reached the loader",
+                        AppErrorKind::Internal,
+                    ))
+                },
+            ))
+            .expect("cache-only read after deletion");
+        assert_eq!(cached.resource_version.as_deref(), Some("12"));
+        assert!(!cached.rows.iter().any(|row| row.name == target.name));
+        assert!(held.rows.iter().any(|row| row.name == target.name));
+    }
+
     #[codspeed_divan_compat::bench]
     fn cache_watch_delete_with_held_snapshot_10000(bencher: codspeed_divan_compat::Bencher) {
+        assert_deletion_reads_from_cache();
         bencher
             .with_inputs(fixture)
             .bench_refs(|(store, held, kind, event)| {

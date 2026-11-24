@@ -439,13 +439,15 @@ mod tests {
 
     #[test]
     fn redacts_core_v1_secret_dynamic_yaml() {
+        const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
+        const SECRET_B64: &str = "c3VwZXItc2VjcmV0LXBhc3N3b3Jk";
         let resource_kind = secret_kind();
         let api_resource = api_resource_from_discovered(&resource_kind).unwrap();
-        let object = DynamicObject::new("api-token", &api_resource)
+        let mut object = DynamicObject::new("api-token", &api_resource)
             .within("default")
             .data(json!({
                 "data": {
-                    "password": "c3VwZXItc2VjcmV0LXBhc3N3b3Jk"
+                    "password": SECRET_B64
                 },
                 "stringData": {
                     "token": "plain-secret"
@@ -453,28 +455,35 @@ mod tests {
                 "type": "Opaque",
                 "extension": {"true": false, "quantity": "10", "count": 10, "optional": null}
             }));
+        object.metadata.annotations = Some(std::collections::BTreeMap::from([(
+            LAST_APPLIED.to_string(),
+            format!(r#"{{"data":{{"password":"{SECRET_B64}"}}}}"#),
+        )]));
 
-        let yaml = serialize_dynamic_resource_document(
-            &resource_kind,
-            &object,
+        let details = dynamic_resource_details_from_object(
+            "test".to_string(),
+            resource_kind.clone(),
+            object.clone(),
             YamlViewMode::Kubectl,
             YamlEncoding::Yaml,
         )
         .unwrap();
-
         let prepared =
             dynamic_details_from_fetched("test", &resource_kind, object, YamlViewMode::Kubectl)
                 .unwrap();
-        let previous: Value = serde_yaml::from_str(&yaml).unwrap();
-        assert_eq!(prepared.document, previous);
+        let parsed: Value = serde_yaml::from_str(&details.yaml).unwrap();
+        assert_eq!(parsed, prepared.document);
         assert_eq!(prepared.document["data"]["password"], "REDACTED");
         assert_eq!(prepared.document["stringData"]["token"], "REDACTED");
+        assert_eq!(prepared.document["metadata"]["annotations"][LAST_APPLIED], "REDACTED");
         assert_eq!(
             prepared.document["extension"],
             json!({"true": false, "quantity": "10", "count": 10, "optional": null})
         );
-        assert!(!yaml.contains("c3VwZXItc2VjcmV0LXBhc3N3b3Jk"));
-        assert!(!yaml.contains("plain-secret"));
+        assert_eq!(prepared.metadata["annotations"][LAST_APPLIED], "REDACTED");
+        assert!(!prepared.metadata.to_string().contains(SECRET_B64));
+        assert!(!details.yaml.contains(SECRET_B64));
+        assert!(!details.yaml.contains("plain-secret"));
     }
 
     #[test]
