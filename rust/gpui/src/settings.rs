@@ -284,7 +284,7 @@ pub const ROWS: &[Row] = &[
         Section,
         None,
     ),
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "topology-spike"))]
     row(
         C::Diagnostics,
         "Topology spike",

@@ -1,4 +1,5 @@
-//! The developer topology harness that Diagnostics opens in debug builds.
+//! The developer topology harness that Diagnostics opens in debug builds, and in release
+//! builds with the `topology-spike` feature.
 use super::*;
 
 fn spike_labels(window: &gpui_kit::Window) -> Vec<String> {
@@ -11,6 +12,12 @@ fn spike_labels(window: &gpui_kit::Window) -> Vec<String> {
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
+        #[cfg(not(any(debug_assertions, feature = "topology-spike")))]
+        "runTopologySpike" => {
+            let _ = cx;
+            panic!("this build omits the topology harness; enable the topology-spike feature")
+        }
+        #[cfg(any(debug_assertions, feature = "topology-spike"))]
         "runTopologySpike" => {
             window.click("topology-spike-run", cx);
             // The run advances one step per display frame, as the web's requestAnimationFrame
