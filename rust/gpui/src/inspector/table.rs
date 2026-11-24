@@ -21,13 +21,34 @@ use gpui_kit::{
 };
 use kubecove_lib::models::ResourceSummary;
 
-/// A rendered row's index in `Visible::all_rows` and its `resource_id`. Row
-/// controls keep this instead of a copy of the row, and `table_row` finds the
-/// row when their input arrives.
+/// A rendered row's index in `Visible::all_rows`, its `resource_id` and API
+/// version. Row controls keep this instead of a copy of the row, and `table_row`
+/// finds the row when their input arrives. The element id omits the API version,
+/// so two custom-resource groups with the same kind and object names need it to
+/// tell their rows apart.
 #[derive(Clone)]
 pub(super) struct RowHandle {
     pub index: usize,
     pub id: SharedString,
+    pub api_version: Option<String>,
+}
+
+impl RowHandle {
+    /// Whether `row` is this handle's resource. Compares fields against the id
+    /// in place, so the fallback scan formats nothing.
+    fn is(&self, row: &ResourceSummary) -> bool {
+        fn field<'a>(rest: &'a str, value: &str) -> Option<&'a str> {
+            rest.strip_prefix(value)?.strip_prefix(':')
+        }
+        row.api_version == self.api_version
+            && self
+                .id
+                .strip_prefix("resource:")
+                .and_then(|rest| field(rest, &row.kind))
+                .and_then(|rest| field(rest, row.namespace.as_deref().unwrap_or("")))
+                .and_then(|rest| field(rest, &row.name))
+                .is_some_and(|cluster| cluster == row.cluster)
+    }
 }
 
 impl Inspector {
@@ -137,8 +158,8 @@ impl Inspector {
     pub(super) fn table_row(&self, handle: &RowHandle) -> Option<ResourceSummary> {
         let rows = self.visible.all_rows();
         rows.get(handle.index)
-            .filter(|row| resource_id(row) == handle.id)
-            .or_else(|| rows.iter().find(|row| resource_id(row) == handle.id))
+            .filter(|row| handle.is(row))
+            .or_else(|| rows.iter().find(|row| handle.is(row)))
             .cloned()
     }
 
@@ -380,11 +401,12 @@ impl Inspector {
                 )
                 .into_any_element(),
             Entry::Row(index) => {
+                let row = &self.visible.all_rows()[page.rows[*index]];
                 let handle = RowHandle {
                     index: page.rows[*index],
                     id: ids[*index].clone(),
+                    api_version: row.api_version.clone(),
                 };
-                let row = &self.visible.all_rows()[handle.index];
                 let tint = self.row_changes.tint(&handle.id);
                 let cells: Vec<AnyElement> = columns
                     .iter()
