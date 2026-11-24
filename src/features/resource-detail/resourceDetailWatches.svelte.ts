@@ -83,7 +83,7 @@ export function resourceDetailWatches(
 		)
 			.then((id) => {
 				if (cancelled) {
-					void stopStream(client, id);
+					void stopStream(client, id).catch(() => {});
 					return;
 				}
 				streamId = id;
@@ -95,7 +95,7 @@ export function resourceDetailWatches(
 		return () => {
 			cancelled = true;
 			refresh.dispose();
-			if (streamId) void stopStream(client, streamId);
+			if (streamId) void stopStream(client, streamId).catch(() => {});
 			closeStreamChannel(channel);
 		};
 	});
