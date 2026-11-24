@@ -222,6 +222,7 @@ function buildPrimaryChildren(
 
 export function buildTopologyPositions(
 	graph: TopologyGraph,
+	sortedNodes: readonly TopologyNode[],
 	depthById: Map<string, number>,
 	compareNodes: (a: TopologyNode, b: TopologyNode) => number,
 	layout: TopologyLayoutMetrics = DEFAULT_TOPOLOGY_LAYOUT,
@@ -231,9 +232,7 @@ export function buildTopologyPositions(
 	const primaryChildIds = new Set(
 		Array.from(primaryChildren.values()).flat(),
 	);
-	const roots = graph.nodes
-		.filter((node) => !primaryChildIds.has(node.id))
-		.sort(compareNodes);
+	const roots = sortedNodes.filter((node) => !primaryChildIds.has(node.id));
 	const ownedRoots = roots.filter(
 		(node) => (primaryChildren.get(node.id) ?? []).length > 0,
 	);
@@ -241,7 +240,7 @@ export function buildTopologyPositions(
 		(node) => (primaryChildren.get(node.id) ?? []).length === 0,
 	);
 	const orderedRoots =
-		roots.length > 0 ? [...ownedRoots, ...standaloneRoots] : [...graph.nodes].sort(compareNodes);
+		roots.length > 0 ? [...ownedRoots, ...standaloneRoots] : sortedNodes;
 	const positions = new Map<string, { x: number; y: number }>();
 	const visited = new Set<string>();
 
@@ -292,7 +291,7 @@ export function buildTopologyPositions(
 		if (cursorY > beforeRootY) cursorY += groupGap;
 	}
 
-	for (const node of [...graph.nodes].sort(compareNodes)) {
+	for (const node of sortedNodes) {
 		if (visited.has(node.id)) continue;
 		cursorY = layoutNode(node.id, cursorY, new Set()) + ROOT_GROUP_GAP;
 	}

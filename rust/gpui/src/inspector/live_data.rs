@@ -1,6 +1,6 @@
 //! View-owned streams. Recovery follows resource-watch.ts; Rust owns transport backoff.
 use super::{
-    Inspector, Page,
+    Inspector,
     live_status::WatchReport,
     request::InFlight,
     watch_status::{self, Link, LiveStatus, WatchLink, WatchSummary},
@@ -24,17 +24,10 @@ pub(super) const RECOVERY: Duration = Duration::from_millis(15_000);
 /// live-view-refresh.ts::createWatchRefreshThrottle.
 pub const COALESCE: Duration = Duration::from_millis(250);
 
+mod owner;
 mod watch_task;
 
-/// The page and scope a set of watches belongs to.
-struct WatchOwner {
-    page: Page,
-    launcher: Option<u64>,
-    context: String,
-    /// Sorted, so the same contexts in another order keep their watches.
-    contexts: Vec<String>,
-    namespace: Option<String>,
-}
+use owner::{Contexts, WatchOwner};
 
 /// The kind selection a set of watches was reconciled with.
 struct KindScope {
@@ -225,15 +218,6 @@ fn union_kinds(
     (kinds, warnings)
 }
 
-/// Whether `contexts` holds the contexts of `sorted`, in any order.
-fn same_contexts(sorted: &[String], contexts: &[String]) -> bool {
-    sorted.len() == contexts.len()
-        && contexts.iter().all(|context| {
-            let count = |list: &[String]| list.iter().filter(|other| *other == context).count();
-            count(sorted) == count(contexts)
-        })
-}
-
 pub(super) fn key(kind: &str, namespace: Option<String>) -> WatchResourceKey {
     let namespaced = !crate::backend::CLUSTER_KINDS.contains(&kind);
     WatchResourceKey {
@@ -356,25 +340,34 @@ impl Inspector {
         let _profile = crate::frame_profile::scope("live", "sync");
         self.sync_gitops_watches(window, cx);
         // A change of workspace contexts, in any order, clears every watch.
-        let owner_changed = !self.live.owner.as_ref().is_some_and(|owner| {
-            owner.page == self.page
-                && owner.launcher == self.launcher.active
-                && owner.context == self.scope.context
-                && owner.namespace == self.scope.namespace
-                && same_contexts(&owner.contexts, self.watch_contexts())
-        });
+        let matched = match &self.live.owner {
+            Some(owner)
+                if owner.page == self.page
+                    && owner.launcher == self.launcher.active
+                    && owner.context == self.scope.context
+                    && owner.namespace == self.scope.namespace =>
+            {
+                owner.compare(self.watch_contexts())
+            }
+            _ => Contexts::Changed,
+        };
+        if matched == Contexts::Reordered {
+            let order = self.watch_contexts().to_vec();
+            if let Some(owner) = &mut self.live.owner {
+                owner.reorder(order);
+            }
+        }
+        let owner_changed = matched == Contexts::Changed;
         if owner_changed {
             self.live.watches.clear();
             self.observation.discard_patches();
-            let mut contexts = self.watch_contexts().to_vec();
-            contexts.sort();
-            self.live.owner = Some(WatchOwner {
-                page: self.page,
-                launcher: self.launcher.active,
-                context: self.scope.context.clone(),
-                contexts,
-                namespace: self.scope.namespace.clone(),
-            });
+            self.live.owner = Some(WatchOwner::new(
+                self.page,
+                self.launcher.active,
+                self.scope.context.clone(),
+                self.watch_contexts(),
+                self.scope.namespace.clone(),
+            ));
             self.live.owner_epoch += 1;
         }
         let selected = self

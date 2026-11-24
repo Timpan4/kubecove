@@ -30,6 +30,7 @@ export interface RbacBindingIndex {
 	bindingsByGroup: Map<string, RbacBindingSummary[]>;
 	bindingsByServiceAccount: Map<string, RbacBindingSummary[]>;
 	bindingOrder: Map<RbacBindingSummary, number>;
+	rolesByReference: ReadonlyMap<string, RbacRoleSummary>;
 	// Each binding's own risks followed by its referenced role's risks.
 	bindingRisks: Map<RbacBindingSummary, RbacRiskIndicator[]>;
 }
@@ -119,15 +120,22 @@ function resolvedRisks(
 	]);
 }
 
-function referencedRoleRisks(
-	rolesByReference: Map<string, RbacRoleSummary>,
+export function referencedRole(
+	rolesByReference: ReadonlyMap<string, RbacRoleSummary>,
 	binding: RbacBindingSummary,
-): RbacRiskIndicator[] {
-	const role = rolesByReference.get(roleReferenceKey(
+): RbacRoleSummary | undefined {
+	return rolesByReference.get(roleReferenceKey(
 		binding.roleRefKind === "Role" ? "Role" : "ClusterRole",
 		binding.roleRefName,
 		binding.namespace,
 	));
+}
+
+function referencedRoleRisks(
+	rolesByReference: ReadonlyMap<string, RbacRoleSummary>,
+	binding: RbacBindingSummary,
+): RbacRiskIndicator[] {
+	const role = referencedRole(rolesByReference, binding);
 	if (role) return role.risks;
 	return [{
 		level: "unknown",
@@ -191,7 +199,7 @@ export function buildRbacBindingIndex(data: RbacInspectionSummary): RbacBindingI
 		}
 	}
 
-	return { bindings, bindingsByNamespace, bindingsByRole, bindingsByUser, bindingsByGroup, bindingsByServiceAccount, bindingOrder, bindingRisks };
+	return { bindings, bindingsByNamespace, bindingsByRole, bindingsByUser, bindingsByGroup, bindingsByServiceAccount, bindingOrder, rolesByReference, bindingRisks };
 }
 
 export function bindingsForIdentity(

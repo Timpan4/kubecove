@@ -211,15 +211,15 @@ pub(super) fn diff_row(
 pub(super) type DiffHighlights = Arc<[Vec<(Range<usize>, HighlightStyle)>]>;
 
 /// Block diff lines `height` high, built only where the ancestor scroller's
-/// clip shows them, so a full diff of any length costs a viewport of rows.
-/// `highlights` holds each line's syntax colors, by line index.
+/// clip shows them, so a full diff of any length costs a viewport of rows and
+/// no work per hidden line. `highlights` holds each line's syntax colors, by
+/// line index.
 pub(super) fn windowed_diff_rows(
     lines: Arc<[DiffLine]>,
     height: f32,
     highlights: Option<DiffHighlights>,
 ) -> Div {
-    let tops = (0..=lines.len()).map(|row| row as f32 * height).collect();
-    Windowed::fixed_rows(tops, move |row, _, _| {
+    Windowed::uniform_rows(lines.len(), height, move |row, _, _| {
         let colors = highlights
             .as_ref()
             .and_then(|highlights| highlights.get(row))

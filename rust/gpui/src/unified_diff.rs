@@ -18,6 +18,13 @@ pub enum DiffLineKind {
     Meta,
 }
 
+impl DiffLineKind {
+    /// An added or removed line, as a diff's change counts tally them.
+    pub fn changed(self) -> bool {
+        matches!(self, DiffLineKind::Add | DiffLineKind::Remove)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiffLine {
     pub kind: DiffLineKind,

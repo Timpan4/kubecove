@@ -3,33 +3,32 @@ use super::{
     send,
 };
 use crate::commands::ClusterAccess;
-use crate::models::AppErrorKind;
-use crate::models::{
-    AggregatedLogStreamRequest, AppError, LogLineSource, StreamMessage, StreamStatus,
-};
+use crate::models::{AggregatedLogStreamRequest, LogLineSource, StreamMessage, StreamStatus};
 use crate::runtime::Channel;
 use futures_util::StreamExt;
-use k8s_openapi::{
-    api::{
-        apps::v1::Deployment,
-        core::v1::{Pod, Service},
-    },
-    apimachinery::pkg::apis::meta::v1::LabelSelector,
-};
+use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Client,
     api::{Api, ListParams, LogParams, WatchEvent, WatchParams},
 };
 use kubecove_kube::commands::SessionScope;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     time::Duration,
 };
 
 use tokio::task::{AbortHandle, Id, JoinError, JoinSet};
 
+mod targets;
+#[cfg(feature = "bench-support")]
+pub use targets::benchmark_log_sources_from_pods;
+use targets::{PodSources, resolve_target_selector};
+
 const MAX_AGGREGATED_LOG_SOURCES: usize = 50;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
+const LIST_RETRY_DELAY: Duration = Duration::from_secs(2);
+const WATCHING_FOR_PODS: &str = "Watching for matching Pods";
+const POLLING_FOR_PODS: &str = "Polling for matching Pods";
 
 #[derive(Clone)]
 struct LogStreamOptions {
@@ -132,7 +131,7 @@ impl AggregateLogs {
                     Ok(list) => {
                         cursor = usable_version(list.metadata.resource_version);
                         self.pods = PodSources::from_pods(&list.items);
-                        if !self.sync_sources(None) {
+                        if !self.sync_sources(None, WATCHING_FOR_PODS) {
                             return;
                         }
                     }
@@ -140,13 +139,13 @@ impl AggregateLogs {
                         if !self.reconnecting(format!("Log pod list failed: {err}")) {
                             return;
                         }
-                        self.wait_joining_sources(Duration::from_secs(2)).await;
+                        self.wait_joining_sources(LIST_RETRY_DELAY).await;
                         continue;
                     }
                 }
             }
 
-            match pods
+            let failure = match pods
                 .watch(&watch_params, cursor.as_deref().unwrap_or("0"))
                 .await
             {
@@ -154,7 +153,7 @@ impl AggregateLogs {
                     if !needs_list {
                         // A renewed watch retries finished sources, as a relist does.
                         self.reconcile_sources();
-                        if !self.connected() {
+                        if !self.connected(WATCHING_FOR_PODS) {
                             return;
                         }
                     }
@@ -175,26 +174,20 @@ impl AggregateLogs {
                         };
                         match event {
                             Some(Ok(WatchEvent::Error(status))) => {
-                                if status.code == 410 {
-                                    cursor = None;
-                                }
                                 let message = if status.message.is_empty() {
                                     "Kubernetes pod watch returned an error".to_string()
                                 } else {
                                     status.message
                                 };
-                                if !self.reconnecting(message) {
-                                    return;
-                                }
-                                break;
+                                break Some((Some(status.code), message));
                             }
                             Some(Ok(event)) => {
                                 cursor =
                                     usable_version(super::watch::watch_resource_version(&event));
-                                let previous_total = self.pods.total;
+                                let previous_total = self.pods.total();
                                 let pod_event = !matches!(event, WatchEvent::Bookmark(_));
                                 if self.pods.apply(event) {
-                                    if !self.sync_sources(Some(previous_total)) {
+                                    if !self.sync_sources(Some(previous_total), WATCHING_FOR_PODS) {
                                         return;
                                     }
                                 } else if pod_event {
@@ -203,30 +196,72 @@ impl AggregateLogs {
                                     self.reconcile_sources();
                                 }
                             }
-                            Some(Err(err)) => {
-                                if !self.watch_failed(&mut cursor, &err) {
-                                    return;
-                                }
-                                break;
-                            }
-                            None => break,
+                            Some(Err(err)) => break Some(watch_failure(&err)),
+                            None => break None,
                         }
                     }
                 }
-                Err(err) => {
-                    if !self.watch_failed(&mut cursor, &err) {
-                        return;
-                    }
+                Err(err) => Some(watch_failure(&err)),
+            };
+            if let Some((code, message)) = failure {
+                match code {
+                    Some(403) => return self.poll_pods(pods, &list_params).await,
+                    Some(410) => cursor = None,
+                    _ => {}
+                }
+                if !self.reconnecting(message) {
+                    return;
                 }
             }
             self.wait_joining_sources(RECONNECT_DELAY).await;
         }
     }
 
-    /// Waits `delay` while joining finished source tasks. A denied watch fails before it
-    /// streams, so with list-only RBAC the loop only relists and waits here. Without joining,
-    /// a finished source keeps its handle, relists never reconnect it, and the tasks of
-    /// departed pods pile up in the `JoinSet`.
+    async fn poll_pods(&mut self, pods: &Api<Pod>, params: &ListParams) {
+        // Both clients replace the status text as logs arrive. Put the one-time warning
+        // in the log output so it remains visible alongside container logs.
+        if !emit_log_batch(
+            &self.stream_id,
+            None,
+            self.options.batch_lines,
+            vec![format!(
+                "WARN Pod watch permission denied. {POLLING_FOR_PODS}."
+            )],
+            |message| send(&self.channel, message),
+        ) || !self.connected(POLLING_FOR_PODS)
+        {
+            return;
+        }
+
+        let mut list_failed = false;
+        loop {
+            let delay = if list_failed {
+                LIST_RETRY_DELAY
+            } else {
+                RECONNECT_DELAY
+            };
+            self.wait_joining_sources(delay).await;
+            match pods.list(params).await {
+                Ok(list) => {
+                    let previous_total = (!list_failed).then_some(self.pods.total());
+                    self.pods = PodSources::from_pods(&list.items);
+                    if !self.sync_sources(previous_total, POLLING_FOR_PODS) {
+                        return;
+                    }
+                    list_failed = false;
+                }
+                Err(err) => {
+                    if !list_failed && !self.reconnecting(format!("Log pod list failed: {err}")) {
+                        return;
+                    }
+                    list_failed = true;
+                }
+            }
+        }
+    }
+
+    /// Retires tasks during retry delays and between polls, when there is no watch
+    /// stream to join them. The next list can then reconnect a finished source.
     async fn wait_joining_sources(&mut self, delay: Duration) {
         let wait = tokio::time::sleep(delay);
         tokio::pin!(wait);
@@ -240,15 +275,6 @@ impl AggregateLogs {
         }
     }
 
-    fn watch_failed(&self, cursor: &mut Option<String>, error: &kube::Error) -> bool {
-        // An expired cursor needs a relist. So does a denied watch: RBAC can allow listing
-        // pods but not watching them, and only a relist then finds new pods.
-        if matches!(error, kube::Error::Api(status) if matches!(status.code, 403 | 410)) {
-            *cursor = None;
-        }
-        self.reconnecting(format!("Log pod watch failed: {error}"))
-    }
-
     fn reconnecting(&self, message: String) -> bool {
         send_status(
             &self.channel,
@@ -258,21 +284,21 @@ impl AggregateLogs {
         )
     }
 
-    fn connected(&self) -> bool {
+    fn connected(&self, empty_message: &str) -> bool {
         send_status(
             &self.channel,
             &self.stream_id,
             StreamStatus::Connected,
-            aggregate_status_message(self.pods.total, self.streams.handles.len()),
+            aggregate_status_message(self.pods.total(), self.streams.handles.len(), empty_message),
         )
     }
 
-    fn sync_sources(&mut self, previous_total: Option<usize>) -> bool {
+    fn sync_sources(&mut self, previous_total: Option<usize>, empty_message: &str) -> bool {
         let desired = self.pods.selected();
         let changed = desired != self.selected;
         self.selected = desired;
         self.reconcile_sources();
-        (!changed && previous_total == Some(self.pods.total)) || self.connected()
+        (!changed && previous_total == Some(self.pods.total())) || self.connected(empty_message)
     }
 
     /// Retries every selected source: a source whose task still runs or cools down is marked
@@ -346,204 +372,12 @@ fn usable_version(version: Option<String>) -> Option<String> {
     version.filter(|version| !version.is_empty() && version != "0")
 }
 
-async fn resolve_target_selector(
-    client: Client,
-    request: &AggregatedLogStreamRequest,
-) -> Result<String, AppError> {
-    match request.target_kind.as_str() {
-        "Deployment" => {
-            let deployments: Api<Deployment> = Api::namespaced(client, &request.namespace);
-            let deployment = deployments
-                .get(&request.target_name)
-                .await
-                .map_err(AppError::from)?;
-            selector_from_label_selector(&deployment.spec.selector)
-        }
-        "Service" => {
-            let services: Api<Service> = Api::namespaced(client, &request.namespace);
-            let service = services
-                .get(&request.target_name)
-                .await
-                .map_err(AppError::from)?;
-            service_label_selector(&service)
-        }
-        _ => Err(AppError::new(
-            "aggregated logs support Deployment and selector-backed Service targets",
-            AppErrorKind::Validation,
-        )),
-    }
-}
-
-fn selector_from_label_selector(selector: &LabelSelector) -> Result<String, AppError> {
-    let mut parts = Vec::new();
-    if let Some(labels) = &selector.match_labels {
-        parts.extend(labels.iter().map(|(key, value)| format!("{key}={value}")));
-    }
-    if let Some(expressions) = &selector.match_expressions {
-        for expression in expressions {
-            let values = expression.values.clone().unwrap_or_default();
-            match expression.operator.as_str() {
-                "In" => {
-                    if values.is_empty() {
-                        return Err(AppError::new(
-                            "Deployment selector In expression needs values",
-                            AppErrorKind::Validation,
-                        ));
-                    }
-                    parts.push(format!("{} in ({})", expression.key, values.join(",")));
-                }
-                "NotIn" => {
-                    if values.is_empty() {
-                        return Err(AppError::new(
-                            "Deployment selector NotIn expression needs values",
-                            AppErrorKind::Validation,
-                        ));
-                    }
-                    parts.push(format!("{} notin ({})", expression.key, values.join(",")));
-                }
-                "Exists" => parts.push(expression.key.clone()),
-                "DoesNotExist" => parts.push(format!("!{}", expression.key)),
-                operator => {
-                    return Err(AppError::new(
-                        format!("unsupported Deployment selector operator: {operator}"),
-                        AppErrorKind::Validation,
-                    ));
-                }
-            }
-        }
-    }
-    if parts.is_empty() {
-        return Err(AppError::new(
-            "Deployment selector is empty",
-            AppErrorKind::Validation,
-        ));
-    }
-    Ok(parts.join(","))
-}
-
-fn service_label_selector(service: &Service) -> Result<String, AppError> {
-    let spec = service
-        .spec
-        .as_ref()
-        .ok_or_else(|| AppError::new("service spec is unavailable", AppErrorKind::Logs))?;
-    if matches!(spec.type_.as_deref(), Some("ExternalName")) {
-        return Err(AppError::new(
-            "ExternalName Services do not have pod logs",
-            AppErrorKind::Validation,
-        ));
-    }
-    let selector = spec
-        .selector
-        .as_ref()
-        .filter(|selector| !selector.is_empty())
-        .ok_or_else(|| {
-            AppError::new(
-                "aggregated Service logs require a selector-backed Service",
-                AppErrorKind::Validation,
-            )
-        })?;
-    Ok(map_label_selector(selector))
-}
-
-fn map_label_selector(selector: &BTreeMap<String, String>) -> String {
-    selector
-        .iter()
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
-#[derive(Default)]
-struct PodSources {
-    containers: BTreeMap<String, Vec<String>>,
-    total: usize,
-}
-
-impl PodSources {
-    fn from_pods(pods: &[Pod]) -> Self {
-        let mut sources = Self::default();
-        for pod in pods {
-            sources.update(pod);
-        }
-        sources
-    }
-
-    fn apply(&mut self, event: WatchEvent<Pod>) -> bool {
-        match event {
-            WatchEvent::Added(pod) | WatchEvent::Modified(pod) => self.update(&pod),
-            WatchEvent::Deleted(pod) => pod_name(&pod).is_some_and(|name| self.remove(name)),
-            WatchEvent::Bookmark(_) | WatchEvent::Error(_) => false,
-        }
-    }
-
-    fn update(&mut self, pod: &Pod) -> bool {
-        let Some(name) = pod_name(pod) else {
-            return false;
-        };
-        let Some(spec) = pod
-            .spec
-            .as_ref()
-            .filter(|_| pod.metadata.deletion_timestamp.is_none())
-        else {
-            return self.remove(name);
-        };
-        let containers = spec
-            .containers
-            .iter()
-            .map(|container| container.name.trim())
-            .filter(|name| !name.is_empty());
-        let previous = self.containers.get(name).map_or(&[][..], Vec::as_slice);
-        if containers.clone().eq(previous.iter().map(String::as_str)) {
-            return false;
-        }
-        let mut containers = containers.map(str::to_owned).collect::<Vec<_>>();
-        containers.sort_unstable();
-        if containers.as_slice() == previous {
-            return false;
-        }
-        self.total = self.total - previous.len() + containers.len();
-        if containers.is_empty() {
-            self.containers.remove(name);
-        } else {
-            self.containers.insert(name.to_owned(), containers);
-        }
-        true
-    }
-
-    fn remove(&mut self, name: &str) -> bool {
-        if let Some(previous) = self.containers.remove(name) {
-            self.total -= previous.len();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn selected(&self) -> Vec<LogSourceKey> {
-        self.containers
-            .iter()
-            .flat_map(|(pod, containers)| containers.iter().map(move |container| (pod, container)))
-            .take(MAX_AGGREGATED_LOG_SOURCES)
-            .map(|(pod, container)| LogSourceKey {
-                pod_name: pod.clone(),
-                container: container.clone(),
-            })
-            .collect()
-    }
-}
-
-fn pod_name(pod: &Pod) -> Option<&str> {
-    pod.metadata
-        .name
-        .as_deref()
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-}
-
-#[cfg(feature = "bench-support")]
-pub fn benchmark_log_sources_from_pods(pods: &[Pod]) -> (Vec<LogSourceKey>, usize) {
-    let sources = PodSources::from_pods(pods);
-    (sources.selected(), sources.total)
+fn watch_failure(error: &kube::Error) -> (Option<u16>, String) {
+    let code = match error {
+        kube::Error::Api(status) => Some(status.code),
+        _ => None,
+    };
+    (code, format!("Log pod watch failed: {error}"))
 }
 
 async fn stream_log_source(
@@ -640,9 +474,13 @@ fn send_status(
     )
 }
 
-fn aggregate_status_message(total_sources: usize, active_sources: usize) -> String {
+fn aggregate_status_message(
+    total_sources: usize,
+    active_sources: usize,
+    empty_message: &str,
+) -> String {
     match (total_sources, active_sources) {
-        (0, _) => "Watching for matching Pods".to_string(),
+        (0, _) => empty_message.to_string(),
         (total, active) if total > active => {
             format!("Streaming first {active} of {total} pod containers")
         }

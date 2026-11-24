@@ -271,14 +271,13 @@ impl Inspector {
                 {
                     return;
                 }
-                let contexts = this.watch_contexts().to_vec();
                 let several = results.len() > 1;
                 for (context, result) in results {
                     let id = crate::backend::watch_id(&context, &key);
                     let Some(read) = this.kind_selection.reads.get(&selected) else {
                         return;
                     };
-                    if !read.ids.contains(&id) || !contexts.contains(&context) {
+                    if !read.ids.contains(&id) || !this.watch_contexts().contains(&context) {
                         continue;
                     }
                     match result {

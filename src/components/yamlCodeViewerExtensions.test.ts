@@ -69,3 +69,28 @@ test("incremental YAML decorations match a full rebuild when the whole document 
 		},
 	});
 });
+
+test("incremental YAML decorations match a full rebuild after scattered edits", () => {
+	const state = EditorState.create({ doc: `${yaml}\n---\n`.repeat(40) });
+	const joinedLine = state.doc.line(32);
+	expectIncrementalMatchesRebuild(state, {
+		changes: [
+			{ from: state.doc.line(6).to, insert: " # enabled" },
+			{ from: joinedLine.to, to: joinedLine.to + 1 },
+			{ from: state.doc.line(133).from + 3, insert: "\n  other" },
+			{ from: state.doc.line(358).from, to: state.doc.line(358).to, insert: "  count: false" },
+		],
+	});
+});
+
+test("YAML decorations match a full rebuild when many scattered line groups change", () => {
+	const copies = 80;
+	const document = `${yaml}\n---\n`;
+	const linesPerCopy = document.split("\n").length - 1;
+	const state = EditorState.create({ doc: document.repeat(copies) });
+	const changes = Array.from({ length: copies }, (_, index) => {
+		const line = state.doc.line(index * linesPerCopy + 6);
+		return { from: line.from, to: line.to, insert: "  enabled: false # edited" };
+	});
+	expectIncrementalMatchesRebuild(state, { changes });
+});

@@ -1,5 +1,40 @@
 //! A focused connected comparison belongs to its current Application tab and selection.
 use super::*;
+use crate::argo_app::{Change, identity_key};
+use gpui_kit::component::highlighter::HighlightTheme;
+use kubecove_lib::models::{ArgoManagedResource, ArgoResourceComparison};
+
+/// A comparison of the focused resource with its change, accessible label and
+/// diff highlights, built off the UI thread.
+type Prepared = (
+    ArgoResourceComparison,
+    Change,
+    Arc<[super::super::highlight::Highlights]>,
+);
+
+/// Builds the change of `resource` from its comparison, as the snapshot job
+/// builds every change, or the message the comparison fails with. The job
+/// owns its highlighter, so cancelling it takes nothing from the UI.
+fn prepare(
+    result: Result<ArgoResourceComparison, AppError>,
+    resource: &ArgoManagedResource,
+    theme: &HighlightTheme,
+) -> Result<Prepared, String> {
+    let comparison = match result {
+        Ok(comparison) if identity_key(&comparison.resource) == identity_key(resource) => {
+            comparison
+        }
+        Ok(_) => return Err("Comparison returned a different resource".into()),
+        Err(error) => return Err(error.message),
+    };
+    let change = crate::argo_app::change(resource, std::slice::from_ref(&comparison));
+    let highlights = Arc::from(super::super::highlight::lines(
+        &mut None,
+        change.diff.as_deref().unwrap_or_default(),
+        theme,
+    ));
+    Ok((comparison, change, highlights))
+}
 
 impl Inspector {
     pub(in crate::inspector) fn focus_argo_resource(
@@ -40,14 +75,14 @@ impl Inspector {
         if snapshot
             .comparisons
             .iter()
-            .any(|c| crate::argo_app::identity_key(&c.resource).as_ref() == Some(&change.key))
+            .any(|c| identity_key(&c.resource).as_ref() == Some(&change.key))
         {
             return;
         }
         let Some(resource) = snapshot
             .resources
             .iter()
-            .find(|r| crate::argo_app::identity_key(r).as_ref() == Some(&change.key))
+            .find(|r| identity_key(r).as_ref() == Some(&change.key))
             .cloned()
         else {
             return;
@@ -58,8 +93,15 @@ impl Inspector {
             source,
         };
         let read = self.backend.compare_argo(request, resource.clone());
+        let theme = gpui_kit::component::Theme::global(cx)
+            .highlight_theme
+            .clone();
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
+            let prepared = cx
+                .background_executor()
+                .spawn(async move { prepare(result, &resource, &theme) })
+                .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 let Detail::Ready(detail) = &mut this.detail else {
                     return;
@@ -67,23 +109,14 @@ impl Inspector {
                 let Some(state) = detail.argo.as_mut() else {
                     return;
                 };
-                state.comparison = match result {
-                    Ok(comparison)
-                        if crate::argo_app::identity_key(&comparison.resource)
-                            == crate::argo_app::identity_key(&resource) =>
-                    {
-                        let change =
-                            crate::argo_app::change(&resource, std::slice::from_ref(&comparison));
+                state.comparison = match prepared {
+                    Ok((comparison, change, highlights)) => {
                         if let ArgoLoad::Ready(view) = &mut state.load {
                             // `ensure_argo_editors` rebuilds them from the new documents.
                             if let Some(editors) = state.editors.get_mut(index) {
-                                *editors = None;
+                                *editors = Default::default();
                             }
-                            state.highlights[index] = Arc::from(super::super::highlight::lines(
-                                &mut this.argo.highlighter,
-                                change.diff.as_deref().unwrap_or_default(),
-                                &gpui_kit::component::Theme::global(cx).highlight_theme,
-                            ));
+                            state.highlights[index] = highlights;
                             view.changes[index] = change;
                         }
                         if let Some(snapshot) = &mut state.inspector {
@@ -91,8 +124,7 @@ impl Inspector {
                         }
                         Fetch::Ready(())
                     }
-                    Ok(_) => Fetch::Failed("Comparison returned a different resource".into()),
-                    Err(error) => Fetch::Failed(error.message),
+                    Err(message) => Fetch::Failed(message),
                 };
                 this.ensure_argo_editors(window, cx);
                 cx.notify();

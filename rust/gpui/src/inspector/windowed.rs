@@ -13,6 +13,7 @@ use gpui_kit::{
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Range;
 use std::rc::Rc;
 
 /// The overdraw `logs_state.rs` gives the log list.
@@ -80,6 +81,59 @@ fn row_children(
     (plan, children)
 }
 
+/// A block `height` high whose rows `build` chooses at prepaint, from the
+/// band of the block the ancestor scroller's clip shows: `(start, end)` from
+/// the block's top, or `None` when the clip is empty.
+fn clipped_rows(
+    height: f32,
+    build: impl FnOnce(Option<(f32, f32)>, &mut Window, &mut App) -> Vec<AnyElement> + 'static,
+) -> gpui_kit::Div {
+    let rows = canvas(
+        move |bounds, window, cx| {
+            let clip = window.content_mask().bounds;
+            let visible = clip.size.width > px(0.) && clip.size.height > px(0.);
+            let band = visible.then(|| {
+                (
+                    f32::from(clip.top() - bounds.top()),
+                    f32::from(clip.bottom() - bounds.top()),
+                )
+            });
+            let mut child = div()
+                .flex()
+                .flex_col()
+                .w_full()
+                .children(build(band, window, cx))
+                .into_any_element();
+            child.layout_as_root(bounds.size.map(AvailableSpace::Definite), window, cx);
+            child.prepaint_at(bounds.origin, window, cx);
+            child
+        },
+        |_, mut child, window, cx| child.paint(window, cx),
+    );
+    div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .h(px(height))
+        .child(rows.size_full())
+}
+
+/// The rows `height` high that `fixed_rows` would show for the band
+/// `start..=end`: row `i` shows when `(i + 1) * height >= start` and
+/// `i * height <= end`.
+fn uniform_range(count: usize, height: f32, start: f32, end: f32) -> Option<Range<usize>> {
+    if count == 0 || height <= 0. || end < 0. {
+        return None;
+    }
+    let first = (start / height - 1.).ceil().max(0.);
+    let last = (end / height).floor();
+    if first > last || first >= count as f32 {
+        return None;
+    }
+    let (first, last) = (first as usize, (last as usize).min(count - 1));
+    Some(first..last + 1)
+}
+
 /// Row tops from the cached heights; unknown heights count as zero.
 fn row_tops(heights: &HashMap<u64, f32>, ids: &[u64]) -> Vec<f32> {
     let mut tops = Vec::with_capacity(ids.len() + 1);
@@ -111,35 +165,52 @@ impl Windowed {
         mut render: impl FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static,
     ) -> gpui_kit::Div {
         let height = *tops.last().expect("row tops include zero");
-        let rows = canvas(
-            move |bounds, window, cx| {
-                let clip = window.content_mask().bounds;
-                let visible = clip.size.width > px(0.) && clip.size.height > px(0.);
-                let start = f32::from(clip.top() - bounds.top());
-                let end = f32::from(clip.bottom() - bounds.top());
-                let (_, children) = row_children(
-                    &tops,
-                    |i| visible && tops[i + 1] >= start && tops[i] <= end,
-                    |i| render(i, window, cx),
-                );
-                let mut child = div()
-                    .flex()
-                    .flex_col()
-                    .w_full()
-                    .children(children)
-                    .into_any_element();
-                child.layout_as_root(bounds.size.map(AvailableSpace::Definite), window, cx);
-                child.prepaint_at(bounds.origin, window, cx);
-                child
-            },
-            |_, mut child, window, cx| child.paint(window, cx),
-        );
-        div()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .h(px(height))
-            .child(rows.size_full())
+        clipped_rows(height, move |band, window, cx| {
+            row_children(
+                &tops,
+                |i| band.is_some_and(|(start, end)| tops[i + 1] >= start && tops[i] <= end),
+                |i| render(i, window, cx),
+            )
+            .1
+        })
+    }
+
+    /// `count` rows each `height` high. The clip alone gives the rows it
+    /// shows, so choosing them does no work per row; the rows above and below
+    /// collapse into one spacer each.
+    pub(super) fn uniform_rows(
+        count: usize,
+        height: f32,
+        mut render: impl FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static,
+    ) -> gpui_kit::Div {
+        clipped_rows(count as f32 * height, move |band, window, cx| {
+            let spacer = |rows: usize| {
+                div()
+                    .flex_none()
+                    .h(px(rows as f32 * height))
+                    .into_any_element()
+            };
+            let Some(shown) =
+                band.and_then(|(start, end)| uniform_range(count, height, start, end))
+            else {
+                return if count == 0 {
+                    Vec::new()
+                } else {
+                    vec![spacer(count)]
+                };
+            };
+            let mut children = Vec::with_capacity(shown.len() + 2);
+            if shown.start > 0 {
+                children.push(spacer(shown.start));
+            }
+            for index in shown.start..shown.end {
+                children.push(render(index, window, cx));
+            }
+            if shown.end < count {
+                children.push(spacer(count - shown.end));
+            }
+            children
+        })
     }
 
     /// Retain geometry only for the current timeline's day groups.

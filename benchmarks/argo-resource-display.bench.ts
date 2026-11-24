@@ -134,14 +134,14 @@ describe("Argo resource display F48–F49", () => {
 					selectedResourceKey,
 					selectedComparison,
 				);
-				const { desired, normalizedLive } = projectArgoResourceComparison(resource, comparison);
+				const documents = projectArgoResourceComparison(resource, comparison);
 				if (
 					resource.requiresPruning &&
 					!expandedRemovalKeys.has(argoResourceIdentityKey(resource) ?? "")
 				)
 					continue;
-				if (!desired || !normalizedLive) continue;
-				for (const line of buildArgoResourceDiff(desired, normalizedLive).slice(0, COMPACT_ARGO_DIFF_LINES)) {
+				if (!documents.hasDiff) continue;
+				for (const line of buildArgoResourceDiff(documents.desired, documents.normalizedLive).slice(0, COMPACT_ARGO_DIFF_LINES)) {
 					highlightedArgoDiffSegments(line);
 				}
 			}

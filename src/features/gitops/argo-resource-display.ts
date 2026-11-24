@@ -20,6 +20,14 @@ export function argoDocumentText(value: JsonValue | undefined): string {
 		: stringify(value).trimEnd();
 }
 
+function hasArgoDocument(value: JsonValue | undefined): boolean {
+	return isString(value) ? value.trimEnd() !== "" : value != null;
+}
+
+function isString(value: JsonValue | undefined): value is string {
+	return Object(value) !== value && String(value) === value;
+}
+
 /** `comparisonsByKey` comes from `argoComparisonIndex` over the snapshot's comparisons. */
 export function resolveArgoResourceComparison(
 	resource: ArgoManagedResource,
@@ -45,16 +53,39 @@ export function projectArgoResourceComparison(
 	comparison: ArgoResourceComparison | null,
 ) {
 	const documents = argoComparisonDocument(resource, comparison);
-	const desired = argoDocumentText(documents.desired);
-	const live = argoDocumentText(documents.live);
-	const normalizedLive = documents.normalizedLive === documents.live
-		? live
-		: argoDocumentText(documents.normalizedLive);
+	let desired: string | undefined;
+	let live: string | undefined;
+	let normalizedLive: string | undefined;
 	return {
-		desired, live, normalizedLive,
-		exact: comparison?.exact,
-		added: live === "" && desired !== "",
-		modified: documents.modified ?? desired !== normalizedLive,
+		get desired() {
+			desired ??= argoDocumentText(documents.desired);
+			return desired;
+		},
+		get live() {
+			live ??= argoDocumentText(documents.live);
+			return live;
+		},
+		get normalizedLive(): string {
+			if (documents.normalizedLive === documents.live) return this.live;
+			normalizedLive ??= argoDocumentText(documents.normalizedLive);
+			return normalizedLive;
+		},
+		exact: documents.exact,
+		get hasDiff() {
+			return hasArgoDocument(documents.desired) && hasArgoDocument(documents.normalizedLive);
+		},
+		get added() {
+			return !hasArgoDocument(documents.live) && hasArgoDocument(documents.desired);
+		},
+		get modified(): boolean {
+			if (documents.modified != null) return documents.modified;
+			if (documents.desired === documents.normalizedLive) return false;
+			const hasDesired = hasArgoDocument(documents.desired);
+			const hasNormalizedLive = hasArgoDocument(documents.normalizedLive);
+			return hasDesired && hasNormalizedLive
+				? this.desired !== this.normalizedLive
+				: hasDesired !== hasNormalizedLive;
+		},
 	};
 }
 
@@ -108,8 +139,4 @@ export function highlightedArgoDiffSegments(
 	if (cursor < source.length)
 		segments.push({ text: source.slice(cursor), className: "" });
 	return segments;
-}
-
-function isString(value: JsonValue | undefined): value is string {
-	return String(value) === value;
 }

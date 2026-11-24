@@ -3,6 +3,9 @@ import { type Extension, type Range, RangeSetBuilder, StateField, type Transacti
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 
 const yamlIndentDepthClassCount = 6;
+// On a 5,518-line manifest a full rebuild was faster than mapping and
+// updating the retained ranges at 64 scattered edits.
+const scatteredEditRebuildGroups = 64;
 
 let yamlCodeViewerExtensionsPromise: Promise<readonly Extension[]> | null = null;
 
@@ -181,12 +184,29 @@ export function updateYamlValueDecorations(
 ): DecorationSet {
 	if (!transaction.docChanged) return decorations;
 	const doc = transaction.newDoc;
-	let mapped = decorations.map(transaction.changes);
-	let firstLine = 0;
-	let lastLine = 0;
+	const groups: { firstLine: number; lastLine: number }[] = [];
 
-	function rebuild() {
-		if (!firstLine) return;
+	// Both endpoint lines can change classification when a newline is inserted or deleted.
+	transaction.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+		const firstLine = doc.lineAt(fromB).number;
+		const lastLine = doc.lineAt(toB).number;
+		const previous = groups[groups.length - 1];
+		if (previous && firstLine <= previous.lastLine) {
+			previous.lastLine = Math.max(previous.lastLine, lastLine);
+		} else {
+			groups.push({ firstLine, lastLine });
+		}
+	});
+	const first = groups[0];
+	if (
+		groups.length >= scatteredEditRebuildGroups ||
+		(groups.length === 1 && first.firstLine === 1 && first.lastLine === doc.lines)
+	) {
+		return buildYamlValueDecorations({ doc });
+	}
+
+	let mapped = decorations.map(transaction.changes);
+	for (const { firstLine, lastLine } of groups) {
 		const add: Range<Decoration>[] = [];
 		const builder: DecorationBuilder = { add: (from, to, value) => add.push(value.range(from, to)) };
 		for (let number = firstLine; number <= lastLine; number += 1) {
@@ -199,20 +219,6 @@ export function updateYamlValueDecorations(
 			add,
 		});
 	}
-
-	// Both endpoint lines can change classification when a newline is inserted or deleted.
-	transaction.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
-		const from = doc.lineAt(fromB).number;
-		const to = doc.lineAt(toB).number;
-		if (firstLine && from <= lastLine) {
-			lastLine = Math.max(lastLine, to);
-			return;
-		}
-		rebuild();
-		firstLine = from;
-		lastLine = to;
-	});
-	rebuild();
 	return mapped;
 }
 

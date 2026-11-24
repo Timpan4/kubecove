@@ -1,82 +1,14 @@
 use super::*;
 use http::{Request, Response};
-use kube::client::Body;
+use k8s_openapi::{
+    api::core::v1::{Container, PodSpec},
+    apimachinery::pkg::apis::meta::v1::Time,
+};
+use kube::{client::Body, core::ObjectMeta};
 use serde_json::json;
 
-// Failure mode: source errors always use LogLines, so clients that omit or
-// disable batchLines never see the error. Preserve the source in both modes.
-#[tokio::test]
-async fn source_errors_honor_batch_lines_opt_in() {
-    use std::sync::{Arc, Mutex};
-
-    for flag in [None, Some(false), Some(true)] {
-        let mut request = serde_json::json!({
-            "clusterContext": "test", "namespace": "default",
-            "targetKind": "Deployment", "targetName": "api"
-        });
-        if let Some(flag) = flag {
-            request["batchLines"] = flag.into();
-        }
-        let request: AggregatedLogStreamRequest = serde_json::from_value(request).unwrap();
-        let received = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
-        let sink = Arc::clone(&received);
-        let channel = Channel::new(move |message| {
-            let message = serde_json::to_value(message).unwrap();
-            sink.lock().unwrap().push(message);
-            Ok(())
-        });
-        let (service, mut handle) = tower_test::mock::pair::<
-            http::Request<kube::client::Body>,
-            http::Response<kube::client::Body>,
-        >();
-        let stream = stream_log_source(
-            Client::new(service, "default"),
-            "default".into(),
-            LogSourceKey {
-                pod_name: "api".into(),
-                container: "app".into(),
-            },
-            LogStreamOptions {
-                batch_lines: request.batch_lines,
-                tail_lines: None,
-                since_seconds: None,
-            },
-            channel,
-            "logs".into(),
-        );
-        let respond = async {
-            let (_, send) = handle.next_request().await.unwrap();
-            send.send_response(http::Response::builder().status(403).body(kube::client::Body::from(
-                br#"{"apiVersion":"v1","kind":"Status","status":"Failure","message":"denied","reason":"Forbidden","code":403}"#.to_vec(),
-            )).unwrap());
-        };
-        tokio::join!(stream, respond);
-        let messages = received.lock().unwrap();
-        assert_eq!(messages.len(), 1);
-        let message = &messages[0];
-        assert_eq!(message["streamId"], "logs");
-        assert_eq!(
-            message["source"],
-            serde_json::json!({"podName": "api", "container": "app"})
-        );
-        let line = if request.batch_lines {
-            assert_eq!(message["type"], "logLines");
-            assert_eq!(message["lines"].as_array().unwrap().len(), 1);
-            &message["lines"][0]
-        } else {
-            assert_eq!(message["type"], "logLine");
-            &message["line"]
-        };
-        assert!(line.as_str().unwrap().starts_with("log stream error: "));
-        assert!(line.as_str().unwrap().contains("denied"));
-    }
-}
-
-use k8s_openapi::{
-    api::core::v1::{Container, PodSpec, ServiceSpec},
-    apimachinery::pkg::apis::meta::v1::{LabelSelectorRequirement, Time},
-};
-use kube::core::ObjectMeta;
+#[path = "aggregate_logs/source_tests.rs"]
+mod source_tests;
 
 fn pod(name: &str, containers: &[&str]) -> Pod {
     Pod {
@@ -99,90 +31,6 @@ fn pod(name: &str, containers: &[&str]) -> Pod {
 }
 
 #[test]
-fn deployment_selector_supports_match_labels_and_expressions() {
-    let selector = LabelSelector {
-        match_labels: Some(BTreeMap::from([(
-            "app.kubernetes.io/name".to_string(),
-            "api".to_string(),
-        )])),
-        match_expressions: Some(vec![
-            LabelSelectorRequirement {
-                key: "tier".to_string(),
-                operator: "In".to_string(),
-                values: Some(vec!["web".to_string(), "worker".to_string()]),
-            },
-            LabelSelectorRequirement {
-                key: "canary".to_string(),
-                operator: "DoesNotExist".to_string(),
-                values: None,
-            },
-        ]),
-    };
-
-    assert_eq!(
-        selector_from_label_selector(&selector).expect("selector"),
-        "app.kubernetes.io/name=api,tier in (web,worker),!canary",
-    );
-}
-
-#[test]
-fn deployment_selector_rejects_empty_or_invalid_expressions() {
-    assert_eq!(
-        selector_from_label_selector(&LabelSelector::default())
-            .expect_err("empty selector")
-            .message,
-        "Deployment selector is empty",
-    );
-    let selector = LabelSelector {
-        match_labels: None,
-        match_expressions: Some(vec![LabelSelectorRequirement {
-            key: "tier".to_string(),
-            operator: "In".to_string(),
-            values: None,
-        }]),
-    };
-    assert_eq!(
-        selector_from_label_selector(&selector)
-            .expect_err("missing values")
-            .message,
-        "Deployment selector In expression needs values",
-    );
-}
-
-#[test]
-fn service_selector_requires_selector_backed_service() {
-    let selector = BTreeMap::from([
-        ("app".to_string(), "api".to_string()),
-        ("tier".to_string(), "web".to_string()),
-    ]);
-    let service = Service {
-        spec: Some(ServiceSpec {
-            selector: Some(selector),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    assert_eq!(
-        service_label_selector(&service).expect("selector"),
-        "app=api,tier=web",
-    );
-
-    let empty = Service {
-        spec: Some(ServiceSpec {
-            selector: None,
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    assert_eq!(
-        service_label_selector(&empty)
-            .expect_err("selectorless")
-            .kind,
-        AppErrorKind::Validation,
-    );
-}
-
-#[test]
 fn log_sources_skip_deleting_pods_and_cap_results() {
     let mut deleting = pod("api-old", &["app"]);
     deleting.metadata.deletion_timestamp =
@@ -194,7 +42,7 @@ fn log_sources_skip_deleting_pods_and_cap_results() {
     let index = PodSources::from_pods(&pods);
     let sources = index.selected();
 
-    assert_eq!(index.total, 60);
+    assert_eq!(index.total(), 60);
     assert_eq!(sources.len(), MAX_AGGREGATED_LOG_SOURCES);
     assert_eq!(sources[0].pod_name, "api-00");
     assert!(sources.iter().all(|source| source.container == "app"));
@@ -291,208 +139,100 @@ async fn pod_updates_keep_the_watch_open_and_expiration_relists() {
     }
 }
 
-#[tokio::test]
-async fn departed_log_sources_release_replay_bookkeeping() {
-    let source = LogSourceKey {
-        pod_name: "old-pod".into(),
-        container: "app".into(),
-    };
-    let mut streams = SourceStreams::default();
-    streams.attached.insert(source);
-    let (service, _handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-    let mut logs = AggregateLogs {
-        client: Client::new(service, "default"),
-        namespace: "default".into(),
-        options: LogStreamOptions {
-            batch_lines: false,
-            tail_lines: Some(10),
-            since_seconds: None,
-        },
-        channel: Channel::new(|_| Ok(())),
-        stream_id: "logs".into(),
-        streams,
-        pods: PodSources::default(),
-        selected: Vec::new(),
-    };
-    logs.reconcile_sources();
-    assert!(logs.streams.attached.is_empty());
-}
-
-// Failure mode: a source whose log GET ends at once (a waiting, crash-looping or completed
-// container) reconnects every time its task finishes, so an open watch sends one log GET and
-// one error line per second per source. It must wait for a pod event or the watch renewal.
+// A watch denial switches to list-only discovery for the lifetime of the stream.
 #[tokio::test(start_paused = true)]
-async fn finished_sources_wait_for_a_pod_event_before_reconnecting() {
-    use bytes::Bytes;
-    use http_body::Frame;
-    use http_body_util::{BodyExt, Full, StreamBody, combinators::UnsyncBoxBody};
-    use std::convert::Infallible;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
+async fn a_denied_watch_polls_with_one_warning_and_steady_status() {
+    for in_watch_event in [false, true] {
+        let (service, mut requests) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        let client = Client::new(service, "default");
+        let pods = Api::namespaced(client.clone(), "default");
+        let mut logs = aggregate_logs(client);
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&received);
+        logs.options.batch_lines = in_watch_event;
+        logs.channel = Channel::new(move |message| {
+            sink.lock().unwrap().push(message);
+            Ok(())
+        });
 
-    type MockBody = UnsyncBoxBody<Bytes, Infallible>;
-    let full = |body: String| Full::new(Bytes::from(body)).boxed_unsync();
-    let (service, mut requests) = tower_test::mock::pair::<Request<Body>, Response<MockBody>>();
-    let client = Client::new(service, "default");
-    let pods = Api::namespaced(client.clone(), "default");
-    let mut logs = AggregateLogs {
-        client,
-        namespace: "default".into(),
-        options: LogStreamOptions {
-            batch_lines: false,
-            tail_lines: Some(10),
-            since_seconds: None,
-        },
-        channel: Channel::new(|_| Ok(())),
-        stream_id: "logs".into(),
-        streams: SourceStreams::default(),
-        pods: PodSources::default(),
-        selected: Vec::new(),
-    };
-
-    let mut waiting = pod("api-a", &["app"]);
-    waiting.metadata.resource_version = Some("10".into());
-    let log_requests = Arc::new(AtomicUsize::new(0));
-    let (events, receiver) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
-    let mut receiver = Some(receiver);
-    let counted = Arc::clone(&log_requests);
-    let listed = waiting.clone();
-    let server = tokio::spawn(async move {
-        while let Some((request, reply)) = requests.next_request().await {
-            let query = request.uri().query().unwrap_or_default().to_owned();
-            if request.uri().path().ends_with("/log") {
-                counted.fetch_add(1, Ordering::SeqCst);
-                let status = json!({
-                    "apiVersion": "v1", "kind": "Status", "status": "Failure",
-                    "reason": "BadRequest", "code": 400,
-                    "message": "container app is waiting to start: CrashLoopBackOff",
-                });
-                reply.send_response(
-                    Response::builder()
-                        .status(400)
-                        .body(full(status.to_string()))
-                        .unwrap(),
-                );
-            } else if query.contains("watch=true") {
-                // The watch stays open and carries only the events the test sends.
-                let receiver = receiver.take().expect("the watch is not renewed");
-                let frames = futures_util::stream::unfold(receiver, |mut receiver| async {
-                    let bytes = receiver.recv().await?;
-                    Some((Ok::<_, Infallible>(Frame::data(bytes)), receiver))
-                });
-                reply.send_response(Response::new(StreamBody::new(frames).boxed_unsync()));
-            } else {
-                reply.send_response(Response::new(full(
-                    json!({"metadata": {"resourceVersion": "10"}, "items": [&listed]}).to_string(),
-                )));
-            }
-        }
-    });
-
-    let check = async {
-        tokio::time::sleep(Duration::from_secs(30)).await;
-        assert_eq!(
-            log_requests.load(Ordering::SeqCst),
-            1,
-            "a finished source reconnected without a pod event"
-        );
-        // A status-only change keeps the container set but can make the log readable again.
-        let mut modify = |version: &str| {
-            waiting.metadata.resource_version = Some(version.into());
-            events
-                .send(Bytes::from(format!(
-                    "{}\n",
-                    json!({"type": "MODIFIED", "object": waiting})
-                )))
-                .unwrap();
-        };
-        modify("11");
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        assert_eq!(
-            log_requests.load(Ordering::SeqCst),
-            2,
-            "a pod event retries the finished source once"
-        );
-        // An update during the retried task's cooldown must not be lost when it ends.
-        modify("12");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(log_requests.load(Ordering::SeqCst), 3);
-        modify("13");
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        assert_eq!(
-            log_requests.load(Ordering::SeqCst),
-            4,
-            "an update during the cooldown retries once the cooldown ends"
-        );
-    };
-    tokio::select! {
-        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
-        () = check => {},
-    }
-    server.abort();
-}
-
-// Failure mode: RBAC allows listing pods but denies watching them. Keeping the cursor
-// retries only the forbidden watch, so new pods are never found. A denial relists.
-#[tokio::test(start_paused = true)]
-async fn a_denied_watch_falls_back_to_listing() {
-    let (service, mut requests) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-    let client = Client::new(service, "default");
-    let pods = Api::namespaced(client.clone(), "default");
-    let mut logs = AggregateLogs {
-        client,
-        namespace: "default".into(),
-        options: LogStreamOptions {
-            batch_lines: false,
-            tail_lines: Some(10),
-            since_seconds: None,
-        },
-        channel: Channel::new(|_| Ok(())),
-        stream_id: "logs".into(),
-        streams: SourceStreams::default(),
-        pods: PodSources::default(),
-        selected: Vec::new(),
-    };
-    let list = || {
-        Response::new(Body::from(
-            json!({"metadata": {"resourceVersion": "10"}, "items": []})
-                .to_string()
-                .into_bytes(),
-        ))
-    };
-    let forbidden = || {
-        Response::builder()
-            .status(403)
-            .body(Body::from(
-                json!({
-                    "apiVersion": "v1", "kind": "Status", "status": "Failure",
-                    "reason": "Forbidden", "code": 403,
-                    "message": "pods is forbidden: cannot watch resource \"pods\"",
-                })
-                .to_string()
-                .into_bytes(),
+        let list = || {
+            Response::new(Body::from(
+                json!({"metadata": {"resourceVersion": "10"}, "items": []})
+                    .to_string()
+                    .into_bytes(),
             ))
-            .unwrap()
-    };
-
-    let mock = async {
-        for _ in 0..2 {
+        };
+        let mock = async {
             let (request, reply) = requests.next_request().await.unwrap();
-            assert!(
-                !request.uri().query().unwrap().contains("watch=true"),
-                "a denied watch was retried without a relist"
-            );
+            assert!(!request.uri().query().unwrap().contains("watch=true"));
             reply.send_response(list());
+
             let (watch, reply) = requests.next_request().await.unwrap();
             assert!(watch.uri().query().unwrap().contains("watch=true"));
-            reply.send_response(forbidden());
+            let status = json!({
+                "apiVersion": "v1", "kind": "Status", "status": "Failure",
+                "reason": "Forbidden", "code": 403, "message": "cannot watch pods",
+            });
+            let forbidden = if in_watch_event {
+                Response::new(Body::from(
+                    format!("{}\n", json!({"type": "ERROR", "object": status})).into_bytes(),
+                ))
+            } else {
+                Response::builder()
+                    .status(403)
+                    .body(Body::from(status.to_string().into_bytes()))
+                    .unwrap()
+            };
+            reply.send_response(forbidden);
+
+            // Observe multiple requests after the denial, including two completed polls.
+            for _ in 0..3 {
+                let (request, reply) = requests.next_request().await.unwrap();
+                assert!(
+                    !request.uri().query().unwrap().contains("watch=true"),
+                    "pod discovery retried the forbidden watch"
+                );
+                reply.send_response(list());
+            }
+        };
+        tokio::select! {
+            () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
+            () = mock => {},
         }
-    };
-    tokio::select! {
-        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
-        () = mock => {},
+
+        let received = received.lock().unwrap();
+        let mut statuses = Vec::new();
+        let mut warnings = Vec::new();
+        for message in received.iter() {
+            match message {
+                StreamMessage::Status {
+                    status, message, ..
+                } => statuses.push((*status, message)),
+                StreamMessage::LogLine {
+                    line, source: None, ..
+                } if !in_watch_event => {
+                    warnings.push(line);
+                }
+                StreamMessage::LogLines {
+                    lines,
+                    source: None,
+                    ..
+                } if in_watch_event => {
+                    warnings.extend(lines);
+                }
+                _ => panic!("unexpected log message: {message:?}"),
+            }
+        }
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("permission denied"));
+        assert!(warnings[0].contains("Polling"));
+        assert_eq!(statuses.len(), 2);
+        assert!(
+            statuses
+                .iter()
+                .all(|(status, _)| *status == StreamStatus::Connected)
+        );
+        assert!(statuses[1].1.contains("Polling"));
     }
 }
 
@@ -581,63 +321,6 @@ fn serve_pods(
         }
     });
     (server, logged)
-}
-
-// Failure mode: when a retried source finishes, reconciling every source marks the other
-// still-cooling source for retry, so two sources re-arm each other once a second forever
-// after one pod event. Each source must retry once and then wait for the next pod event.
-#[tokio::test(start_paused = true)]
-async fn a_retried_source_does_not_re_arm_the_other_sources() {
-    let (service, requests) = tower_test::mock::pair::<Request<Body>, Response<MockBody>>();
-    let client = Client::new(service, "default");
-    let pods = Api::namespaced(client.clone(), "default");
-    let mut logs = aggregate_logs(client);
-    let mut waiting = pod("api-a", &["app", "sidecar"]);
-    waiting.metadata.resource_version = Some("10".into());
-    let listed = waiting.clone();
-    let (events, receiver) = tokio::sync::mpsc::unbounded_channel::<bytes::Bytes>();
-    let (server, logged) = serve_pods(requests, move |_| vec![listed.clone()], Some(receiver));
-    let log_requests = || logged.lock().unwrap().len();
-
-    let check = async {
-        tokio::time::sleep(Duration::from_secs(30)).await;
-        assert_eq!(log_requests(), 2, "both containers attach once");
-        let mut modify = |version: &str| {
-            waiting.metadata.resource_version = Some(version.into());
-            events
-                .send(bytes::Bytes::from(format!(
-                    "{}\n",
-                    json!({"type": "MODIFIED", "object": waiting})
-                )))
-                .unwrap();
-        };
-        modify("11");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(
-            log_requests(),
-            4,
-            "a pod event retries both finished sources"
-        );
-        // Both sources are cooling down, so this event asks each to retry once it ends.
-        modify("12");
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        assert_eq!(
-            log_requests(),
-            6,
-            "each source retries once after its cooldown"
-        );
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        assert_eq!(
-            log_requests(),
-            6,
-            "finished sources kept reconnecting without a pod event"
-        );
-    };
-    tokio::select! {
-        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
-        () = check => {},
-    }
-    server.abort();
 }
 
 // Failure mode: with list-only RBAC the pod watch returns 403 before it streams, so the loop
