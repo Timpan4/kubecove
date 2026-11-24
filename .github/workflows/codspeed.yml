@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    # No benchmark reads Markdown or docs/. A pull request compares against the newest
+    # main commit that has a CodSpeed run. Pull requests keep every path, because
+    # "CodSpeed Performance Analysis" is a required check.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:

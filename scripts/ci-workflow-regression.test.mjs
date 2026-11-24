@@ -1436,6 +1436,29 @@ test("parity shares one immutable timing snapshot across shard families and reru
   }
 });
 
+// Failure modes: a path filter on pull_request leaves the required "CodSpeed Performance
+// Analysis" or "Typecheck and test" check pending on a docs-only pull request, and a filter
+// wider than documentation skips a main push that changed what these suites read.
+test("only main pushes skip Parity and CodSpeed for documentation, and CI never skips", async () => {
+  const read = (name) => readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  const triggers = (text) => {
+    const on = /^on:\n([\s\S]*?)\n(?=\S)/m.exec(text)[1];
+    return Object.fromEntries([...on.matchAll(/^ {2}([\w-]+):\n?((?: {4}.*\n?|\n)*)/gm)].map(([, name, body]) => [name, body]));
+  };
+  for (const name of ["parity.yml", "codspeed.yml"]) {
+    const on = triggers(read(name));
+    assert.match(on.push, /^ {4}paths-ignore:\n {6}- "\*\*\.md"\n {6}- "docs\/\*\*"\n/m, name);
+    for (const [event, body] of Object.entries(on)) {
+      if (event !== "push") assert.doesNotMatch(body, /paths/, `${name} ${event}`);
+    }
+  }
+  assert.ok(Object.hasOwn(triggers(read("codspeed.yml")), "pull_request"));
+  assert.doesNotMatch(workflow, /^ +paths(-ignore)?:/m);
+  // CI's own change detection treats every ignored path as documentation only.
+  for (const path of ["README.md", "docs/development-workflow.md", "docs/assets/wiki/screenshot.png", "rust/gpui/README.md"]) {
+    assert.deepEqual((await detect([path])).output, flags("docs"), path);
+  }
+});
 test("Linux E2E sets up the Bun executable without archiving downloaded packages", () => {
   const e2e = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8").replaceAll("\r\n", "\n");
   for (const name of ["real-primary", "real-matrix"]) {

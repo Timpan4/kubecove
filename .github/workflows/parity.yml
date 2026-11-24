@@ -11,6 +11,11 @@ on:
   push:
     branches:
       - main
+    # Docs-only pushes change no scenario. Pull requests then select against the newest
+    # main run's coverage map, which the docs commits after it cannot outdate.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
     types: [opened, synchronize, reopened]
 
