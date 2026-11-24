@@ -154,7 +154,7 @@ assert(
 );
 
 const lastNamespace = namespaces[namespaces.length - 1];
-const lateSelection: TreeNodeId = { type: "kind", section: "namespaces", namespace: lastNamespace, kind: "Pod" };
+const lateSelection: TreeNodeId = { type: "kind", section: "namespaces", namespace: lastNamespace, group: "Workloads", kind: "Pod" };
 function childrenForNamespace(node: TreeNode) {
 	const name = node.id.namespace;
 	return name ? buildExpandedNamespaceChildren(name, resourceSets.get(name) ?? [], errorSets.get(name), pendingNamespaces.has(name)) : undefined;
@@ -165,7 +165,10 @@ const ancestors = collectSelectedAncestorIds(fullTree, lateSelection, (node) => 
 	return childrenForNamespace(node);
 });
 assert.deepEqual(requested, [lastNamespace]);
-assert.deepEqual([...ancestors], [`namespace::namespaces::${lastNamespace}`]);
+assert.deepEqual([...ancestors], [
+	`namespace::namespaces::${lastNamespace}`,
+	`group::namespaces::${lastNamespace}::Workloads`,
+]);
 
 describe("F26 lazy sidebar children with folded F27 query maps and F28 present kinds", () => {
 	benchmark(
