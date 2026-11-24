@@ -172,15 +172,27 @@ fn compare_identity(left: &ResourceSummary, right: &ResourceSummary) -> Ordering
     let left = identity_parts(left);
     let right = identity_parts(right);
     for (index, (&a, &b)) in left.iter().zip(&right).enumerate() {
-        let ordering = a.cmp(b);
-        if ordering.is_eq() {
+        if a == b {
             continue;
         }
-        if index + 1 == left.len() || (!a.starts_with(b) && !b.starts_with(a)) {
-            return ordering;
+        if index + 1 == left.len() {
+            return a.cmp(b);
         }
-        // A separator can sort before or after the next byte of the longer field.
-        return delimited_bytes(&left[index..]).cmp(delimited_bytes(&right[index..]));
+        if let Some(rest) = a.as_bytes().strip_prefix(b.as_bytes()) {
+            let next = rest[0];
+            if next != b':' {
+                return next.cmp(&b':');
+            }
+            return delimited_bytes(&left[index..]).cmp(delimited_bytes(&right[index..]));
+        }
+        if let Some(rest) = b.as_bytes().strip_prefix(a.as_bytes()) {
+            let next = rest[0];
+            if next != b':' {
+                return b':'.cmp(&next);
+            }
+            return delimited_bytes(&left[index..]).cmp(delimited_bytes(&right[index..]));
+        }
+        return a.cmp(b);
     }
     Ordering::Equal
 }
