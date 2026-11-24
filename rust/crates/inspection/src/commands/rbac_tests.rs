@@ -327,6 +327,14 @@ fn same_named_roles_pass_only_their_own_risks_to_bindings() {
         binding("payments-readers", "RoleBinding", Some("payments"), "Role"),
         binding("shipping-readers", "RoleBinding", Some("shipping"), "Role"),
         binding("cluster-readers", "ClusterRoleBinding", None, "ClusterRole"),
+        // A namespaced binding to a ClusterRole must not pick up the same-named
+        // namespaced Role in its own namespace.
+        binding(
+            "payments-cluster-readers",
+            "RoleBinding",
+            Some("payments"),
+            "ClusterRole",
+        ),
     ];
 
     inherit_binding_risks(
@@ -339,4 +347,5 @@ fn same_named_roles_pass_only_their_own_risks_to_bindings() {
     assert_eq!(labels(&bindings[0]), vec!["Payments role risk"]);
     assert_eq!(labels(&bindings[1]), vec!["Shipping role risk"]);
     assert_eq!(labels(&bindings[2]), vec!["Cluster role risk"]);
+    assert_eq!(labels(&bindings[3]), vec!["Cluster role risk"]);
 }

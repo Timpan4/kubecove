@@ -7,7 +7,9 @@ mod logs_gitops;
 mod problems;
 mod resources;
 #[cfg(feature = "bench-support")]
-pub use resources::{describe_resource_body, page_resource_rows};
+pub use args::HealthFilter;
+#[cfg(feature = "bench-support")]
+pub use resources::{describe_resource_body, page_resource_rows, resource_row_matches};
 
 use crate::handler::McpContext;
 use kubecove_kube::commands::{ClusterAccess, FiniteRead};

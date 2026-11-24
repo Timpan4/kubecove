@@ -46,14 +46,22 @@ pub async fn list_resources(
         .map(|text| text.to_ascii_lowercase())
         .filter(|text| !text.is_empty());
     let mut body = page_resource_rows(&scope, arguments.limit, arguments.offset, |row| {
-        name_filter
-            .as_deref()
-            .is_none_or(|text| row.name.to_ascii_lowercase().contains(text))
-            && (arguments.health == args::HealthFilter::All || compact::is_unhealthy(row))
+        resource_row_matches(name_filter.as_deref(), arguments.health, row)
     })?;
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
+}
+
+/// `name_filter` must already be lowercase. Shared with the backend benchmarks so they
+/// measure the same predicate `list_resources` applies.
+pub fn resource_row_matches(
+    name_filter: Option<&str>,
+    health: args::HealthFilter,
+    row: &ResourceSummary,
+) -> bool {
+    name_filter.is_none_or(|text| row.name.to_ascii_lowercase().contains(text))
+        && (health == args::HealthFilter::All || compact::is_unhealthy(row))
 }
 
 pub fn page_resource_rows(

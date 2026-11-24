@@ -24,5 +24,7 @@ mod tests;
 #[cfg(feature = "bench-support")]
 #[doc(hidden)]
 pub mod bench_support {
-    pub use crate::tools::{describe_resource_body, page_resource_rows};
+    pub use crate::tools::{
+        HealthFilter, describe_resource_body, page_resource_rows, resource_row_matches,
+    };
 }

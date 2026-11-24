@@ -241,6 +241,77 @@ async fn manifest_and_label_reads_overlap_without_changing_duplicate_precedence(
     );
 }
 
+#[tokio::test]
+async fn forbidden_manifest_get_keeps_unavailable_row_when_label_list_succeeds() {
+    let (service, mut handle) = tower_test::mock::pair();
+    let client = Client::new(service, "payments");
+    let release = HelmReleaseSummary {
+        cluster: "test".into(),
+        name: "web".into(),
+        namespace: "payments".into(),
+        age: String::new(),
+        updated_at: None,
+        created_at: None,
+        chart: None,
+        app_version: None,
+        revision: None,
+        status: None,
+        storage_kind: "Secret".into(),
+        storage_name: "web.v1".into(),
+    };
+    let manifest = [manifest_ref(
+        Some("apps/v1"),
+        Some("Deployment"),
+        None,
+        Some("web"),
+    )];
+    let discovered = [deployment_kind()];
+    let reconcile = reconcile_release(client, "test", &release, &manifest, &discovered);
+    let serve = async {
+        let forbidden = serde_json::json!({"apiVersion": "v1", "kind": "Status", "status": "Failure",
+            "message": "forbidden", "reason": "Forbidden", "code": 403});
+        let labeled_web = serde_json::json!({"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {
+            "name": "web", "uid": "label-only", "namespace": "payments", "labels": {"helm.sh/release": "web"}
+        }});
+        // Each in-flight read is answered once; the order of arrival does not matter.
+        for _ in 0..2 {
+            let (request, response) = handle.next_request().await.expect("reconciliation read");
+            let (status, body): (u16, _) = match request.uri().path() {
+                "/apis/apps/v1/namespaces/payments/deployments/web" => (403, forbidden.clone()),
+                "/apis/apps/v1/namespaces/payments/deployments" => (
+                    200,
+                    serde_json::json!({
+                        "apiVersion": "apps/v1", "kind": "DeploymentList", "metadata": {},
+                        "items": [labeled_web.clone()]
+                    }),
+                ),
+                path => panic!("unexpected mock request to {path}"),
+            };
+            response.send_response(
+                http::Response::builder()
+                    .status(status)
+                    .body(kube::client::Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            );
+        }
+    };
+    let ((rows, _warnings, totals), ()) =
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(reconcile, serve)
+        })
+        .await
+        .expect("mock API requests did not finish");
+
+    // The successful LIST carries a label-only row for the same key. It must not
+    // replace the manifest row whose GET was forbidden.
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].status, HelmReconciliationStatus::Unavailable);
+    assert!(rows[0].in_manifest);
+    assert!(rows[0].live_resource.is_none());
+    assert_eq!(totals.unavailable, 1);
+    assert_eq!(totals.label_only, 0);
+}
+
 // Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
 // a manifest group whose aggregated API server is down fails the whole
 // reconciliation instead of leaving only its own rows unavailable, an

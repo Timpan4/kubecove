@@ -393,8 +393,19 @@ where
         self.entries.lock().expect("live store cache lock").len()
     }
 
+    /// Counts `Ready` entries directly, so budget tests can check the bookkeeping below.
     #[cfg(test)]
     pub(super) fn ready_len(&self) -> usize {
+        self.entries
+            .lock()
+            .expect("live store cache lock")
+            .values()
+            .filter(|entry| matches!(entry, CacheEntry::Ready(_)))
+            .count()
+    }
+
+    #[cfg(test)]
+    pub(super) fn ready_count_bookkeeping(&self) -> usize {
         self.entries
             .lock()
             .expect("live store cache lock")
