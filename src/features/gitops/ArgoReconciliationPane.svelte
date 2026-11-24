@@ -42,14 +42,16 @@
 	} = $props();
 	const loadingIndicator = loadingDelay(() => loading);
 	const redactSecrets = $derived($settingsStore.redactSecrets);
-	let selectedResource = $state.raw<ArgoManagedResource | null>(null);
+	// A selection belongs to the application scope it was made in, so a newer scope never reads it before the effect clears it.
+	let selection = $state.raw<{ scopeKey: string; resource: ArgoManagedResource } | null>(null);
+	const selectedResource = $derived(selection?.scopeKey === scopeKey ? selection.resource : null);
 	let diffView = $state<DiffView>("changes");
 	let expandedRemovalKeys = $state<string[]>([]);
 	let appliedScopeKey = "";
 	$effect(() => {
 		const next = scopeKey;
 		if (appliedScopeKey && appliedScopeKey !== next) {
-			selectedResource = null;
+			selection = null;
 			diffView = "changes";
 			expandedRemovalKeys = [];
 		}
@@ -75,32 +77,40 @@
 			transport === "connected" &&
 			snapshot?.transport === "connected",
 	);
-	const selectedComparisonQueryKey = $derived(
-		queryKeys.argoWorkspaceSelectedResource(
-			clusterContext,
-			workspaceId,
-			applicationRequest.name,
-			applicationRequest.namespace,
-			applicationRequest.uid,
-			redactSecrets,
-			transport,
-			connectionId,
-			selectedResource?.group,
-			selectedResource?.kind,
-			selectedResource?.namespace,
-			selectedResource?.name,
-			kubeconfigEnvVar,
-		),
-	);
-	const selectedComparison = createQuery(() => ({
+	// The key and the read come from one captured source, so a deferred fetch cannot pair an older key with newer inputs.
+	const selectedComparisonSource = $derived.by(() => {
+		const resource = selectedResource;
+		return {
+			resource,
+			request,
+			queryKey: queryKeys.argoWorkspaceSelectedResource(
+				clusterContext,
+				workspaceId,
+				applicationRequest.name,
+				applicationRequest.namespace,
+				applicationRequest.uid,
+				redactSecrets,
+				transport,
+				connectionId,
+				resource?.group,
+				resource?.kind,
+				resource?.namespace,
+				resource?.name,
+				kubeconfigEnvVar,
+			),
+		};
+	});
+	const selectedComparison = createQuery(() => {
+		const source = selectedComparisonSource;
+		return {
 		...finiteRead({
-			queryKey: selectedComparisonQueryKey,
+			queryKey: source.queryKey,
 			label: "argo.resource-comparison",
 			read: async (cancellable) => {
-				if (!selectedResource || !request) throw new Error("No selected resource");
+				if (!source.resource || !source.request) throw new Error("No selected resource");
 				return getArgoResourceComparison(
 					client,
-					{ ...request, resource: selectedResource },
+					{ ...source.request, resource: source.resource },
 					cancellable,
 				);
 			},
@@ -111,7 +121,8 @@
 		refetchIntervalInBackground: false,
 		retry: false,
 		gcTime: redactSecrets ? undefined : 0,
-	}));
+		};
+	});
 
 	const snapshotFreshness = $derived(
 		snapshot?.connectedFallback
@@ -127,14 +138,14 @@
 	}));
 	$effect(() => {
 		const next = preserveArgoResourceSelection(selectedResource, reconciliationResources);
-		if (next !== selectedResource) selectedResource = next;
+		if (next !== selectedResource) selection = next ? { scopeKey, resource: next } : null;
 	});
 	function selectResource(item: ArgoManagedResource) {
-		selectedResource = item;
+		selection = { scopeKey, resource: item };
 	}
 
 	function showAllChanges() {
-		selectedResource = null;
+		selection = null;
 	}
 
 	function resourceSelected(item: ArgoManagedResource): boolean {

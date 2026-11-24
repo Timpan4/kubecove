@@ -43,5 +43,5 @@ function isRecord(value: JsonValue | undefined): value is JsonObject {
 }
 
 function isString(value: JsonValue | undefined): value is string {
-	return String(value) === value;
+	return typeof value === "string";
 }
