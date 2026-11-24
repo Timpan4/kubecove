@@ -317,3 +317,105 @@ async fn departed_log_sources_release_replay_bookkeeping() {
     logs.reconcile_sources();
     assert!(logs.streams.attached.is_empty());
 }
+
+// Failure mode: a source whose log GET ends at once (a waiting, crash-looping or completed
+// container) reconnects every time its task finishes, so an open watch sends one log GET and
+// one error line per second per source. It must wait for a pod event or the watch renewal.
+#[tokio::test(start_paused = true)]
+async fn finished_sources_wait_for_a_pod_event_before_reconnecting() {
+    use bytes::Bytes;
+    use http_body::Frame;
+    use http_body_util::{BodyExt, Full, StreamBody, combinators::UnsyncBoxBody};
+    use std::convert::Infallible;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    type MockBody = UnsyncBoxBody<Bytes, Infallible>;
+    let full = |body: String| Full::new(Bytes::from(body)).boxed_unsync();
+    let (service, mut requests) = tower_test::mock::pair::<Request<Body>, Response<MockBody>>();
+    let client = Client::new(service, "default");
+    let pods = Api::namespaced(client.clone(), "default");
+    let mut logs = AggregateLogs {
+        client,
+        namespace: "default".into(),
+        options: LogStreamOptions {
+            batch_lines: false,
+            tail_lines: Some(10),
+            since_seconds: None,
+        },
+        channel: Channel::new(|_| Ok(())),
+        stream_id: "logs".into(),
+        streams: SourceStreams::default(),
+        pods: PodSources::default(),
+        selected: Vec::new(),
+    };
+
+    let mut waiting = pod("api-a", &["app"]);
+    waiting.metadata.resource_version = Some("10".into());
+    let log_requests = Arc::new(AtomicUsize::new(0));
+    let (events, receiver) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
+    let mut receiver = Some(receiver);
+    let counted = Arc::clone(&log_requests);
+    let listed = waiting.clone();
+    let server = tokio::spawn(async move {
+        while let Some((request, reply)) = requests.next_request().await {
+            let query = request.uri().query().unwrap_or_default().to_owned();
+            if request.uri().path().ends_with("/log") {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let status = json!({
+                    "apiVersion": "v1", "kind": "Status", "status": "Failure",
+                    "reason": "BadRequest", "code": 400,
+                    "message": "container app is waiting to start: CrashLoopBackOff",
+                });
+                reply.send_response(
+                    Response::builder()
+                        .status(400)
+                        .body(full(status.to_string()))
+                        .unwrap(),
+                );
+            } else if query.contains("watch=true") {
+                // The watch stays open and carries only the events the test sends.
+                let receiver = receiver.take().expect("the watch is not renewed");
+                let frames = futures_util::stream::unfold(receiver, |mut receiver| async {
+                    let bytes = receiver.recv().await?;
+                    Some((Ok::<_, Infallible>(Frame::data(bytes)), receiver))
+                });
+                reply.send_response(Response::new(StreamBody::new(frames).boxed_unsync()));
+            } else {
+                reply.send_response(Response::new(full(
+                    json!({"metadata": {"resourceVersion": "10"}, "items": [&listed]}).to_string(),
+                )));
+            }
+        }
+    });
+
+    let check = async {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        assert_eq!(
+            log_requests.load(Ordering::SeqCst),
+            1,
+            "a finished source reconnected without a pod event"
+        );
+        // A status-only change keeps the container set but can make the log readable again.
+        waiting.metadata.resource_version = Some("11".into());
+        events
+            .send(Bytes::from(format!(
+                "{}\n",
+                json!({"type": "MODIFIED", "object": waiting})
+            )))
+            .unwrap();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert_eq!(
+            log_requests.load(Ordering::SeqCst),
+            2,
+            "a pod event retries the finished source once"
+        );
+    };
+    tokio::select! {
+        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
+        () = check => {},
+    }
+    server.abort();
+}

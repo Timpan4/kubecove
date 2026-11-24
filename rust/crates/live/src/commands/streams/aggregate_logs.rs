@@ -53,10 +53,8 @@ struct SourceStreams {
 }
 
 impl SourceStreams {
-    fn retire(&mut self, id: Id) -> bool {
-        let before = self.handles.len();
+    fn retire(&mut self, id: Id) {
         self.handles.retain(|_, handle| handle.id() != id);
-        self.handles.len() != before
     }
 }
 
@@ -143,19 +141,24 @@ impl AggregateLogs {
                 .await
             {
                 Ok(stream) => {
-                    if !needs_list && !self.connected() {
-                        return;
+                    if !needs_list {
+                        // A renewed watch retries finished sources, as a relist does.
+                        self.reconcile_sources();
+                        if !self.connected() {
+                            return;
+                        }
                     }
                     let mut stream = stream.boxed();
                     loop {
                         let event = tokio::select! {
                             event = stream.next() => event,
                             finished = self.streams.tasks.join_next_with_id(), if !self.streams.tasks.is_empty() => {
+                                // A finished source waits for a pod event or the watch
+                                // renewal before it reconnects. Reconnecting here would
+                                // request a waiting or completed container's log every second.
                                 if let Some(finished) = finished {
                                     let id = finished.map_or_else(|error| error.id(), |(id, ())| id);
-                                    if self.streams.retire(id) {
-                                        self.reconcile_sources();
-                                    }
+                                    self.streams.retire(id);
                                 }
                                 continue;
                             }
@@ -179,10 +182,15 @@ impl AggregateLogs {
                                 cursor =
                                     usable_version(super::watch::watch_resource_version(&event));
                                 let previous_total = self.pods.total;
-                                if self.pods.apply(event)
-                                    && !self.sync_sources(Some(previous_total))
-                                {
-                                    return;
+                                let pod_event = !matches!(event, WatchEvent::Bookmark(_));
+                                if self.pods.apply(event) {
+                                    if !self.sync_sources(Some(previous_total)) {
+                                        return;
+                                    }
+                                } else if pod_event {
+                                    // A status change, such as a restarted container, can
+                                    // make a finished source's log readable again.
+                                    self.reconcile_sources();
                                 }
                             }
                             Some(Err(err)) => {
@@ -232,13 +240,10 @@ impl AggregateLogs {
 
     fn sync_sources(&mut self, previous_total: Option<usize>) -> bool {
         let desired = self.pods.selected();
-        if desired == self.selected {
-            previous_total == Some(self.pods.total) || self.connected()
-        } else {
-            self.selected = desired;
-            self.reconcile_sources();
-            self.connected()
-        }
+        let changed = desired != self.selected;
+        self.selected = desired;
+        self.reconcile_sources();
+        (!changed && previous_total == Some(self.pods.total)) || self.connected()
     }
 
     fn reconcile_sources(&mut self) {
