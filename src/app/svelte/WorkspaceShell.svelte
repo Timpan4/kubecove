@@ -56,6 +56,7 @@
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
 	import { USE_BROWSER_DEV_MOCKS } from "@/lib/build-env";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import { remoteNotice } from "@/lib/remote-notice";
 	import { desktopRemoteConnection } from "@/lib/remote-runtime";
@@ -323,9 +324,11 @@
 				{/snippet}
 			<ScrollArea class="h-full">
 				{#if browserMockSurfaces && remoteNoticeShown}
-					{#await browserMockSurfaces.remoteNotice() then { default: RemoteWorkspaceNotice }}
-						<RemoteWorkspaceNotice />
-					{/await}
+					<DeferredSurface load={browserMockSurfaces.remoteNotice} label="remote workspace notice">
+						{#snippet children(RemoteWorkspaceNotice)}
+							<RemoteWorkspaceNotice />
+						{/snippet}
+					</DeferredSurface>
 				{:else if isOverview}
 					<WorkspaceOverview
 						{workspace}

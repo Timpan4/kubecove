@@ -31,6 +31,7 @@
 	} from "@/lib/browser-runtime";
 	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import type { YamlEncoding, YamlViewMode } from "@/lib/types";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import McpServerSettings from "./McpServerSettings.svelte";
 	import DiagnosticsSettings from "./DiagnosticsSettings.svelte";
 	import KubeconfigSettings from "./KubeconfigSettings.svelte";
@@ -403,9 +404,11 @@
 		{/if}
 
 		{#if browserMockSurfaces && showCategory("updates")}
-			{#await browserMockSurfaces.updateSettings() then { default: UpdatesSettings }}
-				<UpdatesSettings />
-			{/await}
+			<DeferredSurface load={browserMockSurfaces.updateSettings} label="update settings">
+				{#snippet children(UpdatesSettings)}
+					<UpdatesSettings />
+				{/snippet}
+			</DeferredSurface>
 		{/if}
 
 		{#if showCategory("diagnostics")}
@@ -419,9 +422,11 @@
 		{#if browserMockSurfaces && showCategory("remote")}
 			<FieldGroup>
 				<SettingsRow {...categoryRows.remote[0]}>
-					{#await browserMockSurfaces.remoteSettings() then { default: RemoteConnectionSettings }}
-					<RemoteConnectionSettings />
-				{/await}
+					<DeferredSurface load={browserMockSurfaces.remoteSettings} label="remote connection settings">
+						{#snippet children(RemoteConnectionSettings)}
+							<RemoteConnectionSettings />
+						{/snippet}
+					</DeferredSurface>
 				</SettingsRow>
 			</FieldGroup>
 		{/if}

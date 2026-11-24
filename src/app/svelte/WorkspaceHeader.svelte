@@ -2,6 +2,7 @@
 	import { ChevronRight, FolderOpen, Menu, Search, Settings } from "lucide-svelte";
 	import ClusterSelector from "@/components/ClusterSelector.svelte";
 	import { Button } from "@/components/ui/svelte";
+	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
 
@@ -70,15 +71,19 @@
 	</nav>
 	<div class="flex min-w-0 shrink-0 items-center justify-end gap-1 [-webkit-app-region:no-drag] md:flex-1">
 		{#if browserMockSurfaces}
-			{#await browserMockSurfaces.remoteHostScope() then { default: RemoteHostScope }}
-				<RemoteHostScope />
-			{/await}
+			<DeferredSurface load={browserMockSurfaces.remoteHostScope} label="remote host scope">
+				{#snippet children(RemoteHostScope)}
+					<RemoteHostScope />
+				{/snippet}
+			</DeferredSurface>
 		{/if}
 		<ActiveLiveSessionsButton onOpenManager={onOpenPortForwards} />
 		{#if browserMockSurfaces}
-			{#await browserMockSurfaces.updateButton() then { default: UpdateStatusButton }}
-				<UpdateStatusButton />
-			{/await}
+			<DeferredSurface load={browserMockSurfaces.updateButton} label="update status">
+				{#snippet children(UpdateStatusButton)}
+					<UpdateStatusButton />
+				{/snippet}
+			</DeferredSurface>
 		{/if}
 		<Button type="button" variant="ghost" size="icon" aria-label="Open workspaces" onclick={onOpenLauncher}>
 			<FolderOpen />

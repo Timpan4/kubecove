@@ -254,9 +254,11 @@
 
 <CopyToast />
 {#if browserMockSurfaces}
-	{#await browserMockSurfaces.appEffects() then { default: BrowserMockAppEffects }}
-		<BrowserMockAppEffects />
-	{/await}
+	<DeferredSurface load={browserMockSurfaces.appEffects} label="browser mock effects">
+		{#snippet children(BrowserMockAppEffects)}
+			<BrowserMockAppEffects />
+		{/snippet}
+	</DeferredSurface>
 {/if}
 
 <TooltipProvider>
@@ -298,9 +300,11 @@
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
 				{#if browserMockSurfaces}
-					{#await browserMockSurfaces.updateButton() then { default: UpdateStatusButton }}
-						<UpdateStatusButton />
-					{/await}
+					<DeferredSurface load={browserMockSurfaces.updateButton} label="update status">
+						{#snippet children(UpdateStatusButton)}
+							<UpdateStatusButton />
+						{/snippet}
+					</DeferredSurface>
 				{/if}
 				{#if launcherView === "settings"}
 					<Button
