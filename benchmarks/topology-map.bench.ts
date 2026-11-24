@@ -15,14 +15,6 @@ import {
 	buildFlowTopologyLayoutState,
 	buildFlowTopologyViewFromLayoutState,
 } from "@/features/resources/topology-view";
-import {
-	mergeTopologyMetrics,
-	resourceMetricIndex,
-} from "@/lib/resource-metrics";
-import type {
-	ResourceMetricSummary,
-	ResourceMetricsSummary,
-} from "@/lib/types";
 import { benchmark } from "./benchmark";
 import { buildReplicaSetTopology } from "./topology-benchmark-fixtures";
 
@@ -69,26 +61,6 @@ const tableState: ResourceTableState = {
 	collapsedGroups: new Set(),
 	selectedResource: resources[42],
 };
-const metricEntries: ResourceMetricSummary[] = resources
-	.filter((_, index) => index % 10 === 0)
-	.map((resource, index) => ({
-		kind: resource.kind,
-		cluster: resource.cluster,
-		name: resource.name,
-		namespace: resource.namespace ?? null,
-		cpuMillicores: index * 10,
-		memoryBytes: index * 1024 * 1024,
-		sourcePods: [],
-	}));
-const metrics: ResourceMetricsSummary = {
-	cluster: "prod",
-	availability: { status: "available" },
-	pods: metricEntries.filter((metric) => metric.kind === "Pod"),
-	nodes: [],
-	workloads: metricEntries.filter((metric) => metric.kind !== "Pod"),
-	warnings: [],
-};
-const metricIndex = resourceMetricIndex([{ clusterContext: metrics.cluster, summary: metrics }]);
 const tableModel = buildResourceTableModel(projection, tableState);
 const historical = filterHistoricalReplicaSets(topology, true);
 const mappedTopology = filterTopologyByTableRows(
@@ -100,14 +72,9 @@ const leafOnlyTopology = filterTopologyByTableRows(
 	[firstPod.summary],
 );
 const emptyTableTopology = filterTopologyByTableRows(topology, []);
-const metricTopology = mergeTopologyMetrics(
-	mappedTopology,
-	metrics,
-	metricIndex,
-);
-if (!metricTopology) throw new Error("Missing metric topology fixture");
+if (!mappedTopology) throw new Error("Missing projected topology fixture");
 const layoutState = buildFlowTopologyLayoutState(
-	metricTopology,
+	mappedTopology,
 	"ownership",
 	new Set(),
 	null,
@@ -115,7 +82,7 @@ const layoutState = buildFlowTopologyLayoutState(
 const syncedSelection = syncedTopologyNodeId({
 	selectedTopologyNodeId: null,
 	selectedResource: tableState.selectedResource ?? null,
-	topologyNodes: metricTopology?.nodes,
+	topologyNodes: mappedTopology?.nodes,
 });
 const view = buildFlowTopologyViewFromLayoutState(layoutState, {
 	mode: "ownership",
@@ -136,7 +103,6 @@ assert.equal(resources.length, 2_000);
 assert.equal(baseTopology.nodes.length, 2_000);
 assert.equal(topology.edges.length, baseTopology.edges.length + 2);
 assert.equal(tableModel.filteredRows.length, resources.length);
-assert.equal(metricIndex.size, metricEntries.length);
 assert(mappedTopology?.nodes.some((node) => node.id === syncedSelection));
 assert(leafOnlyTopology?.nodes.some((node) => node.id === firstPod.id));
 assert(leafOnlyTopology?.nodes.some((node) => node.id === firstOwnedByPod.source));
@@ -166,14 +132,9 @@ function updateTableToMap(state: ResourceTableState) {
 		nextHistorical,
 		nextTable.filteredRows,
 	);
-	const nextMetricTopology = mergeTopologyMetrics(
-		nextMapped,
-		metrics,
-		metricIndex,
-	);
-	if (!nextMetricTopology) return null;
+	if (!nextMapped) return null;
 	const nextLayout = buildFlowTopologyLayoutState(
-		nextMetricTopology,
+		nextMapped,
 		"ownership",
 		new Set(),
 		null,
@@ -181,7 +142,7 @@ function updateTableToMap(state: ResourceTableState) {
 	const nextSelection = syncedTopologyNodeId({
 		selectedTopologyNodeId: syncedSelection,
 		selectedResource: state.selectedResource ?? null,
-		topologyNodes: nextMetricTopology?.nodes,
+		topologyNodes: nextMapped?.nodes,
 	});
 	const nextView = buildFlowTopologyViewFromLayoutState(nextLayout, {
 		mode: "ownership",
@@ -227,7 +188,7 @@ describe("F06 table-to-map updates with folded F03 selection reconciliation", ()
 			syncedTopologyNodeId({
 				selectedTopologyNodeId: syncedSelection,
 				selectedResource: state.selectedResource ?? null,
-				topologyNodes: metricTopology?.nodes,
+				topologyNodes: mappedTopology?.nodes,
 			});
 		}
 	});

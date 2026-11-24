@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe } from "vitest";
 import {
 	type ContextMetrics,
-	mergeResourceMetrics,
-	mergeTopologyMetrics,
+	resourceMetricFor,
 	metricsCard,
 	resourceMetricIndex,
 } from "@/lib/resource-metrics";
+import { PAGE_SIZE } from "@/features/resources/constants";
+import { buildResourceTableDisplayFromMembership, buildResourceTableMembership, buildResourceTablePage, buildResourceTableProjection, sortResourceTableRows } from "@/features/resources/resourceTableModel";
+import { buildFlowTopologyLayoutState, selectFlowTopology } from "@/features/resources/topology-view";
 import type {
 	ResourceMetricSummary,
 	ResourceMetricsSummary,
@@ -95,87 +97,59 @@ const topology: ResourceTopology = {
 const sparseIndex = resourceMetricIndex(oneContext(sparseMetrics));
 const unavailableIndex = resourceMetricIndex(oneContext(unavailableMetrics));
 const unsupportedIndex = resourceMetricIndex(oneContext(unsupportedMetrics));
-const unmatchedResources = resources.map((resource) => ({
-	...resource,
-	name: `unmatched-${resource.name}`,
-}));
-const emptyIndex = resourceMetricIndex([]);
-const sparseTableResult = mergeResourceMetrics(
-	resources,
-	sparseMetrics,
-	sparseIndex,
-);
-const sparseTopologyResult = mergeTopologyMetrics(
-	topology,
-	sparseMetrics,
-	sparseIndex,
-);
-const unavailableTableResult = mergeResourceMetrics(
-	resources,
-	unavailableMetrics,
-	unavailableIndex,
-);
-const unsupportedTopologyResult = mergeTopologyMetrics(
-	topology,
-	unsupportedMetrics,
-	unsupportedIndex,
-);
-const sparseMetricsSnapshot = JSON.stringify(sparseMetrics);
-const unavailableMetricsSnapshot = JSON.stringify(unavailableMetrics);
-const unsupportedMetricsSnapshot = JSON.stringify(unsupportedMetrics);
+const projection = buildResourceTableProjection(resources);
+const membership = buildResourceTableMembership(projection, { search: "", gitOpsFilter: "", healthFilter: "all" });
+const byName = sortResourceTableRows(membership.filteredRows, { id: "name", desc: false });
+const display = buildResourceTableDisplayFromMembership(membership, byName, {});
+const page = buildResourceTablePage(display, 0);
+const layout = buildFlowTopologyLayoutState(topology, "networkFlow", new Set(), null);
+const selected = selectFlowTopology(layout, { selectedNodeId: topology.nodes[0].id, showFullTopologyOnSelection: true });
+const sampledNodeIndex = selected.nodes.findIndex(({ data }) => data.resource && resourceMetricFor(sparseIndex, data.resource));
+assert(sampledNodeIndex >= 0);
+const visibleNodes = selected.nodes.slice(sampledNodeIndex, sampledNodeIndex + PAGE_SIZE);
 
-assert.equal(
-	metrics.pods.length + metrics.nodes.length + metrics.workloads.length,
-	total,
-);
-assert(sparseIndex.size > 0 && sparseIndex.size < total);
-assert(sparseTableResult.some((row) => row.metrics !== undefined));
-assert(sparseTableResult.some((row) => row.metrics === undefined));
-assert(sparseTableResult.some((row, index) => row === resources[index] && !row.metrics));
-assert.equal(sparseTopologyResult?.edges, topology.edges);
-assert.equal(topology.nodes.some((node) => node.metrics !== undefined), false);
-assert.equal(topology.edges.length, 0);
-assert.equal(unavailableIndex.size, 0);
-assert.equal(unsupportedIndex.size, 0);
-assert.equal(unavailableTableResult, resources);
-assert.equal(unsupportedTopologyResult, topology);
-assert.equal(
-	metricsCard([{ clusterContext: "unavailable", summary: unavailableMetrics }]).message,
-	"metrics API unreachable",
-);
-assert.equal(
-	metricsCard([{ clusterContext: "unsupported", summary: unsupportedMetrics }]).message,
-	"metrics API forbidden",
-);
-assert.deepEqual(unavailableMetrics.warnings, ["The metrics API could not be reached."]);
-assert.deepEqual(unsupportedMetrics.warnings, ["The metrics API denied this request."]);
-assert.equal(JSON.stringify(sparseMetrics), sparseMetricsSnapshot);
-assert.equal(JSON.stringify(unavailableMetrics), unavailableMetricsSnapshot);
-assert.equal(JSON.stringify(unsupportedMetrics), unsupportedMetricsSnapshot);
-assert.equal(
-	mergeResourceMetrics(unmatchedResources, metrics, emptyIndex),
-	unmatchedResources,
-);
+function readVisibleSamples(index: ReturnType<typeof resourceMetricIndex>) {
+	return [
+		page.pageRows.map((row) => resourceMetricFor(index, row, row.metrics)),
+		visibleNodes.map(({ data }) => data.resource && resourceMetricFor(index, data.resource)),
+	] as const;
+}
 
-describe("F05 resource metric arrival and retained sparse joins (10k rows)", () => {
-	benchmark("F05 cold shared index + table and topology joins", () => {
-		const index = resourceMetricIndex(oneContext(metrics));
-		mergeResourceMetrics(resources, metrics, index);
-		mergeTopologyMetrics(topology, metrics, index);
+assert.equal(membership.filteredRows.length, total);
+assert.equal(layout.layout.nodes.length, topology.nodes.length);
+const [sparseRows, sparseNodes] = readVisibleSamples(sparseIndex);
+assert(sparseRows.some((sample) => sample !== undefined));
+assert(sparseRows.some((sample) => sample === undefined));
+assert(sparseNodes.some((sample) => sample !== undefined));
+assert(readVisibleSamples(unavailableIndex)[0].every((sample) => sample === undefined));
+assert(readVisibleSamples(unsupportedIndex)[1].every((sample) => sample === undefined));
+assert.equal(metricsCard([{ clusterContext: "prod", summary: unavailableMetrics }]).message, "metrics API unreachable");
+assert.equal(metricsCard([{ clusterContext: "prod", summary: unsupportedMetrics }]).message, "metrics API forbidden");
+
+const fullIndex = resourceMetricIndex(oneContext(metrics));
+const byCpu = sortResourceTableRows(membership.filteredRows, { id: "cpu", desc: true }, [], fullIndex);
+assert.notEqual(byCpu[0], byName[0]);
+assert.equal(resourceMetricFor(fullIndex, byCpu[0])?.cpuMillicores, 999);
+const byMemory = sortResourceTableRows(membership.filteredRows, { id: "memory", desc: true }, [], fullIndex);
+assert.equal(resourceMetricFor(fullIndex, byMemory[0])?.memoryBytes, 511 * 1024 * 1024);
+assert.strictEqual(display.filteredRows, membership.filteredRows);
+assert.strictEqual(selected.nodes[0].data.resource?.metrics, undefined);
+assert(resources.every((row) => row.metrics === undefined));
+
+describe("F05 metric samples with retained table and map projections", () => {
+	benchmark("F05 cold sample index and visible labels (10k samples)", () => {
+		readVisibleSamples(resourceMetricIndex(oneContext(metrics)));
 	});
 
-	benchmark("F05 retained sparse index + table and topology updates", () => {
-		mergeResourceMetrics(resources, sparseMetrics, sparseIndex);
-		mergeTopologyMetrics(topology, sparseMetrics, sparseIndex);
-		mergeResourceMetrics(resources, unavailableMetrics, unavailableIndex);
-		mergeTopologyMetrics(topology, unsupportedMetrics, unsupportedIndex);
+	benchmark("F05 retained samples for a table page and visible map labels", () => {
+		readVisibleSamples(fullIndex);
+		readVisibleSamples(sparseIndex);
+		readVisibleSamples(unavailableIndex);
+		readVisibleSamples(unsupportedIndex);
 	});
 
-	benchmark(
-		"F05 empty index preserves unmatched table and topology references",
-		() => {
-			mergeResourceMetrics(unmatchedResources, metrics, emptyIndex);
-			mergeTopologyMetrics(topology, metrics, emptyIndex);
-		},
-	);
+	benchmark("F05 CPU sorting with retained table membership", () => {
+		const sortedRows = sortResourceTableRows(membership.filteredRows, { id: "cpu", desc: true }, [], fullIndex);
+		buildResourceTableDisplayFromMembership(membership, sortedRows, {});
+	});
 });

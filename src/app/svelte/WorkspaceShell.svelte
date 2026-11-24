@@ -3,8 +3,6 @@
 	import { loadingDelay } from "@/lib/loading-delay.svelte";
 	import ArgoAutoReconnect from "@/features/gitops/ArgoAutoReconnect.svelte";
 	import ArgoOperationMonitor from "@/features/gitops/ArgoOperationMonitor.svelte";
-	import { markStartup } from "@/lib/startup-marks";
-	import { onMount } from "svelte";
 	import { createQuery } from "@tanstack/svelte-query";
 	import {
 		Button,
@@ -29,14 +27,11 @@
 		type CreateWorkspaceInput,
 		type SavedWorkspace,
 	} from "@/lib/workspace-model";
-	import type { ArgoApplicationSummary } from "@/lib/gitops-types";
 	import { buildWorkspaceReadContext } from "@/lib/workspaceReadContext";
 	import {
 		type DiscoveredResourceKind,
 		type ResourceKindSelection,
-		type ResourceSummary,
 	} from "@/lib/types";
-	import { nodeIdToString, type TreeNodeId } from "@/lib/tree-nav";
 	import { queryKeys } from "@/lib/queryKeys";
 	import {
 		entryPointFromResource,
@@ -49,36 +44,19 @@
 		listPresentCustomResourceKinds,
 	} from "@/lib/tauri";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
-	import {
-		schedulePathStateWrite,
-		flushPathStateWrite,
-		type PathStateDetailTab,
-		type PathStateResourceDetailState,
-		type PathStateSurfacesState,
-		type PathStateWorkspaceSnapshot,
-	} from "@/lib/path-state";
+	import type { PathStateWorkspaceSnapshot } from "@/lib/path-state";
 	import SavedPortForwardRestore from "@/features/live-sessions/SavedPortForwardRestore.svelte";
-	import {
-		confirmStoppingExecSessions,
-		hasOpenExecSessions,
-	} from "@/features/live-sessions/openExecSessions.svelte";
 	import { canLeaveYamlDraft } from "@/features/resource-detail/yamlDraftGuard.svelte";
-	import { installYamlDraftCloseGuard } from "@/features/resource-detail/yamlDraftCloseGuard";
 	import YamlDraftNotice from "@/features/resource-detail/YamlDraftNotice.svelte";
 	import NamespaceList from "@/features/resources/NamespaceList.svelte";
 	import ResourceBrowser from "@/features/resources/ResourceBrowser.svelte";
-	import type { HealthFilter } from "@/features/resources/helpers";
 	import { resourceKey } from "@/lib/resource-identity";
-	import type { IncidentFilter } from "@/features/incidents";
-	import {
-		onOpenRbacVerifier,
-		type RbacVerifierHandoff,
-	} from "@/features/rbac/handoff";
 	import WorkspaceOverview from "@/features/workspaces/WorkspaceOverview.svelte";
 	import { gitOpsSelectionResource } from "@/lib/gitops-resource";
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import AppSurfaces from "./AppSurfaces.svelte";
-	import RemoteWorkspaceNotice from "@/features/remote-connection/RemoteWorkspaceNotice.svelte";
+	import { USE_BROWSER_DEV_MOCKS } from "@/lib/build-env";
+	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import { remoteNotice } from "@/lib/remote-notice";
 	import { desktopRemoteConnection } from "@/lib/remote-runtime";
 	import AppUsageFooter from "./AppUsageFooter.svelte";
@@ -87,23 +65,13 @@
 	import ResourceInspector from "./ResourceInspector.svelte";
 	import WorkspaceHeader from "./WorkspaceHeader.svelte";
 	import WorkspaceSidebar from "./WorkspaceSidebar.svelte";
-	import { getSettingsSnapshot, settingsStore } from "@/lib/settings-store";
+	import { settingsStore } from "@/lib/settings-store";
 	import {
 		GITOPS_RESOURCE_KINDS,
 		resourceBrowserAvailableKinds,
 	} from "./workspaceShellModel";
-	import {
-		buildWorkspaceNavigationModel,
-		createWorkspaceNavigation,
-		navigateWorkspace,
-		treeNodeForResource,
-		rememberedWorkspacePath,
-		rememberWorkspacePath,
-		workspacePathForWorkspace,
-		workspaceNavigationSnapshot,
-		type WorkspaceNavigationIntent,
-		type WorkspaceNavigationState,
-	} from "./workspaceNavigation";
+	import { buildWorkspaceNavigationModel } from "./workspaceNavigation";
+	import { workspaceNavigationController } from "./workspaceNavigationController.svelte";
 
 	let {
 		workspace,
@@ -134,53 +102,32 @@
 			sourceError: workspaceSourceQuery.error,
 		}),
 	);
-	function initialPathSnapshotForWorkspace() {
-		return workspacePathForWorkspace(
-			workspace,
-			initialPathState ?? rememberedWorkspacePath(workspace.id),
-		);
-	}
-	const initialPathSnapshot = initialPathSnapshotForWorkspace();
-	function initialWorkspaceNavigation() {
-		return createWorkspaceNavigation(workspace, initialPathSnapshot);
-	}
-	const initialNavigation = initialWorkspaceNavigation();
-	const initialDetailPathState = initialPathSnapshot?.detail ?? null;
-	const initialSurfacesPathState = initialPathSnapshot?.surfaces ?? null;
-	let navigation = $state.raw<WorkspaceNavigationState>(initialNavigation);
-	let sidebarNavigationRevision = $state(0);
-	const selectedNode = $derived(navigation.selectedNode);
-	const viewMode = $derived(navigation.viewMode);
-	const focusedResource = $derived(navigation.focusedResource);
-	const restoreTargetResource = $derived(navigation.restoreTargetResource);
-	const targetHelmRelease = $derived(navigation.targetHelmRelease);
-	const helmContext = $derived(navigation.helmContext);
-	const targetGitOpsApplication = $derived(navigation.targetGitOpsApplication);
+	const controller = workspaceNavigationController({
+		getWorkspace: () => workspace,
+		initialPathState: initialSnapshot(),
+		onPathStateConsumed: () => onPathStateConsumed(),
+		onOpenLauncher: () => onOpenLauncher(),
+		onChangeClusterContext: (id, input) => onChangeClusterContext(id, input),
+		currentTitle: () => title,
+	});
+	function initialSnapshot() { return initialPathState; }
+	const { returnFromRbacVerifier, applyWorkspaceNavigation, openLauncher, changeClusterContext, openSettings, closeSettings, openResources, openHelmReleaseFromResource, clearTargetHelmRelease, clearTargetGitOpsApplication, openArgo, openIncidents, openPortForwards, selectNode, selectResource, inspectResource, focusResource, togglePinnedResource, openEntryPoint } = controller;
+	const selectedNode = $derived(controller.navigation.selectedNode);
+	const viewMode = $derived(controller.navigation.viewMode);
+	const focusedResource = $derived(controller.navigation.focusedResource);
+	const restoreTargetResource = $derived(controller.navigation.restoreTargetResource);
+	const targetHelmRelease = $derived(controller.navigation.targetHelmRelease);
+	const helmContext = $derived(controller.navigation.helmContext);
+	const targetGitOpsApplication = $derived(controller.navigation.targetGitOpsApplication);
 	const resourceGitOpsFocusApplication = $derived(
-		navigation.resourceGitOpsFocusApplication,
+		controller.navigation.resourceGitOpsFocusApplication,
 	);
-	const resourceInitialSearch = $derived(navigation.resourceInitialSearch);
-	const resourceInitialGitOpsFilter = $derived(navigation.resourceInitialGitOpsFilter);
-	const resourceInitialHealthFilter = $derived(navigation.resourceInitialHealthFilter);
-	const resourceNamespaceOverride = $derived(navigation.resourceNamespaceOverride);
-	const initialIncidentFilter = $derived(navigation.initialIncidentFilter);
-	let expandedSections = $state<string[]>(
-		initialPathSnapshot?.expandedSections ??
-			(initialNavigation.selectedNode
-				? [nodeIdToString(initialNavigation.selectedNode)]
-				: []),
-	);
+	const resourceInitialSearch = $derived(controller.navigation.resourceInitialSearch);
+	const resourceInitialGitOpsFilter = $derived(controller.navigation.resourceInitialGitOpsFilter);
+	const resourceInitialHealthFilter = $derived(controller.navigation.resourceInitialHealthFilter);
+	const resourceNamespaceOverride = $derived(controller.navigation.resourceNamespaceOverride);
+	const initialIncidentFilter = $derived(controller.navigation.initialIncidentFilter);
 	let commandOpen = $state(false);
-	let navigationOpen = $state(false);
-	let resourceDetailPathState = $state<PathStateResourceDetailState | null>(
-		initialDetailPathState,
-	);
-	let surfacesPathState = $state<PathStateSurfacesState | null>(
-		initialSurfacesPathState,
-	);
-	let rbacVerifierHandoff = $state<RbacVerifierHandoff | undefined>();
-	let rbacVerifierReturnNavigation = $state<WorkspaceNavigationState | null>(null);
-	let rbacVerifierReturnLabel = $state<string | undefined>();
 	const kubeconfigSourceKey = $derived($settingsStore.kubeconfigSourceKey);
 	const showCustomResources = $derived($settingsStore.showCustomResources);
 	const workspaceCustomResourcePrewarmQuery = createQuery<DiscoveredResourceKind[]>(() => ({
@@ -215,7 +162,7 @@
 	const placeholder = $derived(navigationModel.placeholder);
 	const scopeSummary = $derived(summarizeWorkspaceScope(workspace.scope));
 	const isOverview = $derived(navigationModel.isOverview);
-	const remoteNoticeShown = $derived(viewMode !== "settings" && $desktopRemoteConnection !== null && remoteNotice($desktopRemoteConnection) !== null);
+	const remoteNoticeShown = $derived(USE_BROWSER_DEV_MOCKS && viewMode !== "settings" && $desktopRemoteConnection !== null && remoteNotice($desktopRemoteConnection) !== null);
 	const isNamespaceList = $derived(navigationModel.isNamespaceList);
 	const resourceBrowserScope = $derived(navigationModel.resourceBrowserScope);
 	const resourceBrowserNamespaces = $derived(resourceBrowserScope.namespaces);
@@ -305,254 +252,6 @@
 	const resourceInspectorDefaultSize = $derived(viewMode === "argo" ? 30 : 40);
 	const resourceInspectorMinSize = $derived(viewMode === "argo" ? 25 : 33);
 
-	onMount(() => {
-		markStartup("workspace-ready");
-		if (initialPathSnapshot) onPathStateConsumed();
-		const stopRbacHandoff = onOpenRbacVerifier((handoff) => {
-			rbacVerifierReturnNavigation = { ...navigation };
-			rbacVerifierReturnLabel = `Return to ${title}`;
-			rbacVerifierHandoff = handoff;
-			applyWorkspaceNavigation({
-				type: "selectNode",
-				node: { type: "kind", section: "rbac", kind: "Bindings" },
-			});
-		});
-		const closeNarrowNavigation = () => {
-			if (window.matchMedia("(min-width: 80rem)").matches) navigationOpen = false;
-		};
-		window.addEventListener("resize", closeNarrowNavigation);
-		window.addEventListener("pagehide", flushPathStateWrite);
-		const stopYamlDraftCloseGuard = installYamlDraftCloseGuard();
-		window.addEventListener("beforeunload", flushPathStateWrite);
-		const flushWhenHidden = () => {
-			if (document.visibilityState === "hidden") flushPathStateWrite();
-		};
-		document.addEventListener("visibilitychange", flushWhenHidden);
-		return () => {
-			flushPathStateWrite();
-			stopRbacHandoff();
-			window.removeEventListener("resize", closeNarrowNavigation);
-			window.removeEventListener("pagehide", flushPathStateWrite);
-			stopYamlDraftCloseGuard();
-			window.removeEventListener("beforeunload", flushPathStateWrite);
-			document.removeEventListener("visibilitychange", flushWhenHidden);
-		};
-	});
-
-	function returnFromRbacVerifier() {
-		if (rbacVerifierReturnNavigation) navigation = rbacVerifierReturnNavigation;
-		rbacVerifierHandoff = undefined;
-		rbacVerifierReturnNavigation = null;
-		rbacVerifierReturnLabel = undefined;
-	}
-
-	function applyWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar = true) {
-		const current = navigation.focusedResource;
-		const next = navigateWorkspace(navigation, intent).focusedResource;
-		const leavesFocusedResource =
-			current !== null && (next === null || resourceKey(next) !== resourceKey(current));
-		if (leavesFocusedResource && !canLeaveYamlDraft()) return;
-		if (!leavesFocusedResource || !hasOpenExecSessions()) {
-			commitWorkspaceNavigation(intent, revealSidebar);
-			return;
-		}
-		void confirmStoppingExecSessions().then((stop) => {
-			if (stop) commitWorkspaceNavigation(intent, revealSidebar);
-		});
-	}
-
-	function commitWorkspaceNavigation(intent: WorkspaceNavigationIntent, revealSidebar: boolean) {
-		navigation = navigateWorkspace(navigation, intent);
-		// A closed detail's tab must not carry over to the next resource opened without one.
-		if (intent.type === "clearResource") resourceDetailPathState = null;
-		if (revealSidebar && ["selectNode", "selectResource", "openResources", "openHelmRelease", "openArgo", "openIncidents", "openPortForwards"].includes(intent.type)) {
-			sidebarNavigationRevision += 1;
-		}
-	}
-
-	function openLauncher() {
-		if (!canLeaveYamlDraft()) return;
-		void confirmStoppingExecSessions().then((stop) => {
-			if (!stop) return;
-			rememberWorkspacePath(currentPathState());
-			onOpenLauncher();
-		});
-	}
-
-	function changeClusterContext(clusterContext: string) {
-		if (clusterContext === workspace.scope.clusterContext || !canLeaveYamlDraft()) return;
-		onChangeClusterContext(workspace.id, {
-			name: workspace.name,
-			clusterContext,
-			clusterContexts: [clusterContext],
-			namespaces: [],
-			kinds: workspace.scope.kinds,
-			shortcutPreferences: workspace.scope.shortcutPreferences,
-		});
-	}
-
-	function currentPathState(): PathStateWorkspaceSnapshot {
-		return workspaceNavigationSnapshot(navigation, {
-			workspaceId: workspace.id,
-			expandedSections,
-			detail: resourceDetailPathState,
-			surfaces: surfacesPathState,
-		});
-	}
-
-	$effect(() => {
-		const workspacePath = currentPathState();
-		rememberWorkspacePath(workspacePath);
-		schedulePathStateWrite({
-			version: 1,
-			runtime: "svelte",
-			launcherView: "workspaces",
-			workspace: workspacePath,
-		});
-	});
-
-	function openSettings() {
-		applyWorkspaceNavigation({ type: "openSettings" });
-	}
-
-	function closeSettings() {
-		applyWorkspaceNavigation({ type: "closeSettings" });
-	}
-
-	function openResources(
-		namespace?: string | string[],
-		initialSearch = "",
-		initialGitOpsFilter = workspace.scope.gitOpsFilter ?? workspace.scope.argoAppFilter ?? "",
-		initialHealthFilter: HealthFilter = "all",
-		gitOpsFocusApplication: ArgoApplicationSummary | null = null,
-	) {
-		if (namespace && !Array.isArray(namespace)) {
-			workspaceStore.recordRecentNamespace(
-				workspace.id,
-				workspace.scope.clusterContext,
-				namespace,
-			);
-		}
-		if (gitOpsFocusApplication) {
-			workspaceStore.recordRecentApplication(
-				workspace.id,
-				gitOpsFocusApplication.cluster,
-				gitOpsFocusApplication.name,
-				gitOpsFocusApplication.namespace,
-			);
-		}
-		applyWorkspaceNavigation({
-			type: "openResources",
-			namespaces: namespace,
-			search: initialSearch,
-			gitOpsFilter: initialGitOpsFilter,
-			healthFilter: initialHealthFilter,
-			gitOpsFocusApplication,
-		});
-	}
-
-	function openHelmReleaseFromResource(releaseName: string, namespace: string | null, cluster: string) {
-		applyWorkspaceNavigation({
-			type: "openHelmRelease",
-			name: releaseName,
-			namespace,
-			cluster,
-		});
-	}
-
-	function clearTargetHelmRelease() {
-		applyWorkspaceNavigation({ type: "clearHelmTarget" });
-	}
-
-	function clearTargetGitOpsApplication() {
-		applyWorkspaceNavigation({ type: "clearGitOpsTarget" });
-	}
-
-	function openArgo(argoApp?: string, namespace?: string, cluster = workspace.scope.clusterContext) {
-		if (argoApp) {
-			workspaceStore.recordRecentApplication(workspace.id, cluster, argoApp, namespace);
-		}
-		applyWorkspaceNavigation({
-			type: "openArgo",
-			application: argoApp ? { name: argoApp, namespace, cluster } : undefined,
-		});
-	}
-
-	function openIncidents(filter: IncidentFilter = "all") {
-		applyWorkspaceNavigation({ type: "openIncidents", filter });
-	}
-
-	function openPortForwards() {
-		applyWorkspaceNavigation({ type: "openPortForwards" });
-	}
-
-	function selectNode(nodeId: TreeNodeId, revealSidebar = true) {
-		navigationOpen = false;
-		if (nodeId.type === "namespace" && nodeId.namespace) {
-			workspaceStore.recordRecentNamespace(
-				workspace.id,
-				workspace.scope.clusterContext,
-				nodeId.namespace,
-			);
-		}
-		// Selecting Custom Resources also lists its kinds.
-		const key = nodeIdToString(nodeId);
-		if (nodeId.type === "section" && nodeId.section === "discovered" && !expandedSections.includes(key)) {
-			expandedSections = [...expandedSections, key];
-		}
-		applyWorkspaceNavigation({ type: "selectNode", node: nodeId }, revealSidebar);
-	}
-
-	function selectResource(resource: ResourceSummary, nodeId: TreeNodeId) {
-		workspaceStore.recordRecentResource(workspace.id, resource);
-		applyWorkspaceNavigation({ type: "selectResource", resource, node: nodeId });
-	}
-
-	function detailPathStateForTab(activeTab: PathStateDetailTab): PathStateResourceDetailState {
-		const settings = getSettingsSnapshot();
-		return {
-			activeTab,
-			metadataLabelsExpanded: resourceDetailPathState?.metadataLabelsExpanded ?? false,
-			metadataAnnotationsExpanded: resourceDetailPathState?.metadataAnnotationsExpanded ?? false,
-			selectedContainer: resourceDetailPathState?.selectedContainer ?? "",
-			logFilter: resourceDetailPathState?.logFilter ?? "",
-			logWrapLines: resourceDetailPathState?.logWrapLines ?? true,
-			logLatestFirst: resourceDetailPathState?.logLatestFirst ?? false,
-			yamlViewMode: resourceDetailPathState?.yamlViewMode ?? settings.yamlViewModeDefault,
-			yamlEncoding: resourceDetailPathState?.yamlEncoding ?? settings.yamlEncodingDefault,
-			yamlShowFullDiff: resourceDetailPathState?.yamlShowFullDiff ?? false,
-		};
-	}
-
-	function inspectResource(resource: ResourceSummary, detailTab?: PathStateDetailTab) {
-		resourceDetailPathState = detailTab ? detailPathStateForTab(detailTab) : null;
-		workspaceStore.recordRecentResource(workspace.id, resource);
-		applyWorkspaceNavigation({ type: "inspectResource", resource });
-	}
-
-	function focusResource(
-		resource: ResourceSummary,
-		source: "explicit" | "restore" = "explicit",
-	) {
-		if (source === "explicit") {
-			workspaceStore.recordRecentResource(workspace.id, resource);
-		}
-		applyWorkspaceNavigation({ type: "focusResource", resource });
-	}
-
-	function togglePinnedResource(resource: ResourceSummary) {
-		workspaceStore.togglePinnedResource(workspace.id, resource);
-	}
-
-	function openEntryPoint(resource: ResourceSummary) {
-		workspaceStore.recordRecentResource(workspace.id, resource);
-		applyWorkspaceNavigation({
-			type: "selectResource",
-			resource,
-			node: treeNodeForResource(resource),
-		});
-	}
-
 </script>
 
 <ArgoOperationMonitor context={workspaceReadContext} />
@@ -563,9 +262,9 @@
 		{workspace}
 		{workspaceReadContext}
 		{selectedNode}
-		{sidebarNavigationRevision}
-		bind:expandedSections
-		bind:navigationOpen
+		sidebarNavigationRevision={controller.sidebarNavigationRevision}
+		bind:expandedSections={controller.expandedSections}
+		bind:navigationOpen={controller.navigationOpen}
 		onNodeSelect={(id) => selectNode(id, false)}
 	/>
 
@@ -576,7 +275,7 @@
 			clusterContext={workspace.scope.clusterContext}
 			locationLabel={resourceBrowserScope.canQuery ? "Resources" : title}
 			focusApplicationName={resourceGitOpsFocusApplication?.name}
-			onOpenNavigation={() => (navigationOpen = true)}
+			onOpenNavigation={() => (controller.navigationOpen = true)}
 			onClusterChange={changeClusterContext}
 			onOpenPortForwards={openPortForwards}
 			onOpenLauncher={openLauncher}
@@ -614,17 +313,19 @@
 							pinned={focusedResourcePinned}
 							argoApplicationSummary={resourceGitOpsFocusApplication}
 							{workspaceReadContext}
-							initialPathState={resourceDetailPathState}
+							initialPathState={controller.resourceDetailPathState}
 							onPinToggle={() => togglePinnedResource(focusedResource)}
 							onClose={() => applyWorkspaceNavigation({ type: "clearResource" })}
 							onOpenHelmRelease={openHelmReleaseFromResource}
-							onPathStateChange={(state) => (resourceDetailPathState = state)}
+							onPathStateChange={(state) => (controller.resourceDetailPathState = state)}
 						/>
 					{/if}
 				{/snippet}
 			<ScrollArea class="h-full">
-				{#if remoteNoticeShown}
-					<RemoteWorkspaceNotice />
+				{#if browserMockSurfaces && remoteNoticeShown}
+					{#await browserMockSurfaces.remoteNotice() then { default: RemoteWorkspaceNotice }}
+						<RemoteWorkspaceNotice />
+					{/await}
 				{:else if isOverview}
 					<WorkspaceOverview
 						{workspace}
@@ -669,7 +370,7 @@
 							targetResource={restoreTargetResource ?? focusedResource}
 							selectedResource={focusedResource}
 							{title}
-							initialPathState={navigation.resourceBrowserPathState}
+							initialPathState={controller.navigation.resourceBrowserPathState}
 							{pinnedResourceKeys}
 							onPathStateChange={(pathState) =>
 								applyWorkspaceNavigation({ type: "updateResourceBrowserPath", pathState })}
@@ -692,19 +393,19 @@
 						{helmContext}
 						{targetGitOpsApplication}
 						{initialIncidentFilter}
-						initialPathState={initialSurfacesPathState}
+						initialPathState={controller.initialSurfacesPathState}
 						onOpenResources={openResources}
 						onResourceInspect={inspectResource}
 						onResourceSelect={selectResource}
 						onTargetHelmReleaseResolved={clearTargetHelmRelease}
 						onTargetGitOpsApplicationResolved={clearTargetGitOpsApplication}
-						onPathStateChange={(state) => (surfacesPathState = state)}
-						rbacVerifierHandoff={rbacVerifierHandoff}
-						onRbacVerifierHandoffConsumed={() => (rbacVerifierHandoff = undefined)}
+						onPathStateChange={(state) => (controller.surfacesPathState = state)}
+						rbacVerifierHandoff={controller.rbacVerifierHandoff}
+						onRbacVerifierHandoffConsumed={() => (controller.rbacVerifierHandoff = undefined)}
 						onRbacViewChange={(rbacView) =>
 							selectNode({ type: "kind", section: "rbac", kind: rbacView })}
-						onRbacVerifierReturn={rbacVerifierReturnNavigation ? returnFromRbacVerifier : undefined}
-						rbacVerifierReturnLabel={rbacVerifierReturnLabel}
+						onRbacVerifierReturn={controller.rbacVerifierReturnNavigation ? returnFromRbacVerifier : undefined}
+						rbacVerifierReturnLabel={controller.rbacVerifierReturnLabel}
 						onCloseSettings={closeSettings}
 					/>
 				{:else}

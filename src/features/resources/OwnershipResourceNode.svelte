@@ -7,7 +7,7 @@
 	import { Handle, Position, type NodeProps } from "@xyflow/svelte";
 	import { Badge } from "@/components/ui/svelte";
 	import { getResourceKindVisual } from "@/app/svelte/resourceVisuals";
-	import { formatCompactResourceMetrics } from "@/lib/resource-metrics";
+	import { formatCompactResourceMetrics, resourceMetricFor, TOPOLOGY_METRICS, type ResourceMetricIndex } from "@/lib/resource-metrics";
 	import { cnfast } from "@/lib/utils";
 	import { smartKubernetesName } from "./ownership-node-name";
 	import {
@@ -37,8 +37,11 @@
 	const kindLabel = $derived((node?.kind ?? nodeData.kind)?.toUpperCase());
 	const scopeText = $derived(node?.namespace ?? "Cluster scoped");
 	const age = $derived(node?.summary.age);
+	const metricIndex = getContext<(() => ResourceMetricIndex | undefined) | undefined>(TOPOLOGY_METRICS);
 	const metricHint = $derived(
-		node ? formatCompactResourceMetrics(node.metrics ?? node.summary.metrics) : undefined,
+		node ? formatCompactResourceMetrics(resourceMetricFor(metricIndex?.(), {
+				cluster: node.summary.cluster, kind: node.kind, namespace: node.namespace, name: node.name,
+			}, node.metrics ?? node.summary.metrics)) : undefined,
 	);
 	const portHint = $derived(
 		nodeData.showPortHints && node?.portHints?.length

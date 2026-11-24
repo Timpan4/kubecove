@@ -2,11 +2,11 @@ import type { CoordinateExtent } from "@xyflow/system";
 import type { ResourceTopology, TopologyMode } from "@/lib/types";
 import {
 	applyFlowTopologySelectionWithIndex,
-	buildFlowTopologyLayout,
-	buildFlowTopologySelectionIndex,
+	layoutFlowTopologyGraph,
 	filterFlowTopologyToSelectedRoot,
 	getTopologyTranslateExtent,
 } from "./topology-implementation";
+import { buildTopologyGraph, type TopologyGraph } from "./topology-graph";
 import type {
 	FlowTopology,
 	FlowTopologySelectionIndex,
@@ -34,28 +34,29 @@ export interface FlowTopologyLayoutState {
 	selectionIndex: FlowTopologySelectionIndex;
 }
 
-export function selectedStandaloneExpansionId(
-	topology: ResourceTopology,
+export function selectedStandaloneExpansionId(topology: ResourceTopology, selectedNodeId: string | null): string | null {
+	return selectedStandaloneExpansionIdForGraph(buildTopologyGraph(topology), selectedNodeId);
+}
+
+export function selectedStandaloneExpansionIdForGraph(
+	graph: TopologyGraph,
 	selectedNodeId: string | null,
 ): string | null {
-	if (!selectedNodeId || !topology.nodes.some((node) => node.id === selectedNodeId)) return null;
-	return topology.edges.some(
-		(edge) => edge.source === selectedNodeId || edge.target === selectedNodeId,
-	)
-		? null
-		: selectedNodeId;
+	if (!selectedNodeId || !graph.nodeIds.has(selectedNodeId)) return null;
+	return graph.parents.has(selectedNodeId) || graph.children.has(selectedNodeId) ? null : selectedNodeId;
 }
 
 export function buildFlowTopologyView(
 	topology: ResourceTopology,
 	options: FlowTopologyViewOptions,
 ): FlowTopologyView {
+	const graph = buildTopologyGraph(topology);
 	return buildFlowTopologyViewFromLayoutState(
-		buildFlowTopologyLayoutState(
-			topology,
+		buildFlowTopologyLayoutStateFromGraph(
+			graph,
 			options.mode,
 			options.expandedStandaloneKinds,
-			selectedStandaloneExpansionId(topology, options.selectedNodeId),
+			selectedStandaloneExpansionIdForGraph(graph, options.selectedNodeId),
 		),
 		options,
 	);
@@ -67,18 +68,27 @@ export function buildFlowTopologyLayoutState(
 	expandedStandaloneKinds: ReadonlySet<string>,
 	selectedNodeIdForExpansion: string | null,
 ): FlowTopologyLayoutState {
+	return buildFlowTopologyLayoutStateFromGraph(buildTopologyGraph(topology), mode, expandedStandaloneKinds, selectedNodeIdForExpansion);
+}
+
+export function buildFlowTopologyLayoutStateFromGraph(
+	graph: TopologyGraph,
+	mode: TopologyMode,
+	expandedStandaloneKinds: ReadonlySet<string>,
+	selectedNodeIdForExpansion: string | null,
+): FlowTopologyLayoutState {
 	return {
-		layout: buildFlowTopologyLayout(topology, selectedNodeIdForExpansion, mode, {
+		layout: layoutFlowTopologyGraph(graph, selectedNodeIdForExpansion, mode, {
 			expandedStandaloneKinds,
 		}),
-		selectionIndex: buildFlowTopologySelectionIndex(topology),
+		selectionIndex: { graph },
 	};
 }
 
-export function buildFlowTopologyViewFromLayoutState(
+export function selectFlowTopology(
 	state: FlowTopologyLayoutState,
-	options: FlowTopologyViewOptions,
-): FlowTopologyView {
+	options: Pick<FlowTopologyViewOptions, "selectedNodeId" | "showFullTopologyOnSelection">,
+): FlowTopology {
 	const visible = options.showFullTopologyOnSelection
 		? state.layout
 		: filterFlowTopologyToSelectedRoot(
@@ -86,11 +96,18 @@ export function buildFlowTopologyViewFromLayoutState(
 				state.selectionIndex,
 				options.selectedNodeId,
 			);
-	const graph = applyFlowTopologySelectionWithIndex(
+	return applyFlowTopologySelectionWithIndex(
 		visible,
 		state.selectionIndex,
 		options.selectedNodeId,
 	);
+}
+
+export function buildFlowTopologyViewFromLayoutState(
+	state: FlowTopologyLayoutState,
+	options: FlowTopologyViewOptions,
+): FlowTopologyView {
+	const graph = selectFlowTopology(state, options);
 	const viewportSize = options.viewportSize;
 	return {
 		graph,

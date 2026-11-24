@@ -6,10 +6,13 @@ import {
 	filterResourceSearchIndex,
 	resourceGroupCollapseKey,
 } from "@/features/resources/helpers";
-import { filterResourcesByKinds } from "@/features/resources/resourceBrowserModel";
+import { createTableTopologyFilter, filterResourcesByKinds } from "@/features/resources/resourceBrowserModel";
 import { createResourceTableEntryBuilder } from "@/features/resources/resourceTableEntries";
 import {
 	buildResourceTableDisplay,
+	buildResourceTableDisplayFromMembership,
+	buildResourceTableMembership,
+	sortResourceTableRows,
 	buildResourceTableModel,
 	buildResourceTablePage,
 	buildResourceTableProjection,
@@ -23,6 +26,7 @@ import type {
 	ResourceMetricSummary,
 	ResourceSummary,
 } from "@/lib/types";
+import { buildOwnershipTopology } from "./topology-benchmark-fixtures";
 import { benchmark } from "./benchmark";
 
 const kinds = [
@@ -446,6 +450,23 @@ assert(
 	),
 );
 
+const retainedMembership = buildResourceTableMembership(ownershipProjection, ownershipInteractionState);
+const mapFilter = createTableTopologyFilter();
+const retainedMapTopology = buildOwnershipTopology(500);
+const sortVariants = [
+	{ ...ownershipInteractionState, sort: { id: "name", desc: false } },
+	{ ...ownershipInteractionState, sort: { id: "age", desc: true } },
+] satisfies ResourceTableState[];
+const sortedMembershipRows = sortResourceTableRows(retainedMembership.filteredRows, sortVariants[0].sort);
+const expectedMap = mapFilter(retainedMapTopology, retainedMembership.filteredRows, false);
+for (const variant of sortVariants) {
+	const rows = sortResourceTableRows(retainedMembership.filteredRows, variant.sort, variant.contexts);
+	const display = buildResourceTableDisplayFromMembership(retainedMembership, rows, variant);
+	assert.strictEqual(display.filteredRows, retainedMembership.filteredRows);
+	assert.deepEqual(display.displayRows, buildResourceTableDisplay(ownershipProjection, variant).displayRows);
+	assert.strictEqual(mapFilter(retainedMapTopology, display.filteredRows, false), expectedMap);
+}
+
 describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () => {
 	benchmark("buildResourceSearchIndex", () => {
 		buildResourceSearchIndex(rows);
@@ -476,6 +497,23 @@ describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () 
 	benchmark("buildResourceTableModel repeated variants (reused projection)", () => {
 		for (const variant of stateVariants)
 			buildResourceTableModel(projection, variant);
+	});
+
+	benchmark("F02 sort-only with retained membership and map scope", () => {
+		for (const variant of sortVariants) {
+			const rows = sortResourceTableRows(retainedMembership.filteredRows, variant.sort, variant.contexts);
+			const display = buildResourceTableDisplayFromMembership(retainedMembership, rows, variant);
+			mapFilter(retainedMapTopology, display.filteredRows, false);
+		}
+	});
+
+	benchmark("F02 sort-only with repeated membership lookup", () => {
+		for (const variant of sortVariants) buildResourceTableDisplay(ownershipProjection, variant);
+	});
+
+	benchmark("F02 grouping-only with retained sorted rows", () => {
+		buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, ownershipState);
+		buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, ownershipInteractionState);
 	});
 
 	benchmark("F02 row selection (reused display and page)", () => {

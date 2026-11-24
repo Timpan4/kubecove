@@ -7,6 +7,9 @@ import {
 	buildFlowTopologyLayout,
 	buildFlowTopologySelectionIndex,
 	getFlowTopologyBounds,
+	flowTopologyFitForViewport,
+	prepareFlowTopologyFit,
+	topologyTranslateExtentFromBounds,
 } from "@/features/resources/topology-implementation";
 import {
 	buildFlowTopologyLayoutState,
@@ -217,6 +220,10 @@ assert(
 	),
 );
 
+const retainedFit = prepareFlowTopologyFit(fullView.graph.nodes, fullView.graph.edges, null);
+assert.deepEqual(flowTopologyFitForViewport(retainedFit, "ownership:1440x900", viewports[1]), resizedFitPlan);
+assert.deepEqual(topologyTranslateExtentFromBounds(fullBounds, viewports[0]), fullView.translateExtent);
+
 describe("F07 graph layout and F09 retained topology selection (500 apps / 1k nodes)", () => {
 	benchmark("F07 layout construction per selection (50 full rebuilds)", () => {
 		for (const selectedId of selectedIds)
@@ -263,6 +270,13 @@ describe("F07 graph layout and F09 retained topology selection (500 apps / 1k no
 				expandedStandaloneKinds,
 				viewportSize: viewports[0],
 			});
+		}
+	});
+
+	benchmark("F10 resize only with retained graph bounds and fit identity", () => {
+		for (const [index, viewport] of viewports.entries()) {
+			topologyTranslateExtentFromBounds(fullBounds, viewport);
+			flowTopologyFitForViewport(retainedFit, String(index), viewport);
 		}
 	});
 

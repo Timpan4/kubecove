@@ -1,6 +1,6 @@
 import type { SmoothStepPathOptions } from "@xyflow/system";
-import type { ResourceTopology, TopologyNode } from "@/lib/types";
-import { pushMapValue, type TopologyGraph, uniqueNodes } from "./topology-graph";
+import type { TopologyNode } from "@/lib/types";
+import { pushMapValue, type TopologyGraph } from "./topology-graph";
 
 export const NODE_WIDTH = 190;
 export const NODE_HEIGHT = 78;
@@ -62,17 +62,14 @@ function createdAtMs(node: TopologyNode): number | null {
 	return Number.isFinite(ms) ? ms : null;
 }
 
-function compareCreatedAtNewestFirst(a: TopologyNode, b: TopologyNode): number {
-	const aMs = createdAtMs(a);
-	const bMs = createdAtMs(b);
+function compareCreatedAtNewestFirst(aMs: number | null, bMs: number | null): number {
 	if (aMs === null && bMs === null) return 0;
 	if (aMs === null) return 1;
 	if (bMs === null) return -1;
 	return bMs - aMs;
 }
 
-function createdAtNewestFirstKey(node: TopologyNode): string {
-	const ms = createdAtMs(node);
+function createdAtNewestFirstKey(ms: number | null): string {
 	if (ms === null) return "1:";
 	return `0:${String(Number.MAX_SAFE_INTEGER - ms).padStart(16, "0")}`;
 }
@@ -82,29 +79,27 @@ function createdAtNewestFirstKey(node: TopologyNode): string {
 // so one shared collator keeps the order and skips that cost per comparison.
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true });
 
-export function sortTopologyNodes(a: TopologyNode, b: TopologyNode): number {
+function sortTopologyNodes(a: TopologyNode, b: TopologyNode, timestamps: ReadonlyMap<string, number | null>): number {
 	const rank = kindRank(a.kind) - kindRank(b.kind);
 	if (rank !== 0) return rank;
 	const namespace = (a.namespace ?? "").localeCompare(b.namespace ?? "");
 	if (namespace !== 0) return namespace;
 	const kind = a.kind.localeCompare(b.kind);
 	if (kind !== 0) return kind;
-	const createdAt = compareCreatedAtNewestFirst(a, b);
+	const createdAt = compareCreatedAtNewestFirst(timestamps.get(a.id) ?? null, timestamps.get(b.id) ?? null);
 	if (createdAt !== 0) return createdAt;
 	return NAME_COLLATOR.compare(a.name, b.name);
 }
 
-export function topologyColumnDepth(
-	topology: ResourceTopology,
-): Map<string, number> {
-	const topologyNodes = uniqueNodes(topology.nodes);
-	const nodesById = new Map(topologyNodes.map((node) => [node.id, node]));
-	const parents = new Map<string, string[]>();
-	for (const edge of topology.edges) {
-		if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) continue;
-		pushMapValue(parents, edge.target, edge.source);
-	}
+export function topologySortKeys(graph: TopologyGraph) {
+	const timestamps = new Map(graph.nodes.map((node) => [node.id, createdAtMs(node)]));
+	return {
+		compare: (a: TopologyNode, b: TopologyNode) => sortTopologyNodes(a, b, timestamps),
+		createdAtKey: (node: TopologyNode) => createdAtNewestFirstKey(timestamps.get(node.id) ?? null),
+	};
+}
 
+export function topologyColumnDepth({ nodes, nodesById, parents }: TopologyGraph): Map<string, number> {
 	const depthById = new Map<string, number>();
 	const visiting = new Set<string>();
 	function resolve(node: TopologyNode): number {
@@ -129,30 +124,18 @@ export function topologyColumnDepth(
 		return depth;
 	}
 
-	for (const node of topologyNodes) resolve(node);
+	for (const node of nodes) resolve(node);
 	return depthById;
 }
 
-function topologyIncomingParents(topology: ResourceTopology): Map<string, string[]> {
-	const nodeIds = new Set(uniqueNodes(topology.nodes).map((node) => node.id));
-	const parents = new Map<string, string[]>();
-	for (const edge of topology.edges) {
-		if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
-		pushMapValue(parents, edge.target, edge.source);
-	}
-	return parents;
-}
-
 export function topologyLayoutOrder(
-	nodes: TopologyNode[],
-	topology: ResourceTopology,
+	{ nodes, nodesById, parents }: TopologyGraph,
 	depthById: Map<string, number>,
+	sortKeys: ReturnType<typeof topologySortKeys>,
 ): Map<string, string> {
-	const nodesById = new Map(nodes.map((node) => [node.id, node]));
-	const parents = topologyIncomingParents(topology);
 	const roots = nodes
 		.filter((node) => (parents.get(node.id) ?? []).length === 0)
-		.sort(sortTopologyNodes);
+		.sort(sortKeys.compare);
 	const rootOrder = new Map(roots.map((node, index) => [node.id, index]));
 	const memo = new Map<string, string>();
 	const visiting = new Set<string>();
@@ -161,7 +144,7 @@ export function topologyLayoutOrder(
 			String(kindRank(node.kind)).padStart(2, "0"),
 			node.namespace ?? "",
 			node.kind,
-			createdAtNewestFirstKey(node),
+			sortKeys.createdAtKey(node),
 			node.name,
 			node.id,
 		].join("|");
@@ -174,7 +157,7 @@ export function topologyLayoutOrder(
 		const parentNodes = (parents.get(node.id) ?? [])
 			.map((id) => nodesById.get(id))
 			.filter((parent): parent is TopologyNode => Boolean(parent))
-			.sort(sortTopologyNodes);
+			.sort(sortKeys.compare);
 		const parentKey =
 			parentNodes.length > 0
 				? parentNodes.map(resolve).sort()[0]
@@ -196,6 +179,7 @@ export function topologyLayoutOrder(
 export function compareNodesByLayoutOrder(
 	orderById: Map<string, string>,
 	depthById: Map<string, number>,
+	compare: (a: TopologyNode, b: TopologyNode) => number,
 ): (a: TopologyNode, b: TopologyNode) => number {
 	return (a, b) => {
 		const depth = (depthById.get(a.id) ?? 0) - (depthById.get(b.id) ?? 0);
@@ -204,17 +188,15 @@ export function compareNodesByLayoutOrder(
 			orderById.get(b.id) ?? "",
 		);
 		if (order !== 0) return order;
-		return sortTopologyNodes(a, b);
+		return compare(a, b);
 	};
 }
 
 function buildPrimaryChildren(
 	graph: TopologyGraph,
-	orderById: Map<string, string>,
-	depthById: Map<string, number>,
+	compareNodes: (a: TopologyNode, b: TopologyNode) => number,
 ): Map<string, string[]> {
 	const primaryChildren = new Map<string, string[]>();
-	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
 
 	for (const node of graph.nodes) {
 		const parentNodes = (graph.parents.get(node.id) ?? [])
@@ -241,15 +223,14 @@ function buildPrimaryChildren(
 export function buildTopologyPositions(
 	graph: TopologyGraph,
 	depthById: Map<string, number>,
-	orderById: Map<string, string>,
+	compareNodes: (a: TopologyNode, b: TopologyNode) => number,
 	layout: TopologyLayoutMetrics = DEFAULT_TOPOLOGY_LAYOUT,
 ): Map<string, { x: number; y: number }> {
 	const nodeYStep = layout.nodeHeight + layout.rowGap;
-	const primaryChildren = buildPrimaryChildren(graph, orderById, depthById);
+	const primaryChildren = buildPrimaryChildren(graph, compareNodes);
 	const primaryChildIds = new Set(
 		Array.from(primaryChildren.values()).flat(),
 	);
-	const compareNodes = compareNodesByLayoutOrder(orderById, depthById);
 	const roots = graph.nodes
 		.filter((node) => !primaryChildIds.has(node.id))
 		.sort(compareNodes);
@@ -260,7 +241,7 @@ export function buildTopologyPositions(
 		(node) => (primaryChildren.get(node.id) ?? []).length === 0,
 	);
 	const orderedRoots =
-		roots.length > 0 ? [...ownedRoots, ...standaloneRoots] : graph.nodes.sort(compareNodes);
+		roots.length > 0 ? [...ownedRoots, ...standaloneRoots] : [...graph.nodes].sort(compareNodes);
 	const positions = new Map<string, { x: number; y: number }>();
 	const visited = new Set<string>();
 
@@ -311,7 +292,7 @@ export function buildTopologyPositions(
 		if (cursorY > beforeRootY) cursorY += groupGap;
 	}
 
-	for (const node of graph.nodes.sort(compareNodes)) {
+	for (const node of [...graph.nodes].sort(compareNodes)) {
 		if (visited.has(node.id)) continue;
 		cursorY = layoutNode(node.id, cursorY, new Set()) + ROOT_GROUP_GAP;
 	}

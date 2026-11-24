@@ -3,10 +3,11 @@
 	import { prefersReducedMotion } from "svelte/motion";
 	import { useSvelteFlow } from "@xyflow/svelte";
 	import {
-		buildFlowTopologyFitPlan,
 		type FlowTopologyEdge,
 		type FlowTopologyNode,
 	} from "./topology";
+
+	import { flowTopologyFitForViewport, prepareFlowTopologyFit } from "./topology-implementation";
 
 	const FIT_VIEW_DURATION_MS = 260;
 	const SELECTED_FIT_VIEW_DURATION_MS = 120;
@@ -29,8 +30,9 @@
 
 	const flow = useSvelteFlow<FlowTopologyNode, FlowTopologyEdge>();
 	let lastFitKey = "";
+	const fit = $derived(prepareFlowTopologyFit(nodes, edges, selectedNodeId));
 	const fitPlan = $derived(
-		buildFlowTopologyFitPlan(nodes, edges, selectedNodeId, viewportKey, {
+		flowTopologyFitForViewport(fit, viewportKey, {
 			width: viewportWidth,
 			height: viewportHeight,
 		}),

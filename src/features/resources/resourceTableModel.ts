@@ -11,6 +11,7 @@ import {
 	defaultResourceKindLanes,
 	resourceKindOrder,
 } from "@/lib/resource-kind-order";
+import { resourceMetricFor, type ResourceMetricIndex } from "@/lib/resource-metrics";
 import type { ResourceSummary } from "@/lib/types";
 import { PAGE_SIZE } from "./constants";
 import { kindGroupRank } from "./grouping";
@@ -25,6 +26,7 @@ import type {
 	ResourceSort,
 	ResourceSortColumn,
 	ResourceTableDisplay,
+	ResourceTableMembership,
 	ResourceTableModel,
 	ResourceTablePage,
 	ResourceTableProjection,
@@ -50,6 +52,7 @@ const nameCollator = new Intl.Collator();
 function valueForSort(
 	row: ResourceSummary,
 	column: ResourceSortColumn,
+	metrics?: ResourceMetricIndex,
 ): string | number {
 	switch (column) {
 		case "context":
@@ -67,9 +70,9 @@ function valueForSort(
 		case "age":
 			return row.createdAt ?? row.age;
 		case "cpu":
-			return row.metrics?.cpuMillicores ?? -1;
+			return resourceMetricFor(metrics, row, row.metrics)?.cpuMillicores ?? -1;
 		case "memory":
-			return row.metrics?.memoryBytes ?? -1;
+			return resourceMetricFor(metrics, row, row.metrics)?.memoryBytes ?? -1;
 		default:
 			return row.name;
 	}
@@ -90,15 +93,16 @@ function isNumber<Value>(value: Value): value is Value & number {
 // order. Without the rank, a watch refetch of one context could reorder
 // same-named rows of two contexts by merge order. A context outside the
 // workspace ranks last.
-function sortedResourceRows(
+export function sortResourceTableRows(
 	rows: ResourceSummary[],
 	sort: ResourceSort,
-	contexts: readonly string[],
+	contexts: readonly string[] = [],
+	metrics?: ResourceMetricIndex,
 ): ResourceSummary[] {
 	const ranks = new Map(contexts.map((context, index) => [context, index]));
 	const decorated = [];
 	for (const row of rows)
-		decorated.push({ row, value: valueForSort(row, sort.id), rank: ranks.get(row.cluster) ?? contexts.length });
+		decorated.push({ row, value: valueForSort(row, sort.id, metrics), rank: ranks.get(row.cluster) ?? contexts.length });
 	decorated.sort((left, right) => {
 		const compare = compareValues(left.value, right.value);
 		if (compare !== 0) return sort.desc ? -compare : compare;
@@ -207,13 +211,10 @@ export function buildResourceTableProjection(
 	};
 }
 
-export function buildResourceTableDisplay(
+export function buildResourceTableMembership(
 	projection: ResourceTableProjection,
-	state: Omit<
-		ResourceTableState,
-		"pageIndex" | "collapsedGroups" | "selectedResource"
-	>,
-): ResourceTableDisplay {
+	state: Pick<ResourceTableState, "search" | "gitOpsFilter" | "healthFilter" | "contextFilter">,
+): ResourceTableMembership {
 	const searchedRows = filterResourceSearchIndex(
 		projection.searchIndex,
 		state.search,
@@ -225,16 +226,30 @@ export function buildResourceTableDisplay(
 		? searchedRows.filter((row) => contextFilter.has(row.cluster))
 		: searchedRows;
 	const filteredRows = filterResourcesByHealth(scopedRows, state.healthFilter);
-	const sortedRows = sortedResourceRows(filteredRows, state.sort, state.contexts ?? []);
 	const groupedByGitOps = filteredRows.some(
 		(row) => gitOpsOwnership(row) !== null,
 	);
+	return {
+		scopedRows,
+		filteredRows,
+		groupedByGitOps,
+		multiContext: projection.multiContext,
+		gitOpsFilters: projection.gitOpsFilters,
+		healthSummary: buildResourceHealthSummary(scopedRows),
+	};
+}
+
+export function buildResourceTableDisplayFromMembership(
+	membership: ResourceTableMembership,
+	sortedRows: ResourceSummary[],
+	state: Pick<ResourceTableState, "kindOrder" | "preferredGitOpsResourceKeys">,
+): ResourceTableDisplay {
 	const kindOrder = state.kindOrder ?? DEFAULT_KIND_ORDER;
-	const displayRows = groupedByGitOps
+	const displayRows = membership.groupedByGitOps
 		? gitOpsGroupedRows(
 				sortedRows,
 				kindOrder,
-				projection.multiContext,
+				membership.multiContext,
 				state.preferredGitOpsResourceKeys,
 			)
 		: typeGroupedRows(sortedRows, kindOrder);
@@ -263,17 +278,24 @@ export function buildResourceTableDisplay(
 		);
 	}
 	return {
-		scopedRows,
-		filteredRows,
+		...membership,
 		displayRows,
 		pageCount,
 		totalRows: displayRows.length,
-		groupedByGitOps,
-		multiContext: projection.multiContext,
-		gitOpsFilters: projection.gitOpsFilters,
-		healthSummary: buildResourceHealthSummary(scopedRows),
 		rowForResource,
 	};
+}
+
+export function buildResourceTableDisplay(
+	projection: ResourceTableProjection,
+	state: Omit<ResourceTableState, "pageIndex" | "collapsedGroups" | "selectedResource">,
+): ResourceTableDisplay {
+	const membership = buildResourceTableMembership(projection, state);
+	return buildResourceTableDisplayFromMembership(
+		membership,
+		sortResourceTableRows(membership.filteredRows, state.sort, state.contexts),
+		state,
+	);
 }
 
 export function buildResourceTablePage(
