@@ -6,6 +6,8 @@ mod cluster;
 mod logs_gitops;
 mod problems;
 mod resources;
+#[cfg(feature = "loopback")]
+pub use resources::{describe_resource_body, page_resource_rows};
 
 use crate::handler::McpContext;
 use kubecove_kube::commands::{ClusterAccess, FiniteRead};

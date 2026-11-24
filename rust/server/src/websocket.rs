@@ -57,7 +57,7 @@ async fn run(
             return;
         }
         let writer = async {
-            let mut channel_message: Option<String> = None;
+            let mut channel_message = None;
             loop {
                 let ready = owner.channels.ready.notified();
                 tokio::pin!(ready);
@@ -68,7 +68,7 @@ async fn run(
                 let message = tokio::select! {
                     message = pending_responses.recv() => match message { Some(message) => message, None => return },
                     () = std::future::ready(()), if channel_message.is_some() => {
-                        Message::Text(channel_message.take().expect("pending channel frame").into())
+                        Message::Text(channel_message.take().expect("pending channel frame"))
                     },
                     () = ready => continue,
                 };

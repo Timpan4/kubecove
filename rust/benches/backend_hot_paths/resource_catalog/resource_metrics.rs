@@ -131,3 +131,59 @@ mod resource_metrics_normalization_and_rollup_10000 {
         bencher.bench(|| black_box(project_resource_metrics(black_box(&METRICS_INPUT))));
     }
 }
+
+mod resource_metrics_decode_and_rollup_10000 {
+    use super::*;
+    use k8s_openapi::api::{apps::v1::ReplicaSet, core::v1::Pod};
+    use kubecove_inspection::commands::metrics::decode_and_roll_up_resource_metrics;
+    use serde_json::json;
+
+    type Fixture = (String, String, Vec<Pod>, Vec<ReplicaSet>);
+
+    static INPUT: LazyLock<Fixture> = LazyLock::new(|| {
+        let mut pods = Vec::new();
+        let mut items = Vec::new();
+        for index in 0..10_000 {
+            let name = format!("pod-{index}");
+            pods.push(serde_json::from_value(json!({
+                "metadata": {"name":name,"namespace":"apps","ownerReferences":[
+                    {"apiVersion":"apps/v1","kind":"ReplicaSet","name":"worker","uid":"rs","controller":true}
+                ]}
+            })).unwrap());
+            items.push(json!({
+                "metadata":{"name":name,"namespace":"apps","labels":{"app":"worker"}},
+                "timestamp":"2026-01-01T00:00:00Z",
+                "containers":[{"name":"app","usage":{"cpu":"10m","memory":"1Mi"}}]
+            }));
+        }
+        let replica_set = serde_json::from_value(json!({
+            "metadata":{"name":"worker","namespace":"apps","uid":"rs","ownerReferences":[
+                {"apiVersion":"apps/v1","kind":"Deployment","name":"worker","uid":"deploy","controller":true}
+            ]}
+        })).unwrap();
+        (
+            json!({"metadata":{}, "items":items}).to_string(),
+            json!({"metadata":{}, "items":[]}).to_string(),
+            pods,
+            vec![replica_set],
+        )
+    });
+
+    fn project() -> ResourceMetricsSummary {
+        let (pod_list, node_list, pods, replica_sets) = &*INPUT;
+        decode_and_roll_up_resource_metrics("fixture", pod_list, node_list, pods, replica_sets)
+            .expect("metrics list")
+    }
+
+    #[codspeed_divan_compat::bench]
+    fn resource_metrics_decode_and_rollup_10000(bencher: codspeed_divan_compat::Bencher) {
+        let output = project();
+        assert_eq!(output.pods.len(), 10_000);
+        assert_eq!(output.workloads.len(), 2);
+        assert_eq!(
+            workload(&output, "Deployment", "apps", "worker").memory_bytes,
+            Some(10_485_760_000)
+        );
+        bencher.bench(|| black_box(project()));
+    }
+}

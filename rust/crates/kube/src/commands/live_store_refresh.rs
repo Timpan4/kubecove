@@ -325,6 +325,7 @@ mod tests {
                 value: Arc::new(1),
                 completed_at: expired,
                 dirty: false,
+                slots: None,
             }),
         );
         let (finish, wait_finish) = tokio::sync::oneshot::channel::<()>();

@@ -1,3 +1,4 @@
+use super::details::PreparedResourceDetails;
 use crate::commands::helpers::{
     list_params, normalize_k8s_yaml_value, serialize_json_value_document,
 };
@@ -49,19 +50,29 @@ fn redact_dynamic_secret_fields(value: &mut Value) {
     }
 }
 
+#[cfg(any(test, feature = "bench-support"))]
 pub fn serialize_dynamic_resource_document(
     resource_kind: &DiscoveredResourceKind,
     object: &DynamicObject,
     mode: YamlViewMode,
     encoding: YamlEncoding,
 ) -> Result<String, AppError> {
+    let value = prepare_dynamic_resource_document(resource_kind, object, mode)?;
+    serialize_json_value_document(&value, encoding)
+}
+
+fn prepare_dynamic_resource_document(
+    resource_kind: &DiscoveredResourceKind,
+    object: &DynamicObject,
+    mode: YamlViewMode,
+) -> Result<Value, AppError> {
     let mut value = serde_json::to_value(object)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;
     normalize_k8s_yaml_value(&mut value, mode);
     if is_core_v1_secret(resource_kind) {
         redact_dynamic_secret_fields(&mut value);
     }
-    serialize_json_value_document(&value, encoding)
+    Ok(value)
 }
 
 pub async fn dynamic_resources_summary_from(
@@ -171,30 +182,14 @@ pub async fn dynamic_resource_details_from(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<ResourceDetailsFull, AppError> {
-    crate::commands::helpers::validate_path_segment(&name, "resource name")?;
-    crate::commands::helpers::validate_namespace(namespace.as_deref())?;
-    if resource_kind.namespaced && namespace.is_none() {
-        return Err(AppError::new(
-            format!("namespace required for {}", resource_kind.kind),
-            AppErrorKind::Cluster,
-        ));
-    }
-
-    let client = access.read_client(&cluster_context).await?;
-    let api_resource = api_resource_from_discovered(&resource_kind)?;
-    let api: Api<DynamicObject> = if resource_kind.namespaced {
-        Api::namespaced_with(
-            client,
-            namespace
-                .as_deref()
-                .expect("namespaced resource has namespace"),
-            &api_resource,
-        )
-    } else {
-        Api::all_with(client, &api_resource)
-    };
-
-    let object = api.get(&name).await.map_err(AppError::from)?;
+    let object = fetch_dynamic_detail_object(
+        access,
+        &cluster_context,
+        &resource_kind,
+        &name,
+        namespace.as_deref(),
+    )
+    .await?;
     dynamic_resource_details_from_object(
         cluster_context,
         resource_kind,
@@ -204,32 +199,87 @@ pub async fn dynamic_resource_details_from(
     )
 }
 
+pub async fn dynamic_resource_details_document_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    name: &str,
+    namespace: Option<&str>,
+) -> Result<PreparedResourceDetails, AppError> {
+    let object =
+        fetch_dynamic_detail_object(access, cluster_context, resource_kind, name, namespace)
+            .await?;
+    dynamic_details_from_fetched(
+        cluster_context,
+        resource_kind,
+        object,
+        YamlViewMode::Kubectl,
+    )
+}
+
+async fn fetch_dynamic_detail_object(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    name: &str,
+    namespace: Option<&str>,
+) -> Result<DynamicObject, AppError> {
+    crate::commands::helpers::validate_path_segment(name, "resource name")?;
+    crate::commands::helpers::validate_namespace(namespace)?;
+    if resource_kind.namespaced && namespace.is_none() {
+        return Err(AppError::new(
+            format!("namespace required for {}", resource_kind.kind),
+            AppErrorKind::Cluster,
+        ));
+    }
+
+    let client = access.read_client(cluster_context).await?;
+    let api_resource = api_resource_from_discovered(resource_kind)?;
+    let api: Api<DynamicObject> = if resource_kind.namespaced {
+        Api::namespaced_with(
+            client,
+            namespace.expect("namespaced resource has namespace"),
+            &api_resource,
+        )
+    } else {
+        Api::all_with(client, &api_resource)
+    };
+
+    api.get(name).await.map_err(AppError::from)
+}
+
 pub fn dynamic_resource_details_from_object(
     cluster_context: String,
     resource_kind: DiscoveredResourceKind,
-    mut object: DynamicObject,
+    object: DynamicObject,
     yaml_view_mode: YamlViewMode,
     yaml_encoding: YamlEncoding,
 ) -> Result<ResourceDetailsFull, AppError> {
-    if is_core_v1_secret(&resource_kind) {
+    dynamic_details_from_fetched(&cluster_context, &resource_kind, object, yaml_view_mode)?
+        .map_document(|document| serialize_json_value_document(&document, yaml_encoding))
+        .map(Into::into)
+}
+
+pub fn dynamic_details_from_fetched(
+    cluster_context: &str,
+    resource_kind: &DiscoveredResourceKind,
+    mut object: DynamicObject,
+    yaml_view_mode: YamlViewMode,
+) -> Result<PreparedResourceDetails, AppError> {
+    if is_core_v1_secret(resource_kind) {
         crate::commands::helpers::redact_secret_metadata(&mut object.metadata);
     }
-    let yaml = serialize_dynamic_resource_document(
-        &resource_kind,
-        &object,
-        yaml_view_mode,
-        yaml_encoding,
-    )?;
+    let document = prepare_dynamic_resource_document(resource_kind, &object, yaml_view_mode)?;
     let metadata = serde_json::to_value(&object.metadata)
         .map_err(|e| AppError::new(e.to_string(), AppErrorKind::Serialization).with_source(e))?;
     let status = dynamic_status_value(&object.data);
-    let summary = dynamic_resource_summary(&cluster_context, &resource_kind, &object);
+    let summary = dynamic_resource_summary(cluster_context, resource_kind, &object);
 
-    Ok(ResourceDetailsFull {
+    Ok(PreparedResourceDetails {
         summary,
-        yaml,
         metadata,
         status,
+        document,
     })
 }
 
@@ -400,7 +450,8 @@ mod tests {
                 "stringData": {
                     "token": "plain-secret"
                 },
-                "type": "Opaque"
+                "type": "Opaque",
+                "extension": {"true": false, "quantity": "10", "count": 10, "optional": null}
             }));
 
         let yaml = serialize_dynamic_resource_document(
@@ -411,7 +462,17 @@ mod tests {
         )
         .unwrap();
 
-        assert!(yaml.contains("REDACTED"));
+        let prepared =
+            dynamic_details_from_fetched("test", &resource_kind, object, YamlViewMode::Kubectl)
+                .unwrap();
+        let previous: Value = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(prepared.document, previous);
+        assert_eq!(prepared.document["data"]["password"], "REDACTED");
+        assert_eq!(prepared.document["stringData"]["token"], "REDACTED");
+        assert_eq!(
+            prepared.document["extension"],
+            json!({"true": false, "quantity": "10", "count": 10, "optional": null})
+        );
         assert!(!yaml.contains("c3VwZXItc2VjcmV0LXBhc3N3b3Jk"));
         assert!(!yaml.contains("plain-secret"));
     }

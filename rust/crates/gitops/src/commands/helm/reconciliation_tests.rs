@@ -131,6 +131,116 @@ fn reconciliation_totals_count_each_status() {
     assert_eq!(totals.unavailable, 0);
 }
 
+#[tokio::test]
+async fn manifest_and_label_reads_overlap_without_changing_duplicate_precedence() {
+    let (service, mut handle) = tower_test::mock::pair();
+    let client = Client::new(service, "payments");
+    let release = HelmReleaseSummary {
+        cluster: "test".into(),
+        name: "web".into(),
+        namespace: "payments".into(),
+        age: String::new(),
+        updated_at: None,
+        created_at: None,
+        chart: None,
+        app_version: None,
+        revision: None,
+        status: None,
+        storage_kind: "Secret".into(),
+        storage_name: "web.v1".into(),
+    };
+    let manifest = [None, Some("payments")]
+        .map(|namespace| manifest_ref(Some("apps/v1"), Some("Deployment"), namespace, Some("web")));
+    let discovered = [
+        deployment_kind(),
+        DiscoveredResourceKind {
+            group: String::new(),
+            api_version: "v1".into(),
+            kind: "ConfigMap".into(),
+            plural: "configmaps".into(),
+            version: "v1".into(),
+            ..deployment_kind()
+        },
+    ];
+    let reconcile = reconcile_release(client, "test", &release, &manifest, &discovered);
+    let serve = async {
+        let object = |name, uid| {
+            serde_json::json!({"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {
+                "name": name, "uid": uid, "namespace": "payments", "labels": {"helm.sh/release": "web"}
+            }})
+        };
+        let forbidden = || {
+            serde_json::json!({"apiVersion": "v1", "kind": "Status", "status": "Failure",
+                "message": "forbidden", "reason": "Forbidden", "code": 403})
+        };
+        let mut first_get = true;
+        let mut responses = Vec::new();
+        // Hold all four responses until both GETs and both LISTs have reached the API.
+        for _ in 0..4 {
+            let (request, response) = handle.next_request().await.expect("reconciliation read");
+            let (status, body): (u16, _) = match request.uri().path() {
+                "/apis/apps/v1/namespaces/payments/deployments/web" => {
+                    if std::mem::take(&mut first_get) {
+                        (403, forbidden())
+                    } else {
+                        (200, object("web", "manifest"))
+                    }
+                }
+                "/apis/apps/v1/namespaces/payments/deployments" => (
+                    200,
+                    serde_json::json!({
+                        "apiVersion": "apps/v1", "kind": "DeploymentList", "metadata": {},
+                            "items": [object("web", "label-only"), object("extra", "first"), object("extra", "second")]
+                    }),
+                ),
+                "/api/v1/namespaces/payments/configmaps" => (403, forbidden()),
+                path => panic!("unexpected mock request to {path}"),
+            };
+            responses.push((response, status, body));
+        }
+        for (response, status, body) in responses.into_iter().rev() {
+            response.send_response(
+                http::Response::builder()
+                    .status(status)
+                    .body(kube::client::Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            );
+            tokio::task::yield_now().await;
+        }
+    };
+    let ((rows, warnings, totals), ()) =
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(reconcile, serve)
+        })
+        .await
+        .expect("mock API requests did not overlap");
+    assert_eq!(
+        rows.iter()
+            .map(|row| (row.name.as_deref(), row.status))
+            .collect::<Vec<_>>(),
+        [
+            (Some("extra"), HelmReconciliationStatus::LabelOnly),
+            (Some("web"), HelmReconciliationStatus::Tracked)
+        ]
+    );
+    assert_eq!(totals.label_only, 1);
+    assert_eq!(totals.tracked, 1);
+    assert_eq!(
+        rows[0].live_resource.as_ref().unwrap().uid.as_deref(),
+        Some("first")
+    );
+    assert_eq!(
+        rows[1].live_resource.as_ref().unwrap().uid.as_deref(),
+        Some("manifest")
+    );
+    assert_eq!(warnings.len(), 2);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("v1 ConfigMap for explicit Helm labels"))
+    );
+}
+
 // Failure modes: an unrelated API publishing `"verbs": null` fails discovery,
 // a manifest group whose aggregated API server is down fails the whole
 // reconciliation instead of leaving only its own rows unavailable, an

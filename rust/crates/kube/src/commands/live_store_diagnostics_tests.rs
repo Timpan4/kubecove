@@ -1,4 +1,5 @@
 use super::*;
+use futures_util::FutureExt;
 
 #[test]
 fn trace_clear_resets_counts_and_refresh_counts_evicted_entries() {

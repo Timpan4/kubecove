@@ -27,6 +27,7 @@ fn expired_entries_are_pruned_without_losing_in_use_or_failed_reload_values() {
                         },
                         completed_at: old,
                         dirty: false,
+                        slots: None,
                     }),
                 );
             }

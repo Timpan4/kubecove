@@ -115,7 +115,7 @@ fn dynamic_event_target(
     }
 }
 
-fn watch_resource_version<K: kube::Resource>(event: &WatchEvent<K>) -> Option<String> {
+pub(super) fn watch_resource_version<K: kube::Resource>(event: &WatchEvent<K>) -> Option<String> {
     match event {
         WatchEvent::Added(object) | WatchEvent::Modified(object) | WatchEvent::Deleted(object) => {
             object.meta().resource_version.clone()

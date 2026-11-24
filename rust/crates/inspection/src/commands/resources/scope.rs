@@ -139,6 +139,7 @@ fn ownership_namespaces(groups: &BTreeMap<String, ResourceScopeGroup>) -> Vec<St
     }
 }
 
+#[cfg(any(test, feature = "bench-support"))]
 fn row_key(row: &ResourceSummary) -> String {
     format!(
         "{}:{}:{}:{}:{}:{}",
@@ -195,17 +196,46 @@ pub fn encode_shared_scope_rows(
     serde_json::to_string(&SharedRows::new(batches, index, &[]))
 }
 
+#[cfg(feature = "bench-support")]
+pub fn benchmark_shared_scope_response(
+    batches: Vec<Arc<Vec<ResourceSummary>>>,
+    index: &crate::commands::helpers::FluxOwnershipIndex,
+) -> ResourceScopeResponse {
+    ResourceScopeResponse {
+        resources: SharedRows::new(batches, index, &[]),
+        ..ResourceScopeResponse::default()
+    }
+}
+
 pub async fn resource_scope_from(
     access: &ClusterAccess,
     cluster_context: String,
     requests: Vec<ResourceListRequest>,
     live_store: ClusterLiveStore,
 ) -> Result<Vec<ResourceSummary>, AppError> {
-    let result = resource_scope_result_from(access, cluster_context, requests, live_store).await?;
-    if let Some(failure) = result.failures.into_iter().next() {
+    let result = resource_scope_shared_from(access, cluster_context, requests, live_store).await?;
+    Ok(result.resources.into_resources())
+}
+
+/// Loads the same complete scope as `resource_scope_from` for callers that can borrow its rows.
+pub async fn resource_scope_shared_from(
+    access: &ClusterAccess,
+    cluster_context: String,
+    requests: Vec<ResourceListRequest>,
+    live_store: ClusterLiveStore,
+) -> Result<ResourceScopeResponse, AppError> {
+    let mut result =
+        resource_scope_result_from(access, cluster_context, requests, live_store).await?;
+    if let Some(failure) = std::mem::take(&mut result.failures).into_iter().next() {
         return Err(failure.error);
     }
-    Ok(result.resources.into_resources())
+    Ok(result)
+}
+
+impl ResourceScopeResponse {
+    pub fn rows(&self) -> impl ExactSizeIterator<Item = &ResourceSummary> {
+        self.resources.iter()
+    }
 }
 
 async fn resource_scope_result_from(

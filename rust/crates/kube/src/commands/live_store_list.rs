@@ -43,8 +43,6 @@ impl From<Vec<ResourceSummary>> for ListedResources {
 pub struct ListSnapshot {
     pub rows: Arc<Vec<ResourceSummary>>,
     pub resource_version: Option<String>,
-    /// Built by the first watch event applied to the cached list.
-    pub(crate) slots: Option<RowSlots>,
 }
 
 impl ListSnapshot {
@@ -52,7 +50,6 @@ impl ListSnapshot {
         Self {
             rows,
             resource_version,
-            slots: None,
         }
     }
 }
@@ -68,18 +65,69 @@ impl CachePayloadWeight for ListSnapshot {
         self.rows.retained_items()
     }
     fn shallow_payload_bytes(&self) -> usize {
-        let slots = self
-            .slots
-            .as_ref()
-            .map_or(0, |slots| slots.0.capacity() * size_of::<(u64, u32)>());
-        size_of::<Self>() + self.rows.shallow_payload_bytes() + slots
+        size_of::<Self>() + self.rows.shallow_payload_bytes()
     }
 }
 
 /// Row positions sorted by a hash of each row's namespace and name, so a watch
 /// event finds its row without scanning the list.
-#[derive(Clone)]
-pub(crate) struct RowSlots(Vec<(u64, u32)>);
+pub(super) struct RowSlots(Vec<(u64, u32)>);
+
+#[derive(Clone, Copy)]
+pub(super) enum RowEdit {
+    Replace(usize),
+    Insert {
+        slot: usize,
+        hash: u64,
+        index: u32,
+    },
+    Delete {
+        slot: usize,
+        index: u32,
+        shift: bool,
+    },
+}
+
+impl RowEdit {
+    pub(super) fn copied_rows(
+        self,
+        rows: &[ResourceSummary],
+        row: Option<&ResourceSummary>,
+    ) -> Vec<ResourceSummary> {
+        let removed = match self {
+            Self::Replace(index) => Some(index),
+            Self::Delete { index, .. } => Some(index as usize),
+            Self::Insert { .. } => None,
+        };
+        let (before, after) = removed.map_or((rows, &[][..]), |index| {
+            (&rows[..index], &rows[index + 1..])
+        });
+        let mut copied =
+            Vec::with_capacity(before.len() + after.len() + usize::from(row.is_some()));
+        copied.extend_from_slice(before);
+        copied.extend(row.cloned());
+        copied.extend_from_slice(after);
+        copied
+    }
+
+    pub(super) fn apply_rows(
+        self,
+        rows: &mut Vec<ResourceSummary>,
+        row: Option<&ResourceSummary>,
+    ) -> Option<ResourceSummary> {
+        match (self, row) {
+            (Self::Replace(index), Some(row)) => {
+                Some(std::mem::replace(&mut rows[index], row.clone()))
+            }
+            (Self::Insert { .. }, Some(row)) => {
+                rows.push(row.clone());
+                None
+            }
+            (Self::Delete { index, .. }, None) => Some(rows.remove(index as usize)),
+            _ => unreachable!("row edit and watch projection agree"),
+        }
+    }
+}
 
 fn slot_hash(namespace: Option<&str>, name: &str) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -93,7 +141,7 @@ fn slot_index(index: usize) -> u32 {
 }
 
 impl RowSlots {
-    pub(crate) fn new(rows: &[ResourceSummary]) -> Self {
+    pub(super) fn new(rows: &[ResourceSummary]) -> Self {
         let mut slots: Vec<_> = rows
             .iter()
             .enumerate()
@@ -108,15 +156,17 @@ impl RowSlots {
         Self(slots)
     }
 
-    /// Replaces, adds or (with no `row`) removes the row named `name` in
-    /// `namespace`, keeping the slots in step with `rows`.
-    pub(crate) fn apply(
-        &mut self,
-        rows: &mut Vec<ResourceSummary>,
+    pub(super) fn shallow_payload_bytes(&self) -> usize {
+        size_of::<Self>() + self.0.capacity() * size_of::<(u64, u32)>()
+    }
+
+    pub(super) fn edit(
+        &self,
+        rows: &[ResourceSummary],
         namespace: Option<&str>,
         name: &str,
-        row: Option<ResourceSummary>,
-    ) {
+        deleting: bool,
+    ) -> Option<RowEdit> {
         let hash = slot_hash(namespace, name);
         let start = self.0.partition_point(|&(slot, _)| slot < hash);
         let held = self.0[start..]
@@ -127,23 +177,39 @@ impl RowSlots {
                 held.namespace.as_deref() == namespace && held.name == name
             })
             .map(|offset| start + offset);
-        match (held, row) {
-            (Some(slot), Some(row)) => rows[self.0[slot].1 as usize] = row,
-            (None, Some(row)) => {
-                let at = self.0.partition_point(|&(slot, _)| slot <= hash);
-                self.0.insert(at, (hash, slot_index(rows.len())));
-                rows.push(row);
+        match (held, deleting) {
+            (Some(slot), false) => Some(RowEdit::Replace(self.0[slot].1 as usize)),
+            (None, false) => Some(RowEdit::Insert {
+                slot: self.0.partition_point(|&(slot, _)| slot <= hash),
+                hash,
+                index: slot_index(rows.len()),
+            }),
+            (Some(slot), true) => {
+                let index = self.0[slot].1;
+                Some(RowEdit::Delete {
+                    slot,
+                    index,
+                    shift: (index as usize) + 1 < rows.len(),
+                })
             }
-            (Some(slot), None) => {
-                let (_, index) = self.0.remove(slot);
-                rows.remove(index as usize);
-                for (_, later) in &mut self.0 {
-                    if *later > index {
-                        *later -= 1;
+            (None, true) => None,
+        }
+    }
+
+    pub(super) fn apply(&mut self, edit: RowEdit) {
+        match edit {
+            RowEdit::Replace(_) => {}
+            RowEdit::Insert { slot, hash, index } => self.0.insert(slot, (hash, index)),
+            RowEdit::Delete { slot, index, shift } => {
+                self.0.remove(slot);
+                if shift {
+                    for (_, later) in &mut self.0 {
+                        if *later > index {
+                            *later -= 1;
+                        }
                     }
                 }
             }
-            (None, None) => {}
         }
     }
 }

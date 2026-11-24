@@ -89,9 +89,8 @@ fn decide(
 }
 
 impl SharedCache<ListSnapshot> {
-    /// Changes a clean cached value in place when `decide` allows it. A dirty
-    /// value stays dirty, and a load in flight is marked dirty, because the
-    /// change may predate its list.
+    /// Updates a clean cached list when the watch covers it. Dirty values stay dirty,
+    /// and a load in flight goes dirty because the event may predate the list.
     /// Returns true when a clean value can accept the event and still needs its projection.
     fn patch_ready(
         &self,
@@ -100,48 +99,87 @@ impl SharedCache<ListSnapshot> {
         change: &WatchChange<'_>,
         projection: &Projection,
     ) -> bool {
-        let mut entries = self.entries.lock().expect("live store cache lock");
-        match entries.get_mut(key) {
-            Some(CacheEntry::Ready(ready)) if !ready.dirty => {
+        loop {
+            let (base, edit, row) = {
+                let mut entries = self.entries.lock().expect("live store cache lock");
+                let ready = match entries.get_mut(key) {
+                    Some(CacheEntry::Ready(ready)) if !ready.dirty => ready,
+                    Some(CacheEntry::Loading { dirty, .. }) => {
+                        *dirty = true;
+                        return false;
+                    }
+                    Some(CacheEntry::Ready(_)) | None => return false,
+                };
                 match decide(&ready.value, change.event_number, change.position, covers) {
-                    Patch::Skip => {}
-                    Patch::Apply => match projection {
-                        Projection::Deferred => return true,
-                        Projection::Row(row) => apply_row(
-                            Arc::make_mut(&mut ready.value),
-                            change.namespace,
-                            change.name,
-                            row.clone(),
-                            change.version,
-                        ),
-                        Projection::Failed => ready.dirty = true,
-                    },
-                    Patch::Dirty => ready.dirty = true,
+                    Patch::Skip => return false,
+                    Patch::Dirty => {
+                        ready.dirty = true;
+                        return false;
+                    }
+                    Patch::Apply => {}
                 }
-            }
-            Some(CacheEntry::Loading { dirty, .. }) => *dirty = true,
-            Some(CacheEntry::Ready(_)) | None => {}
-        }
-        false
-    }
-}
+                let row = match projection {
+                    Projection::Deferred => return true,
+                    Projection::Failed => {
+                        ready.dirty = true;
+                        return false;
+                    }
+                    Projection::Row(row) => row.as_ref(),
+                };
+                let Some(slots) = &mut ready.slots else {
+                    let base = Arc::clone(&ready.value);
+                    drop(entries);
+                    self.install_slots(key, &base);
+                    continue;
+                };
+                let Some(edit) = slots.edit(
+                    &ready.value.rows,
+                    change.namespace,
+                    change.name,
+                    row.is_none(),
+                ) else {
+                    Arc::make_mut(&mut ready.value).resource_version =
+                        change.version.map(str::to_owned);
+                    return false;
+                };
+                if let Some(snapshot) = Arc::get_mut(&mut ready.value)
+                    && let Some(rows) = Arc::get_mut(&mut snapshot.rows)
+                {
+                    let retired = edit.apply_rows(rows, row);
+                    slots.apply(edit);
+                    snapshot.resource_version = change.version.map(str::to_owned);
+                    drop(entries);
+                    drop(retired);
+                    return false;
+                }
+                (Arc::clone(&ready.value), edit, row)
+            };
 
-/// Replaces, adds or (with no `row`) removes the object named `name` in
-/// `namespace`, and moves the list version to the event's.
-fn apply_row(
-    snapshot: &mut ListSnapshot,
-    namespace: Option<&str>,
-    name: &str,
-    row: Option<ResourceSummary>,
-    resource_version: Option<&str>,
-) {
-    let rows = Arc::make_mut(&mut snapshot.rows);
-    snapshot
-        .slots
-        .get_or_insert_with(|| RowSlots::new(rows))
-        .apply(rows, namespace, name, row);
-    if let Some(version) = resource_version {
-        snapshot.resource_version = Some(version.to_owned());
+            // Readers keep their exact snapshot. Copy the surviving rows outside
+            // the mutex and publish only if this is still the same clean list.
+            let rows = Arc::new(edit.copied_rows(&base.rows, row));
+            let mut entries = self.entries.lock().expect("live store cache lock");
+            if let Some(CacheEntry::Ready(ready)) = entries.get_mut(key)
+                && !ready.dirty
+                && Arc::ptr_eq(&ready.value, &base)
+            {
+                ready.slots.as_mut().expect("indexed snapshot").apply(edit);
+                ready.value = Arc::new(ListSnapshot::new(rows, change.version.map(str::to_owned)));
+                return false;
+            }
+        }
+    }
+
+    fn install_slots(&self, key: &str, base: &Arc<ListSnapshot>) {
+        let slots = Box::new(RowSlots::new(&base.rows));
+        let mut entries = self.entries.lock().expect("live store cache lock");
+        if let Some(CacheEntry::Ready(ready)) = entries.get_mut(key)
+            && !ready.dirty
+            && ready.slots.is_none()
+            && Arc::ptr_eq(&ready.value, base)
+        {
+            ready.slots = Some(slots);
+        }
     }
 }
 

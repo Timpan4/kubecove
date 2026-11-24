@@ -256,8 +256,7 @@ fn missing_role_reason_tracks_inventory_coverage() {
     let mut complete = vec![binding.clone()];
     inherit_binding_risks(
         &mut complete,
-        &[],
-        &[],
+        &RoleIndex::new(&[], &[]),
         &RbacCoverageStatus::Complete,
         &RbacCoverageStatus::Complete,
     );
@@ -266,8 +265,7 @@ fn missing_role_reason_tracks_inventory_coverage() {
     let mut partial = vec![binding];
     inherit_binding_risks(
         &mut partial,
-        &[],
-        &[],
+        &RoleIndex::new(&[], &[]),
         &RbacCoverageStatus::Partial,
         &RbacCoverageStatus::Complete,
     );

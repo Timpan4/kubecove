@@ -14,10 +14,13 @@ remote-client = [
     "dep:kubecove-gitops",
     "dep:axum",
     "dep:base64",
+    "dep:futures-util",
     "dep:getrandom",
     "dep:open",
+    "dep:reqwest",
     "dep:ring",
     "dep:subtle",
+    "dep:uuid",
 ]
 bench-support = []
 
@@ -27,13 +30,13 @@ kubecove-kube = { path = "../kube", default-features = false }
 kubecove-live = { path = "../live", optional = true }
 kubecove-gitops = { path = "../gitops", optional = true }
 chrono = { workspace = true }
-futures-util = { workspace = true }
-reqwest = { workspace = true }
+futures-util = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["raw_value"] }
 sysinfo = { workspace = true }
 tokio = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 axum = { workspace = true, optional = true, features = ["query"] }

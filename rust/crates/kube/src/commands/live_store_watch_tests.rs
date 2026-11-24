@@ -99,7 +99,7 @@ async fn watch_events_update_cached_lists_without_listing_again() {
             summary("a", "apps", "Pending"),
             summary("b", "apps", "Running"),
         ];
-        list(&store, namespace, seed).await;
+        let held = list(&store, namespace, seed).await;
         // Each event's watch position is the previous event's version.
         for (event, position) in [
             (WatchEvent::Modified(pod("a", "Running", "11")), "10"),
@@ -125,6 +125,14 @@ async fn watch_events_update_cached_lists_without_listing_again() {
             "{namespace:?}"
         );
         assert_eq!(snapshot.resource_version.as_deref(), Some("14"));
+        assert_eq!(
+            statuses(&held),
+            [
+                ("a".into(), "Pending".into()),
+                ("b".into(), "Running".into())
+            ]
+        );
+        assert_eq!(held.resource_version.as_deref(), Some("10"));
     }
 }
 

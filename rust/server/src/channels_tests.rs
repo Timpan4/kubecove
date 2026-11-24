@@ -99,6 +99,62 @@ fn a_replenished_channel_cannot_starve_another_channel() {
 }
 
 #[test]
+fn ready_channels_wrap_by_id_and_keep_the_exact_text_envelope() {
+    let hub = Arc::new(ChannelHub::default());
+    let low = hub.channel::<&str>(10);
+    let _idle = hub.channel::<&str>(20);
+    let middle = hub.channel::<&str>(30);
+    let high = hub.channel::<&str>(40);
+    middle.send("first").unwrap();
+    assert_eq!(pop(&hub)["channelId"], 30);
+    low.send("last\n").unwrap();
+    high.send("removed").unwrap();
+    hub.remove(40);
+    let high = hub.channel::<&str>(40);
+    high.send("next").unwrap();
+    assert_eq!(pop(&hub)["message"], "next");
+    assert_eq!(
+        hub.pop().unwrap().as_str(),
+        r#"{"channelId":10,"message":"last\n","type":"channel"}"#
+    );
+    assert!(hub.pop().is_none());
+}
+
+#[test]
+#[ignore = "manual timing comparison in release mode"]
+fn measure_sparse_channels_with_batched_logs() {
+    use kubecove_lib::models::StreamMessage;
+    use std::{hint::black_box, time::Instant};
+
+    let hub = Arc::new(ChannelHub::default());
+    let idle_count = u64::try_from(RETAINED_MESSAGES).unwrap();
+    for id in 0..idle_count {
+        drop(hub.channel::<StreamMessage>(id));
+    }
+    let active = [idle_count, idle_count + 1].map(|id| hub.channel::<StreamMessage>(id));
+    let batch = StreamMessage::LogLines {
+        stream_id: "logs".into(),
+        lines: vec!["pod initialized\tcontainer started".into(); RETAINED_MESSAGES],
+        source: None,
+    };
+    let started = Instant::now();
+    for _ in 0..RETAINED_MESSAGES {
+        for channel in &active {
+            channel.send(batch.clone()).unwrap();
+        }
+        for _ in &active {
+            black_box(hub.pop().unwrap());
+        }
+        assert!(hub.pop().is_none());
+    }
+    eprintln!(
+        "encoded and drained {} log batches with {idle_count} idle channels in {:?}",
+        RETAINED_MESSAGES * active.len(),
+        started.elapsed()
+    );
+}
+
+#[test]
 fn retention_reports_a_gap_and_revocation_rejects_late_output() {
     let hub = Arc::new(ChannelHub::default());
     let channel = hub.channel::<usize>(1);

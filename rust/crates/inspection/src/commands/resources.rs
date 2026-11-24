@@ -35,19 +35,23 @@ pub use apply::linting::lint_kubernetes_yaml_request;
 #[cfg(feature = "bench-support")]
 pub use apply::validation::validate_yaml_apply;
 pub use apply::{apply_yaml, prepare_yaml_apply};
+pub use details::{
+    PreparedResourceDetails, get_resource_details, resource_details_document_from,
+    resource_details_from,
+};
 #[cfg(feature = "bench-support")]
 pub use details::{details_from_fetched, secret_details_from_fetched};
-pub use details::{get_resource_details, resource_details_from};
 pub(crate) use dynamic::api_resource_from_discovered;
-#[cfg(feature = "bench-support")]
-pub use dynamic::dynamic_resource_details_from_object;
 #[cfg(feature = "bench-support")]
 pub use dynamic::dynamic_resource_summaries_at;
 #[cfg(feature = "bench-support")]
 pub use dynamic::serialize_dynamic_resource_document;
+#[cfg(feature = "bench-support")]
+pub use dynamic::{dynamic_details_from_fetched, dynamic_resource_details_from_object};
 pub use dynamic::{
-    dynamic_resource_details_from, dynamic_resources_summary_from, get_dynamic_resource_details,
-    list_dynamic_resource_snapshot, list_dynamic_resources,
+    dynamic_resource_details_document_from, dynamic_resource_details_from,
+    dynamic_resources_summary_from, get_dynamic_resource_details, list_dynamic_resource_snapshot,
+    list_dynamic_resources,
 };
 #[cfg(feature = "bench-support")]
 pub use kubeconform::collect_kubeconform_bytes;
@@ -55,12 +59,14 @@ pub use kubeconform::collect_kubeconform_bytes;
 pub use revisions::deployment_revisions_from_replica_sets;
 pub use revisions::list_deployment_revisions;
 #[cfg(feature = "bench-support")]
-pub use scope::encode_shared_scope_rows;
-#[cfg(feature = "bench-support")]
 pub use scope::resource_scope_fetch_plan;
 #[cfg(feature = "bench-support")]
 pub use scope::resource_scope_post_fetch;
-pub use scope::{list_resource_scope, resource_scope_from};
+pub use scope::{
+    ResourceScopeResponse, list_resource_scope, resource_scope_from, resource_scope_shared_from,
+};
+#[cfg(feature = "bench-support")]
+pub use scope::{benchmark_shared_scope_response, encode_shared_scope_rows};
 pub use summary::{list_resource_snapshot, list_resources, resources_summary_from};
 pub use topology::{list_resource_topology, resource_topology_from};
 #[cfg(feature = "bench-support")]

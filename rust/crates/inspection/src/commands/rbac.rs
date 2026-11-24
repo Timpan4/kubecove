@@ -13,7 +13,7 @@ use k8s_openapi::api::{
     core::v1::ServiceAccount,
     rbac::v1::{PolicyRule, Subject},
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[cfg(feature = "bench-support")]
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
@@ -108,20 +108,15 @@ pub async fn rbac_inspection_from(
         cluster_role_bindings_result,
         &mut warnings,
     );
-    inherit_binding_risks(
-        &mut role_bindings,
-        &roles,
-        &cluster_roles,
-        &roles_coverage.status,
-        &cluster_roles_coverage.status,
-    );
-    inherit_binding_risks(
-        &mut cluster_role_bindings,
-        &roles,
-        &cluster_roles,
-        &roles_coverage.status,
-        &cluster_roles_coverage.status,
-    );
+    let role_index = RoleIndex::new(&roles, &cluster_roles);
+    for bindings in [&mut role_bindings, &mut cluster_role_bindings] {
+        inherit_binding_risks(
+            bindings,
+            &role_index,
+            &roles_coverage.status,
+            &cluster_roles_coverage.status,
+        );
+    }
     let namespace_access = namespace_access_summary(
         &cluster_context,
         &namespaces,
@@ -226,31 +221,55 @@ fn family_label(family: RbacFamily) -> &'static str {
     }
 }
 
+struct RoleIndex<'a> {
+    roles: HashMap<(Option<&'a str>, &'a str), &'a RbacRoleSummary>,
+    cluster_roles: HashMap<&'a str, &'a RbacRoleSummary>,
+}
+
+impl<'a> RoleIndex<'a> {
+    fn new(roles: &'a [RbacRoleSummary], cluster_roles: &'a [RbacRoleSummary]) -> Self {
+        let mut index = Self {
+            roles: HashMap::with_capacity(roles.len()),
+            cluster_roles: HashMap::with_capacity(cluster_roles.len()),
+        };
+        for role in roles {
+            index
+                .roles
+                .entry((role.namespace.as_deref(), role.name.as_str()))
+                .or_insert(role);
+        }
+        for role in cluster_roles {
+            index
+                .cluster_roles
+                .entry(role.name.as_str())
+                .or_insert(role);
+        }
+        index
+    }
+}
+
 fn inherit_binding_risks(
     bindings: &mut [RbacBindingSummary],
-    roles: &[RbacRoleSummary],
-    cluster_roles: &[RbacRoleSummary],
+    index: &RoleIndex<'_>,
     roles_coverage: &RbacCoverageStatus,
     cluster_roles_coverage: &RbacCoverageStatus,
 ) {
     for binding in bindings {
         let (referenced, coverage) = match binding.role_ref_kind.as_str() {
             "Role" => (
-                roles.iter().find(|role| {
-                    role.name == binding.role_ref_name && role.namespace == binding.namespace
-                }),
+                index
+                    .roles
+                    .get(&(binding.namespace.as_deref(), binding.role_ref_name.as_str())),
                 roles_coverage,
             ),
             "ClusterRole" => (
-                cluster_roles
-                    .iter()
-                    .find(|role| role.name == binding.role_ref_name),
+                index.cluster_roles.get(binding.role_ref_name.as_str()),
                 cluster_roles_coverage,
             ),
             _ => (None, roles_coverage),
         };
         if let Some(role) = referenced {
-            binding.risks.extend(role.risks.clone());
+            binding.risks.extend(role.risks.iter().cloned());
         } else {
             let coverage_complete = *coverage == RbacCoverageStatus::Complete;
             binding.risks.push(RbacRiskIndicator {
@@ -531,20 +550,15 @@ pub fn benchmark_rbac_inventory_projection(
             )
         })
         .collect::<Vec<_>>();
-    inherit_binding_risks(
-        &mut role_bindings,
-        &roles,
-        &cluster_roles,
-        &roles_coverage_status,
-        &cluster_roles_coverage_status,
-    );
-    inherit_binding_risks(
-        &mut cluster_role_bindings,
-        &roles,
-        &cluster_roles,
-        &roles_coverage_status,
-        &cluster_roles_coverage_status,
-    );
+    let role_index = RoleIndex::new(&roles, &cluster_roles);
+    for bindings in [&mut role_bindings, &mut cluster_role_bindings] {
+        inherit_binding_risks(
+            bindings,
+            &role_index,
+            &roles_coverage_status,
+            &cluster_roles_coverage_status,
+        );
+    }
     let namespace_access = namespace_access_summary(
         cluster_context,
         &namespaces,

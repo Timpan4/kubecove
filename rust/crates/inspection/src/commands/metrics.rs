@@ -12,7 +12,6 @@ use futures_util::{StreamExt, stream};
 use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::Pod;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{
     Client, Error,
     api::{Api, ApiResource, DynamicObject},
@@ -25,10 +24,10 @@ use serde::de::IgnoredAny;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-/// The `PodMetrics` and `NodeMetrics` fields `metric_from_object` reads. Other
+/// The fields used to summarize `PodMetrics` and `NodeMetrics`. Other
 /// metadata, such as the Pod labels metrics-server copies, is skipped while
 /// decoding instead of being built and dropped.
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct MetricsProjection {
     #[serde(default)]
     metadata: Option<MetricsName>,
@@ -40,7 +39,7 @@ struct MetricsProjection {
     usage: Option<Value>,
 }
 
-#[derive(Clone, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 struct MetricsName {
     #[serde(default)]
     name: Option<String>,
@@ -48,34 +47,26 @@ struct MetricsName {
     namespace: Option<String>,
 }
 
-impl From<MetricsProjection> for DynamicObject {
-    fn from(value: MetricsProjection) -> Self {
-        let name = value.metadata.unwrap_or_default();
-        let mut data = serde_json::Map::new();
-        for (key, field) in [
-            ("timestamp", value.timestamp),
-            ("containers", value.containers),
-            ("usage", value.usage),
-        ] {
-            if let Some(field) = field {
-                data.insert(key.to_string(), field);
-            }
-        }
-        Self {
-            types: None,
-            metadata: ObjectMeta {
-                name: name.name,
-                namespace: name.namespace,
-                ..ObjectMeta::default()
+impl MetricsProjection {
+    fn into_summary(self, cluster_context: &str, kind: &str) -> ResourceMetricSummary {
+        let names = self.metadata.unwrap_or_default();
+        metric_summary(
+            cluster_context,
+            kind,
+            names.name.unwrap_or_default(),
+            names.namespace,
+            match self.timestamp {
+                Some(Value::String(timestamp)) => Some(timestamp),
+                _ => None,
             },
-            data: Value::Object(data),
-        }
+            self.containers.as_ref(),
+            self.usage.as_ref(),
+        )
     }
 }
 
-async fn list_metrics(api: Api<DynamicObject>) -> Result<Vec<DynamicObject>, Error> {
-    let list = list_projection::list::<_, MetricsProjection>(api, &list_params()).await?;
-    Ok(list.items.into_iter().map(Into::into).collect())
+async fn list_metrics(api: Api<DynamicObject>) -> Result<Vec<MetricsProjection>, Error> {
+    Ok(list_projection::list(api, &list_params()).await?.items)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +77,7 @@ enum MetricsListStatus {
 
 #[derive(Debug, Default)]
 struct MetricsObjectList {
-    objects: Vec<DynamicObject>,
+    objects: Vec<MetricsProjection>,
     failures: Vec<MetricsListStatus>,
 }
 
@@ -165,15 +156,12 @@ fn parse_memory_bytes(value: &str) -> Option<i64> {
     trimmed.parse::<i64>().ok().filter(|bytes| *bytes >= 0)
 }
 
-fn usage_value<'a>(data: &'a Value, key: &str) -> Option<&'a str> {
-    data.get("usage")
-        .and_then(|usage| usage.get(key))
-        .and_then(Value::as_str)
+fn usage_value<'a>(usage: Option<&'a Value>, key: &str) -> Option<&'a str> {
+    usage?.get(key)?.as_str()
 }
 
-fn container_usage_totals(data: &Value) -> (Option<f64>, Option<i64>) {
-    let containers = data
-        .get("containers")
+fn container_usage_totals(containers: Option<&Value>) -> (Option<f64>, Option<i64>) {
+    let containers = containers
         .and_then(Value::as_array)
         .map_or_default(Vec::as_slice);
     let mut cpu = Some(0.0_f64);
@@ -182,13 +170,17 @@ fn container_usage_totals(data: &Value) -> (Option<f64>, Option<i64>) {
     let mut has_memory = false;
 
     for container in containers {
-        if let Some(value) = usage_value(container, "cpu").and_then(parse_cpu_millicores) {
+        if let Some(value) =
+            usage_value(container.get("usage"), "cpu").and_then(parse_cpu_millicores)
+        {
             cpu = cpu
                 .map(|total| total + value)
                 .filter(|total| total.is_finite());
             has_cpu = true;
         }
-        if let Some(value) = usage_value(container, "memory").and_then(parse_memory_bytes) {
+        if let Some(value) =
+            usage_value(container.get("usage"), "memory").and_then(parse_memory_bytes)
+        {
             memory = memory.and_then(|total| total.checked_add(value));
             has_memory = true;
         }
@@ -205,27 +197,46 @@ pub(crate) fn metric_from_object(
     kind: &str,
     object: &DynamicObject,
 ) -> ResourceMetricSummary {
-    let (cpu_millicores, memory_bytes) = if kind == "Pod" {
-        container_usage_totals(&object.data)
-    } else {
-        (
-            usage_value(&object.data, "cpu").and_then(parse_cpu_millicores),
-            usage_value(&object.data, "memory").and_then(parse_memory_bytes),
-        )
-    };
-
-    ResourceMetricSummary {
-        kind: kind.to_string(),
-        cluster: cluster_context.to_string(),
-        name: object.metadata.name.clone().unwrap_or_default(),
-        namespace: object.metadata.namespace.clone(),
-        cpu_millicores,
-        memory_bytes,
-        sampled_at: object
+    metric_summary(
+        cluster_context,
+        kind,
+        object.metadata.name.clone().unwrap_or_default(),
+        object.metadata.namespace.clone(),
+        object
             .data
             .get("timestamp")
             .and_then(Value::as_str)
-            .map(str::to_string),
+            .map(str::to_owned),
+        object.data.get("containers"),
+        object.data.get("usage"),
+    )
+}
+
+fn metric_summary(
+    cluster_context: &str,
+    kind: &str,
+    name: String,
+    namespace: Option<String>,
+    sampled_at: Option<String>,
+    containers: Option<&Value>,
+    usage: Option<&Value>,
+) -> ResourceMetricSummary {
+    let (cpu_millicores, memory_bytes) = if kind == "Pod" {
+        container_usage_totals(containers)
+    } else {
+        (
+            usage_value(usage, "cpu").and_then(parse_cpu_millicores),
+            usage_value(usage, "memory").and_then(parse_memory_bytes),
+        )
+    };
+    ResourceMetricSummary {
+        kind: kind.to_string(),
+        cluster: cluster_context.to_string(),
+        name,
+        namespace,
+        cpu_millicores,
+        memory_bytes,
+        sampled_at,
         source_pods: Vec::new(),
     }
 }
@@ -259,7 +270,9 @@ async fn list_pod_metric_objects(client: Client, namespaces: &[String]) -> Metri
     result
 }
 
-async fn list_node_metric_objects(client: Client) -> Result<Vec<DynamicObject>, MetricsListStatus> {
+async fn list_node_metric_objects(
+    client: Client,
+) -> Result<Vec<MetricsProjection>, MetricsListStatus> {
     let resource = metrics_api_resource("NodeMetrics", "nodes");
     let api: Api<DynamicObject> = Api::all_with(client, &resource);
     list_metrics(api)
@@ -456,6 +469,28 @@ pub fn resource_metrics_projection(
         .iter()
         .map(|object| metric_from_object(cluster_context, "Node", object))
         .collect();
+    metrics_with_rollup(
+        cluster_context,
+        pods,
+        nodes,
+        pod_objects,
+        replicasets,
+        warnings,
+        had_forbidden_error,
+        had_unavailable_error,
+    )
+}
+
+fn metrics_with_rollup(
+    cluster_context: &str,
+    pods: Vec<ResourceMetricSummary>,
+    nodes: Vec<ResourceMetricSummary>,
+    pod_objects: &[impl kube::Resource],
+    replicasets: &[impl kube::Resource],
+    warnings: Vec<String>,
+    had_forbidden_error: bool,
+    had_unavailable_error: bool,
+) -> ResourceMetricsSummary {
     let workloads = aggregate_workload_metrics(cluster_context, pod_objects, replicasets, &pods);
     let status = if pods.is_empty() && nodes.is_empty() {
         if had_forbidden_error {
@@ -483,6 +518,56 @@ pub fn resource_metrics_projection(
         workloads,
         warnings,
     }
+}
+
+fn project_decoded_metrics(
+    cluster_context: &str,
+    pod_items: Vec<MetricsProjection>,
+    node_items: Vec<MetricsProjection>,
+    pod_objects: &[impl kube::Resource],
+    replicasets: &[impl kube::Resource],
+    warnings: Vec<String>,
+    had_forbidden_error: bool,
+    had_unavailable_error: bool,
+) -> ResourceMetricsSummary {
+    metrics_with_rollup(
+        cluster_context,
+        pod_items
+            .into_iter()
+            .map(|item| item.into_summary(cluster_context, "Pod"))
+            .collect(),
+        node_items
+            .into_iter()
+            .map(|item| item.into_summary(cluster_context, "Node"))
+            .collect(),
+        pod_objects,
+        replicasets,
+        warnings,
+        had_forbidden_error,
+        had_unavailable_error,
+    )
+}
+
+#[cfg(feature = "bench-support")]
+pub fn decode_and_roll_up_resource_metrics(
+    cluster_context: &str,
+    pod_metrics: &str,
+    node_metrics: &str,
+    pod_objects: &[Pod],
+    replicasets: &[ReplicaSet],
+) -> Result<ResourceMetricsSummary, serde_json::Error> {
+    let pods: kube::api::ObjectList<MetricsProjection> = serde_json::from_str(pod_metrics)?;
+    let nodes: kube::api::ObjectList<MetricsProjection> = serde_json::from_str(node_metrics)?;
+    Ok(project_decoded_metrics(
+        cluster_context,
+        pods.items,
+        nodes.items,
+        pod_objects,
+        replicasets,
+        Vec::new(),
+        false,
+        false,
+    ))
 }
 
 pub async fn resource_metrics_from(
@@ -586,10 +671,10 @@ pub async fn resource_metrics_from(
         }
     };
 
-    Ok(resource_metrics_projection(
+    Ok(project_decoded_metrics(
         &cluster_context,
-        &pod_result.objects,
-        &node_objects,
+        pod_result.objects,
+        node_objects,
         &pod_objects,
         &replicasets,
         warnings,
