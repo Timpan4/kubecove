@@ -399,18 +399,32 @@ async fn finished_sources_wait_for_a_pod_event_before_reconnecting() {
             "a finished source reconnected without a pod event"
         );
         // A status-only change keeps the container set but can make the log readable again.
-        waiting.metadata.resource_version = Some("11".into());
-        events
-            .send(Bytes::from(format!(
-                "{}\n",
-                json!({"type": "MODIFIED", "object": waiting})
-            )))
-            .unwrap();
+        let mut modify = |version: &str| {
+            waiting.metadata.resource_version = Some(version.into());
+            events
+                .send(Bytes::from(format!(
+                    "{}\n",
+                    json!({"type": "MODIFIED", "object": waiting})
+                )))
+                .unwrap();
+        };
+        modify("11");
         tokio::time::sleep(Duration::from_secs(5)).await;
         assert_eq!(
             log_requests.load(Ordering::SeqCst),
             2,
             "a pod event retries the finished source once"
+        );
+        // An update during the retried task's cooldown must not be lost when it ends.
+        modify("12");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(log_requests.load(Ordering::SeqCst), 3);
+        modify("13");
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert_eq!(
+            log_requests.load(Ordering::SeqCst),
+            4,
+            "an update during the cooldown retries once the cooldown ends"
         );
     };
     tokio::select! {
@@ -418,4 +432,66 @@ async fn finished_sources_wait_for_a_pod_event_before_reconnecting() {
         () = check => {},
     }
     server.abort();
+}
+
+// Failure mode: RBAC allows listing pods but denies watching them. Keeping the cursor
+// retries only the forbidden watch, so new pods are never found. A denial relists.
+#[tokio::test(start_paused = true)]
+async fn a_denied_watch_falls_back_to_listing() {
+    let (service, mut requests) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+    let client = Client::new(service, "default");
+    let pods = Api::namespaced(client.clone(), "default");
+    let mut logs = AggregateLogs {
+        client,
+        namespace: "default".into(),
+        options: LogStreamOptions {
+            batch_lines: false,
+            tail_lines: Some(10),
+            since_seconds: None,
+        },
+        channel: Channel::new(|_| Ok(())),
+        stream_id: "logs".into(),
+        streams: SourceStreams::default(),
+        pods: PodSources::default(),
+        selected: Vec::new(),
+    };
+    let list = || {
+        Response::new(Body::from(
+            json!({"metadata": {"resourceVersion": "10"}, "items": []})
+                .to_string()
+                .into_bytes(),
+        ))
+    };
+    let forbidden = || {
+        Response::builder()
+            .status(403)
+            .body(Body::from(
+                json!({
+                    "apiVersion": "v1", "kind": "Status", "status": "Failure",
+                    "reason": "Forbidden", "code": 403,
+                    "message": "pods is forbidden: cannot watch resource \"pods\"",
+                })
+                .to_string()
+                .into_bytes(),
+            ))
+            .unwrap()
+    };
+
+    let mock = async {
+        for _ in 0..2 {
+            let (request, reply) = requests.next_request().await.unwrap();
+            assert!(
+                !request.uri().query().unwrap().contains("watch=true"),
+                "a denied watch was retried without a relist"
+            );
+            reply.send_response(list());
+            let (watch, reply) = requests.next_request().await.unwrap();
+            assert!(watch.uri().query().unwrap().contains("watch=true"));
+            reply.send_response(forbidden());
+        }
+    };
+    tokio::select! {
+        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
+        () = mock => {},
+    }
 }

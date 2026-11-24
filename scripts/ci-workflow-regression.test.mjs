@@ -533,7 +533,12 @@ test("every file a crate embeds from outside rust/ selects, re-keys and re-runs 
     assert.ok(listed(path).has(path), `${files.join(", ")} embeds untracked ${path}`);
     // GPUI and the server also compile the root crates, so a root embed counts for every task.
     const gpuiEmbed = files.some((file) => file.startsWith("rust/gpui/"));
-    const compiling = new Set(files.flatMap((file) => file.startsWith("rust/gpui/") ? ["gpui-clippy", "gpui-test"] : file.startsWith("rust/server/") ? ["server"] : Object.keys(tasks)));
+    const consumerTasks = (file) => {
+      if (file.startsWith("rust/gpui/")) return ["gpui-clippy", "gpui-test"];
+      if (file.startsWith("rust/server/")) return ["server"];
+      return Object.keys(tasks);
+    };
+    const compiling = new Set(files.flatMap(consumerTasks));
     const selected = (await detect([path])).matrix.include.map(({ task }) => task);
     for (const name of compiling) {
       assert.ok(selected.includes(name), `${path} does not select ${name}`);

@@ -50,11 +50,21 @@ struct SourceStreams {
     handles: HashMap<LogSourceKey, AbortHandle>,
     /// A source only replays its tail when it first enters the selected set.
     attached: BTreeSet<LogSourceKey>,
+    /// Sources that a pod event or watch renewal asked to retry while their task still
+    /// ran or cooled down. They reconnect when that task finishes.
+    retry: BTreeSet<LogSourceKey>,
 }
 
 impl SourceStreams {
-    fn retire(&mut self, id: Id) {
-        self.handles.retain(|_, handle| handle.id() != id);
+    /// Forgets the finished task `id` and returns its source.
+    fn retire(&mut self, id: Id) -> Option<LogSourceKey> {
+        let source = self
+            .handles
+            .iter()
+            .find(|(_, handle)| handle.id() == id)
+            .map(|(source, _)| source.clone())?;
+        self.handles.remove(&source);
+        Some(source)
     }
 }
 
@@ -156,9 +166,14 @@ impl AggregateLogs {
                                 // A finished source waits for a pod event or the watch
                                 // renewal before it reconnects. Reconnecting here would
                                 // request a waiting or completed container's log every second.
+                                // A retry asked for while the task ran is honored now.
                                 if let Some(finished) = finished {
                                     let id = finished.map_or_else(|error| error.id(), |(id, ())| id);
-                                    self.streams.retire(id);
+                                    if let Some(source) = self.streams.retire(id)
+                                        && self.streams.retry.remove(&source)
+                                    {
+                                        self.reconcile_sources();
+                                    }
                                 }
                                 continue;
                             }
@@ -214,7 +229,9 @@ impl AggregateLogs {
     }
 
     fn watch_failed(&self, cursor: &mut Option<String>, error: &kube::Error) -> bool {
-        if matches!(error, kube::Error::Api(status) if status.code == 410) {
+        // An expired cursor needs a relist. So does a denied watch: RBAC can allow listing
+        // pods but not watching them, and only a relist then finds new pods.
+        if matches!(error, kube::Error::Api(status) if matches!(status.code, 403 | 410)) {
             *cursor = None;
         }
         self.reconnecting(format!("Log pod watch failed: {error}"))
@@ -251,6 +268,9 @@ impl AggregateLogs {
         self.streams
             .attached
             .retain(|source| desired.binary_search(source).is_ok());
+        self.streams
+            .retry
+            .retain(|source| desired.binary_search(source).is_ok());
         self.streams.handles.retain(|source, handle| {
             let retained = desired.binary_search(source).is_ok();
             if !retained {
@@ -260,8 +280,10 @@ impl AggregateLogs {
         });
         for source in desired {
             if self.streams.handles.contains_key(source) {
+                self.streams.retry.insert(source.clone());
                 continue;
             }
+            self.streams.retry.remove(source);
             let mut options = self.options.clone();
             if !self.streams.attached.insert(source.clone()) {
                 options.tail_lines = Some(0);
