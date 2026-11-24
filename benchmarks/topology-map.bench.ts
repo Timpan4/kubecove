@@ -174,7 +174,7 @@ assert(
 );
 
 describe("F06 table-to-map updates with folded F03 selection reconciliation", () => {
-	benchmark("F06 full production table to consumed topology and fit plan", () => {
+	benchmark("F06 table to consumed topology and fit plan without metric enrichment", () => {
 		for (const state of tableUpdates) updateTableToMap(state);
 		filterTopologyByTableRows(
 			filterHistoricalReplicaSets(topology, true),
