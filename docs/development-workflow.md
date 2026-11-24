@@ -364,8 +364,10 @@ They neither restore nor save shared compiler outputs, following the upstream
 Container and Nix builds keep their existing build paths. CodSpeed retains its
 Rust dependency cache.
 
-The frontend, headless server, and E2E jobs share Bun's download cache on each
-OS. They still run `bun install --frozen-lockfile` after restoring it. Caches
+CI, Parity and the Linux E2E jobs install Bun packages without a download cache.
+Server packaging, the release frontend build, and the macOS and Windows desktop
+smoke jobs restore Bun's download cache on each OS and still run
+`bun install --frozen-lockfile` after restoring it. Caches
 do not replace verification. Compiler-cache misses run the same checks; only the
 separate exact-input pass records above can reuse completed Rust verification.
 
