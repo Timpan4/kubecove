@@ -631,3 +631,41 @@ async fn a_retried_source_does_not_re_arm_the_other_sources() {
     }
     server.abort();
 }
+
+// Failure mode: with list-only RBAC the pod watch returns 403 before it streams, so the loop
+// only relists and never joins finished tasks. A source whose log ended keeps its handle, so
+// relists never reconnect it, and the tasks of departed pods pile up in the JoinSet.
+#[tokio::test(start_paused = true)]
+async fn relists_under_a_denied_watch_reap_finished_sources() {
+    let (service, requests) = tower_test::mock::pair::<Request<Body>, Response<MockBody>>();
+    let client = Client::new(service, "default");
+    let pods = Api::namespaced(client.clone(), "default");
+    let mut logs = aggregate_logs(client);
+    // `api-a` stays; every relist replaces the other pod with a new one.
+    let (server, logged) = serve_pods(
+        requests,
+        |index| vec![pod("api-a", &["app"]), pod(&format!("api-churn-{index}"), &["app"])],
+        None,
+    );
+
+    tokio::select! {
+        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
+        () = tokio::time::sleep(Duration::from_secs(30)) => {},
+    }
+    server.abort();
+    let stable = logged
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|pod| *pod == "api-a")
+        .count();
+    assert!(stable > 1, "a relist never reconnected the finished api-a source");
+    // At most the two selected sources' tasks and the departed pod's task that the next
+    // wait would join.
+    assert!(
+        logs.streams.tasks.len() <= logs.selected.len() + 1,
+        "{} tasks are held for {} sources",
+        logs.streams.tasks.len(),
+        logs.selected.len()
+    );
+}

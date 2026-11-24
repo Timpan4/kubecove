@@ -140,7 +140,7 @@ impl AggregateLogs {
                         if !self.reconnecting(format!("Log pod list failed: {err}")) {
                             return;
                         }
-                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        self.wait_joining_sources(Duration::from_secs(2)).await;
                         continue;
                     }
                 }
@@ -219,7 +219,24 @@ impl AggregateLogs {
                     }
                 }
             }
-            tokio::time::sleep(RECONNECT_DELAY).await;
+            self.wait_joining_sources(RECONNECT_DELAY).await;
+        }
+    }
+
+    /// Waits `delay` while joining finished source tasks. A denied watch fails before it
+    /// streams, so with list-only RBAC the loop only relists and waits here. Without joining,
+    /// a finished source keeps its handle, relists never reconnect it, and the tasks of
+    /// departed pods pile up in the JoinSet.
+    async fn wait_joining_sources(&mut self, delay: Duration) {
+        let wait = tokio::time::sleep(delay);
+        tokio::pin!(wait);
+        loop {
+            tokio::select! {
+                () = &mut wait => return,
+                Some(finished) = self.streams.tasks.join_next_with_id(), if !self.streams.tasks.is_empty() => {
+                    self.source_finished(finished);
+                }
+            }
         }
     }
 
