@@ -3,6 +3,17 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.16.1 - 2026-11-24
+### Improved
+
+- Complete #837 follow-ups across live streams, GPUI, and Svelte (#842).
+- Accelerate backend, GPUI, frontend, and CI while condensing architecture (#837).
+- Keep resource freshness notices from flashing (#820).
+
+### Fixed
+
+- Rename rbacVerifier.svelte.ts to avoid case-insensitive collision (#843).
+
 ## 0.16.0 - 2026-11-22
 ### Added
 
