@@ -43,15 +43,27 @@ export function cockpitItems(
 	category: RbacView,
 	index?: RbacBindingIndex,
 ): RbacCockpitItem[] {
-	const riskIndex = category === "Bindings" || category === "Service Accounts"
-		? index ?? buildRbacBindingIndex(data)
-		: undefined;
-	const rows: Array<ServiceAccountSummary | RbacRoleSummary | RbacBindingSummary | RbacNamespaceAccessRow> =
-		category === "Roles" ? data.roles
-			: category === "Cluster Roles" ? data.clusterRoles
-			: category === "Bindings" && riskIndex ? riskIndex.bindings
-			: category === "Service Accounts" ? data.serviceAccounts
-			: data.namespaceAccess;
+	// Bindings and Service Accounts need the binding index for risks. Bindings also take their rows from it.
+	let riskIndex: RbacBindingIndex | undefined;
+	let rows: Array<ServiceAccountSummary | RbacRoleSummary | RbacBindingSummary | RbacNamespaceAccessRow>;
+	switch (category) {
+		case "Roles":
+			rows = data.roles;
+			break;
+		case "Cluster Roles":
+			rows = data.clusterRoles;
+			break;
+		case "Bindings":
+			riskIndex = index ?? buildRbacBindingIndex(data);
+			rows = riskIndex.bindings;
+			break;
+		case "Service Accounts":
+			riskIndex = index ?? buildRbacBindingIndex(data);
+			rows = data.serviceAccounts;
+			break;
+		default:
+			rows = data.namespaceAccess;
+	}
 	const keyed = rows.map((item) => {
 		const risks = resolvedRisks(data, riskIndex, category, item);
 		const name = "name" in item ? item.name : item.namespace;
