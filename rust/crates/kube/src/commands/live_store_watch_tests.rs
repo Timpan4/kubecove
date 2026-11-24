@@ -168,6 +168,57 @@ async fn events_the_list_already_holds_are_skipped() {
     assert_eq!(snapshot.resource_version.as_deref(), Some("13"));
 }
 
+// A competing watch can publish a different snapshot while a reader forces
+// copy-on-write. Relist if the winner still needs this event, and keep a newer
+// winner clean if it already includes the event.
+#[tokio::test]
+async fn watch_copy_losing_to_a_concurrent_update_relists_only_if_needed() {
+    for (competing_version, expected) in [("11", "Relisted"), ("13", "Competing")] {
+        let store = ClusterLiveStore::default().applying_watch_rows(project);
+        let held = list(&store, None, vec![summary("a", "apps", "Pending")]).await;
+        let key = resource_cache_key(
+            SOURCE,
+            CONTEXT,
+            &typed_kind_key("Pod"),
+            &ScopeNamespace::All,
+        );
+        let change = WatchChange {
+            namespace: Some("apps"),
+            name: "a",
+            version: Some("12"),
+            event_number: Some(12),
+            position: Some(10),
+        };
+        store.resources.patch_ready_with(
+            &key,
+            true,
+            &change,
+            &Projection::Row(Some(summary("a", "apps", "Copied"))),
+            |edit, rows, row| {
+                let copied = edit.copied_rows(rows, row);
+                std::thread::scope(|scope| {
+                    scope
+                        .spawn(|| {
+                            store.apply_watch_event(
+                                SOURCE,
+                                CONTEXT,
+                                &pods(),
+                                origin(None, Some("10")),
+                                &WatchEvent::Modified(pod("a", "Competing", competing_version)),
+                            );
+                        })
+                        .join()
+                        .unwrap();
+                });
+                copied
+            },
+        );
+        let snapshot = list(&store, None, vec![summary("a", "apps", "Relisted")]).await;
+        assert_eq!(statuses(&snapshot), [("a".into(), expected.into())]);
+        assert_eq!(held.resource_version.as_deref(), Some("10"));
+    }
+}
+
 // Failure modes: a namespace watch advances the all-namespace list past
 // changes in other namespaces; a watch that started after the list (or replays
 // from "0") patches it across changes it never delivered. Each must make the

@@ -12,7 +12,8 @@
 //! patches the list only when its watch covers the list's whole scope and has
 //! delivered every change after the list's version. Otherwise the list goes
 //! dirty, as does any list whose version is not an integer.
-use super::list::RowSlots;
+use super::cache::ReadyValue;
+use super::list::{RowEdit, RowSlots};
 use super::{
     CacheEntry, ClusterLiveStore, ListSnapshot, ScopeNamespace, SharedCache,
     namespace_key_for_namespaced, resource_cache_key, typed_kind_key, watch_kind_keys,
@@ -88,6 +89,29 @@ fn decide(
     }
 }
 
+fn ready_to_patch<'a>(
+    entry: Option<&'a mut CacheEntry<ListSnapshot>>,
+    covers: bool,
+    change: &WatchChange<'_>,
+) -> Option<&'a mut ReadyValue<ListSnapshot>> {
+    let ready = match entry {
+        Some(CacheEntry::Ready(ready)) if !ready.dirty => ready,
+        Some(CacheEntry::Loading { dirty, .. }) => {
+            *dirty = true;
+            return None;
+        }
+        Some(CacheEntry::Ready(_)) | None => return None,
+    };
+    match decide(&ready.value, change.event_number, change.position, covers) {
+        Patch::Skip => None,
+        Patch::Dirty => {
+            ready.dirty = true;
+            None
+        }
+        Patch::Apply => Some(ready),
+    }
+}
+
 impl SharedCache<ListSnapshot> {
     /// Updates a clean cached list when the watch covers it. Dirty values stay dirty,
     /// and a load in flight goes dirty because the event may predate the list.
@@ -99,87 +123,89 @@ impl SharedCache<ListSnapshot> {
         change: &WatchChange<'_>,
         projection: &Projection,
     ) -> bool {
-        loop {
-            let (base, edit, row) = {
-                let mut entries = self.entries.lock().expect("live store cache lock");
-                let ready = match entries.get_mut(key) {
-                    Some(CacheEntry::Ready(ready)) if !ready.dirty => ready,
-                    Some(CacheEntry::Loading { dirty, .. }) => {
-                        *dirty = true;
-                        return false;
-                    }
-                    Some(CacheEntry::Ready(_)) | None => return false,
-                };
-                match decide(&ready.value, change.event_number, change.position, covers) {
-                    Patch::Skip => return false,
-                    Patch::Dirty => {
-                        ready.dirty = true;
-                        return false;
-                    }
-                    Patch::Apply => {}
-                }
-                let row = match projection {
-                    Projection::Deferred => return true,
-                    Projection::Failed => {
-                        ready.dirty = true;
-                        return false;
-                    }
-                    Projection::Row(row) => row.as_ref(),
-                };
-                let Some(slots) = &mut ready.slots else {
-                    let base = Arc::clone(&ready.value);
-                    drop(entries);
-                    self.install_slots(key, &base);
-                    continue;
-                };
-                let Some(edit) = slots.edit(
-                    &ready.value.rows,
-                    change.namespace,
-                    change.name,
-                    row.is_none(),
-                ) else {
-                    Arc::make_mut(&mut ready.value).resource_version =
-                        change.version.map(str::to_owned);
-                    return false;
-                };
-                if let Some(snapshot) = Arc::get_mut(&mut ready.value)
-                    && let Some(rows) = Arc::get_mut(&mut snapshot.rows)
-                {
-                    let retired = edit.apply_rows(rows, row);
-                    slots.apply(edit);
-                    snapshot.resource_version = change.version.map(str::to_owned);
-                    drop(entries);
-                    drop(retired);
-                    return false;
-                }
-                (Arc::clone(&ready.value), edit, row)
-            };
-
-            // Readers keep their exact snapshot. Copy the surviving rows outside
-            // the mutex and publish only if this is still the same clean list.
-            let rows = Arc::new(edit.copied_rows(&base.rows, row));
-            let mut entries = self.entries.lock().expect("live store cache lock");
-            if let Some(CacheEntry::Ready(ready)) = entries.get_mut(key)
-                && !ready.dirty
-                && Arc::ptr_eq(&ready.value, &base)
-            {
-                ready.slots.as_mut().expect("indexed snapshot").apply(edit);
-                ready.value = Arc::new(ListSnapshot::new(rows, change.version.map(str::to_owned)));
-                return false;
-            }
-        }
+        self.patch_ready_with(key, covers, change, projection, RowEdit::copied_rows)
     }
 
-    fn install_slots(&self, key: &str, base: &Arc<ListSnapshot>) {
-        let slots = Box::new(RowSlots::new(&base.rows));
+    fn patch_ready_with(
+        &self,
+        key: &str,
+        covers: bool,
+        change: &WatchChange<'_>,
+        projection: &Projection,
+        copy_rows: impl FnOnce(
+            RowEdit,
+            &[ResourceSummary],
+            Option<&ResourceSummary>,
+        ) -> Vec<ResourceSummary>,
+    ) -> bool {
         let mut entries = self.entries.lock().expect("live store cache lock");
-        if let Some(CacheEntry::Ready(ready)) = entries.get_mut(key)
-            && !ready.dirty
-            && ready.slots.is_none()
-            && Arc::ptr_eq(&ready.value, base)
-        {
-            ready.slots = Some(slots);
+        let Some(mut ready) = ready_to_patch(entries.get_mut(key), covers, change) else {
+            return false;
+        };
+        let row = match projection {
+            Projection::Deferred => return true,
+            Projection::Failed => {
+                ready.dirty = true;
+                return false;
+            }
+            Projection::Row(row) => row.as_ref(),
+        };
+
+        if ready.slots.is_none() {
+            let base = Arc::clone(&ready.value);
+            drop(entries);
+            let slots = Box::new(RowSlots::new(&base.rows));
+            entries = self.entries.lock().expect("live store cache lock");
+            let Some(current) = ready_to_patch(entries.get_mut(key), covers, change) else {
+                return false;
+            };
+            if !Arc::ptr_eq(&current.value, &base) {
+                current.dirty = true;
+                return false;
+            }
+            if current.slots.is_none() {
+                current.slots = Some(slots);
+            }
+            ready = current;
         }
+
+        let slots = ready.slots.as_mut().expect("indexed snapshot");
+        let Some(edit) = slots.edit(
+            &ready.value.rows,
+            change.namespace,
+            change.name,
+            row.is_none(),
+        ) else {
+            Arc::make_mut(&mut ready.value).resource_version = change.version.map(str::to_owned);
+            return false;
+        };
+        if let Some(snapshot) = Arc::get_mut(&mut ready.value)
+            && let Some(rows) = Arc::get_mut(&mut snapshot.rows)
+        {
+            let retired = edit.apply_rows(rows, row);
+            slots.apply(edit);
+            snapshot.resource_version = change.version.map(str::to_owned);
+            drop(entries);
+            drop(retired);
+            return false;
+        }
+        let base = Arc::clone(&ready.value);
+        drop(entries);
+
+        // Readers keep their exact snapshot. Copy outside the mutex and publish
+        // only on the same base. If another writer won and the event still
+        // matters, relist on the next read instead of copying the rows again.
+        let rows = Arc::new(copy_rows(edit, &base.rows, row));
+        let mut entries = self.entries.lock().expect("live store cache lock");
+        if let Some(ready) = ready_to_patch(entries.get_mut(key), covers, change) {
+            if Arc::ptr_eq(&ready.value, &base) {
+                ready.slots.as_mut().expect("indexed snapshot").apply(edit);
+                ready.value = Arc::new(ListSnapshot::new(rows, change.version.map(str::to_owned)));
+            } else {
+                ready.dirty = true;
+            }
+        }
+        false
     }
 }
 
