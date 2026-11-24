@@ -26,7 +26,7 @@ import type {
 	ResourceMetricSummary,
 	ResourceSummary,
 } from "@/lib/types";
-import { buildOwnershipTopology } from "./topology-benchmark-fixtures";
+import { topologyFromTableRows } from "./topology-benchmark-fixtures";
 import { benchmark } from "./benchmark";
 
 const kinds = [
@@ -452,7 +452,13 @@ assert(
 
 const retainedMembership = buildResourceTableMembership(ownershipProjection, ownershipInteractionState);
 const mapFilter = createTableTopologyFilter();
-const retainedMapTopology = buildOwnershipTopology(500);
+// The out-of-scope node is in the topology but not in any table row.
+const mapRows = ownershipRows.slice(0, 2_000);
+const outOfScopeMapRow = ownershipEdgeResource("Pod", "catalog-map-out-of-scope");
+const retainedMapTopology = topologyFromTableRows([...mapRows, outOfScopeMapRow]);
+const groupingPreferredState = {
+	preferredGitOpsResourceKeys: ownershipInteractionState.preferredGitOpsResourceKeys,
+};
 const sortVariants = [
 	{ ...ownershipInteractionState, sort: { id: "name", desc: false } },
 	{ ...ownershipInteractionState, sort: { id: "age", desc: true } },
@@ -466,6 +472,13 @@ for (const variant of sortVariants) {
 	assert.deepEqual(display.displayRows, buildResourceTableDisplay(ownershipProjection, variant).displayRows);
 	assert.strictEqual(mapFilter(retainedMapTopology, display.filteredRows, false), expectedMap);
 }
+assert.equal(expectedMap?.nodes.length, mapRows.length);
+assert(expectedMap?.nodes.some((node) => node.name === mapRows[0]?.name));
+assert.equal(expectedMap?.nodes.some((node) => node.name === outOfScopeMapRow.name), false);
+assert.deepEqual(
+	buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, groupingPreferredState).displayRows,
+	buildResourceTableDisplay(ownershipProjection, { ...ownershipInteractionState, sort: sortVariants[0].sort }).displayRows,
+);
 
 describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () => {
 	benchmark("buildResourceSearchIndex", () => {
@@ -499,6 +512,17 @@ describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () 
 			buildResourceTableModel(projection, variant);
 	});
 
+	benchmark("F02 sort-only with retained membership, table work only", () => {
+		for (const variant of sortVariants) {
+			const rows = sortResourceTableRows(retainedMembership.filteredRows, variant.sort, variant.contexts);
+			buildResourceTableDisplayFromMembership(retainedMembership, rows, variant);
+		}
+	});
+
+	benchmark("F02 sort-only with repeated membership lookup, table work only", () => {
+		for (const variant of sortVariants) buildResourceTableDisplay(ownershipProjection, variant);
+	});
+
 	benchmark("F02 sort-only with retained membership and map scope", () => {
 		for (const variant of sortVariants) {
 			const rows = sortResourceTableRows(retainedMembership.filteredRows, variant.sort, variant.contexts);
@@ -507,13 +531,9 @@ describe("F01 F02 F03 resource arrival and retained table state (10k rows)", () 
 		}
 	});
 
-	benchmark("F02 sort-only with repeated membership lookup", () => {
-		for (const variant of sortVariants) buildResourceTableDisplay(ownershipProjection, variant);
-	});
-
 	benchmark("F02 grouping-only with retained sorted rows", () => {
-		buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, ownershipState);
-		buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, ownershipInteractionState);
+		buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, {});
+		buildResourceTableDisplayFromMembership(retainedMembership, sortedMembershipRows, groupingPreferredState);
 	});
 
 	benchmark("F02 row selection (reused display and page)", () => {

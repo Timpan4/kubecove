@@ -70,6 +70,21 @@ export function buildOwnershipTopology(apps: number): ResourceTopology {
 	return { nodes, edges, warnings: [] };
 }
 
+// Nodes mirror table rows so a map filter built from those rows keeps them.
+export function topologyFromTableRows(rows: ResourceSummary[]): ResourceTopology {
+	const nodes: TopologyNode[] = rows.map((row) => ({
+		id: resourceTopologyNodeId(row.cluster, row.apiVersion ?? "v1", row.kind, row.namespace, row.name),
+		kind: row.kind,
+		name: row.name,
+		namespace: row.namespace,
+		status: row.status,
+		health: row.health,
+		selectable: true,
+		summary: row,
+	}));
+	return { nodes, edges: [], warnings: [] };
+}
+
 export function addStandaloneTopologyResources(
 	topology: ResourceTopology,
 ): ResourceTopology {
