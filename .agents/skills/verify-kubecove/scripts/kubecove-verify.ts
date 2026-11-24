@@ -21,8 +21,9 @@ const required = (name: string) => {
 	if (value === undefined) throw new Error(`--${name} is required`);
 	return value;
 };
-// Set on <html> by the browser mock client (src/lib/tauri.ts) only when the mock runtime runs.
-const MOCK_RUNTIME_SELECTOR = "html[data-kubecove-dev-mocks]";
+// The browser mock client (src/lib/tauri.ts) marks <html> when the mock runtime initializes, and
+// src/main-svelte.ts marks it once the app has mounted, so a failed mount never reads as ready.
+const READY_SELECTOR = "html[data-kubecove-dev-mocks][data-kubecove-mounted]";
 const hasTarget = () => Boolean(flag("role") || flag("label") || flag("text") || flag("selector"));
 
 function runIdFromArgs() {
@@ -88,8 +89,8 @@ async function launch() {
 		await waitFor("Vite to serve the KubeCove index", async (signal) => (await (await fetch(url, { signal })).text()).includes("<title>KubeCove</title>"));
 		await withPage(state, async (page) => {
 			await page.goto(url);
-			// Ready means usable: the browser mock client has initialized and set the page marker.
-			await page.locator(MOCK_RUNTIME_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs });
+			// Ready means usable: the mock runtime initialized and the app mounted.
+			await page.locator(READY_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs });
 		});
 		// Inside the try: a launch that cannot record itself fails and stops what it started.
 		await record(state, { action: "launch", url: state.url, head: state.head });
@@ -160,7 +161,7 @@ async function browserCommand(state: RunState, action: string | undefined) {
 			await page.goto(state.url);
 			await page.evaluate(() => localStorage.clear());
 			await page.reload();
-			await page.locator(MOCK_RUNTIME_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs });
+			await page.locator(READY_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs });
 		} else if (action === "click") await target(page).click();
 		else if (action === "fill") await target(page).fill(required("value"));
 		else if (action === "press") await (hasTarget() ? target(page).press(required("key")) : page.keyboard.press(required("key")));
@@ -201,10 +202,10 @@ async function doctor(state: RunState) {
 	// A request and its body read share one deadline, so a stalled server fails the check instead of hanging doctor.
 	checks.indexServed = await fetch(state.url, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then(async (response) => (await response.text()).includes("<title>KubeCove</title>")).catch(() => false);
 	checks.cdp = checks.chromePid && await fetch(`${state.cdpUrl}/json/version`, { signal: AbortSignal.timeout(readinessTimeoutMs) }).then((response) => response.ok).catch(() => false);
-	// The marker is set when the browser mock client initializes, so it reports the mock runtime whichever view renders.
+	// Neither marker depends on the view, so this reports a mounted mock runtime whichever view shows.
 	checks.browserMockRuntime = checks.cdp && (await withPage(state, async (page) => {
 		if (!page.url().startsWith(state.url)) return false;
-		return page.locator(MOCK_RUNTIME_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs }).then(() => true, () => false);
+		return page.locator(READY_SELECTOR).waitFor({ state: "attached", timeout: readinessTimeoutMs }).then(() => true, () => false);
 	}).catch(() => false));
 	const healthy = Object.values(checks).every(Boolean);
 	console.log(JSON.stringify({ healthy, runId: state.runId, url: state.url, launchedAt: state.head, evidenceDir: state.evidenceDir, checks }, null, 2));

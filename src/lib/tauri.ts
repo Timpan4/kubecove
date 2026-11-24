@@ -96,7 +96,7 @@ export async function initializeBrowserDevMocks(): Promise<void> {
 	if (process.env.KUBECOVE_PUBLIC_DEV_MOCKS === "true") {
 		const mocks = await import("./tauri-dev-mocks");
 		createDevMockClient = mocks.createDevMockTauriClient;
-		// Verification tools wait on this marker instead of page text, which views may not render.
+		// Marks the mock runtime. Verification tools also wait for the mount marker in main-svelte.ts.
 		document.documentElement.dataset.kubecoveDevMocks = "true";
 	}
 }

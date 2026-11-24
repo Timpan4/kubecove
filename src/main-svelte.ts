@@ -15,6 +15,8 @@ if (!target) {
 function mountApp(target: HTMLElement): void {
 	mount(Root, { target });
 	markStartup("svelte-mount");
+	// A view-independent ready marker: set only after a mount that did not throw.
+	document.documentElement.dataset.kubecoveMounted = "true";
 }
 
 if (USE_BROWSER_DEV_MOCKS) {
