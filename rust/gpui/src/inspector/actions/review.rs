@@ -132,7 +132,7 @@ fn review_body(review: &Review, entity: &Entity<Inspector>) -> Div {
                 .role(gpui_kit::Role::Button)
                 .aria_expanded(review.diff_open)
                 .track_focus(&review.diff_focus)
-                .focus(|style| style.border_color(Tokens::ring()))
+                .focus_visible(|style| style.border_color(Tokens::ring()))
                 .tab_index(0)
                 .on_click(toggle)
                 .into_any_element()

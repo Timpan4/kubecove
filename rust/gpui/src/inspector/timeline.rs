@@ -83,16 +83,7 @@ pub(super) fn incident_signals(detail: &ResourceDetail, loading: &LoadingDelays)
             .border_1()
             .border_color(Tokens::border())
             .bg(background)
-            .child(
-                div()
-                    .absolute()
-                    .left(px(-1.))
-                    .top(px(-1.))
-                    .bottom(px(-1.))
-                    .w(px(4.))
-                    .rounded_l(px(8.))
-                    .bg(accent),
-            )
+            .child(super::surface::left_rule(accent, 4., 7.))
             .child(
                 div()
                     .min_w_0()

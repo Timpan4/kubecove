@@ -130,15 +130,11 @@ pub(super) fn resource_card(
         .pb(s(10.))
         .pl(s(16.))
         .pr(s(14.))
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .top_0()
-                .bottom_0()
-                .w(s(4.))
-                .bg(rail.opacity(0.96)),
-        )
+        .child(super::super::surface::left_rule(
+            rail.opacity(0.96),
+            4. * z,
+            7. * z,
+        ))
         .child(
             div()
                 .flex()
@@ -294,33 +290,37 @@ pub(super) fn group_card(kind: &str, count: usize, expanded: bool, dimmed: bool,
         .when(dimmed, |card| card.opacity(0.35))
 }
 
-/// The selection ring (`ring-2`/`ring-1`) and glow (`::after` box shadow).
-pub(super) fn selection_ring(node: &FlowNode, z: f32) -> Option<Div> {
-    let (width, ring, glow, blur) = if node.selected {
-        (2., Tokens::primary(), 0.42, 10.)
+/// The selection ring (`ring-2`/`ring-1`), keyboard focus ring, and glow (`::after` box shadow).
+/// Painted as an absolute overlay so focus and selection never shrink the card.
+pub(super) fn selection_ring(node: &FlowNode, keyboard_focused: bool, z: f32) -> Option<Div> {
+    let (width, ring, glow) = if node.selected {
+        (2., Tokens::primary(), Some((0.42, 10.)))
+    } else if keyboard_focused {
+        (2., Tokens::primary().opacity(0.65), None)
     } else if node.connected {
-        (1., Tokens::primary().opacity(0.3), 0.3, 7.)
+        (1., Tokens::primary().opacity(0.3), Some((0.3, 7.)))
     } else {
         return None;
     };
     // The ring is drawn inside the zoomed flow viewport, so it scales too.
     let width = width * z;
-    Some(
-        div()
-            .absolute()
-            .top(px(-width))
-            .left(px(-width))
-            .right(px(-width))
-            .bottom(px(-width))
-            .rounded(px(8. * z + width))
-            .border(px(width))
-            .border_color(ring)
-            .shadow(vec![BoxShadow {
-                color: Tokens::primary().opacity(glow),
-                offset: point(px(0.), px(0.)),
-                blur_radius: px(blur * z),
-                spread_radius: px(0.),
-                inset: false,
-            }]),
-    )
+    let ring = div()
+        .absolute()
+        .top(px(-width))
+        .left(px(-width))
+        .right(px(-width))
+        .bottom(px(-width))
+        .rounded(px(8. * z + width))
+        .border(px(width))
+        .border_color(ring);
+    Some(match glow {
+        Some((alpha, blur)) => ring.shadow(vec![BoxShadow {
+            color: Tokens::primary().opacity(alpha),
+            offset: point(px(0.), px(0.)),
+            blur_radius: px(blur * z),
+            spread_radius: px(0.),
+            inset: false,
+        }]),
+        None => ring,
+    })
 }

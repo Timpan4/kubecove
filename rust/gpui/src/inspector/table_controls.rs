@@ -99,7 +99,7 @@ impl Inspector {
                 .aria_label(aria)
                 .track_focus(&focus)
                 .rounded(px(4.))
-                .focus(|style| style.bg(Tokens::muted()))
+                .focus_visible(|style| style.bg(Tokens::muted()))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| this.toggle_sort(sort_column, cx)))
                 .child(ui::muted(ui::text(label, 11., 16.)).font_weight(FontWeight::MEDIUM))
@@ -130,7 +130,7 @@ impl Inspector {
             .aria_label(label.clone())
             .aria_description(if collapsed { "collapsed" } else { "expanded" })
             .track_focus(&focus)
-            .focus(|style| style.bg(Tokens::muted()))
+            .focus_visible(|style| style.bg(Tokens::muted()))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_group(toggle_key.clone(), cx)))
             .flex()
@@ -212,7 +212,7 @@ impl Inspector {
                 .rounded(px(6.))
                 .border_1()
                 .border_color(gpui_kit::transparent_black())
-                .focus(|style| style.border_color(Tokens::ring()))
+                .focus_visible(|style| style.border_color(Tokens::ring()))
                 .aria_label(format!(
                     "{} {} {}",
                     if pinned { "Unpin" } else { "Pin" },

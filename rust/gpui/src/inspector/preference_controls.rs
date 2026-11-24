@@ -413,7 +413,7 @@ impl Inspector {
                                     .border_1()
                                     .border_color(Tokens::border())
                                     .bg(Tokens::card())
-                                    .focus(|item| item.border_color(Tokens::ring()))
+                                    .focus_visible(|item| item.border_color(Tokens::ring()))
                                     .when(dragged == Some(kind.as_str()), |item| {
                                         item.border_color(Tokens::primary()).bg(Tokens::muted())
                                     })

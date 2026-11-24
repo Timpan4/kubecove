@@ -282,19 +282,19 @@ impl Inspector {
     /// The map and table panels. Both open share the page as `0.42fr` and
     /// `0.58fr`, or stack when the detail pane is open. A collapsed panel leaves
     /// its strip beside the other panel.
-    fn panels(&mut self, stacked: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn panels(&mut self, stacked: bool, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         match (self.map_is_open(), self.table_open) {
             (true, true) if stacked => div()
                 .flex()
                 .flex_col()
                 .gap(px(12.))
-                .child(div().h(px(400.)).child(self.map_panel(cx)))
+                .child(div().h(px(400.)).child(self.map_panel(window, cx)))
                 .child(div().h(px(560.)).child(self.table_panel(cx)))
                 .into_any_element(),
             (map_open, table_open) => {
                 let map: AnyElement = if map_open {
                     let share = if table_open { 0.42 } else { 1. };
-                    grow_panel(share, self.map_panel(cx)).into_any_element()
+                    grow_panel(share, self.map_panel(window, cx)).into_any_element()
                 } else {
                     self.panel_strip(Panel::Map, cx)
                 };
@@ -541,7 +541,7 @@ impl Inspector {
                     ))
                     .into_any_element(),
                 _ => {
-                    let panels = self.panels(stacked, cx);
+                    let panels = self.panels(stacked, window, cx);
                     div()
                         .flex()
                         .flex_col()

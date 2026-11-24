@@ -71,7 +71,7 @@ fn evidence_row(evidence: &Evidence) -> Div {
         .pl(px(16.))
         .pr(px(12.))
         .py(px(8.))
-        .child(surface::left_rule(evidence_color(evidence.tone)).rounded_l(px(6.)))
+        .child(surface::left_rule(evidence_color(evidence.tone), 4., 5.))
         .child(
             div()
                 .flex()

@@ -130,16 +130,11 @@ pub(super) fn card(
             card.border_color(Tokens::primary().opacity(0.3))
                 .shadow_md()
         })
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .top_0()
-                .bottom_0()
-                .w(px(4.))
-                .rounded_l(px(10.))
-                .bg(rail_color(release.status.as_deref())),
-        )
+        .child(super::surface::left_rule(
+            rail_color(release.status.as_deref()),
+            4.,
+            9.,
+        ))
         .child(
             div()
                 .flex()

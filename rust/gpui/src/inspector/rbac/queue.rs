@@ -350,14 +350,15 @@ fn queue_card(
             Tokens::border()
         })
         .overflow_hidden()
-        .child(
-            surface::left_rule(if selected {
+        .child(surface::left_rule(
+            if selected {
                 Tokens::primary().opacity(0.7)
             } else {
                 risk_rail(&item.risks)
-            })
-            .w(px(3.)),
-        )
+            },
+            3.,
+            7.,
+        ))
         .child(
             div()
                 .flex()

@@ -177,13 +177,13 @@ pub(super) fn health_badge(assessment: &HealthAssessment) -> Div {
         )
 }
 
-/// Severity-colored `border-l-4` marker shared by queue cards and evidence.
-pub(super) fn left_rule(color: Hsla) -> Div {
+/// Full-box left accent border so GPUI keeps the card's corner radius instead
+/// of clamping a narrow strip's radius to half its width.
+pub(super) fn left_rule(color: Hsla, width: f32, radius: f32) -> Div {
     div()
         .absolute()
-        .left_0()
-        .top_0()
-        .bottom_0()
-        .w(px(4.))
-        .bg(color)
+        .inset_0()
+        .rounded(px(radius))
+        .border_l(px(width))
+        .border_color(color)
 }

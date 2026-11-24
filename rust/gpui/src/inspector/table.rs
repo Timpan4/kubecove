@@ -184,7 +184,8 @@ impl Inspector {
                         .min_w_0()
                         .cursor_pointer()
                         .track_focus(&focus)
-                        .focus(|style| style.border_2().border_color(Tokens::ring()))
+                        .rounded(px(4.))
+                        .focus_visible(|style| style.bg(Tokens::muted()))
                         .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                             if matches!(event.keystroke.key.as_str(), "enter" | "space") {
                                 if let Some(resource) = this.table_row(&target) {
