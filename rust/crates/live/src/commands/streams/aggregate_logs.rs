@@ -26,7 +26,7 @@ use std::{
     time::Duration,
 };
 
-use tokio::task::{AbortHandle, Id, JoinSet};
+use tokio::task::{AbortHandle, Id, JoinError, JoinSet};
 
 const MAX_AGGREGATED_LOG_SOURCES: usize = 50;
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
@@ -168,12 +168,7 @@ impl AggregateLogs {
                                 // request a waiting or completed container's log every second.
                                 // A retry asked for while the task ran is honored now.
                                 if let Some(finished) = finished {
-                                    let id = finished.map_or_else(|error| error.id(), |(id, ())| id);
-                                    if let Some(source) = self.streams.retire(id)
-                                        && self.streams.retry.remove(&source)
-                                    {
-                                        self.reconcile_sources();
-                                    }
+                                    self.source_finished(finished);
                                 }
                                 continue;
                             }
@@ -263,8 +258,10 @@ impl AggregateLogs {
         (!changed && previous_total == Some(self.pods.total)) || self.connected()
     }
 
+    /// Retries every selected source: a source whose task still runs or cools down is marked
+    /// to retry when it finishes. Only pod events, relists and watch renewals call this.
     fn reconcile_sources(&mut self) {
-        let desired = &self.selected;
+        let desired = std::mem::take(&mut self.selected);
         self.streams
             .attached
             .retain(|source| desired.binary_search(source).is_ok());
@@ -278,36 +275,53 @@ impl AggregateLogs {
             }
             retained
         });
-        for source in desired {
+        for source in &desired {
             if self.streams.handles.contains_key(source) {
                 self.streams.retry.insert(source.clone());
-                continue;
+            } else {
+                self.streams.retry.remove(source);
+                self.spawn_source(source.clone());
             }
-            self.streams.retry.remove(source);
-            let mut options = self.options.clone();
-            if !self.streams.attached.insert(source.clone()) {
-                options.tail_lines = Some(0);
-            }
-            let stream = stream_log_source(
-                self.client.clone(),
-                self.namespace.clone(),
-                source.clone(),
-                options,
-                self.channel.clone(),
-                self.stream_id.clone(),
-            );
-            let scope = SessionScope::current();
-            let handle = self.streams.tasks.spawn(async move {
-                if let Some(scope) = scope {
-                    scope.run(stream).await;
-                } else {
-                    stream.await;
-                }
-                // Instant EOF or an unavailable container must not spin on log GETs.
-                tokio::time::sleep(RECONNECT_DELAY).await;
-            });
-            self.streams.handles.insert(source.clone(), handle);
         }
+        self.selected = desired;
+    }
+
+    /// Forgets a finished task and reconnects only its own source, if a retry was asked for.
+    /// Reconciling every source here would mark the others still cooling down for retry, and
+    /// sources that finish at different times would then keep re-arming each other.
+    fn source_finished(&mut self, finished: Result<(Id, ()), JoinError>) {
+        let id = finished.map_or_else(|error| error.id(), |(id, ())| id);
+        if let Some(source) = self.streams.retire(id)
+            && self.streams.retry.remove(&source)
+        {
+            self.spawn_source(source);
+        }
+    }
+
+    fn spawn_source(&mut self, source: LogSourceKey) {
+        let mut options = self.options.clone();
+        if !self.streams.attached.insert(source.clone()) {
+            options.tail_lines = Some(0);
+        }
+        let stream = stream_log_source(
+            self.client.clone(),
+            self.namespace.clone(),
+            source.clone(),
+            options,
+            self.channel.clone(),
+            self.stream_id.clone(),
+        );
+        let scope = SessionScope::current();
+        let handle = self.streams.tasks.spawn(async move {
+            if let Some(scope) = scope {
+                scope.run(stream).await;
+            } else {
+                stream.await;
+            }
+            // Instant EOF or an unavailable container must not spin on log GETs.
+            tokio::time::sleep(RECONNECT_DELAY).await;
+        });
+        self.streams.handles.insert(source, handle);
     }
 }
 

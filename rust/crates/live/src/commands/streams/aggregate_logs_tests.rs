@@ -495,3 +495,139 @@ async fn a_denied_watch_falls_back_to_listing() {
         () = mock => {},
     }
 }
+
+type MockBody = http_body_util::combinators::UnsyncBoxBody<bytes::Bytes, std::convert::Infallible>;
+
+fn aggregate_logs(client: Client) -> AggregateLogs {
+    AggregateLogs {
+        client,
+        namespace: "default".into(),
+        options: LogStreamOptions {
+            batch_lines: false,
+            tail_lines: Some(10),
+            since_seconds: None,
+        },
+        channel: Channel::new(|_| Ok(())),
+        stream_id: "logs".into(),
+        streams: SourceStreams::default(),
+        pods: PodSources::default(),
+        selected: Vec::new(),
+    }
+}
+
+/// Serves the pods from `list` (called with the list's index), answers every log GET with a
+/// waiting-container 400 and records its pod, and either holds one watch open for `watch`
+/// events or denies every watch with a 403.
+fn serve_pods(
+    mut requests: tower_test::mock::Handle<Request<Body>, Response<MockBody>>,
+    mut list: impl FnMut(usize) -> Vec<Pod> + Send + 'static,
+    mut watch: Option<tokio::sync::mpsc::UnboundedReceiver<bytes::Bytes>>,
+) -> (
+    tokio::task::JoinHandle<()>,
+    std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) {
+    use bytes::Bytes;
+    use http_body::Frame;
+    use http_body_util::{BodyExt, Full, StreamBody};
+    use std::convert::Infallible;
+
+    let full = |status: u16, body: serde_json::Value| {
+        Response::builder()
+            .status(status)
+            .body(Full::new(Bytes::from(body.to_string())).boxed_unsync())
+            .unwrap()
+    };
+    let failure = |code: u16, reason: &str, message: &str| {
+        json!({
+            "apiVersion": "v1", "kind": "Status", "status": "Failure",
+            "reason": reason, "code": code, "message": message,
+        })
+    };
+    let logged = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = std::sync::Arc::clone(&logged);
+    let mut lists = 0;
+    let server = tokio::spawn(async move {
+        while let Some((request, reply)) = requests.next_request().await {
+            let path = request.uri().path().to_owned();
+            let query = request.uri().query().unwrap_or_default().to_owned();
+            if let Some(pod) = path.strip_suffix("/log") {
+                let pod = pod.rsplit('/').next().unwrap_or_default().to_owned();
+                recorded.lock().unwrap().push(pod);
+                reply.send_response(full(
+                    400,
+                    failure(400, "BadRequest", "container is waiting to start"),
+                ));
+            } else if query.contains("watch=true") {
+                let Some(receiver) = watch.take() else {
+                    reply.send_response(full(
+                        403,
+                        failure(403, "Forbidden", "cannot watch resource \"pods\""),
+                    ));
+                    continue;
+                };
+                let frames = futures_util::stream::unfold(receiver, |mut receiver| async {
+                    let bytes = receiver.recv().await?;
+                    Some((Ok::<_, Infallible>(Frame::data(bytes)), receiver))
+                });
+                reply.send_response(Response::new(StreamBody::new(frames).boxed_unsync()));
+            } else {
+                let items = list(lists);
+                lists += 1;
+                reply.send_response(full(
+                    200,
+                    json!({"metadata": {"resourceVersion": "10"}, "items": items}),
+                ));
+            }
+        }
+    });
+    (server, logged)
+}
+
+// Failure mode: when a retried source finishes, reconciling every source marks the other
+// still-cooling source for retry, so two sources re-arm each other once a second forever
+// after one pod event. Each source must retry once and then wait for the next pod event.
+#[tokio::test(start_paused = true)]
+async fn a_retried_source_does_not_re_arm_the_other_sources() {
+    let (service, requests) = tower_test::mock::pair::<Request<Body>, Response<MockBody>>();
+    let client = Client::new(service, "default");
+    let pods = Api::namespaced(client.clone(), "default");
+    let mut logs = aggregate_logs(client);
+    let mut waiting = pod("api-a", &["app", "sidecar"]);
+    waiting.metadata.resource_version = Some("10".into());
+    let listed = waiting.clone();
+    let (events, receiver) = tokio::sync::mpsc::unbounded_channel::<bytes::Bytes>();
+    let (server, logged) = serve_pods(requests, move |_| vec![listed.clone()], Some(receiver));
+    let log_requests = || logged.lock().unwrap().len();
+
+    let check = async {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        assert_eq!(log_requests(), 2, "both containers attach once");
+        let mut modify = |version: &str| {
+            waiting.metadata.resource_version = Some(version.into());
+            events
+                .send(bytes::Bytes::from(format!(
+                    "{}\n",
+                    json!({"type": "MODIFIED", "object": waiting})
+                )))
+                .unwrap();
+        };
+        modify("11");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(log_requests(), 4, "a pod event retries both finished sources");
+        // Both sources are cooling down, so this event asks each to retry once it ends.
+        modify("12");
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert_eq!(log_requests(), 6, "each source retries once after its cooldown");
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        assert_eq!(
+            log_requests(),
+            6,
+            "finished sources kept reconnecting without a pod event"
+        );
+    };
+    tokio::select! {
+        () = logs.watch_pods(&pods, "app=api") => panic!("the log stream ended"),
+        () = check => {},
+    }
+    server.abort();
+}
