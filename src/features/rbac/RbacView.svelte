@@ -40,7 +40,7 @@
 	import RbacQueueFilters from "./RbacQueueFilters.svelte";
 	import RbacReviewQueue from "./RbacReviewQueue.svelte";
 	import RbacVerifier from "./RbacVerifier.svelte";
-	import { rbacVerifier } from "./rbacVerifier.svelte";
+	import { rbacVerifier } from "./rbacVerifierState.svelte";
 	import RbacReviewBadge from "./RbacReviewBadge.svelte";
 	import RbacReviewPanel from "./RbacReviewPanel.svelte";
 	import type { RbacReviewRecord } from "./reviewModel";

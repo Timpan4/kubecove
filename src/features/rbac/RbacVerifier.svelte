@@ -4,7 +4,7 @@
 	import { Button, Input } from "@/components/ui/svelte";
 	import { cnfast } from "@/lib/utils";
 	import { identityLabel, type InspectorIdentity } from "./observedPermissions";
-	import type { rbacVerifier } from "./rbacVerifier.svelte";
+	import type { rbacVerifier } from "./rbacVerifierState.svelte";
 
 	let { model, cluster }: { model: ReturnType<typeof rbacVerifier>; cluster: string } = $props();
 	const activeIdentity = $derived(model.activeIdentity);
