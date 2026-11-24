@@ -300,7 +300,7 @@ test("one Rust job builds on the existing runner and each shard verifies its art
   };
   inOrder(build, ["dtolnay/rust-toolchain@", "node scripts/ci-rust-cache-key.mjs", "jdx/mr-boxington-action@", "node scripts/ci-mbx-cargo.mjs", "node scripts/codspeed-rust-artifact.mjs build", "actions/upload-artifact@"]);
   inOrder(shards, ["Require the build artifact identity", "actions/download-artifact@", "node scripts/codspeed-rust-artifact.mjs install", "./.github/actions/codspeed-run"]);
-  for (const manifest of ["", "crates/kube/", "crates/inspection/", "crates/live/", "crates/gitops/", "crates/host/"]) {
+  for (const manifest of ["", "crates/kube/", "crates/inspection/", "crates/live/", "crates/gitops/", "crates/host/", "crates/mcp/"]) {
     const features = /^bench-support = \[[^\]]*\]/m.exec(readFileSync(new URL(`../rust/${manifest}Cargo.toml`, import.meta.url), "utf8"))?.[0];
     assert.ok(features, `${manifest}Cargo.toml has no bench-support feature`);
     assert.doesNotMatch(features, /"desktop"/, `${manifest}Cargo.toml`);

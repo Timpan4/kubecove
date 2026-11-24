@@ -21,7 +21,7 @@ pub use tools::TOOL_NAMES;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "loopback")]
+#[cfg(feature = "bench-support")]
 #[doc(hidden)]
 pub mod bench_support {
     pub use crate::tools::{describe_resource_body, page_resource_rows};

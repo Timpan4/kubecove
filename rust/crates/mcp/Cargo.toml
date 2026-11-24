@@ -10,6 +10,8 @@ description = "KubeCove read-only MCP tools and their HTTP endpoint (ADR 0028)"
 [features]
 # The desktop app's own loopback listener; the server mounts the endpoint in its router.
 loopback = ["dep:axum"]
+# Exposes the resource paging and describe helpers to the backend benchmarks.
+bench-support = []
 
 [dependencies]
 kubecove-models = { path = "../models" }

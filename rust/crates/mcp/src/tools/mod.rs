@@ -6,7 +6,7 @@ mod cluster;
 mod logs_gitops;
 mod problems;
 mod resources;
-#[cfg(feature = "loopback")]
+#[cfg(feature = "bench-support")]
 pub use resources::{describe_resource_body, page_resource_rows};
 
 use crate::handler::McpContext;
