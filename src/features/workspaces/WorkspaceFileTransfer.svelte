@@ -139,10 +139,11 @@
 	async function readBrowserImportFile(event: Event) {
 		const input = event.currentTarget;
 		if (!(input instanceof HTMLInputElement)) return;
-		const generation = importGeneration;
 		const file = input.files?.[0];
 		input.value = "";
 		if (!file) return;
+		// Every nonempty selection starts a new pick, so an older read cannot finish into this one.
+		const generation = beginImportPick();
 		workspaceTransferError = "";
 		workspaceTransferMessage = "";
 		if (file.size > 2 * 1024 * 1024) {
