@@ -32,6 +32,8 @@ export function observedPermissions(
 	identity: InspectorIdentity,
 	index: RbacBindingIndex = buildRbacBindingIndex(inspection),
 ): ObservedPermissionResult {
+	// The binding lookup would read a blank namespace as `default` and show another account's grants.
+	if (missingServiceAccountNamespace(identity)) return { grants: [], unknown: true, reason: "The ServiceAccount namespace is missing." };
 	const coverage = new Map(inspection.coverage.map((item) => [item.family, item.status]));
 	const incomplete = (["roles", "clusterRoles", "roleBindings", "clusterRoleBindings"] as const)
 		.filter((family) => coverage.get(family) !== "complete");
@@ -66,12 +68,12 @@ export function inspectorIdentity(identity: RbacAccessReviewIdentity | undefined
 	return { kind: "user", name: identity.username, groups: identity.groups };
 }
 
-/** The verifier's request identity: a blank namespace reads as `default`, a user without groups gets `identityDefaults`. */
 /** `reviewIdentity` substitutes `default` for a blank ServiceAccount namespace, so a review would target another account. */
 export function missingServiceAccountNamespace(identity: InspectorIdentity): boolean {
 	return identity.kind === "serviceAccount" && !identity.namespace?.trim();
 }
 
+/** The verifier's request identity: a blank namespace reads as `default`, a user without groups gets `identityDefaults`. */
 export function reviewIdentity(identity: InspectorIdentity): RbacAccessReviewIdentity {
 	if (identity.kind === "serviceAccount") return { kind: "serviceAccount", name: identity.name, namespace: identity.namespace || "default" };
 	if (identity.kind === "group") return { kind: "group", group: identity.name };

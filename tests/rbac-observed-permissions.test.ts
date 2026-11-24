@@ -77,6 +77,17 @@ describe("observed RBAC permissions", () => {
 		expect(identityDefaults("user", "alex")).toEqual(["system:authenticated"]);
 		expect(identityDefaults("user", "system:anonymous")).toEqual(["system:unauthenticated"]);
 	});
+	// Failure mode: a blank namespace is looked up as `default`, so another account's grants
+	// (here the `system:serviceaccounts` group binding) show for an identity that names none.
+	test("reports a ServiceAccount without a namespace as unknown, with no grants", () => {
+		for (const namespace of [undefined, "", "  "]) {
+			expect(observedPermissions(base(), { kind: "serviceAccount", name: "api", namespace })).toEqual({
+				grants: [],
+				unknown: true,
+				reason: "The ServiceAccount namespace is missing.",
+			});
+		}
+	});
 	test("preserves handoff user groups for inspection and review", () => {
 		expect(inspectorIdentity({ kind: "user", username: "mira", groups: ["ops", "developers"] })).toEqual({
 			kind: "user",
