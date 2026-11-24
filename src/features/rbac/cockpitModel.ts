@@ -8,7 +8,7 @@ import type {
 	RbacSubjectSummary,
 	ServiceAccountSummary,
 } from "@/lib/types";
-import { automaticServiceAccountGroups, serviceAccountUsername, splitServiceAccountUsername } from "./principal";
+import { principalOf } from "./principal";
 import type { RbacView } from "./surfaceModel";
 
 export type RbacRiskBucket = "all" | "high" | "medium" | "low" | "none" | "unknown";
@@ -187,12 +187,7 @@ export function bindingsForIdentity(
 	identity: RbacAccessReviewIdentity,
 ): RbacBindingSummary[] {
 	const bindings = new Set<RbacBindingSummary>();
-	const username = identity.kind === "serviceAccount" ? serviceAccountUsername(identity.namespace, identity.name)
-		: identity.kind === "user" ? identity.username : undefined;
-	const account = identity.kind === "serviceAccount" ? identity
-		: identity.kind === "user" ? splitServiceAccountUsername(identity.username) : null;
-	const groups = identity.kind === "serviceAccount" ? automaticServiceAccountGroups(identity.namespace)
-		: identity.kind === "user" ? identity.groups : [identity.group];
+	const { username, account, groups } = principalOf(identity);
 
 	if (username !== undefined) {
 		for (const binding of index.bindingsByUser.get(username) ?? []) bindings.add(binding);
