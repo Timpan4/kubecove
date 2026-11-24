@@ -11,6 +11,8 @@ export interface TopologyGraph {
 	children: Map<string, string[]>;
 	incomingEdges: Map<string, TopologyRelationEdge[]>;
 	outgoingEdges: Map<string, TopologyRelationEdge[]>;
+	// Every endpoint of a raw edge, including edges whose other end is absent from the graph.
+	edgeEndpointIds: Set<string>;
 }
 
 export interface TopologySelection {
@@ -52,12 +54,17 @@ export function buildTopologyGraph(topology: ResourceTopology): TopologyGraph {
 	const children = new Map<string, string[]>();
 	const incomingEdges = new Map<string, TopologyRelationEdge[]>();
 	const outgoingEdges = new Map<string, TopologyRelationEdge[]>();
+	const edgeEndpointIds = new Set<string>();
 
 	for (const edge of edges) {
 		pushMapValue(parents, edge.target, edge.source);
 		pushMapValue(children, edge.source, edge.target);
 		pushMapValue(incomingEdges, edge.target, edge);
 		pushMapValue(outgoingEdges, edge.source, edge);
+	}
+	for (const edge of topology.edges) {
+		edgeEndpointIds.add(edge.source);
+		edgeEndpointIds.add(edge.target);
 	}
 
 	return {
@@ -69,6 +76,7 @@ export function buildTopologyGraph(topology: ResourceTopology): TopologyGraph {
 		children,
 		incomingEdges,
 		outgoingEdges,
+		edgeEndpointIds,
 	};
 }
 

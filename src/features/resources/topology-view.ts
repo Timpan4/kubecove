@@ -43,7 +43,7 @@ export function selectedStandaloneExpansionIdForGraph(
 	selectedNodeId: string | null,
 ): string | null {
 	if (!selectedNodeId || !graph.nodeIds.has(selectedNodeId)) return null;
-	return graph.parents.has(selectedNodeId) || graph.children.has(selectedNodeId) ? null : selectedNodeId;
+	return graph.edgeEndpointIds.has(selectedNodeId) ? null : selectedNodeId;
 }
 
 export function buildFlowTopologyView(
