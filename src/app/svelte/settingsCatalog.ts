@@ -37,20 +37,20 @@ export const GENERAL_ROWS = {
 		title: "Expand timeline by default",
 		description: "Shows messages and facts in resource timelines. You can still collapse individual entries.",
 	},
-unavailableGitOpsProviders: {
-	title: "Show unavailable GitOps providers",
-	description:
-		"Shows Argo CD and Flux provider groups as disabled when CRDs are missing.",
-},
-customResources: {
-	title: "Show Custom Resources",
-	description:
-		"Loads Custom Resources after native Kubernetes resources are visible.",
-},
-redactSecrets: {
-	title: "Redact secrets",
-	description: "Keeps Secret values hidden by default. Connected Argo Secret values stay provider masked.",
-},
+	unavailableGitOpsProviders: {
+		title: "Show unavailable GitOps providers",
+		description:
+			"Shows Argo CD and Flux provider groups as disabled when CRDs are missing.",
+	},
+	customResources: {
+		title: "Show Custom Resources",
+		description:
+			"Loads Custom Resources after native Kubernetes resources are visible.",
+	},
+	redactSecrets: {
+		title: "Redact secrets",
+		description: "Keeps Secret values hidden by default. Connected Argo Secret values stay provider masked.",
+	},
 } satisfies Record<string, SettingsRowMeta>;
 
 export const SESSION_ROWS = {
