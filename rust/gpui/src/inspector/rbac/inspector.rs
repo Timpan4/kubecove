@@ -158,20 +158,26 @@ impl Inspector {
                         .mt(px(4.))
                         .truncate(),
                     )
-                    .child(
-                        ui::muted(ui::xs(selected.map_or(
-                            "Exact evidence, policy findings, and permission sources".into(),
-                            |item| {
-                                format!(
-                                    "{} · {}",
-                                    item.namespace.as_deref().unwrap_or("Cluster scope"),
-                                    identity.label()
-                                )
-                            },
-                        )))
-                        .mt(px(2.))
-                        .truncate(),
-                    ),
+                    .child({
+                        let scope: SharedString = selected
+                            .map_or(
+                                "Exact evidence, policy findings, and permission sources".into(),
+                                |item| {
+                                    format!(
+                                        "{} · {}",
+                                        item.namespace.as_deref().unwrap_or("Cluster scope"),
+                                        identity.label()
+                                    )
+                                },
+                            )
+                            .into();
+                        ui::muted(ui::xs(scope.clone()))
+                            .id("rbac-inspector-scope")
+                            .test_support()
+                            .aria_label(scope)
+                            .mt(px(2.))
+                            .truncate()
+                    }),
             )
             .when_some(selected, |header, item| {
                 header
@@ -343,8 +349,12 @@ impl Inspector {
             .gap(px(6.))
             .p(px(8.))
             .when_some(unknown, |list, reason| {
+                let text: SharedString = format!("Unknown · {reason}").into();
                 list.child(
-                    ui::xs(format!("Unknown · {reason}"))
+                    ui::xs(text.clone())
+                        .id("rbac-grants-unknown")
+                        .test_support()
+                        .aria_label(text)
                         .p(px(8.))
                         .rounded(px(4.))
                         .border_1()

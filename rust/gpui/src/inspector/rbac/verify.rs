@@ -228,7 +228,10 @@ impl Inspector {
         let (Some(data), Some(target)) = (state.data(), state.verifier.target(cx)) else {
             return;
         };
-        if identity.name.is_empty() || matches!(state.verifier.review, Review::Checking { .. }) {
+        if identity.name.is_empty()
+            || identity.missing_namespace()
+            || matches!(state.verifier.review, Review::Checking { .. })
+        {
             return;
         }
         let request = RbacAccessReviewRequest {
@@ -274,7 +277,17 @@ impl Inspector {
         let verifier = &state.verifier;
         let manual = matches!(state.identity, IdentitySource::Manual) || identity.name.is_empty();
         let checking = matches!(verifier.review, Review::Checking { .. });
-        let ready = !checking && !identity.name.is_empty() && verifier.target(cx).is_some();
+        // Verify stays disabled until the ServiceAccount names its namespace; the view says so.
+        let namespace_required = identity.missing_namespace();
+        let ready = !checking
+            && !identity.name.is_empty()
+            && !namespace_required
+            && verifier.target(cx).is_some();
+        let namespace_message = if manual {
+            "Enter the ServiceAccount namespace to verify."
+        } else {
+            "A ServiceAccount namespace is required. Enter it with Change identity."
+        };
         let toggle = |id: &'static str, label: &'static str, on: bool| {
             button(
                 if on {
@@ -430,6 +443,7 @@ impl Inspector {
                             .id("rbac-verify")
                             .test_support()
                             .aria_label("Verify access")
+                            .aria_description(if ready { "enabled" } else { "disabled" })
                             .w_full()
                             .child(ui::icon("shield-check", 12., Tokens::primary_foreground()))
                             .child(if checking {
@@ -441,6 +455,15 @@ impl Inspector {
                                 button.on_click(cx.listener(|this, _, _, cx| this.verify_rbac(cx)))
                             }),
                     )
+                    .when(namespace_required, |body| {
+                        body.child(
+                            ui::xs(namespace_message)
+                                .id("rbac-namespace-required")
+                                .test_support()
+                                .aria_label(namespace_message)
+                                .text_color(Palette::amber200()),
+                        )
+                    })
                     .child(ui::muted(ui::text(
                         "Result is never inferred from observed grants.",
                         10.,
