@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cockpitItems } from "../src/features/rbac/cockpitModel";
+import { buildRbacBindingIndex, cockpitItems } from "../src/features/rbac/cockpitModel";
 import {
 	buildRbacEvidenceFingerprint,
 	type RbacReviewRecord,
@@ -71,6 +71,24 @@ describe("RBAC evidence fingerprints", () => {
 		if (!serviceAccount) throw new Error("expected service account entry");
 		expect(buildRbacEvidenceFingerprint(data, roleEntry(data))).toBe("rbac-v1-3oa15f05e1o52");
 		expect(buildRbacEvidenceFingerprint(data, serviceAccount)).toBe("rbac-v1-fau57i88uz26");
+	});
+
+	test("keeps the first namespace-qualified Role and first ClusterRole in warm fingerprints", () => {
+		const data = pinnedInspection();
+		const [role] = data.roles;
+		const [clusterRole] = data.clusterRoles;
+		const [account] = cockpitItems(data, "Service Accounts");
+		const [binding] = cockpitItems(data, "Bindings");
+		if (!role || !clusterRole || !account || !binding) throw new Error("expected RBAC fixture entries");
+		const bindingFingerprint = buildRbacEvidenceFingerprint(data, binding);
+
+		data.roles.unshift({ ...role, namespace: "other", rules: [] });
+		data.roles.push({ ...role, rules: [] });
+		data.clusterRoles.push({ ...clusterRole, rules: [] });
+		const index = buildRbacBindingIndex(data);
+
+		expect(buildRbacEvidenceFingerprint(data, account, index)).toBe("rbac-v1-fau57i88uz26");
+		expect(buildRbacEvidenceFingerprint(data, binding, index)).toBe(bindingFingerprint);
 	});
 });
 

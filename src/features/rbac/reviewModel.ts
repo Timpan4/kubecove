@@ -8,7 +8,7 @@ import type {
 	ServiceAccountSummary,
 } from "@/lib/types";
 import type { WorkspaceRbacReview } from "@/lib/workspace-model";
-import { buildRbacBindingIndex, type RbacBindingIndex, type RbacCockpitItem } from "./cockpitModel";
+import { buildRbacBindingIndex, type RbacBindingIndex, type RbacCockpitItem, referencedRole } from "./cockpitModel";
 import { bindingSources } from "./queueModel";
 import type { RbacView } from "./surfaceModel";
 
@@ -128,18 +128,20 @@ function evidenceFor(inspection: RbacInspectionSummary, entry: RbacCockpitItem, 
 	}
 	if (entry.category === "Bindings" && isRbacBindingSummary(entry.item)) {
 		const binding = entry.item;
-		return { ...common, binding: normalizedBinding(binding, roleForBinding(inspection, binding)) };
+		const role = index ? referencedRole(index.rolesByReference, binding) : roleForBinding(inspection, binding);
+		return { ...common, binding: normalizedBinding(binding, role) };
 	}
 	if (entry.category === "Service Accounts" && isServiceAccountSummary(entry.item)) {
 		const account = entry.item;
+		const bindingIndex = index ?? buildRbacBindingIndex(inspection);
 		return {
 			...common,
 			serviceAccount: {
 				automountToken: account.automountToken ?? null,
 				secretsCount: account.secretsCount,
 				imagePullSecretsCount: account.imagePullSecretsCount,
-				inheritedPaths: bindingSources(index ?? buildRbacBindingIndex(inspection), entry)
-					.map((binding) => normalizedBinding(binding, roleForBinding(inspection, binding)))
+				inheritedPaths: bindingSources(bindingIndex, entry)
+					.map((binding) => normalizedBinding(binding, referencedRole(bindingIndex.rolesByReference, binding)))
 					.sort(compareJson),
 			},
 		};
