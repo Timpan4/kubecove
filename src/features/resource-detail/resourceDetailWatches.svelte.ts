@@ -49,7 +49,7 @@ export function resourceDetailWatches(
 		const channel = createStreamChannel((event: StreamMessage) => {
 			if (cancelled) return;
 			if (event.type === "error") {
-				realtimeWatchError = event.message;
+				realtimeWatchError = messageFromError(event.message);
 				needsCatchUp = true;
 				return;
 			}
@@ -90,7 +90,7 @@ export function resourceDetailWatches(
 			})
 			.catch((cause: unknown) => {
 				if (cancelled) return;
-				realtimeWatchError = cause instanceof Error ? cause.message : String(cause);
+				realtimeWatchError = messageFromError(cause);
 			});
 		return () => {
 			cancelled = true;
