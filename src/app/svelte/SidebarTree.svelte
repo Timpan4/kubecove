@@ -136,11 +136,12 @@
 				? String(resourceKindsQuery.error)
 				: "",
 	);
+	const expandedIds = $derived(new Set(expandedSections));
 	const expandedNamespaces = $derived(
 		(namespacesQuery.data ?? [])
 			.map((namespace) => namespace.name)
 			.filter((namespace) =>
-				expandedSections.includes(
+				expandedIds.has(
 					nodeIdToString({ type: "namespace", section: "namespaces", namespace }),
 				),
 			),
@@ -287,7 +288,7 @@
 							revealKey={treeVisible && revealKey === selectionKey ? revealKey : null}
 							onReveal={() => (revealKey = null)}
 							{selectedAncestorIds}
-							{expandedSections}
+							{expandedIds}
 							onNodeSelect={selectFromTree}
 							{onSectionToggle}
 							{getLazyChildren}

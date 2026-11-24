@@ -19,7 +19,7 @@
 		revealKey = null,
 		onReveal,
 		selectedAncestorIds = new Set<string>(),
-		expandedSections,
+		expandedIds,
 		onNodeSelect,
 		onSectionToggle,
 		getLazyChildren,
@@ -32,7 +32,7 @@
 		revealKey?: string | null;
 		onReveal?: () => void;
 		selectedAncestorIds?: ReadonlySet<string>;
-		expandedSections: string[];
+		expandedIds: ReadonlySet<string>;
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
 		getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined;
@@ -43,7 +43,7 @@
 	const id = $derived(nodeIdToString(node.id));
 	const selectedKey = $derived(selectedNode ? nodeIdToString(selectedNode) : null);
 	const isSelected = $derived(selectedKey === id);
-	const isExpanded = $derived(expandedSections.includes(id));
+	const isExpanded = $derived(expandedIds.has(id));
 	const hidesSelection = $derived(!isExpanded && selectedAncestorIds.has(id));
 	// Svelte's element types do not list the ARIA 1.3 `aria-description` attribute yet, so it is spread.
 	const selectionHint = $derived<Record<string, string>>(
@@ -270,7 +270,7 @@
 							{revealKey}
 							{onReveal}
 							{selectedAncestorIds}
-							{expandedSections}
+							{expandedIds}
 							{onNodeSelect}
 							{onSectionToggle}
 							{getLazyChildren}

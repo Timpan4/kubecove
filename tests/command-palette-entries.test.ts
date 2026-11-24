@@ -9,7 +9,7 @@ import {
 	buildDedupedResourceSearchIndex,
 	buildGlobalSearchFetchKeys,
 	buildNavigationEntries,
-	dedupeResources,
+	buildNamespaceSearchIndex,
 	filterNamespaces,
 	filterNavigationEntries,
 } from "../src/features/command-palette/entries";
@@ -110,16 +110,9 @@ describe("command palette entries", () => {
 	});
 
 	test("filterNamespaces matches substrings", () => {
-		expect(filterNamespaces(["argocd", "kube-system", "default"], "rgo")).toEqual([
+		expect(filterNamespaces(buildNamespaceSearchIndex(["argocd", "kube-system", "default"]), "rgo")).toEqual([
 			"argocd",
 		]);
-	});
-
-	test("dedupeResources keeps first occurrence by identity key", () => {
-		const a = resource({ name: "a" });
-		const rows = dedupeResources([a, resource({ name: "a" }), resource({ name: "b" })]);
-		expect(rows.map((row) => row.name)).toEqual(["a", "b"]);
-		expect(rows[0]).toBe(a);
 	});
 
 	test("deduped resource index matches merged route and keeps warmed rows first", () => {
@@ -129,7 +122,7 @@ describe("command palette entries", () => {
 		const resourceSets = [[warmed], [cachedDuplicate, cachedOnly]];
 
 		expect(buildDedupedResourceSearchIndex(resourceSets)).toEqual(
-			buildResourceSearchIndex(dedupeResources(resourceSets.flat())),
+			buildResourceSearchIndex([warmed, cachedOnly]),
 		);
 		expect(buildDedupedResourceSearchIndex(resourceSets)[0]?.resource).toBe(warmed);
 	});

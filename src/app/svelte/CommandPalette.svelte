@@ -15,6 +15,8 @@
 		buildPaletteResourceSearchIndex,
 		buildGlobalSearchFetchKeys,
 		buildNavigationEntries,
+		buildNamespaceSearchIndex,
+		RESOURCE_RESULT_CAP,
 		filterNamespaces,
 		filterNavigationEntries,
 		type PaletteNavigationEntry,
@@ -53,8 +55,6 @@
 	import { settingsStore } from "@/lib/settings-store";
 	import { treeNodeForResource } from "./workspaceNavigation";
 
-	const RESOURCE_RESULT_CAP = 50;
-	const NAMESPACE_RESULT_CAP = 8;
 
 	let {
 	open = $bindable(false),
@@ -167,9 +167,10 @@
 	const navigationEntries = $derived(buildNavigationEntries(gitOpsNavigationVisible));
 	const hasQuery = $derived(query.trim().length > 0);
 	const visibleNavigation = $derived(filterNavigationEntries(navigationEntries, query));
+	const namespaceIndex = $derived(buildNamespaceSearchIndex(namespacesQuery.data ?? []));
 	const visibleNamespaces = $derived(
 		hasQuery
-			? filterNamespaces(namespacesQuery.data ?? [], query).slice(0, NAMESPACE_RESULT_CAP)
+			? filterNamespaces(namespaceIndex, query)
 			: [],
 	);
 	const resourceSearchIndex = $derived.by(() => {
@@ -186,7 +187,7 @@
 	});
 	const visibleResources = $derived(
 		hasQuery
-			? filterResourceSearchIndex(resourceSearchIndex, query, "").slice(0, RESOURCE_RESULT_CAP)
+			? filterResourceSearchIndex(resourceSearchIndex, query, "", RESOURCE_RESULT_CAP)
 			: [],
 	);
 	const hasResults = $derived(
