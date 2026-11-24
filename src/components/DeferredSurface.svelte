@@ -25,7 +25,10 @@
 		result = { status: "pending" };
 		pending.then(
 			(loaded) => { if (current) result = { status: "loaded", value: loaded.default }; },
-			() => { if (current) result = { status: "failed" }; },
+			(error) => {
+				console.error(`Could not load ${label}.`, error);
+				if (current) result = { status: "failed" };
+			},
 		);
 		return () => { current = false; };
 	});

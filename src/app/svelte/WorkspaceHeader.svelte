@@ -5,7 +5,9 @@
 	import DeferredSurface from "@/components/DeferredSurface.svelte";
 	import { browserMockSurfaces } from "./browserMockSurfaces";
 	import ActiveLiveSessionsButton from "./ActiveLiveSessionsButton.svelte";
+	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 
+	const updatesEnabled = isAppUpdatesEnabled();
 	const IS_MAC = /Mac/i.test(globalThis.navigator?.userAgent ?? "");
 	const SEARCH_SHORTCUT_HINT = IS_MAC ? "⌘K" : "Ctrl K";
 
@@ -78,7 +80,7 @@
 			</DeferredSurface>
 		{/if}
 		<ActiveLiveSessionsButton onOpenManager={onOpenPortForwards} />
-		{#if browserMockSurfaces}
+		{#if browserMockSurfaces && updatesEnabled}
 			<DeferredSurface load={browserMockSurfaces.updateButton} label="update status">
 				{#snippet children(UpdateStatusButton)}
 					<UpdateStatusButton />

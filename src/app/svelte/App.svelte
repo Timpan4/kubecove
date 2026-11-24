@@ -22,6 +22,7 @@
 	import { workspaceStore } from "@/features/workspaces/workspaceStore";
 	import { diagnosticLog, setDiagnosticsEnabled } from "@/lib/diagnostics";
 	import { kubeconfigSourcesQueryOptions } from "@/lib/kubeconfig-sources-query";
+	import { isAppUpdatesEnabled } from "@/lib/release-channel";
 	import {
 		createTauriClient,
 		cancelWorkspaceRequests,
@@ -254,7 +255,7 @@
 
 <CopyToast />
 {#if browserMockSurfaces}
-	<DeferredSurface load={browserMockSurfaces.appEffects} label="browser mock effects">
+	<DeferredSurface load={browserMockSurfaces.appEffects} label="browser mock effects" showStatus={false}>
 		{#snippet children(BrowserMockAppEffects)}
 			<BrowserMockAppEffects />
 		{/snippet}
@@ -299,7 +300,7 @@
 				</span>
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-1 [-webkit-app-region:no-drag]">
-				{#if browserMockSurfaces}
+				{#if browserMockSurfaces && isAppUpdatesEnabled()}
 					<DeferredSurface load={browserMockSurfaces.updateButton} label="update status">
 						{#snippet children(UpdateStatusButton)}
 							<UpdateStatusButton />
