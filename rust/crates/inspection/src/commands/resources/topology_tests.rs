@@ -717,6 +717,17 @@ fn network_flow_selector_requires_every_label_in_the_service_namespace() {
         Some("other"),
         "api-other-namespace"
     )));
+    let selected = topology
+        .edges
+        .iter()
+        .filter(|edge| edge.source == service_id && edge.relation == TopologyRelation::Selects)
+        .map(|edge| edge.target.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        selected,
+        [topology_node_id("kind-dev", "v1", "Pod", Some("default"), "api-full").as_str()],
+        "the Service selects only the pod that carries every selector label"
+    );
 }
 
 #[test]
