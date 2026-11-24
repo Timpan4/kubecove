@@ -233,6 +233,13 @@ for (const [path, selected] of [
   ["rust/crates/host/src/commands/usage.rs", ["rust"]],
   ["rust/crates/inspection/Cargo.toml", ["nix", "rust"]],
   ["rust/gpui/updater.json", ["frontend", "rust"]],
+  // No crate reads Markdown, and Rust reads only the Kubernetes fixtures under tests/.
+  ["rust/gpui/README.md", ["docs"]],
+  ["rust/crates/inspection/README.md", ["docs"]],
+  ["tests/server-command-contract.test.ts", ["frontend"]],
+  ["tests/fixtures/CopyableTextHost.svelte", ["frontend"]],
+  ["tests/fixtures/kubernetes/pod-running.json", ["frontend", "rust"]],
+  ["src/lib/tauri-dev-mock-overview.json", ["frontend", "rust"]],
   ["rust/Cargo.lock", ["nix", "rust"]],
   ["tools/new-cli/Cargo.lock", ["nix", "rust"]],
   ["Cargo.toml", ["nix", "rust"]],
@@ -493,14 +500,64 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
   } finally { rmSync(root, { recursive: true, force: true }); }
   assert.equal((await detect(["tests/fixtures/kubernetes/pod-running.json"])).output.rust, "true");
   assert.equal((await detect(["src/lib/settings-integration-workspace.json"])).output.rust, "true");
+  assert.equal((await detect(["src/lib/tauri-dev-mock-overview.json"])).output.rust, "true");
+});
+// Failure modes: a crate embeds a file outside rust/ that a task's pass key leaves out, so a
+// change to it reuses an old pass and CI goes green without running; change detection does not
+// select the task; or the GPUI compiler key leaves it out, so main never saves the new objects.
+// The scan must also see an include whose path sits on the next line.
+test("every file a crate embeds from outside rust/ selects, re-keys and re-runs the tasks that compile it", async () => {
+  const repository = new URL("../", import.meta.url);
+  const listed = (pathspecs, cwd = repository) => {
+    const result = spawnSync("bash", ["-c", `git ls-files -z -- ${pathspecs}`], { cwd, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return new Set(result.stdout.split("\0").filter(Boolean));
+  };
+  const embeds = new Map();
+  for (const file of listed("'rust/**/*.rs'")) {
+    const source = readFileSync(new URL(file, repository), "utf8");
+    for (const [, relative] of source.matchAll(/include_(?:str|bytes)!\(\s*"([^"]+)"\s*,?\s*\)/g)) {
+      const resolved = join(dirname(file), relative).replaceAll("\\", "/");
+      if (!resolved.startsWith("rust/")) embeds.set(resolved, file);
+    }
+  }
+  for (const path of ["tests/fixtures/kubernetes/pod-running.json", "src/lib/tauri-dev-mock-overview.json", "src/lib/settings-integration-workspace.json", "index.html"]) {
+    assert.ok(embeds.has(path), `the scan no longer finds ${path}`);
+  }
+  const { matrix } = await detect([".github/workflows/ci.yml"]);
+  const tasks = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map((task) => [task.task, task]));
+  const parity = readFileSync(new URL("../.github/workflows/parity-suite.yml", import.meta.url), "utf8");
+  const parityKey = listed(/ci-rust-cache-key\.mjs .+ \.github\/workflows\/parity-suite\.yml (rust .+)$/m.exec(parity)[1]);
+  for (const [path, file] of embeds) {
+    assert.ok(listed(path).has(path), `${file} embeds untracked ${path}`);
+    // GPUI and the server also compile the root crates, so a root embed counts for every task.
+    const gpuiEmbed = file.startsWith("rust/gpui/");
+    const compiling = gpuiEmbed ? ["gpui-clippy", "gpui-test"] : file.startsWith("rust/server/") ? ["server"] : Object.keys(tasks);
+    const selected = (await detect([path])).matrix.include.map(({ task }) => task);
+    for (const name of compiling) {
+      assert.ok(selected.includes(name), `${path} does not select ${name}`);
+      assert.ok(listed(tasks[name].passInputs).has(path), `${name} pass inputs miss ${path}`);
+      if (gpuiEmbed) assert.ok(listed(tasks[name].inputs).has(path), `${name} compiler inputs miss ${path}`);
+    }
+    if (gpuiEmbed) assert.ok(parityKey.has(path), `the parity build key misses ${path}`);
+  }
+  // Markdown beside the crates changes no key.
+  const crateNotes = (files) => [...files].filter((path) => path.startsWith("rust/") && path.endsWith(".md"));
+  assert.ok(crateNotes(listed("rust")).length > 0);
+  for (const task of Object.values(tasks)) {
+    for (const pathspecs of [task.inputs, task.passInputs]) assert.deepEqual(crateNotes(listed(pathspecs)), [], task.task);
+  }
+  assert.deepEqual(crateNotes(parityKey), []);
+  assert.ok(listed(tasks.rust.inputs).has("rust/src/lib.rs") && parityKey.has("rust/gpui/src/main.rs"));
 });
 // Result inputs must not refresh compiler bundles, unrelated workflows must not
 // invalidate passes, and images must not compete for an immutable pass entry.
 test("compiler bundles keep the original inputs while pass keys use the full audit", async () => {
   const { matrix } = await detect([".github/workflows/ci.yml"]);
-  const desktop = "rust :!rust/gpui :!rust/server";
-  const gpui = "rust :!rust/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile";
-  const server = "rust :!rust/gpui";
+  const notes = "':(exclude,glob)rust/**/*.md'";
+  const desktop = `rust :!rust/gpui :!rust/server ${notes}`;
+  const gpui = `rust :!rust/server ${notes} src/lib/*-workspace.json src/lib/tauri-dev-mock-overview.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile`;
+  const server = `rust :!rust/gpui ${notes}`;
   assert.deepEqual(Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, inputs }) => [task, inputs])), {
     rust: desktop, "gpui-clippy": gpui, "gpui-test": gpui, server,
   });

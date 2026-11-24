@@ -229,8 +229,11 @@ compiler identity and the existing key/wrapper scripts. Compiler-bundle inputs
 retain the lists from before pass reuse. Wider pass inputs never refresh a
 compiler bundle.
 
-In this table, `shared` means `tests scripts/ci-rust-pass.mjs ':(top,glob)*'
-':(top,glob).c*/**'`. Root files cover package, lockfile, environment and toolchain
+In this table, `shared` means `tests/fixtures/kubernetes scripts/ci-rust-pass.mjs
+':(top,glob)*' ':(top,glob).c*/**'`, and `notes` means
+`':(exclude,glob)rust/**/*.md'`: no crate reads the Markdown under `rust/`, so
+those files select no Rust task and change no key. Under `tests/`, Rust embeds only
+the Kubernetes fixtures. Root files cover package, lockfile, environment and toolchain
 configuration; the dot-directory pattern covers `.cargo` and `.config` and also
 matches the tracked `.claude` tree. Other `.github` files are excluded. The only
 GitHub input is the explicit `.github/workflows/ci.yml`: CI currently uses no
@@ -239,15 +242,17 @@ inputs, which the workflow regression checks enforce.
 
 | Task | Compiler-bundle inputs | Pass inputs |
 | --- | --- | --- |
-| rust | `rust :!rust/gpui :!rust/server` | Compiler inputs plus `shared` |
-| gpui-clippy | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
-| gpui-test | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared src e2e/parity/visual` |
-| server | `rust :!rust/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
+| rust | `rust :!rust/gpui :!rust/server notes` | Compiler inputs plus `shared` |
+| gpui-clippy | `rust :!rust/server notes src/lib/*-workspace.json src/lib/tauri-dev-mock-overview.json` | Compiler inputs plus `shared` |
+| gpui-test | `rust :!rust/server notes src/lib/*-workspace.json src/lib/tauri-dev-mock-overview.json` | Compiler inputs plus `shared src e2e/parity/visual` |
+| server | `rust :!rust/gpui notes` | Compiler inputs plus `shared src public e2e scripts deploy tests/server-command-contract.test.ts` |
 
 The server's generated `dist/` comes from its audited browser inputs. The
 server pass includes the server manifest and lockfile that `cargo tree` reads.
-GPUI pass inputs include embedded workspace JSON, and every pass includes root
-test fixtures. These wider inputs affect only pass records. The edited workflow
+GPUI compiler and pass inputs include the embedded workspace and overview JSON,
+and every pass includes the Kubernetes test fixtures. A workflow regression test
+checks that every file a crate embeds from outside `rust/` selects, and is keyed
+for, each task that compiles it. These wider inputs affect only pass records. The edited workflow
 itself changes all four compiler keys once because it was already a build input.
 
 The pass-record cache key is
