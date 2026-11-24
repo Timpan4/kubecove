@@ -61,6 +61,7 @@ export const yamlSteps = {
 	replaceYamlDraft: (item) => ({ value: string(item.value) }),
 	expectYamlDocument: (item) => ({ value: string(item.value) }),
 	formatYaml: noPayload,
+	expectYamlEditorFillsPanel: noPayload,
 	foldYamlLine: (item) => ({ line: count(item.line) }),
 	expectYamlVisibleLines: (item) => {
 		if (!Array.isArray(item.lines)) throw new Error("Expected visible line numbers");

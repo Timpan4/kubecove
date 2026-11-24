@@ -493,13 +493,7 @@ impl Backend for Controlled {
         self.detail.prepare_yaml_apply(request)
     }
     fn lint_yaml(&self, _: YamlApplyRequest) -> Read<KubernetesYamlLintResult> {
-        // Native tests exercise editing without lint findings.
-        Box::pin(async {
-            Ok(KubernetesYamlLintResult {
-                diagnostics: Vec::new(),
-                notes: Vec::new(),
-            })
-        })
+        self.detail.lint_yaml()
     }
     fn apply_yaml(&self, request: YamlApplyRequest) -> Read<YamlApplyResult> {
         self.detail.apply_yaml(request)

@@ -1,11 +1,129 @@
-//! Shared steps that fold a YAML block from the editor gutter and read which
-//! document lines stay visible. Lines are 1-based, as the gutter numbers them.
+//! Shared YAML editor layout and folding checks.
 
 use super::*;
-use gpui_kit::ElementId;
+use gpui_kit::{
+    Bounds, DevicePixels, ElementId, Font, FontId, FontMetrics, FontRun, Global, GlyphId,
+    LineLayout, NoopTextSystem, Pixels, PlatformTextSystem, RenderGlyphParams, Size,
+    TextRenderingMode, px,
+};
+use std::borrow::Cow;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[derive(Default)]
+struct WhitespaceGlyphs {
+    dot: AtomicBool,
+    arrow: AtomicBool,
+}
+
+struct WhitespaceLayout(Arc<WhitespaceGlyphs>);
+
+impl Global for WhitespaceLayout {}
+
+impl PlatformTextSystem for WhitespaceLayout {
+    fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> gpui_kit::Result<()> {
+        NoopTextSystem.add_fonts(fonts)
+    }
+
+    fn all_font_names(&self) -> Vec<String> {
+        NoopTextSystem.all_font_names()
+    }
+
+    fn font_id(&self, descriptor: &Font) -> gpui_kit::Result<FontId> {
+        NoopTextSystem.font_id(descriptor)
+    }
+
+    fn font_metrics(&self, font: FontId) -> FontMetrics {
+        NoopTextSystem.font_metrics(font)
+    }
+
+    fn typographic_bounds(&self, font: FontId, glyph: GlyphId) -> gpui_kit::Result<Bounds<f32>> {
+        NoopTextSystem.typographic_bounds(font, glyph)
+    }
+
+    fn advance(&self, font: FontId, glyph: GlyphId) -> gpui_kit::Result<Size<f32>> {
+        NoopTextSystem.advance(font, glyph)
+    }
+
+    fn glyph_for_char(&self, font: FontId, ch: char) -> Option<GlyphId> {
+        NoopTextSystem.glyph_for_char(font, ch)
+    }
+
+    fn glyph_raster_bounds(
+        &self,
+        glyph: &RenderGlyphParams,
+    ) -> gpui_kit::Result<Bounds<DevicePixels>> {
+        NoopTextSystem.glyph_raster_bounds(glyph)
+    }
+
+    fn rasterize_glyph(
+        &self,
+        glyph: &RenderGlyphParams,
+        bounds: Bounds<DevicePixels>,
+    ) -> gpui_kit::Result<(Size<DevicePixels>, Vec<u8>)> {
+        NoopTextSystem.rasterize_glyph(glyph, bounds)
+    }
+
+    fn layout_line(&self, text: &str, size: Pixels, runs: &[FontRun]) -> LineLayout {
+        match text {
+            "•" => self.0.dot.store(true, Ordering::Relaxed),
+            "→" => self.0.arrow.store(true, Ordering::Relaxed),
+            _ => {}
+        }
+        NoopTextSystem.layout_line(text, size, runs)
+    }
+
+    fn recommended_rendering_mode(&self, font: FontId, size: Pixels) -> TextRenderingMode {
+        NoopTextSystem.recommended_rendering_mode(font, size)
+    }
+}
+
+pub(super) fn with_marker_recording(
+    cx: &TestAppContext,
+    scenario: &Value,
+) -> Option<TestAppContext> {
+    if !scenario["steps"]
+        .as_array()?
+        .iter()
+        .any(|step| step["action"] == "expectYamlEditorFillsPanel")
+    {
+        return None;
+    }
+    // GPUI's test window doesn't expose painted text. Record the standalone
+    // glyphs its editor shapes for whitespace without changing text metrics.
+    let glyphs = Arc::new(WhitespaceGlyphs::default());
+    let recording = TestAppContext::build_with_text_system(
+        cx.dispatcher.clone(),
+        cx.test_function_name(),
+        Arc::new(WhitespaceLayout(glyphs.clone())),
+    );
+    recording.update(|cx| cx.set_global(WhitespaceLayout(glyphs)));
+    Some(recording)
+}
 
 pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &Value) -> bool {
     match string(step, "action") {
+        "expectYamlEditorFillsPanel" => {
+            let body = window.find("detail-body").bounds();
+            let frame = window.find("yaml-editor").bounds();
+            let (editor, _) = gpui_kit::base::Root::read(window, cx)
+                .view()
+                .clone()
+                .downcast::<Inspector>()
+                .expect("the Inspector is the window's content")
+                .read(cx)
+                .yaml_editor_viewport(cx)
+                .expect("YAML editor is open");
+            // The detail body has 16px bottom padding. The input has two 1px
+            // borders (its own and the YAML frame) plus GPUI editor padding.
+            assert_eq!(body.bottom() - frame.bottom(), px(16.));
+            let inset = px(2.) + gpui_kit::component::Size::Medium.input_py();
+            assert_eq!(frame.bottom() - editor.bottom(), inset);
+            let glyphs = &cx.global::<WhitespaceLayout>().0;
+            assert!(
+                glyphs.dot.load(Ordering::Relaxed) && glyphs.arrow.load(Ordering::Relaxed),
+                "the YAML editor did not shape its whitespace markers"
+            );
+        }
         "foldYamlLine" => fold(window, cx, number(step, "line") as usize),
         "expectYamlVisibleLines" => {
             let expected: Vec<usize> = step["lines"]

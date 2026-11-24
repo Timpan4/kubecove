@@ -3,11 +3,13 @@
 //! execution, a stream outliving its detail, and a draft edited after review.
 
 use super::{Controlled, open};
-use gpui_kit::test::{TestQueryExt, TestWindowExt};
-use gpui_kit::{AppContext, TestAppContext};
+use gpui_kit::test::{TestEventExt, TestQueryExt, TestWindowExt};
+use gpui_kit::{AppContext, InputEvent, ScrollDelta, ScrollEvent, TestAppContext, point, px, size};
+use kubecove_gpui::Inspector;
 use kubecove_gpui::backend::{LogStream, LogTarget, Read};
 use kubecove_lib::models::{
     AppError, AppErrorKind, ClusterOperationResult, ClusterOperationTarget, DeploymentRevision,
+    KubernetesYamlLintDiagnostic, KubernetesYamlLintResult, KubernetesYamlLintSeverity,
     ResourceActionConfirmation, ResourceActionPreview, ResourceActionRequest, ResourceActionState,
     ResourceActionStateRequest, ResourceSummary, StreamMessage, YamlApplyPreview, YamlApplyRequest,
     YamlApplyResult, YamlViewMode,
@@ -40,6 +42,7 @@ pub struct DetailControls {
     dry_run_fail: AtomicBool,
     /// Holds the next dry run until the test releases it.
     dry_run_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    lint_diagnostics: Mutex<Vec<KubernetesYamlLintDiagnostic>>,
     applied: AtomicUsize,
     /// Holds the next apply-clean draft read until the test releases it.
     draft_gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -224,6 +227,16 @@ impl DetailControls {
             })
         })
     }
+
+    pub fn lint_yaml(&self) -> Read<KubernetesYamlLintResult> {
+        let diagnostics = self.lint_diagnostics.lock().unwrap().clone();
+        Box::pin(async move {
+            Ok(KubernetesYamlLintResult {
+                diagnostics,
+                notes: Vec::new(),
+            })
+        })
+    }
 }
 
 fn target(request: &YamlApplyRequest) -> kubecove_lib::models::YamlApplyTarget {
@@ -258,17 +271,19 @@ fn open_tab(
     handle
 }
 
-fn step(
+fn step<T>(
     cx: &mut TestAppContext,
     handle: gpui_kit::AnyWindowHandle,
-    act: impl FnOnce(&mut gpui_kit::Window, &mut gpui_kit::App),
-) {
-    cx.update_window(handle, |_, window, cx| {
-        window.render_frame(cx);
-        act(window, cx);
-    })
-    .unwrap();
+    act: impl FnOnce(&mut gpui_kit::Window, &mut gpui_kit::App) -> T,
+) -> T {
+    let result = cx
+        .update_window(handle, |_, window, cx| {
+            window.render_frame(cx);
+            act(window, cx)
+        })
+        .unwrap();
     cx.run_until_parked();
+    result
 }
 
 /// Failure mode: a tab picked while the details read runs is dropped, so the
@@ -412,6 +427,109 @@ pub fn edit_draft(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, yaml: &
 }
 
 const DRAFT: &str = "kind: Deployment\nmetadata:\n  name: payments-api\n  labels:\n    tier: web\n";
+
+#[gpui_kit::test]
+fn yaml_editor_resizes_and_scrolls_inside_the_detail_body(cx: &mut TestAppContext) {
+    let backend = Arc::new(Controlled::default());
+    let handle = open_tab(cx, backend.clone(), "yaml");
+    let viewport = |window: &gpui_kit::Window, cx: &gpui_kit::App| {
+        gpui_kit::base::Root::read(window, cx)
+            .view()
+            .clone()
+            .downcast::<Inspector>()
+            .expect("the Inspector is the window's content")
+            .read(cx)
+            .yaml_editor_viewport(cx)
+            .expect("YAML editor is open")
+    };
+    let initial = step(cx, handle, |window, cx| viewport(window, cx).0.size.height);
+    cx.simulate_window_resize(handle, size(px(1440.), px(1100.)));
+    cx.run_until_parked();
+    let taller = step(cx, handle, |window, cx| viewport(window, cx).0.size.height);
+    assert_eq!(taller - initial, px(200.));
+
+    backend
+        .detail
+        .lint_diagnostics
+        .lock()
+        .unwrap()
+        .push(KubernetesYamlLintDiagnostic {
+            severity: KubernetesYamlLintSeverity::Warning,
+            source: "test".into(),
+            message: "Example lint finding".into(),
+            field_path: Some("kind".into()),
+        });
+    let mut draft = DRAFT.to_owned();
+    for index in 0..80 {
+        draft.push_str(&format!("    extra-{index}: example\n"));
+    }
+    step(cx, handle, |window, cx| window.click("edit-draft", cx));
+    step(cx, handle, |window, cx| {
+        edit_draft(window, cx, &draft);
+        window.press(
+            if cfg!(target_os = "macos") {
+                "cmd-up"
+            } else {
+                "ctrl-home"
+            },
+            cx,
+        );
+    });
+    // The editor lints 450ms after an edit (inspector/yaml/lint.rs).
+    cx.background_executor
+        .advance_clock(std::time::Duration::from_millis(450));
+    cx.run_until_parked();
+    step(cx, handle, |window, cx| window.click("yaml-dry-run", cx));
+    cx.simulate_window_resize(handle, size(px(1440.), px(600.)));
+    cx.run_until_parked();
+    let frame = step(cx, handle, |window, cx| {
+        let body = window.find("detail-body").bounds();
+        let frame = window.find("yaml-editor").bounds();
+        let diagnostic = window.find("yaml-diagnostic:0").bounds();
+        assert!(window.find("yaml-dry-run-diff").bounds().top() < frame.top());
+        assert_eq!(frame.size.height, px(260.));
+        assert!(diagnostic.top() >= frame.bottom());
+        assert!(diagnostic.bottom() > body.bottom());
+
+        // Use the body padding so the wheel bypasses the diff and editor scrollers.
+        let position = point(body.left() + px(4.), body.center().y);
+        window.pointer_move(position, None, cx);
+        window.dispatch_event(
+            ScrollEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), body.top() - diagnostic.bottom())),
+                ..Default::default()
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.render_frame(cx);
+        let scrolled = window.find("yaml-diagnostic:0").bounds();
+        assert!(
+            scrolled.bottom() <= body.bottom(),
+            "diagnostic moved from {diagnostic:?} to {scrolled:?} in {body:?}; YAML frame at {frame:?}, now {:?}",
+            window.find("yaml-editor").bounds(),
+        );
+        window.find("yaml-editor").bounds()
+    });
+
+    let initial_offset = step(cx, handle, |window, cx| {
+        let (input, offset) = viewport(window, cx);
+        // Each edge has the YAML frame and GPUI input borders plus GPUI editor padding.
+        let inset = px(2.) + gpui_kit::component::Size::Medium.input_py();
+        assert_eq!(frame.size.height - input.size.height, inset * 2.);
+        window.scroll(
+            "yaml-editor",
+            ScrollDelta::Pixels(point(px(0.), -frame.size.height)),
+            cx,
+        );
+        offset
+    });
+    step(cx, handle, |window, cx| {
+        assert_eq!(window.find("yaml-editor").bounds(), frame);
+        assert!(viewport(window, cx).1.y < initial_offset.y);
+    });
+}
 
 #[gpui_kit::test]
 fn a_refused_yaml_dry_run_shows_its_error_and_blocks_apply(cx: &mut TestAppContext) {

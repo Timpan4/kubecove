@@ -40,6 +40,26 @@ export const yamlEditorActions = {
 	async expectYamlDocument(page, step) {
 		if (!isDeepStrictEqual(parse(await yamlDocument(page)), JSON.parse(step.value))) throw new Error("Formatting changed YAML content");
 	},
+	async expectYamlEditorFillsPanel(page) {
+		const tab = page.getByRole("tabpanel", { name: "YAML", exact: true });
+		const editor = tab.locator(".cm-editor");
+		await editor.locator(".cm-highlightSpace").first().waitFor();
+		await editor.evaluate((element) => {
+			const panel = element.closest('[role="tabpanel"]');
+			const scroller = element.querySelector(".cm-scroller");
+			if (!panel || !scroller) throw new Error("Missing YAML tab or editor scroller");
+			const bottom = element.getBoundingClientRect().bottom;
+			// Match the editor's 1px frame plus browser rounding.
+			if (Math.abs(bottom - panel.getBoundingClientRect().bottom) > 1 ||
+				Math.abs(bottom - scroller.getBoundingClientRect().bottom) > 1) {
+				throw new Error("The YAML editor and its scroller must fill the available tab height");
+			}
+			const inlineSpace = [...element.querySelectorAll(".cm-highlightSpace")].find((space) => !space.closest(".kubecove-yaml-indent"));
+			if (!inlineSpace || getComputedStyle(inlineSpace).backgroundImage === "none") {
+				throw new Error("Expected a visible marker for whitespace inside a YAML line");
+			}
+		});
+	},
 	async foldYamlLine(page, step) {
 		// The fold gutter marks a line at the same height as its line number.
 		const number = page.locator(".cm-lineNumbers .cm-gutterElement").filter({ visible: true }).getByText(String(step.line), { exact: true });

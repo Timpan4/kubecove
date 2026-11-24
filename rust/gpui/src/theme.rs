@@ -271,6 +271,7 @@ fn apply_yaml_highlight(theme: &mut Theme) {
     let mut highlight = (*theme.highlight_theme).clone();
     let editor = &mut highlight.style;
     editor.editor_background = Some(Tokens::card());
+    editor.editor_invisible = Some(Tokens::muted_foreground().opacity(0.55));
     // `.cm-gutters`: `color-mix(in oklch, var(--card) 88%, black)`.
     editor.editor_gutter_background = Some(mix(Tokens::card(), oklch(0., 0., 0., 1.), 0.88));
     // The read-only viewer has no active-line highlight (`editable ? highlightActiveLine() : []`).

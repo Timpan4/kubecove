@@ -387,7 +387,7 @@
 	/>{/if}
 
 	{#if visitedTabs.has("yaml")}
-		<TabsContent value="yaml" class="min-h-0">
+		<TabsContent value="yaml" class="flex min-h-0 flex-col">
 		<DeferredSurface load={loadYamlPane} label="YAML" showStatus={activeTab === "yaml"}>
 			{#snippet children(ResourceYamlPane)}
 				<ResourceYamlPane

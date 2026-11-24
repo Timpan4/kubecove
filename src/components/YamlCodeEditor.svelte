@@ -22,6 +22,7 @@
 		lineNumbers,
 	} from "@codemirror/view";
 	import { onMount } from "svelte";
+	import type { HTMLAttributes } from "svelte/elements";
 	import { loadYamlCodeViewerExtensions } from "@/components/yamlCodeViewerExtensions";
 	import {
 		forEachYamlErrorLensDiagnostic,
@@ -33,19 +34,22 @@
 		value = $bindable(""),
 		editable = false,
 		minHeight = "360px",
+		fillHeight = false,
 		extraDiagnostics,
 		showErrorLens = true,
 		onDiagnostics,
 		onChange,
+		...attributes
 	}: {
 		value: string;
 		editable?: boolean;
 		minHeight?: string;
+		fillHeight?: boolean;
 		extraDiagnostics?: (value: string) => Promise<Diagnostic[]> | Diagnostic[];
 		showErrorLens?: boolean;
 		onDiagnostics?: (diagnostics: Diagnostic[]) => void;
 		onChange?: (value: string) => void;
-	} = $props();
+	} & Pick<HTMLAttributes<HTMLDivElement>, "inert" | "aria-busy"> = $props();
 
 	let host: HTMLDivElement | undefined = $state();
 	let view: EditorView | null = $state(null);
@@ -175,17 +179,33 @@
 
 <div
 	class="yaml-code-editor overflow-hidden rounded-md border bg-card shadow-sm"
+	class:fill-height={fillHeight}
 	style={`--yaml-code-editor-min-height: ${minHeight}`}
 	bind:this={host}
+	{...attributes}
 ></div>
 
 <style>
-	.yaml-code-editor :global(.cm-editor) {
+	.yaml-code-editor:not(.fill-height) :global(.cm-editor),
+	.yaml-code-editor:not(.fill-height) :global(.cm-scroller) {
 		min-height: var(--yaml-code-editor-min-height);
 	}
 
-	.yaml-code-editor :global(.cm-scroller) {
+	.yaml-code-editor.fill-height {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 0%;
 		min-height: var(--yaml-code-editor-min-height);
+	}
+
+	.fill-height :global(.cm-editor),
+	.fill-height :global(.cm-scroller) {
+		flex: 1 1 0%;
+		min-height: 0;
+	}
+
+	.fill-height :global(.cm-scroller) {
+		overflow: auto;
 	}
 
 	.yaml-code-editor :global(.cm-yaml-error-lens) {
