@@ -3,6 +3,11 @@
 All notable KubeCove beta releases are documented here. GitHub release notes
 should mirror the matching version section.
 
+## 0.16.2 - 2026-11-24
+### Fixed
+
+- YAML editor height and show whitespace markers (#845).
+
 ## 0.16.1 - 2026-11-24
 ### Improved
 
