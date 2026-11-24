@@ -43,5 +43,6 @@ function isRecord(value: JsonValue | undefined): value is JsonObject {
 }
 
 function isString(value: JsonValue | undefined): value is string {
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Argo JSON fields arrive untyped; typeof is the only exact string guard without coercing objects.
 	return typeof value === "string";
 }
