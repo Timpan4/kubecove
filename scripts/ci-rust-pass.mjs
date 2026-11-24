@@ -6,8 +6,7 @@ const taskSteps = {
   rust: ["test-rust", "lint-rust"],
   "gpui-clippy": ["setup-gpui-native", "setup-gpui-profile", "lint-gpui"],
   "gpui-test": ["setup-gpui-native", "setup-gpui-profile", "export-gpui-fixture", "test-gpui"],
-  "server-backend": ["dependency-tree", "test-backend"],
-  server: ["api-only", "browser-build", "test-server", "lint-server", "build-server", "server-command-contract", "http-lifecycle", "headless-report"],
+  server: ["dependency-tree", "api-only", "browser-build", "test-server", "lint-server", "build-server", "server-command-contract", "http-lifecycle", "headless-report"],
 };
 // GitHub omits a skipped `background: true` step from the steps context, so a
 // reused pass sees no entry for these. A run that executes them still records an outcome.

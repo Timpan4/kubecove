@@ -144,7 +144,7 @@ test("Rust pass records require exact inputs, runner identity and a pull request
 
     // GitHub leaves skipped background steps out of the steps context entirely.
     const server = { PASS_TASK: "server", PASS_KEY: key.replace("gpui-test", "server") };
-    const serverIds = ["setup-mbx", "activate-cargo", "api-only", "browser-build", "test-server", "lint-server", "build-server", "headless-report"];
+    const serverIds = ["setup-mbx", "activate-cargo", "dependency-tree", "api-only", "browser-build", "test-server", "lint-server", "build-server", "headless-report"];
     const background = ["server-command-contract", "http-lifecycle"];
     const base = Object.fromEntries(["setup-rust", "rust-cache", "rust-pass", "pass-cache", "decide-pass"].map((id) => [id, { outcome: "success", conclusion: "success" }]));
     const ran = { ...base, "decide-pass": { ...base["decide-pass"], outputs: { skip: "false" } }, ...Object.fromEntries([...serverIds, ...background].map((id) => [id, { outcome: "success", conclusion: "success" }])) };
@@ -315,8 +315,8 @@ test("fast-forward pushes use before and after SHAs", async () => {
 // takes a runner slot from the other workflows under GitHub's limit of 20 concurrent jobs.
 const tasksByScope = {
   docs: ["docs"],
-  frontend: ["frontend-e2e", "gpui-test", "server-backend", "server"],
-  rust: ["rust", "gpui-clippy", "gpui-test", "server-backend", "server"],
+  frontend: ["frontend-e2e", "gpui-test", "server"],
+  rust: ["rust", "gpui-clippy", "gpui-test", "server"],
   nix: [],
 };
 test("change detection selects every required task without duplicate jobs", async () => {
@@ -397,7 +397,7 @@ test("Rust pass reuse skips expensive steps but always runs advisory audits and 
     const expression = /if: \$\{\{ (.+) \}\}/.exec(step(name))[1];
     return rustCondition(expression, task, skip === undefined ? "" : String(skip), event, successful);
   };
-  const builds = ["Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test GUI-free backend crates", "Test headless server", "Lint headless server", "Build headless server", "Verify server command wrappers", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
+  const builds = ["Install GPUI build dependencies", "Set up the GPUI CI profile", "Export the GPUI text-fit fixture", "Setup Mr Boxington", "Activate Cargo caching", "Setup Bun", "Install frontend dependencies", "Test Rust", "Lint Rust", "Lint GPUI", "Test GPUI", "Verify API-only server", "Build browser UI", "Verify GUI-free dependency tree", "Test headless server", "Lint headless server", "Build headless server", "Verify server command wrappers", "Verify HTTP and WebSocket lifecycle", "Upload headless verification report"];
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     assert.equal(condition("Restore Rust task pass", task, false), true);
     for (const event of ["push", "workflow_dispatch"]) assert.equal(condition("Restore Rust task pass", task, false, event), false);
@@ -464,8 +464,8 @@ test("Rust task keys cover the audited inputs outside each workspace", async () 
     "gpui-clippy": [...shared, "rust/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json"],
     // text_fit reads the fonts under rust/gpui and the fixture exported from the browser mocks.
     "gpui-test": [...shared, "rust/gpui/Cargo.lock", "src/lib/settings-integration-workspace.json", "rust/gpui/assets/fonts/inter-400.ttf", "e2e/parity/visual/export-fixture.ts", "e2e/fixtures/exec-credential-plugin.mjs", "src/lib/tauri-dev-mocks.ts", "src/features/resources/constants.ts"],
-    "server-backend": [...shared, "rust/server/Cargo.toml", "rust/server/Cargo.lock"],
-    server: [...shared, "rust/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", "e2e/harness/server-process.ts", "e2e/harness/server-session.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
+    // The dependency-tree check reads the server manifest and lockfile.
+    server: [...shared, "rust/server/Cargo.toml", "rust/server/Cargo.lock", "src/main-svelte.ts", "public/kubecove-logo.svg", "vite.config.ts", "tsconfig.json", "index.html", "scripts/tsrs.ts", "scripts/dev-interactions-plugin.ts", "scripts/frontend-bundle-report.ts", "e2e/headless-smoke.ts", "e2e/harness/server-browser.ts", "e2e/harness/server-process.ts", "e2e/harness/server-session.ts", ".agents/skills/verify-kubecove/scripts/processes.ts", "tests/server-command-contract.test.ts", "e2e/harness/port-forward-fixture.ts", "deploy/grafana/kubecove-server.json"],
   };
   for (const task of matrix.include.filter(({ workspace }) => workspace)) {
     // Exercise the exact shell pathspec arguments supplied to the key writer.
@@ -502,7 +502,7 @@ test("compiler bundles keep the original inputs while pass keys use the full aud
   const gpui = "rust :!rust/server src/lib/*-workspace.json .github/actions/setup-linux-native-deps .github/actions/setup-gpui-ci-profile";
   const server = "rust :!rust/gpui";
   assert.deepEqual(Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, inputs }) => [task, inputs])), {
-    rust: desktop, "gpui-clippy": gpui, "gpui-test": gpui, "server-backend": desktop, server,
+    rust: desktop, "gpui-clippy": gpui, "gpui-test": gpui, server,
   });
   assert.ok(step("Key the Rust cache by its inputs").includes("ci-${{ matrix.task }} .github/workflows/ci.yml ${{ matrix.inputs }}"));
   assert.ok(step("Key the Rust pass by its inputs").includes("ci-${{ matrix.task }}-pass .github/workflows/ci.yml ${{ matrix.passInputs }}"));
@@ -577,14 +577,14 @@ test("each existing check remains in its selected task", () => {
   assert.ok(checks.indexOf("      - wait-all:") < checks.indexOf(step("Upload headless verification report")));
   const commands = {
     "frontend-e2e": ["bun run e2e:fast"],
-    rust: ["node scripts/check-rust-format.mjs", "mbx test --workspace --manifest-path rust/Cargo.toml --features desktop-release", "mbx clippy --workspace --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings"],
+    rust: ["node scripts/check-rust-format.mjs", "mbx test --workspace --manifest-path rust/Cargo.toml --locked --features desktop-release", "mbx clippy --workspace --manifest-path rust/Cargo.toml --locked --all-targets --all-features -- -D warnings"],
     "gpui-clippy": ["mbx clippy --manifest-path rust/gpui/Cargo.toml --locked --all-targets -- -D warnings"],
     "gpui-test": [
       "bun e2e/parity/visual/export-fixture.ts e2e/artifacts/text-fit/fixture.json",
       "if grep -F 'text_fit: skipped' e2e/artifacts/text-fit/report.txt; then exit 1; fi",
     ],
-    "server-backend": ["cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt", "mbx test --locked --workspace --no-default-features --manifest-path rust/Cargo.toml"],
     server: [
+      "cargo tree --manifest-path rust/server/Cargo.toml --locked --edges normal,build --prefix none > server-dependencies.txt",
       "mbx test --manifest-path rust/server/Cargo.toml --locked", "mbx clippy --manifest-path rust/server/Cargo.toml --all-targets --locked -- -D warnings",
       "mbx test --manifest-path rust/server/Cargo.toml --locked --no-default-features", "mbx clippy --manifest-path rust/server/Cargo.toml --locked --no-default-features --all-targets -- -D warnings",
       "bun run build", "mbx build --manifest-path rust/server/Cargo.toml --locked", "bun test tests/server-command-contract.test.ts", "bun e2e/headless-smoke.ts --browser",
@@ -612,7 +612,31 @@ test("each existing check remains in its selected task", () => {
   assert.ok(report.includes("always() && matrix.task == 'server'"));
   assert.match(report, /if-no-files-found: error/);
   assert.match(report, /path: e2e\/artifacts\/headless\/\*\*/);
-  assert.match(step("Verify GUI-free dependency tree"), /if grep -E '\^\(tauri /);
+  // A GUI leak fails the server task before its longer builds start.
+  assert.ok(checks.indexOf(step("Verify GUI-free dependency tree")) < checks.indexOf(step("Verify API-only server")));
+});
+// Failure modes: the server links the GPUI client or a windowing or webview stack and the
+// check misses it, or the pattern names a crate the server already uses and fails every run.
+test("the server dependency check rejects GPUI and GUI stacks and passes the current server lockfile", () => {
+  const script = block(step("Verify GUI-free dependency tree"), "run", 8);
+  const packages = (path) => [...readFileSync(new URL(`../${path}`, import.meta.url), "utf8").matchAll(/^name = "([^"]+)"$/gm)].map((match) => match[1]);
+  const server = packages("rust/server/Cargo.lock");
+  const gpuiLock = packages("rust/gpui/Cargo.lock");
+  const gpui = gpuiLock.filter((name) => name.includes("gpui"));
+  const windowing = ["wgpu", "wgpu-hal", "wayland-client", "x11rb", "xkbcommon"];
+  assert.ok(server.includes("kubecove-server") && gpui.includes("kubecove-gpui") && gpui.includes("gpui-kit") && gpui.includes("gpui-pre"));
+  for (const name of windowing) assert.ok(gpuiLock.includes(name), `the GPUI lockfile no longer has ${name}`);
+  const root = mkdtempSync(join(tmpdir(), "kubecove-ci-dependency-tree-"));
+  const run = (names) => {
+    writeFileSync(join(root, "tree.txt"), names.map((name) => `${name} v1.0.0\n`).join(""));
+    return spawnSync("bash", ["-e", "-o", "pipefail", "-c", `cargo() { cat tree.txt; }\n${script}`], { cwd: root, encoding: "utf8" }).status;
+  };
+  try {
+    assert.equal(run(server), 0);
+    for (const name of [...gpui, ...windowing, "tauri", "tauri-runtime-wry", "gtk", "gtk-sys", "webkit2gtk", "wry"]) {
+      assert.equal(run([...server, name]), 1, name);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("lightweight tasks avoid Rust and package setup; CI regressions precede installs", () => {
   assert.doesNotMatch(workflow, /\.bun\/install\/cache/);
@@ -780,8 +804,8 @@ test("Rust verification selects all workspace members despite root-only default-
     ...[...job("checks").matchAll(/run: ((?:cargo|mbx) (?:test|clippy) [^\n]*--manifest-path rust\/Cargo.toml[^\n]*)/g)].map((match) => match[1]),
     ...[...hook.matchAll(/^\s*(cargo check [^\n]*--manifest-path rust\/Cargo.toml[^\n]*)/gm)].map((match) => match[1]),
   ];
-  // Three package scripts, three CI checks (including the API-only server lane), and the hook.
-  assert.equal(commands.length, 7);
+  // Three package scripts, the rust task's test and Clippy, and the hook.
+  assert.equal(commands.length, 6);
   for (const command of commands) {
     const args = command.trim().split(/\s+/);
     const cargoArgs = args.slice(0, args.indexOf("--") === -1 ? args.length : args.indexOf("--"));
@@ -860,8 +884,7 @@ test("Mr Boxington uses isolated object bundles for all Rust workspaces", async 
   const workspaces = Object.fromEntries(matrix.include.filter(({ workspace }) => workspace).map(({ task, workspace, inputs }) => [task, [workspace, inputs]]));
   // The GPUI and server crates are separate workspaces that both build the desktop crates.
   assert.deepEqual(Object.fromEntries(Object.entries(workspaces).map(([task, [workspace]]) => [task, workspace])), {
-    rust: "rust", "gpui-clippy": "rust/gpui", "gpui-test": "rust/gpui",
-    "server-backend": "rust", server: "rust/server",
+    rust: "rust", "gpui-clippy": "rust/gpui", "gpui-test": "rust/gpui", server: "rust/server",
   });
   assert.equal((job("checks").match(/uses: jdx\/mr-boxington-action@/g) ?? []).length, 1);
   assert.doesNotMatch(job("checks"), /swatinem\/rust-cache|save-on-(?:protected-branch|workflow-dispatch)/i);

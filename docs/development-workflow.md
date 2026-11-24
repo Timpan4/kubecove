@@ -242,14 +242,13 @@ inputs, which the workflow regression checks enforce.
 | rust | `rust :!rust/gpui :!rust/server` | Compiler inputs plus `shared` |
 | gpui-clippy | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared` |
 | gpui-test | `rust :!rust/server src/lib/*-workspace.json` | Compiler inputs plus `shared src e2e/parity/visual` |
-| server-backend | `rust :!rust/gpui :!rust/server` | `rust :!rust/gpui` plus `shared` |
 | server | `rust :!rust/gpui` | Compiler inputs plus `shared src public e2e scripts deploy` |
 
 The server's generated `dist/` comes from its audited browser inputs. The
-backend pass includes the server manifest and lockfile that `cargo tree` reads.
+server pass includes the server manifest and lockfile that `cargo tree` reads.
 GPUI pass inputs include embedded workspace JSON, and every pass includes root
 test fixtures. These wider inputs affect only pass records. The edited workflow
-itself changes all five compiler keys once because it was already a build input.
+itself changes all four compiler keys once because it was already a build input.
 
 The pass-record cache key is
 `passed-<pass-input key>-<runner-environment SHA-256>-<run ID>-<run attempt>`.
@@ -314,15 +313,14 @@ one cache:
   fixture, and keys its pass on `src` and `e2e/parity/visual` too. Frontend
   changes select `gpui-test` as well as Rust changes, as they do for the server
   tasks;
-- `server-backend`: GUI-free backend tests and dependency-tree verification;
-- `server`: API-only server tests and Clippy, then the browser UI build,
-  default-feature server tests and Clippy, the server build and HTTP/WebSocket
-  lifecycle verification.
+- `server`: a check that the server's dependency tree holds no GPUI, windowing
+  or webview crates, API-only server tests and Clippy, then the browser UI
+  build, default-feature server tests and Clippy, the server build and
+  HTTP/WebSocket lifecycle verification.
 
 The default-feature server checks build the real browser assets that
-`rust/server/build.rs` embeds. The API-only checks run before that build,
-and the GUI-free backend task never builds it, so both prove they need neither
-those assets nor GUI packages. Native build prerequisites are installed
+`rust/server/build.rs` embeds. The API-only checks run before that build, so
+they prove the server does not need those assets. Native build prerequisites are installed
 only when `pkg-config` cannot resolve them. Caching compiler outputs does not
 supply missing system libraries.
 
