@@ -1,7 +1,7 @@
 import { parse, stringify } from "yaml";
 import { buildFlowTopologyLayout } from "../src/features/resources/topology-implementation";
 import { buildResourceTableModel, buildResourceTableProjection, type ResourceTableState } from "../src/features/resources/resourceTableModel";
-import { mergeResourceMetrics } from "../src/lib/resource-metrics";
+import { resourceMetricFor, resourceMetricIndex } from "../src/lib/resource-metrics";
 import { resources } from "../src/lib/tauri-dev-mock-data";
 import type { ResourceMetricsSummary, ResourceSummary, ResourceTopology } from "../src/lib/types";
 
@@ -22,7 +22,12 @@ function characterize(label: string, rows: ResourceSummary[]) {
 		cluster: "fixture", availability: { status: "available" }, warnings: [], nodes: [], workloads: [],
 		pods: rows.map((row, index) => ({ kind: row.kind, cluster: row.cluster, name: row.name, namespace: row.namespace, cpuMillicores: index, memoryBytes: index * 1024, sourcePods: [] })),
 	};
-	const merged = mergeResourceMetrics(rows, metrics);
+	const metricIndex = resourceMetricIndex([{ clusterContext: metrics.cluster, summary: metrics }]);
+	// Rows keep their identity when no metric applies, as the UI's lookup does.
+	const merged = rows.map((row) => {
+		const metric = resourceMetricFor(metricIndex, row);
+		return metric && metric !== row.metrics ? { ...row, metrics: metric } : row;
+	});
 	const metricsMs = performance.now() - started;
 	started = performance.now();
 	const projection = buildResourceTableProjection(merged);
