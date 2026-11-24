@@ -475,7 +475,10 @@ mod tests {
         assert_eq!(parsed, prepared.document);
         assert_eq!(prepared.document["data"]["password"], "REDACTED");
         assert_eq!(prepared.document["stringData"]["token"], "REDACTED");
-        assert_eq!(prepared.document["metadata"]["annotations"][LAST_APPLIED], "REDACTED");
+        assert_eq!(
+            prepared.document["metadata"]["annotations"][LAST_APPLIED],
+            "REDACTED"
+        );
         assert_eq!(
             prepared.document["extension"],
             json!({"true": false, "quantity": "10", "count": 10, "optional": null})

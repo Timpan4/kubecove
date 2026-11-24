@@ -291,7 +291,12 @@ fn same_named_roles_pass_only_their_own_risks_to_bindings() {
             rules: Vec::new(),
         }
     }
-    fn binding(name: &str, kind: &str, namespace: Option<&str>, role_ref_kind: &str) -> RbacBindingSummary {
+    fn binding(
+        name: &str,
+        kind: &str,
+        namespace: Option<&str>,
+        role_ref_kind: &str,
+    ) -> RbacBindingSummary {
         RbacBindingSummary {
             cluster: "kind-dev".to_string(),
             kind: kind.to_string(),
@@ -306,7 +311,11 @@ fn same_named_roles_pass_only_their_own_risks_to_bindings() {
         }
     }
     fn labels(binding: &RbacBindingSummary) -> Vec<&str> {
-        binding.risks.iter().map(|risk| risk.label.as_str()).collect()
+        binding
+            .risks
+            .iter()
+            .map(|risk| risk.label.as_str())
+            .collect()
     }
 
     let roles = vec![
