@@ -653,6 +653,73 @@ fn network_flow_falls_back_to_service_selector_and_warns_on_misses() {
 }
 
 #[test]
+fn network_flow_selector_requires_every_label_in_the_service_namespace() {
+    let topology = build_network_flow_topology(NetworkTopologyInputs {
+        resources: vec![
+            resource("Service", "api", "default", "svc-1"),
+            labeled_pod(
+                "api-full",
+                "default",
+                "pod-full",
+                &[("app", "api"), ("tier", "web")],
+            ),
+            labeled_pod("api-partial", "default", "pod-partial", &[("tier", "web")]),
+            labeled_pod("api-app-1", "default", "pod-app-1", &[("app", "api")]),
+            labeled_pod("api-app-2", "default", "pod-app-2", &[("app", "api")]),
+            labeled_pod(
+                "api-other-namespace",
+                "other",
+                "pod-other",
+                &[("app", "api"), ("tier", "web")],
+            ),
+        ],
+        services: vec![NetworkService {
+            namespace: "default".to_string(),
+            name: "api".to_string(),
+            service_type: "ClusterIP".to_string(),
+            selector: BTreeMap::from([
+                ("app".to_string(), "api".to_string()),
+                ("tier".to_string(), "web".to_string()),
+            ]),
+        }],
+        ingress_backends: Vec::new(),
+        endpoint_slices: Vec::new(),
+        warnings: Vec::new(),
+    });
+
+    let service_id = topology_node_id("kind-dev", "v1", "Service", Some("default"), "api");
+    let selects = |pod_id: String| {
+        topology.edges.iter().any(|edge| {
+            edge.source == service_id
+                && edge.target == pod_id
+                && edge.relation == TopologyRelation::Selects
+        })
+    };
+
+    assert!(selects(topology_node_id(
+        "kind-dev",
+        "v1",
+        "Pod",
+        Some("default"),
+        "api-full"
+    )));
+    assert!(!selects(topology_node_id(
+        "kind-dev",
+        "v1",
+        "Pod",
+        Some("default"),
+        "api-partial"
+    )));
+    assert!(!selects(topology_node_id(
+        "kind-dev",
+        "v1",
+        "Pod",
+        Some("other"),
+        "api-other-namespace"
+    )));
+}
+
+#[test]
 fn network_flow_skips_missing_endpoint_warning_for_external_name_service() {
     let topology = build_network_flow_topology(NetworkTopologyInputs {
         resources: vec![resource("Service", "external-api", "default", "svc-1")],
