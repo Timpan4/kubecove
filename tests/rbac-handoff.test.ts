@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { requiredPermissionForFriendlyError } from "../src/lib/friendly-errors";
-import { requiredPermissionForResource } from "../src/features/rbac/handoff";
+import { requiredPermissionForResource, stepRbacHandoff } from "../src/features/rbac/handoff";
 
 const target = {
 	kind: "resource" as const,
@@ -9,6 +9,29 @@ const target = {
 	resource: "pods",
 	namespace: "prod",
 };
+
+describe("RBAC verifier handoff steps", () => {
+	const handoff = { target };
+
+	test("applies a handoff once while it stays pending", () => {
+		const first = stepRbacHandoff("", handoff);
+		expect(first.apply).toBe(true);
+		expect(stepRbacHandoff(first.key, handoff).apply).toBe(false);
+	});
+
+	test("applies the same action again after the pending handoff clears", () => {
+		const first = stepRbacHandoff("", handoff);
+		const cleared = stepRbacHandoff(first.key, undefined);
+		expect(cleared).toEqual({ key: "", apply: false });
+		expect(stepRbacHandoff(cleared.key, handoff).apply).toBe(true);
+	});
+
+	test("treats a different action as a new handoff", () => {
+		const first = stepRbacHandoff("", handoff);
+		const other = { target: { ...target, verb: "delete" } };
+		expect(stepRbacHandoff(first.key, other).apply).toBe(true);
+	});
+});
 
 describe("RBAC denied-action handoff", () => {
 	test("uses only explicit attributes from a forbidden error", () => {

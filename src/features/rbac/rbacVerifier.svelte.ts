@@ -1,6 +1,6 @@
 import { createTauriClient, reviewRbacAccess } from "@/lib/tauri";
 import type { RbacAccessReviewRequest, RbacAccessReviewResult, RbacInspectionSummary } from "@/lib/types";
-import type { RbacVerifierHandoff } from "./handoff";
+import { stepRbacHandoff, type RbacVerifierHandoff } from "./handoff";
 import { identityDefaults, inspectorIdentity, reviewIdentity, type InspectorIdentity } from "./observedPermissions";
 
 interface RbacVerifierOptions {
@@ -46,10 +46,9 @@ export function rbacVerifier(options: RbacVerifierOptions) {
 
 	$effect(() => {
 		const handoff = options.handoff();
-		if (!handoff) return;
-		const nextKey = JSON.stringify(handoff);
-		if (handoffKey === nextKey) return;
-		handoffKey = nextKey;
+		const step = stepRbacHandoff(handoffKey, handoff);
+		handoffKey = step.key;
+		if (!handoff || !step.apply) return;
 		handoffPromoted = true;
 		const handoffIdentity = inspectorIdentity(handoff.identity);
 		identitySource = handoffIdentity ? { kind: "subject", identity: handoffIdentity } : { kind: "manual" };
