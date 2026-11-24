@@ -141,7 +141,7 @@ describe("F05 metric samples with retained table and map projections", () => {
 		readVisibleSamples(resourceMetricIndex(oneContext(metrics)));
 	});
 
-	benchmark("F05 retained samples for a table page and visible map labels", () => {
+	benchmark("F05 fixed-batch metric lookup microbenchmark for table page and map labels (not viewport coverage)", () => {
 		readVisibleSamples(fullIndex);
 		readVisibleSamples(sparseIndex);
 		readVisibleSamples(unavailableIndex);

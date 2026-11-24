@@ -210,8 +210,8 @@ describe("F36 palette cache harvest, F37 retained typing, and folded F38 search 
 	benchmark(
 		"F37 retained resource and namespace typing with production caps",
 		() => {
-			visibleResourceResults(term);
-			visibleNamespaceResults(namespaceTerm);
+			visibleResourceResults("resource-99");
+			visibleNamespaceResults("namespace-99");
 			visibleResourceResults("RESOURCE-99");
 			visibleNamespaceResults("NAMESPACE-99");
 			visibleResourceResults("no-such-resource");

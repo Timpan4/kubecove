@@ -148,15 +148,15 @@ describe("Argo resource display F48–F49", () => {
 		},
 	);
 
-	benchmark(
-		"F48 long Argo diff highlights the compact slice and the expanded lines",
-		() => {
-			for (const line of longDiffLines.slice(0, COMPACT_ARGO_DIFF_LINES)) {
-				highlightedArgoDiffSegments(line);
-			}
-			for (const line of longDiffLines) highlightedArgoDiffSegments(line);
-		},
-	);
+	benchmark("F48 long Argo diff highlights the compact slice", () => {
+		for (const line of longDiffLines.slice(0, COMPACT_ARGO_DIFF_LINES)) {
+			highlightedArgoDiffSegments(line);
+		}
+	});
+
+	benchmark("F48 long Argo diff highlights every expanded line", () => {
+		for (const line of longDiffLines) highlightedArgoDiffSegments(line);
+	});
 
 	benchmark(
 		"F49 parse each changed application YAML once and handle malformed fallback",
