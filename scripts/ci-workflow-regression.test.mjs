@@ -1008,7 +1008,13 @@ test("the Rust cache key follows the build inputs and the compiler, not the runn
     assert.notEqual(key({ RUSTC_VERSION: "2" }).prefix, first.prefix);
     assert.notEqual(run({}, ["missing"]).status, 0);
     assert.notEqual(run({}, ["workflow.yml", "rust", "missing"]).status, 0);
-    assert.equal(run({}, ["workflow.yml", "rust", ":!missing"]).status, 0);
+    for (const exclusion of [":!missing", ":^missing", ":/!missing", ":(exclude)missing", ":(top,exclude)missing"]) {
+      assert.equal(run({}, ["workflow.yml", "rust", exclusion]).status, 0, exclusion);
+    }
+    // "exclude" inside another magic word is not the exclude magic, so the pathspec must match files.
+    const attribute = run({}, ["workflow.yml", "rust", ":(attr:!exclude)missing"]);
+    assert.notEqual(attribute.status, 0);
+    assert.match(attribute.stderr, /No tracked file matches: :\(attr:!exclude\)missing/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test("the required gate checks code-only diffs, including shallow pull request merges", async () => {
