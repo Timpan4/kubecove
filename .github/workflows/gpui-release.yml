@@ -88,7 +88,7 @@ jobs:
       - name: Cache Rust
         uses: jdx/mr-boxington-action@88acf2bb50552c7c508cbac13e5f8c576b95b1de # v1
         with:
-          version: "1.29.2"
+          version: "1.30.0"
           backend: local
 
       - name: Activate Cargo caching
