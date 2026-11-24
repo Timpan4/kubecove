@@ -22,7 +22,7 @@
 		expandedIds,
 		onNodeSelect,
 		onSectionToggle,
-		getLazyChildren,
+		getLazyNamespaceChildren,
 		customResourceSearch = "",
 		onCustomResourceSearchChange,
 	}: {
@@ -35,7 +35,7 @@
 		expandedIds: ReadonlySet<string>;
 		onNodeSelect: (id: TreeNodeId) => void;
 		onSectionToggle: (id: string) => void;
-		getLazyChildren?: (node: TreeNode) => TreeNode[] | undefined;
+		getLazyNamespaceChildren?: (node: TreeNode) => TreeNode[] | undefined;
 		customResourceSearch?: string;
 		onCustomResourceSearchChange?: (value: string) => void;
 	} = $props();
@@ -52,7 +52,7 @@
 	const hasChildren = $derived(
 		node.id.type === "namespace" || Boolean(node.children?.length),
 	);
-	const children = $derived(isExpanded ? (getLazyChildren?.(node) ?? node.children) : node.children);
+	const children = $derived(isExpanded ? (getLazyNamespaceChildren?.(node) ?? node.children) : node.children);
 	/** The Custom Resources section shows a search input above its kinds. */
 	const hasSearch = $derived(node.id.type === "section" && node.id.section === "discovered");
 	const isDisabled = $derived(node.disabled === true);
@@ -273,7 +273,7 @@
 							{expandedIds}
 							{onNodeSelect}
 							{onSectionToggle}
-							{getLazyChildren}
+							{getLazyNamespaceChildren}
 							{customResourceSearch}
 							{onCustomResourceSearchChange}
 						/>

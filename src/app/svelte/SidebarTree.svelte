@@ -177,7 +177,7 @@
 			: new Set<string>();
 	});
 	let customResourceSearch = $state("");
-	function getLazyChildren(node: TreeNode) {
+	function getLazyNamespaceChildren(node: TreeNode) {
 		if (node.id.type !== "namespace" || !node.id.namespace) return node.children;
 		const loading = namespaceKindsLoading.active(node.id.namespace);
 		const customResources =
@@ -206,7 +206,7 @@
 	}));
 	const sidebarSelectedNode = $derived(sidebarSelectionNode(selectedNode, groups));
 	const selectedAncestorIds = $derived(
-		collectSelectedAncestorIds(groups, sidebarSelectedNode, getLazyChildren),
+		collectSelectedAncestorIds(groups, sidebarSelectedNode, getLazyNamespaceChildren),
 	);
 	const isNamespaceListSelected = $derived(
 		selectedNode?.type === "section" && selectedNode.section === "namespaces",
@@ -291,7 +291,7 @@
 							{expandedIds}
 							onNodeSelect={selectFromTree}
 							{onSectionToggle}
-							{getLazyChildren}
+							{getLazyNamespaceChildren}
 							{customResourceSearch}
 							onCustomResourceSearchChange={(value) => (customResourceSearch = value)}
 						/>

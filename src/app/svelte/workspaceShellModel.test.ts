@@ -229,7 +229,7 @@ describe("Sidebar groups", () => {
 			group: "Workloads",
 			kind: "Pod",
 		};
-		const getLazyChildren = (node: TreeNode): TreeNode[] | undefined =>
+		const getLazyNamespaceChildren = (node: TreeNode): TreeNode[] | undefined =>
 			node.id.type === "namespace"
 				? [
 						{
@@ -245,7 +245,7 @@ describe("Sidebar groups", () => {
 					]
 				: undefined;
 
-		expect([...collectSelectedAncestorIds(groups, pod, getLazyChildren)]).toEqual([
+		expect([...collectSelectedAncestorIds(groups, pod, getLazyNamespaceChildren)]).toEqual([
 			"namespace::namespaces::default",
 			"group::namespaces::default::Workloads",
 		]);
