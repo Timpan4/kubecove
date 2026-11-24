@@ -55,8 +55,11 @@ impl Inspector {
         if !unchanged {
             let count = self.map.node_ids.len();
             self.map.resource_focus.resize_with(count, || None);
-            if let Some(view) = self.map.cache.clone() {
-                self.drop_focus_leaving(&view, window, cx);
+            let view = self.map.cache.clone();
+            // A scope change clears the view while the topology loads; with no view, every
+            // node has unmounted, so a focused node handle must not carry into the new scope.
+            self.drop_focus_leaving(view.as_deref(), window, cx);
+            if let Some(view) = view {
                 for node in &view.nodes {
                     match &node.item {
                         FlowItem::Resource(index) => {
@@ -94,11 +97,11 @@ impl Inspector {
         self.pan_to_newly_focused_node(window, cx);
     }
 
-    /// Drops the focused node's handle when `view` leaves that node out, so the
-    /// window loses focus as it does when the focused element unmounts.
+    /// Drops the focused node's handle when `view` leaves that node out, or there is
+    /// no view, so the window loses focus as it does when the focused element unmounts.
     fn drop_focus_leaving(
         &mut self,
-        view: &crate::topology::View,
+        view: Option<&crate::topology::View>,
         window: &Window,
         cx: &Context<Self>,
     ) {
@@ -108,7 +111,7 @@ impl Inspector {
         let Some(target) = self.focused_node(&focused) else {
             return;
         };
-        if view.nodes.iter().any(|node| target.matches(&node.item)) {
+        if view.is_some_and(|view| view.nodes.iter().any(|node| target.matches(&node.item))) {
             return;
         }
         match target {
