@@ -1,8 +1,7 @@
 //! The stacked, gutter, and one-line layouts from `LogEntry.svelte`.
 
 use super::Inspector;
-use super::controls::{Variant, button, red300};
-use super::events::tw;
+use super::controls::{Variant, button};
 use super::logs_state::LogsState;
 use super::overlay_motion::Tooltip;
 use super::timestamp_text;
@@ -13,7 +12,7 @@ use crate::model::exact_timestamp;
 use crate::preferences::TimestampTimezone;
 use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
-use crate::theme::{MONO, Tokens, oklch};
+use crate::theme::{MONO, Palette, Tokens, oklch};
 use crate::ui;
 use gpui_kit::{
     ClipboardItem, Context, Div, FontWeight, HighlightStyle, Hsla, SharedString, Stateful,
@@ -24,9 +23,6 @@ use std::{borrow::Cow, ops::Range};
 fn red400(alpha: f32) -> Hsla {
     oklch(0.704, 0.191, 22.216, alpha)
 }
-pub(super) fn red500(alpha: f32) -> Hsla {
-    tw::red500(alpha)
-}
 fn yellow300(alpha: f32) -> Hsla {
     oklch(0.905, 0.182, 98.111, alpha)
 }
@@ -34,9 +30,17 @@ fn yellow300(alpha: f32) -> Hsla {
 /// `levelChips` active classes: (border, background, foreground).
 pub(super) fn chip_colors(level: LogLevel) -> (Hsla, Hsla, Hsla) {
     match level {
-        LogLevel::Error => (red500(0.45), red500(0.1), red400(1.)),
-        LogLevel::Warn => (tw::amber500(0.45), tw::amber500(0.1), tw::amber400(1.)),
-        LogLevel::Info => (tw::sky500(0.45), tw::sky500(0.1), tw::sky300()),
+        LogLevel::Error => (Palette::red500(0.45), Palette::red500(0.1), red400(1.)),
+        LogLevel::Warn => (
+            Palette::amber500(0.45),
+            Palette::amber500(0.1),
+            Palette::amber400(),
+        ),
+        LogLevel::Info => (
+            Palette::sky500(0.45),
+            Palette::sky500(0.1),
+            Palette::sky300(),
+        ),
         LogLevel::Debug => (
             Tokens::border(),
             Tokens::muted(),
@@ -50,8 +54,8 @@ fn badge_colors(level: LogLevel) -> (Hsla, Hsla) {
     let clear = gpui_kit::transparent_black();
     match level {
         LogLevel::Error => (red400(1.), oklch(0.258, 0.092, 26.042, 1.)),
-        LogLevel::Warn => (tw::amber500(0.15), tw::amber400(1.)),
-        LogLevel::Info => (clear, tw::sky300()),
+        LogLevel::Warn => (Palette::amber500(0.15), Palette::amber400()),
+        LogLevel::Info => (clear, Palette::sky300()),
         LogLevel::Debug => (clear, Tokens::muted_foreground()),
     }
 }
@@ -183,8 +187,8 @@ fn badge(level: Option<LogLevel>) -> Div {
 
 fn row_edge(level: Option<LogLevel>) -> Div {
     let color = match level {
-        Some(LogLevel::Error) => red500(1.),
-        Some(LogLevel::Warn) => tw::amber500(1.),
+        Some(LogLevel::Error) => Palette::red500(1.),
+        Some(LogLevel::Warn) => Palette::amber500(1.),
         _ => gpui_kit::transparent_black(),
     };
     div()
@@ -242,7 +246,7 @@ fn compact_summary(
             &inline_log_text(error),
             term,
             HighlightStyle {
-                color: Some(red300()),
+                color: Some(Palette::red300()),
                 font_weight: Some(FontWeight::NORMAL),
                 ..Default::default()
             },
@@ -334,7 +338,7 @@ fn one_line_row(
                     .font_family(MONO)
                     .text_size(px(11.5))
                     .line_height(px(16.))
-                    .text_color(red300())
+                    .text_color(Palette::red300())
                     .child(highlighted(error, term))
             }))
             .when(!structure.fields.is_empty(), |details| {
@@ -468,7 +472,7 @@ pub(super) fn log_row(
                 .font_family(MONO)
                 .text_size(px(11.5))
                 .line_height(px(16.))
-                .text_color(red300())
+                .text_color(Palette::red300())
                 .child(highlighted(error, term)),
         )
     });

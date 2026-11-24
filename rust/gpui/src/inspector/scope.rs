@@ -513,7 +513,7 @@ impl Inspector {
                 kinds.push(kind.to_owned());
             }
         }
-        for kind in &self.live.kinds {
+        for kind in self.live.kinds() {
             if !kinds.contains(&kind.kind) {
                 kinds.push(kind.kind.clone());
             }

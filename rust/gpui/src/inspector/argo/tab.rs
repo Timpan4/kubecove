@@ -5,7 +5,7 @@ use super::super::controls::{self, Variant};
 use super::super::detail::{Detail, ResourceDetail};
 use super::super::feedback::Disclosure;
 use super::super::request::Fetch;
-use super::super::{Inspector, surface};
+use super::super::{Inspector, surface, yaml};
 use super::panels::{delivery, navigator};
 use super::snapshot::{DiffView, snapshot};
 use crate::argo_app::ArgoView;
@@ -15,6 +15,7 @@ use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::{AnyElement, Context, Div, SharedString, Task, Window, div, prelude::*, px};
 use kubecove_lib::models::{AppError, ArgoApplicationInspector, ArgoApplicationRef};
+use std::sync::Arc;
 
 mod comparison;
 
@@ -32,15 +33,20 @@ pub(in crate::inspector) struct ArgoTab {
     /// Removals whose live YAML is shown, and diffs shown in full.
     pub(super) expanded: Vec<usize>,
     pub(super) full: Vec<usize>,
-    pub(super) highlights: Vec<Vec<super::highlight::Highlights>>,
+    /// Each change's diff line colors, by index into `changes`.
+    pub(super) highlights: Vec<Arc<[super::highlight::Highlights]>>,
     evidence: bool,
     pub(super) inspector: Option<ArgoApplicationInspector>,
     pub(super) operation: super::operations::Phase,
     pub(super) options: super::options::Options,
-    pub(super) editors: Vec<(
-        gpui_kit::Entity<gpui_kit::component::input::EditorState>,
-        gpui_kit::Entity<gpui_kit::component::input::EditorState>,
-    )>,
+    /// Each change's desired and live editors, by index into `changes`, built
+    /// by `ensure_argo_editors` the first time the change shows as YAML.
+    pub(super) editors: Vec<
+        Option<(
+            gpui_kit::Entity<gpui_kit::component::input::EditorState>,
+            gpui_kit::Entity<gpui_kit::component::input::EditorState>,
+        )>,
+    >,
     /// The snapshot read. A reload builds a new tab state, which cancels it.
     _task: Option<Task<()>>,
     /// The focused resource's connected comparison. Its result lands in
@@ -92,62 +98,51 @@ impl Inspector {
                 workspace_id: Some(workspace_id),
             },
         });
+        let yaml = detail.data.yaml.clone();
+        let theme = gpui_kit::component::Theme::global(cx)
+            .highlight_theme
+            .clone();
         let task = cx.spawn_in(window, async move |this, cx| {
             let result = read.await;
+            // The view, its diff highlights and its default prune are built off
+            // the UI thread, which lends the work its shared highlighter.
+            let parser = this
+                .update(cx, |this, _| this.argo.highlighter.take())
+                .ok()
+                .flatten();
+            let (parser, prepared) = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut parser = parser;
+                    let prepared = result.map(|inspector| {
+                        let view = ArgoView::new(&inspector, &summary, &yaml);
+                        let highlights: Vec<_> = view
+                            .changes
+                            .iter()
+                            .map(|change| {
+                                Arc::from(super::highlight::lines(
+                                    &mut parser,
+                                    change.diff.as_deref().unwrap_or_default(),
+                                    &theme,
+                                ))
+                            })
+                            .collect();
+                        (Box::new(view), highlights, inspector)
+                    });
+                    (parser, prepared)
+                })
+                .await;
             let _ = this.update_in(cx, |this, window, cx| {
+                if this.argo.highlighter.is_none() {
+                    this.argo.highlighter = parser;
+                }
                 let Detail::Ready(detail) = &mut this.detail else {
                     return;
                 };
-                if detail.argo.is_none() {
-                    return;
-                }
-                let view = result.map(|inspector| {
-                    let _span = crate::frame_profile::scope("argo", "prepare_view");
-                    let view = Box::new(ArgoView::new(
-                        &inspector,
-                        &detail.data.summary,
-                        &detail.data.yaml,
-                    ));
-                    (view, inspector)
-                });
                 if let Some(state) = detail.argo.as_mut() {
-                    state.load = match view {
-                        Ok((view, inspector)) => {
-                            let highlights_span = crate::frame_profile::scope("argo", "highlights");
-                            state.highlights = view
-                                .changes
-                                .iter()
-                                .map(|change| {
-                                    super::highlight::lines(
-                                        &mut this.argo.highlighter,
-                                        change.diff.as_deref().unwrap_or_default(),
-                                        &gpui_kit::component::Theme::global(cx).highlight_theme,
-                                    )
-                                })
-                                .collect();
-                            drop(highlights_span);
-                            let editors_span = crate::frame_profile::scope("argo", "editors");
-                            use gpui_kit::{AppContext, component::input::EditorState};
-                            state.editors = view
-                                .changes
-                                .iter()
-                                .map(|change| {
-                                    let desired = cx.new(|cx| {
-                                        EditorState::new(window, cx)
-                                            .language("yaml")
-                                            .line_number(true)
-                                            .default_value(change.desired.clone())
-                                    });
-                                    let live = cx.new(|cx| {
-                                        EditorState::new(window, cx)
-                                            .language("yaml")
-                                            .line_number(true)
-                                            .default_value(change.live.clone())
-                                    });
-                                    (desired, live)
-                                })
-                                .collect();
-                            drop(editors_span);
+                    state.load = match prepared {
+                        Ok((view, highlights, inspector)) => {
+                            state.highlights = highlights;
                             state.inspector = Some(inspector);
                             let options: Vec<super::options::HistoryChoice> = state
                                 .inspector
@@ -178,16 +173,8 @@ impl Inspector {
                                     picker.set_selected_value(&first.index, window, cx);
                                 }
                             });
-                            state.options.prune = Some(
-                                serde_yaml::from_str::<serde_json::Value>(&detail.data.yaml)
-                                    .ok()
-                                    .and_then(|v| {
-                                        v.pointer("/spec/syncPolicy/automated/prune")
-                                            .and_then(|v| v.as_bool())
-                                    })
-                                    .unwrap_or(false),
-                            );
-                            state.options.default_prune = state.options.prune.unwrap_or(false);
+                            state.options.prune = Some(view.default_prune);
+                            state.options.default_prune = view.default_prune;
                             state.options.revision = cx.new(|cx| {
                                 gpui_kit::component::input::InputState::new(window, cx)
                                     .placeholder(view.configured_revision.clone())
@@ -197,6 +184,7 @@ impl Inspector {
                         Err(error) => ArgoLoad::Failed(error),
                     };
                 }
+                this.ensure_argo_editors(window, cx);
                 cx.notify();
             });
         });
@@ -216,6 +204,43 @@ impl Inspector {
             comparison: Fetch::Idle,
             refresh_options: false,
         });
+    }
+
+    /// Creates the read-only editors of the changes the snapshot shows as YAML
+    /// documents, each the first time it shows. The Changes view shows diffs,
+    /// so it builds editors only for an expanded removal without one.
+    pub(in crate::inspector) fn ensure_argo_editors(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(state) = self.argo_tab_state() else {
+            return;
+        };
+        let ArgoLoad::Ready(view) = &state.load else {
+            return;
+        };
+        let count = view.changes.len();
+        state.editors.resize_with(count, || None);
+        let shown = match state.focus.filter(|index| *index < count) {
+            Some(index) => index..index + 1,
+            None => 0..count,
+        };
+        for index in shown {
+            let change = &view.changes[index];
+            let wanted = match state.view {
+                DiffView::Changes => state.expanded.contains(&index) && change.diff.is_none(),
+                DiffView::Target | DiffView::Live => true,
+            };
+            if !wanted || state.editors[index].is_some() {
+                continue;
+            }
+            let (desired, live) = (change.desired.clone(), change.live.clone());
+            state.editors[index] = Some((
+                cx.new(|cx| yaml::viewer(desired, window, cx)),
+                cx.new(|cx| yaml::viewer(live, window, cx)),
+            ));
+        }
     }
 }
 

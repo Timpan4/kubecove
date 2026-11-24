@@ -8,8 +8,7 @@ use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui;
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, ScrollHandle, SharedString, Window, div,
-    prelude::*, px,
+    AnyElement, Context, Div, FontWeight, ScrollHandle, SharedString, Window, div, prelude::*, px,
 };
 
 /// The `gitOpsViewMode` and `helmViewMode` settings.
@@ -319,33 +318,6 @@ pub(super) fn empty(
         .children(content.map(|content| div().mt(px(12.)).child(content)))
 }
 
-/// The `Badge` box (`h-5 rounded-full border px-2 text-[10px] font-medium`)
-/// in explicit colors, which `ui::outline_badge` fixes to the foreground.
-pub(super) fn badge(
-    (border, background, foreground): (Hsla, Hsla, Hsla),
-    label: impl Into<SharedString>,
-) -> Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .overflow_hidden()
-        .h(px(20.))
-        .px(px(8.))
-        .rounded_full()
-        .border_1()
-        .border_color(border)
-        .bg(background)
-        .child(
-            ui::text(label, 10., 14.)
-                .flex_none()
-                .whitespace_nowrap()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(foreground),
-        )
-}
-
 /// `Badge variant="outline"` with the pages' tinted status classes
 /// (`border-*-500/40 bg-*-500/10 text-*-300`).
 pub(super) fn tinted_badge(tone: ui::Tone, label: impl Into<SharedString>) -> Div {
@@ -371,7 +343,7 @@ pub(super) fn tinted_badge(tone: ui::Tone, label: impl Into<SharedString>) -> Di
             Tokens::foreground(),
         ),
     };
-    badge(colors, label)
+    ui::badge(colors, label)
 }
 
 /// `Button size="sm"` in a variant, with the given label.

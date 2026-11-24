@@ -9,16 +9,16 @@ use super::super::{
 use super::menu;
 use crate::targets::TestSupportExt;
 use crate::{
-    theme::{MONO, Tokens},
+    theme::{MONO, Palette, Tokens},
     ui,
 };
 use gpui_kit::{AnyElement, Context, SharedString, div, prelude::*, px, rgb};
 
 fn status_dot(status: &str) -> gpui_kit::Div {
     let color = match status {
-        "running" => super::super::events::tw::emerald500(1.),
-        "starting" | "connecting" => super::super::events::tw::amber500(1.),
-        "error" => super::super::log_row::red500(1.),
+        "running" => Palette::emerald500(1.),
+        "starting" | "connecting" => Palette::amber500(1.),
+        "error" => Palette::red500(1.),
         _ => Tokens::muted_foreground().opacity(0.6),
     };
     // `ExecTab.svelte`: size-[7px] rounded-full.

@@ -7,16 +7,15 @@ use super::controls::{
     RADIUS, Variant, button, button_frame, icon_button, segment as segment_text, segment_pill,
 };
 use super::detail::ResourceDetail;
-use super::events::tw;
 use super::events_tab::empty;
-use super::log_row::{chip_colors, log_row, red500};
+use super::log_row::{chip_colors, log_row};
 use super::logs_state::{LogStatus, LogsState, SINCE};
 use super::overlay_motion::{Overlay, OverlayMotion, Tooltip};
 use crate::control_motion;
 use crate::logs::LogLevel;
 use crate::preferences::LogLayout;
 use crate::targets::TestSupportExt;
-use crate::theme::{MONO, Tokens};
+use crate::theme::{MONO, Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::{input::Input, select::Select};
 use gpui_kit::{
@@ -26,11 +25,11 @@ use gpui_kit::{
 
 fn status_dot(logs: &LogsState) -> Hsla {
     if logs.paused {
-        tw::amber500(1.)
+        Palette::amber500(1.)
     } else {
         match logs.status {
-            LogStatus::Connected => tw::emerald500(1.),
-            LogStatus::Error => red500(1.),
+            LogStatus::Connected => Palette::emerald500(1.),
+            LogStatus::Error => Palette::red500(1.),
             _ => Tokens::muted_foreground().opacity(0.5),
         }
     }

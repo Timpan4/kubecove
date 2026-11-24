@@ -15,6 +15,8 @@ pub(super) struct PageRefresh {
     read_at: [Option<Instant>; 4],
     watches: Vec<Task<()>>,
     watch_keys: Vec<String>,
+    /// Whether Argo CD is present and the kinds revision `watch_keys` was built from.
+    watch_inputs: Option<(bool, u64)>,
     statuses: std::collections::HashMap<String, WatchLink>,
 }
 
@@ -123,6 +125,7 @@ impl Inspector {
         }
         self.page_refresh.watches.clear();
         self.page_refresh.watch_keys.clear();
+        self.page_refresh.watch_inputs = None;
         self.page_refresh.statuses.clear();
         cx.notify();
     }
@@ -135,8 +138,15 @@ impl Inspector {
         let Some(data) = self.gitops.inventory() else {
             return;
         };
+        // The keys follow only these inputs, so an unchanged pair skips
+        // building and serializing them on every frame.
+        let inputs = (data.argo.is_some(), self.live.kinds_revision());
+        if self.page_refresh.watch_inputs == Some(inputs) {
+            return;
+        }
+        self.page_refresh.watch_inputs = Some(inputs);
         let mut keys: Vec<WatchResourceKey> = Vec::new();
-        if data.argo.is_some() {
+        if inputs.0 {
             keys.extend(
                 crate::gitops::ARGO_KINDS
                     .map(|(kind, plural)| crate::gitops::argo_watch_key(kind, plural)),
@@ -144,7 +154,7 @@ impl Inspector {
         }
         keys.extend(
             self.live
-                .kinds
+                .kinds()
                 .iter()
                 .filter(|kind| kind.group.ends_with("toolkit.fluxcd.io"))
                 .map(|kind| crate::backend::discovered_key(kind, None)),

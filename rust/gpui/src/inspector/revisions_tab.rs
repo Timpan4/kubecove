@@ -5,6 +5,7 @@
 use super::Inspector;
 use super::controls::diff_pre;
 use super::detail::{Detail, ResourceDetail};
+use super::request::Fetch;
 use crate::targets::ObservedElement;
 use crate::targets::TestSupportExt;
 use crate::theme::Tokens;
@@ -12,8 +13,8 @@ use crate::ui;
 use crate::unified_diff::{self, DiffLine};
 use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectState};
 use gpui_kit::{
-    AnyElement, AppContext, Context, Div, Entity, SharedString, Stateful, Subscription, Task,
-    Window, div, prelude::*, px,
+    AnyElement, AppContext, Context, Div, Entity, SharedString, Stateful, Subscription, Window,
+    div, prelude::*, px,
 };
 use kubecove_lib::models::DeploymentRevision;
 
@@ -36,21 +37,15 @@ impl gpui_kit::component::searchable_list::SearchableListItem for RevisionChoice
     }
 }
 
-pub(super) enum RevisionsLoad {
-    Pending,
-    Failed,
-    Ready(Vec<DeploymentRevision>),
-}
-
 pub(super) struct RevisionsState {
-    load: RevisionsLoad,
+    /// The revisions read, which owns its task.
+    load: Fetch<Vec<DeploymentRevision>, ()>,
     selected: Option<String>,
     comparison: Option<String>,
     picker: Option<Entity<Choices>>,
     diff: Vec<DiffLine>,
     /// The diff text, which tests read as the pane's label.
     diff_text: SharedString,
-    _task: Option<Task<()>>,
     _subscription: Option<Subscription>,
 }
 
@@ -63,10 +58,7 @@ fn label(revision: &DeploymentRevision) -> String {
 
 impl RevisionsState {
     fn revisions(&self) -> &[DeploymentRevision] {
-        match &self.load {
-            RevisionsLoad::Ready(revisions) => revisions,
-            _ => &[],
-        }
+        self.load.ready().map(Vec::as_slice).unwrap_or_default()
     }
 
     fn find(&self, name: Option<&str>) -> Option<&DeploymentRevision> {
@@ -150,7 +142,7 @@ impl Inspector {
         if detail
             .revisions
             .as_ref()
-            .is_some_and(|state| !matches!(state.load, RevisionsLoad::Failed))
+            .is_some_and(|state| !matches!(state.load, Fetch::Failed(())))
         {
             return;
         }
@@ -184,8 +176,8 @@ impl Inspector {
             let _ = this.update_in(cx, |this, window, cx| {
                 if let Some(state) = this.revisions_state() {
                     state.load = match result {
-                        Ok(revisions) => RevisionsLoad::Ready(revisions),
-                        Err(_) => RevisionsLoad::Failed,
+                        Ok(revisions) => Fetch::Ready(revisions),
+                        Err(_) => Fetch::Failed(()),
                     };
                     state.reconcile(window, cx);
                 }
@@ -193,13 +185,12 @@ impl Inspector {
             });
         });
         detail.revisions = Some(RevisionsState {
-            load: RevisionsLoad::Pending,
+            load: Fetch::start(task),
             selected: None,
             comparison: None,
             picker: Some(picker),
             diff: Vec::new(),
             diff_text: SharedString::default(),
-            _task: Some(task),
             _subscription: Some(subscription),
         });
     }
@@ -266,28 +257,28 @@ pub(super) fn revisions_tab(
     let Some(state) = detail.revisions.as_ref() else {
         return div().into_any_element();
     };
-    let phase = loading.phase("revisions", matches!(state.load, RevisionsLoad::Pending));
+    let phase = loading.phase("revisions", state.load.loading());
     let revisions = match &state.load {
         // DeploymentRevisionsTab.svelte checks the loading state first.
         _ if phase.shown() => {
             return ui::muted(note("Loading Deployment revisions…")).into_any_element();
         }
         _ if !phase.ready() => return div().into_any_element(),
-        RevisionsLoad::Pending => return div().into_any_element(),
-        RevisionsLoad::Failed => {
+        Fetch::Idle | Fetch::Loading { .. } => return div().into_any_element(),
+        Fetch::Failed(()) => {
             return note("Unable to load Deployment revisions.")
                 .id("revisions-error")
                 .test_support()
                 .text_color(Tokens::destructive())
                 .into_any_element();
         }
-        RevisionsLoad::Ready(revisions) if revisions.is_empty() => {
+        Fetch::Ready(revisions) if revisions.is_empty() => {
             return ui::muted(note("No controller-owned ReplicaSet revisions were found."))
                 .id("revisions-empty")
                 .test_support()
                 .into_any_element();
         }
-        RevisionsLoad::Ready(revisions) => revisions,
+        Fetch::Ready(revisions) => revisions,
     };
     let selected = state.find(state.selected.as_deref());
     let comparison = state.find(state.comparison.as_deref());

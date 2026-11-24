@@ -6,6 +6,7 @@ mod layout;
 mod source;
 pub use source::Source;
 pub mod node;
+#[cfg(any(debug_assertions, feature = "topology-spike"))]
 pub mod synthetic;
 
 use kubecove_lib::models::{ResourceSummary, ResourceTopology, TopologyNode};

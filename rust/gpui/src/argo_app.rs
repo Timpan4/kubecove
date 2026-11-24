@@ -12,6 +12,7 @@ use kubecove_lib::models::{
     ResourceSummary,
 };
 use serde_json::Value;
+use std::sync::Arc;
 
 fn normalized(value: Option<&str>) -> String {
     value.unwrap_or_default().trim().to_lowercase()
@@ -174,8 +175,12 @@ pub struct Change {
     pub badge: ChangeBadge,
     pub desired: SharedString,
     pub live: SharedString,
-    /// The target-to-live diff, when both documents exist.
-    pub diff: Option<Vec<DiffLine>>,
+    /// The target-to-live diff, when both documents exist. Shared, so a full
+    /// diff's windowed rows can read it while they render.
+    pub diff: Option<Arc<[DiffLine]>>,
+    /// The diff's lines joined by newlines, its accessible label, joined once
+    /// with the diff instead of on every render.
+    pub diff_label: SharedString,
     /// `comparison?.exact === false`: the fallback note applies.
     pub inexact: bool,
 }
@@ -217,8 +222,16 @@ pub(crate) fn change(
     } else {
         ChangeBadge::InSync
     };
-    let diff = (!desired.is_empty() && !normalized_live.is_empty())
-        .then(|| unified_diff::argo(&desired, &normalized_live));
+    let diff: Option<Arc<[DiffLine]>> = (!desired.is_empty() && !normalized_live.is_empty())
+        .then(|| unified_diff::argo(&desired, &normalized_live).into());
+    let diff_label = diff.as_deref().map_or_else(SharedString::default, |lines| {
+        lines
+            .iter()
+            .map(|line| line.text.as_ref())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .into()
+    });
     let label = resource_label(resource);
     Change {
         key: key.unwrap_or_else(|| label.clone()),
@@ -234,6 +247,7 @@ pub(crate) fn change(
         desired: desired.into(),
         live: live.into(),
         diff,
+        diff_label,
         inexact: comparison.and_then(|comparison| comparison.exact) == Some(false),
     }
 }
@@ -264,6 +278,8 @@ pub struct ArgoView {
     pub policy: String,
     pub history: Vec<Deployment>,
     pub freshness: &'static str,
+    /// `spec.syncPolicy.automated.prune`, the sync options' default prune.
+    pub default_prune: bool,
 }
 
 impl ArgoView {
@@ -348,6 +364,9 @@ impl ArgoView {
                 "Destination unavailable",
             ),
             policy,
+            default_prune: value_at(spec, &["syncPolicy", "automated", "prune"])
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             history: inspector
                 .history
                 .iter()

@@ -143,6 +143,8 @@ const cargo = [
 	"test",
 	"--release",
 	"--locked",
+	"--features",
+	"topology-spike",
 	"--manifest-path",
 	manifest,
 	"--test",

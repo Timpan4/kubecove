@@ -118,7 +118,7 @@ impl Inspector {
         self.kind_selection.chosen.as_ref().map_or_else(
             || {
                 self.base_kinds().contains(&key)
-                    || self.live.kinds.iter().any(|kind| {
+                    || self.live.kinds().iter().any(|kind| {
                         identity(kind) == key
                             && self.observation.rows().iter().any(|row| {
                                 row.kind == kind.kind
@@ -140,7 +140,7 @@ impl Inspector {
                 self.live
                     .catalog
                     .iter()
-                    .chain(&self.live.kinds)
+                    .chain(self.live.kinds())
                     .find(|kind| kind.kind == row_kind && kind.api_version == api)
             });
             match custom {
@@ -228,7 +228,7 @@ impl Inspector {
             return;
         };
         let scope = self.scope.clone();
-        let contexts = self.watch_contexts();
+        let contexts = self.watch_contexts().to_vec();
         let ids = contexts
             .iter()
             .map(|context| crate::backend::watch_id(context, &key))
@@ -271,7 +271,7 @@ impl Inspector {
                 {
                     return;
                 }
-                let contexts = this.watch_contexts();
+                let contexts = this.watch_contexts().to_vec();
                 let several = results.len() > 1;
                 for (context, result) in results {
                     let id = crate::backend::watch_id(&context, &key);

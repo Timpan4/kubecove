@@ -275,6 +275,10 @@ impl Inspector {
             .gap(px(16.))
             .children(notice)
             .children(settings::rows(category, remote.is_some()).map(|row| {
+                #[cfg(any(debug_assertions, feature = "topology-spike"))]
+                if row.title == "Topology spike" {
+                    return self.topology_spike_control(row, cx);
+                }
                 if row.title == "KubeCove documentation" {
                     self.documentation_control(row, cx)
                 } else if let Some(remote) =
@@ -287,8 +291,6 @@ impl Inspector {
                     self.interaction_switch(row, cx)
                 } else if row.title == "Interaction report" {
                     self.interaction_report(row, cx)
-                } else if row.title == "Topology spike" {
-                    self.topology_spike_control(row, cx)
                 } else if row.unavailable.is_none() && row.control != Control::Section {
                     self.preference_control(row, cx)
                 } else if row.title == "Resource group order" {

@@ -9,11 +9,11 @@ impl Inspector {
     /// The contexts whose rows the page's watches patch: every context of the
     /// scope read, or the selected context alone on the Cluster Overview,
     /// whose cluster read covers that one context.
-    pub(super) fn watch_contexts(&self) -> Vec<String> {
+    pub(super) fn watch_contexts(&self) -> &[String] {
         if self.page == super::Page::ClusterOverview {
-            vec![self.scope.context.clone()]
+            std::slice::from_ref(&self.scope.context)
         } else {
-            self.observation.contexts().to_vec()
+            self.observation.contexts()
         }
     }
 

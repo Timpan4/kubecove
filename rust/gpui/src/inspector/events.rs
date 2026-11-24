@@ -8,7 +8,7 @@ use super::friendly_error::redact_detail;
 use super::live_data::COALESCE;
 use super::windowed::{Windowed, row_id};
 use crate::incident::{self, EventFilter, SignalTone};
-use crate::theme::{Tokens, oklch};
+use crate::theme::{Palette, Tokens};
 use crate::ui;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
@@ -178,66 +178,15 @@ impl Inspector {
     }
 }
 
-/// Tailwind v4 palette entries the event views use beyond `theme::Palette`.
-pub(super) mod tw {
-    use super::{Hsla, oklch};
-
-    pub fn amber200() -> Hsla {
-        oklch(0.924, 0.12, 95.746, 1.)
-    }
-    pub fn amber300() -> Hsla {
-        oklch(0.879, 0.169, 91.605, 1.)
-    }
-    pub fn amber400(alpha: f32) -> Hsla {
-        oklch(0.828, 0.189, 84.429, alpha)
-    }
-    pub fn amber500(alpha: f32) -> Hsla {
-        oklch(0.769, 0.188, 70.08, alpha)
-    }
-    pub fn emerald200() -> Hsla {
-        oklch(0.905, 0.093, 164.15, 1.)
-    }
-    pub fn emerald300() -> Hsla {
-        oklch(0.845, 0.143, 164.978, 1.)
-    }
-    pub fn emerald400(alpha: f32) -> Hsla {
-        oklch(0.765, 0.177, 163.223, alpha)
-    }
-    pub fn emerald500(alpha: f32) -> Hsla {
-        oklch(0.696, 0.17, 162.48, alpha)
-    }
-    pub fn red500(alpha: f32) -> Hsla {
-        oklch(0.637, 0.237, 25.331, alpha)
-    }
-    pub fn sky300() -> Hsla {
-        oklch(0.828, 0.111, 230.318, 1.)
-    }
-    pub fn sky500(alpha: f32) -> Hsla {
-        oklch(0.685, 0.169, 237.323, alpha)
-    }
-}
-
-/// `Badge` (`h-5 rounded-full border px-2 font-medium whitespace-nowrap`) with
-/// explicit colors, text size and an optional leading `size-1.5` dot.
+/// `ui::badge` with a text size and an optional leading `size-1.5` dot.
 pub(super) fn badge(
     (border, background, foreground): (Hsla, Hsla, Hsla),
     size: f32,
     dot: Option<Hsla>,
     content: impl Into<SharedString>,
 ) -> Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
+    ui::badge_frame(border, background)
         .gap(px(4.))
-        .overflow_hidden()
-        .h(px(20.))
-        .px(px(8.))
-        .rounded_full()
-        .border_1()
-        .border_color(border)
-        .bg(background)
         .when_some(dot, |badge, color| {
             badge.child(div().size(px(6.)).flex_none().rounded_full().bg(color))
         })
@@ -264,13 +213,25 @@ pub(super) fn tone_colors(tone: SignalTone) -> (Hsla, Hsla, Hsla) {
     let clear = gpui_kit::transparent_black();
     match tone {
         SignalTone::Neutral => (clear, Tokens::secondary(), Tokens::foreground()),
-        SignalTone::Success => (tw::emerald500(0.3), tw::emerald500(0.15), tw::emerald300()),
-        SignalTone::Warning => (tw::amber500(0.3), tw::amber500(0.15), tw::amber300()),
+        SignalTone::Success => (
+            Palette::emerald500(0.3),
+            Palette::emerald500(0.15),
+            Palette::emerald300(),
+        ),
+        SignalTone::Warning => (
+            Palette::amber500(0.3),
+            Palette::amber500(0.15),
+            Palette::amber300(),
+        ),
         SignalTone::Error => (
             clear,
             Tokens::destructive().opacity(0.2),
             Tokens::destructive(),
         ),
-        SignalTone::Info => (tw::sky500(0.3), tw::sky500(0.15), tw::sky300()),
+        SignalTone::Info => (
+            Palette::sky500(0.3),
+            Palette::sky500(0.15),
+            Palette::sky300(),
+        ),
     }
 }

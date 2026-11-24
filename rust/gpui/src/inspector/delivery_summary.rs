@@ -1,7 +1,6 @@
 //! The provider summary card the GitOps and Helm pages open with
 //! (`GitOpsView.svelte` and `HelmView.svelte`).
 
-use super::delivery_ui::badge;
 use crate::targets::TestSupportExt;
 use crate::theme::{HEADING, Palette, Tokens};
 use crate::ui;
@@ -85,7 +84,7 @@ pub(super) fn summary(
                         )
                         .map(|column| {
                             let detected = |label| {
-                                badge(
+                                ui::badge(
                                     (
                                         Palette::emerald500(0.35),
                                         Palette::emerald500(0.1),

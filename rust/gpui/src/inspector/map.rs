@@ -10,6 +10,7 @@ mod links;
 mod motion;
 mod paint;
 mod reads;
+#[cfg(any(debug_assertions, feature = "topology-spike"))]
 pub(super) mod spike;
 mod viewport;
 use paint::PreparedEdges;
@@ -70,7 +71,8 @@ pub(super) struct MapState {
     pan_moved: bool,
     /// Focus follows node identity when selection reorders the graph.
     resource_focus: Vec<Option<FocusHandle>>,
-    group_focus: HashMap<SharedString, FocusHandle>,
+    /// Group node handles by group kind.
+    group_focus: HashMap<String, FocusHandle>,
     /// The window's focus at the last render. Focus moving onto a node pans
     /// that node into view.
     last_focus: Option<WeakFocusHandle>,

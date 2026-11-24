@@ -4561,7 +4561,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower-service",
- "yaml_serde",
 ]
 
 [[package]]
