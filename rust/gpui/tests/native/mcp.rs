@@ -148,7 +148,10 @@ fn running_rotation_revokes_old_token_and_restart_reuses_saved_settings() {
     assert!(response.status().is_success());
     let body: serde_json::Value = runtime.block_on(response.json()).unwrap();
     let tools = body["result"]["tools"].as_array().unwrap();
-    let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, kubecove_lib::mcp::TOOL_NAMES);
     assert!(
         tools

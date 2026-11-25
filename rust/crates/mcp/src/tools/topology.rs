@@ -240,25 +240,37 @@ pub async fn list_deployment_revisions(
     let client = access.read_client(&cluster).await?;
     let revisions =
         deployment_revisions_from(client, &arguments.name, &arguments.namespace).await?;
+    let mut warnings = Vec::new();
     let rows: Vec<Value> = revisions
         .into_iter()
         .map(|revision| {
             let mut row = Map::new();
+            match template_images(&revision.pod_template_yaml) {
+                Some(images) => row.extend(images),
+                None => warnings.push(format!(
+                    "ReplicaSet {}: the Pod template could not be read, so its images are missing",
+                    revision.name
+                )),
+            }
             row.insert("replicaSet".into(), revision.name.into());
             compact::insert_some(&mut row, "revision", revision.revision);
             compact::insert_some(&mut row, "changeCause", revision.change_cause);
             compact::insert_some(&mut row, "createdAt", revision.created_at);
-            row.extend(template_images(&revision.pod_template_yaml));
             Value::Object(row)
         })
         .collect();
-    Ok(json!({"context": cluster, "revisions": rows}))
+    let mut body = json!({"context": cluster, "revisions": rows});
+    if !warnings.is_empty() {
+        body["warnings"] = json!(warnings);
+    }
+    Ok(body)
 }
 
-/// Each revision's container names and images. The rest of the Pod template stays
-/// behind: literal environment values and annotations can hold credentials.
-fn template_images(template_yaml: &str) -> Map<String, Value> {
-    let template: serde_yaml::Value = serde_yaml::from_str(template_yaml).unwrap_or_default();
+/// Each revision's container names and images, or `None` when the template does not
+/// parse. The rest of the Pod template stays behind: literal environment values and
+/// annotations can hold credentials.
+fn template_images(template_yaml: &str) -> Option<Map<String, Value>> {
+    let template: serde_yaml::Value = serde_yaml::from_str(template_yaml).ok()?;
     let mut images = Map::new();
     for field in ["containers", "initContainers"] {
         let containers: Vec<Value> = template["spec"][field]
@@ -273,7 +285,7 @@ fn template_images(template_yaml: &str) -> Map<String, Value> {
             images.insert(field.into(), Value::Array(containers));
         }
     }
-    images
+    Some(images)
 }
 
 #[cfg(test)]
@@ -373,19 +385,20 @@ mod tests {
 
     // Failure modes: an environment value or template annotation reaches the agent; a
     // container or init container image is dropped; an unparseable template fails the
-    // whole revision list.
+    // whole revision list, or reads like a template without containers.
     #[test]
     fn revisions_keep_images_and_drop_the_rest_of_the_template() {
         let template = "metadata:\n  annotations:\n    note: annotation-secret\n\
                         spec:\n  initContainers:\n  - name: migrate\n    image: tools:1\n\
                         \x20 containers:\n  - name: app\n    image: shop:2\n    env:\n\
                         \x20   - name: TOKEN\n      value: env-secret\n";
-        let images = Value::Object(template_images(template));
+        let images = Value::Object(template_images(template).unwrap());
         assert_eq!(
             images,
             json!({"containers": [{"name": "app", "image": "shop:2"}],
                    "initContainers": [{"name": "migrate", "image": "tools:1"}]})
         );
-        assert_eq!(template_images("not: [valid"), Map::new());
+        assert_eq!(template_images("not: [valid"), None);
+        assert_eq!(template_images("spec: {}"), Some(Map::new()));
     }
 }
