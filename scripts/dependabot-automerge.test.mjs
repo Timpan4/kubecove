@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parse } from "yaml";
 import { findPullRequest, followedWorkflows, mergeReadiness, settlePullRequest } from "./dependabot-automerge.mjs";
 
-// Failure modes: a stale event acts on a newer head; a human, fork or non-main pull request
-// merges; no reported checks reads as all passed; a failed required check or a pending advisory
-// check (Parity) still arms auto-merge; a later push keeps an earlier arming; a stale bun.nix
-// merges; GitHub's "clean status" refusal leaves a ready pull request unmerged; a missing token
-// fails after a partial write; a second page of checks is ignored; a workflow whose later jobs
-// have not queued reads as finished; the job runs pull request code.
+// Failure modes: a stale event acts on a newer head; a human, fork, retargeted or non-main pull
+// request merges; no reported checks reads as all passed; a failed required check or a pending
+// advisory check (Parity) still arms auto-merge; a later push keeps an earlier arming; a stale or
+// missing bun.nix merges; a removed bun.lock is regenerated; GitHub's "clean status" refusal
+// leaves a ready pull request unmerged; a missing token fails after a partial write; a second
+// page of checks is ignored; a workflow that has not started, or whose later jobs have not
+// queued, reads as finished; the job runs pull request code.
+// CI runs this suite before installing packages, so it imports only Node built-ins.
 const repo = { owner: "Timpan4", repo: "kubecove" };
+const repository = { full_name: "Timpan4/kubecove", default_branch: "main" };
 const head = "a".repeat(40);
 const newer = "b".repeat(40);
 
@@ -22,7 +24,10 @@ const completedRuns = ["CI", "Parity", "CodSpeed"].map((name) => ({ name, status
 function harness({ pull = {}, pages = [[]], files = {}, armError, runs = completedRuns } = {}) {
   const writes = [];
   const notices = [];
-  const pr = { state: "open", head: { sha: head, ref: "dependabot/bun/x" }, node_id: "PR_1", auto_merge: null, ...pull };
+  const pr = {
+    number: 7, state: "open", node_id: "PR_1", auto_merge: null, user: { login: "dependabot[bot]" }, base: { ref: "main" },
+    head: { sha: head, ref: "dependabot/bun/x", repo: { full_name: "Timpan4/kubecove" } }, ...pull,
+  };
   const github = {
     paginate: async (method, params) => {
       assert.equal(method, "runs");
@@ -34,6 +39,7 @@ function harness({ pull = {}, pages = [[]], files = {}, armError, runs = complet
       pulls: { get: async () => ({ data: pr }) },
       repos: { getContent: async ({ path, ref }) => {
         assert.equal(ref, head);
+        if (files[path] instanceof Error) throw files[path];
         return { data: files[path] };
       } },
     },
@@ -54,7 +60,7 @@ function harness({ pull = {}, pages = [[]], files = {}, armError, runs = complet
     },
   };
   const core = { info() {}, notice: (message) => notices.push(message) };
-  const settle = (extra = {}) => settlePullRequest({ github, writer, context: { repo }, core, pr: { number: 7, sha: head }, ...extra });
+  const settle = (extra = {}) => settlePullRequest({ github, writer, context: { repo, payload: { repository } }, core, pr: { number: 7, sha: head }, ...extra });
   return { settle, writes, notices };
 }
 
@@ -77,6 +83,10 @@ test("a followed workflow still running holds the pull request before its later 
   assert.equal(await armed.settle(), "disarmed");
   const unrelated = harness({ pages, runs: [...completedRuns, { name: "E2E", status: "in_progress" }] });
   assert.equal(await unrelated.settle(), "armed");
+  // CI and CodSpeed finished before the runs API lists Parity.
+  const unlisted = harness({ pages, runs: completedRuns.filter((run) => run.name !== "Parity") });
+  assert.equal(await unlisted.settle(), "wait");
+  assert.deepEqual(unlisted.writes, []);
 });
 
 test("every non-passing conclusion and status blocks, neutral and skipped pass", async () => {
@@ -140,10 +150,27 @@ test("a stale bun.nix is committed to the pull request head instead of merging",
 
   const fresh = harness({ pages, files: { "bun.nix": "same" } });
   assert.equal(await fresh.settle({ regeneratedBunNix: "same" }), "armed");
+
+  const armed = harness({ pages, files: { "bun.nix": "old" }, pull: { auto_merge: { enabled_by: { login: "Timpan4" } } } });
+  assert.equal(await armed.settle({ regeneratedBunNix: "new" }), "committed");
+  assert.deepEqual(armed.writes.map(({ name }) => name), ["disablePullRequestAutoMerge", "createCommitOnBranch"]);
+
+  const missing = harness({ pages, files: { "bun.nix": Object.assign(new Error("Not Found"), { status: 404 }) } });
+  assert.equal(await missing.settle({ regeneratedBunNix: "new" }), "committed");
+  const unreadable = harness({ pages, files: { "bun.nix": Object.assign(new Error("Server Error"), { status: 502 }) } });
+  await assert.rejects(unreadable.settle({ regeneratedBunNix: "new" }), /Server Error/);
+  assert.deepEqual(unreadable.writes, []);
 });
 
-test("a moved, closed or unauthorized run writes nothing", async () => {
-  for (const pull of [{ head: { sha: newer, ref: "dependabot/bun/x" } }, { state: "closed" }]) {
+test("a moved, closed, retargeted or unauthorized pull request gets no writes", async () => {
+  const sameRepo = { full_name: "Timpan4/kubecove" };
+  for (const pull of [
+    { head: { sha: newer, ref: "dependabot/bun/x", repo: sameRepo } },
+    { state: "closed" },
+    { base: { ref: "release" } },
+    { user: { login: "Timpan4" } },
+    { head: { sha: head, ref: "dependabot/bun/x", repo: { full_name: "someone/fork" } } },
+  ]) {
     const { settle, writes } = harness({ pull, pages: [[check("Parity result", "COMPLETED", "SUCCESS")]] });
     assert.equal(await settle(), "stale");
     assert.deepEqual(writes, []);
@@ -154,7 +181,7 @@ test("a moved, closed or unauthorized run writes nothing", async () => {
 
 test("only an open Dependabot pull request into main at the run's head is settled", async () => {
   const run = { event: "pull_request", head_branch: "dependabot/bun/x", head_sha: head, head_repository: { full_name: "Timpan4/kubecove" } };
-  const pull = { number: 7, head: { sha: head }, user: { login: "dependabot[bot]" }, base: { ref: "main" } };
+  const pull = { number: 7, state: "open", head: { sha: head, repo: { full_name: "Timpan4/kubecove" } }, user: { login: "dependabot[bot]" }, base: { ref: "main" } };
   async function find(runChanges = {}, pullChanges = {}, files = [{ filename: "bun.lock" }]) {
     const outputs = {};
     const github = {
@@ -167,14 +194,15 @@ test("only an open Dependabot pull request into main at the run's head is settle
         return files;
       },
     };
-    const context = { repo, payload: { workflow_run: { ...run, ...runChanges }, repository: { full_name: "Timpan4/kubecove", default_branch: "main" } } };
+    const context = { repo, payload: { workflow_run: { ...run, ...runChanges }, repository } };
     const found = await findPullRequest({ github, context, core: { info() {}, setOutput: (key, value) => { outputs[key] = value; } } });
     return { found, outputs };
   }
   const settled = await find();
   assert.deepEqual(settled.found, { number: 7, sha: head, bunLock: true });
   assert.deepEqual(settled.outputs, { number: "7", sha: head, "bun-lock": "true" });
-  assert.equal((await find({}, {}, [{ filename: "rust/Cargo.lock" }])).found.bunLock, false);
+  assert.equal((await find({}, {}, [{ filename: "rust/Cargo.lock", status: "modified" }])).found.bunLock, false);
+  assert.equal((await find({}, {}, [{ filename: "bun.lock", status: "removed" }])).found.bunLock, false);
   for (const [runChanges, pullChanges] of [
     [{ head_sha: newer }, {}],
     [{}, { user: { login: "Timpan4" } }],
@@ -189,22 +217,19 @@ test("only an open Dependabot pull request into main at the run's head is settle
 });
 
 test("the privileged job checks out only the default branch and follows existing workflows", () => {
-  const workflow = parse(readFileSync(new URL("../.github/workflows/dependabot-automerge.yml", import.meta.url), "utf8"));
-  assert.deepEqual(workflow.permissions, {});
-  const job = workflow.jobs.settle;
-  assert.deepEqual(job.permissions, { actions: "read", checks: "read", contents: "read", "pull-requests": "read", statuses: "read" });
-  assert.deepEqual(workflow.on.workflow_run.workflows, followedWorkflows);
-  const checkout = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
-  assert.match(checkout.with.ref, /^\$\{\{ github\.event\.repository\.default_branch \}\}$/);
-  assert.equal(checkout.with["persist-credentials"], false);
-  assert.equal(job.steps.filter((step) => step.uses?.startsWith("actions/checkout@")).length, 1);
-  const secretSteps = job.steps.filter((step) => JSON.stringify(step).includes("secrets."));
-  assert.deepEqual(secretSteps.map((step) => step.name), ["Commit bun.nix or update auto-merge"]);
-  for (const name of workflow.on.workflow_run.workflows) {
-    const file = { CI: "ci", Parity: "parity", CodSpeed: "codspeed" }[name];
-    assert.ok(file, `Unknown workflow ${name}`);
-    const source = parse(readFileSync(new URL(`../.github/workflows/${file}.yml`, import.meta.url), "utf8"));
-    assert.equal(source.name, name);
-    assert.ok(source.on.pull_request, `${name} does not run on pull requests`);
+  const read = (name) => readFileSync(new URL(`../.github/workflows/${name}.yml`, import.meta.url), "utf8").replaceAll("\r\n", "\n");
+  const workflow = read("dependabot-automerge");
+  assert.match(workflow, /^permissions: \{\}$/m);
+  assert.match(workflow, /\n {4}permissions:\n {6}actions: read\n {6}checks: read\n {6}contents: read\n {6}pull-requests: read\n {6}statuses: read\n\n/);
+  assert.equal(workflow.match(/^ {4}permissions:/gm).length, 1);
+  assert.deepEqual(workflow.match(/^ {4}workflows: \[(.+)\]$/m)[1].split(", "), followedWorkflows);
+  assert.equal(workflow.match(/actions\/checkout@/g).length, 1);
+  assert.match(workflow, /uses: actions\/checkout@\S+ # v[\d.]+\n {8}with:\n {10}ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n {10}persist-credentials: false\n/);
+  const steps = workflow.split(/\n {6}- name: /).slice(1);
+  assert.deepEqual(steps.filter((step) => step.includes("secrets.")).map((step) => step.split("\n")[0]), ["Commit bun.nix or update auto-merge"]);
+  for (const name of followedWorkflows) {
+    const source = read({ CI: "ci", Parity: "parity", CodSpeed: "codspeed" }[name]);
+    assert.match(source, new RegExp(`^name: ${name}$`, "m"));
+    assert.match(source, /^on:\n(?: {2}\S.*\n(?: {4}.*\n)*)*? {2}pull_request:\n {4}types: \[opened, synchronize, reopened\]\n/m, `${name} must run on every pull request push`);
   }
 });

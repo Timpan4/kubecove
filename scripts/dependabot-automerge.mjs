@@ -43,6 +43,8 @@ export function mergeReadiness(checks, runs) {
   if (checks.length === 0) return { action: "wait", reason: "no checks have reported yet" };
   const failed = checks.filter((check) => check.state === "fail").map((check) => check.name);
   if (failed.length) return { action: "block", reason: `failed: ${failed.join(", ")}` };
+  const missing = followedWorkflows.filter((name) => !runs.some((run) => run.name === name));
+  if (missing.length) return { action: "wait", reason: `not started: ${missing.join(", ")}` };
   const running = runs.filter((run) => run.status !== "completed").map((run) => run.name);
   if (running.length) return { action: "wait", reason: `running: ${running.join(", ")}` };
   const pending = checks.filter((check) => check.state === "pending" && !check.required).map((check) => check.name);
@@ -72,6 +74,17 @@ async function readChecks(github, repo, pr) {
   }
 }
 
+// Settlement rereads the pull request and checks it again, because a pull request can be
+// retargeted or closed after it was found while keeping its head commit.
+function ineligibility(pull, repository, sha) {
+  if (pull.state !== "open") return `#${pull.number} is ${pull.state}`;
+  if (pull.head.sha !== sha) return `#${pull.number} moved from ${sha} to ${pull.head.sha}`;
+  if (pull.user.login !== "dependabot[bot]") return `#${pull.number} was not opened by Dependabot`;
+  if (pull.head.repo?.full_name !== repository.full_name) return `#${pull.number} comes from another repository`;
+  if (pull.base.ref !== repository.default_branch) return `#${pull.number} does not target ${repository.default_branch}`;
+  return null;
+}
+
 // Returns the open Dependabot pull request whose head is the commit the triggering run checked,
 // or null when the event is stale or belongs to anything else.
 export async function findPullRequest({ github, context, core }) {
@@ -88,10 +101,10 @@ export async function findPullRequest({ github, context, core }) {
   });
   const pr = pulls.find((pull) => pull.head.sha === run.head_sha);
   if (!pr) return skip(`no open pull request has head ${run.head_sha}`);
-  if (pr.user.login !== "dependabot[bot]") return skip(`#${pr.number} was not opened by Dependabot`);
-  if (pr.base.ref !== repository.default_branch) return skip(`#${pr.number} does not target ${repository.default_branch}`);
+  const reason = ineligibility(pr, repository, run.head_sha);
+  if (reason) return skip(reason);
   const files = await github.paginate(github.rest.pulls.listFiles, { ...context.repo, pull_number: pr.number });
-  const bunLock = files.some((file) => file.filename === "bun.lock");
+  const bunLock = files.some((file) => file.filename === "bun.lock" && file.status !== "removed");
   core.setOutput("number", String(pr.number));
   core.setOutput("sha", pr.head.sha);
   core.setOutput("bun-lock", String(bunLock));
@@ -101,6 +114,20 @@ export async function findPullRequest({ github, context, core }) {
 async function readFile(github, repo, path, ref) {
   const { data } = await github.rest.repos.getContent({ ...repo, path, ref, mediaType: { format: "raw" } });
   return String(data);
+}
+
+async function readOptionalFile(github, repo, path, ref) {
+  try {
+    return await readFile(github, repo, path, ref);
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
+async function disarm(writer, core, current, reason) {
+  await writer.graphql("mutation($id: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } }", { id: current.node_id });
+  core.notice(`Disarmed auto-merge on #${current.number}: ${reason}.`);
 }
 
 // Writes the pull request's bun.lock into the default-branch checkout, so bun2nix runs with the
@@ -128,21 +155,22 @@ export async function settlePullRequest({ github, writer, context, core, pr, reg
   if (!writer) throw new Error("NIX_LOCK_REFRESH_TOKEN is unavailable to this run. Add it as a Dependabot secret as well as an Actions secret.");
   const repo = context.repo;
   const { data: current } = await github.rest.pulls.get({ ...repo, pull_number: pr.number });
-  if (current.state !== "open" || current.head.sha !== pr.sha) {
-    core.info(`#${pr.number} moved or closed; a newer run settles it.`);
+  const reason = ineligibility(current, context.payload.repository, pr.sha);
+  if (reason) {
+    core.info(`Skipping: ${reason}.`);
     return "stale";
   }
-  if (regeneratedBunNix !== undefined && regeneratedBunNix !== await readFile(github, repo, "bun.nix", pr.sha)) {
+  const armed = Boolean(current.auto_merge);
+  if (regeneratedBunNix !== undefined && regeneratedBunNix !== await readOptionalFile(github, repo, "bun.nix", pr.sha)) {
+    if (armed) await disarm(writer, core, current, "bun.nix is stale");
     await commitBunNix({ writer, context, core, pr, branch: current.head.ref, contents: regeneratedBunNix });
     return "committed";
   }
   const readiness = mergeReadiness(await readChecks(github, repo, pr), await readRuns(github, repo, pr.sha));
-  const armed = Boolean(current.auto_merge);
   core.info(`#${pr.number} at ${pr.sha}: ${readiness.action} (${readiness.reason})`);
   if (readiness.action !== "arm") {
     if (armed) {
-      await writer.graphql("mutation($id: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } }", { id: current.node_id });
-      core.notice(`Disarmed auto-merge on #${pr.number}: ${readiness.reason}.`);
+      await disarm(writer, core, current, readiness.reason);
       return "disarmed";
     }
     return readiness.action;
