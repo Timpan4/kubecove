@@ -1,6 +1,6 @@
 import type { WebActions } from "./web-action";
 import type { Page } from "playwright-core";
-import { MCP_FIXTURE_TOKEN, MCP_ROTATED_TOKEN } from "../../src/lib/mcp-dev-mocks";
+import { MCP_FIXTURE_TOKEN, MCP_ROTATED_TOKEN, mcpMockStatus } from "../../src/lib/mcp-dev-mocks";
 import { claudeCodeCommand } from "../../src/lib/mcp-runtime";
 
 export const mcpActions = {
@@ -51,7 +51,7 @@ export const mcpActions = {
 		if (await page.getByRole("textbox", { name: "MCP port", exact: true }).inputValue() !== step.port) throw new Error("Wrong MCP port");
 		if (await page.getByRole("button", { name: "Save", exact: true }).isEnabled() !== step.save) throw new Error("Wrong MCP Save state");
 		if (await page.getByRole("button", { name: "Copy Claude Code command", exact: true }).isEnabled() !== step.command) throw new Error("Wrong MCP command state");
-		if (step.running) await page.getByText(`Listening at http://127.0.0.1:${step.port}/mcp with 11 read-only tools.`, { exact: true }).waitFor();
+		if (step.running) await page.getByText(`Listening at http://127.0.0.1:${step.port}/mcp with ${mcpMockStatus().tools.length} read-only tools.`, { exact: true }).waitFor();
 		else if (await page.getByText("Running", { exact: true }).count()) throw new Error("MCP unexpectedly running");
 		if (await page.getByRole("button", { name: "Reload settings", exact: true }).count()) throw new Error("Reload settings shown with loaded settings");
 	},

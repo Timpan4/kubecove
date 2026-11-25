@@ -100,7 +100,7 @@ pub async fn list_resource_kinds(
             }));
         }
     }
-    let mut body = page(rows, arguments.limit, arguments.offset)?.into_json("kinds", |row| row);
+    let mut body = page(rows, arguments.limit, arguments.offset).into_json("kinds", |row| row);
     body.insert("context".into(), cluster.into());
     if let Some(warning) = warning {
         body.insert("warnings".into(), json!([warning]));
@@ -139,7 +139,7 @@ pub async fn get_resource_metrics(arguments: args::MetricsArgs) -> Result<Value,
                 .then_with(|| left.kind.cmp(&right.kind))
                 .then_with(|| left.name.cmp(&right.name))
         });
-        let rows = page(rows, arguments.limit, arguments.offset)?;
+        let rows = page(rows, arguments.limit, arguments.offset);
         body.insert(
             key.into(),
             Value::Object(rows.into_json("items", |row| metric(&row))),

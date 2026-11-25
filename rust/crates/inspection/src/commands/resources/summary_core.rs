@@ -2,12 +2,12 @@ use super::builtin_summary::{
     BuiltinSummary, KindStatus, builtin_summary, list_namespaced_summaries, metadata_summary,
     namespace_or_all,
 };
-use crate::commands::helpers::{Readiness, kubernetes_health, list_params, pod_restarts};
+use crate::commands::helpers::{Readiness, kubernetes_health, pod_restarts};
 use crate::models::{AppError, ResourceHealth};
 use chrono::Utc;
 use k8s_openapi::api::core::v1::{ConfigMap, PersistentVolumeClaim, Pod, Secret, Service};
 use k8s_openapi::api::discovery::v1::EndpointSlice;
-use kube::Client;
+use kube::{Client, api::ListParams};
 use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
@@ -115,6 +115,7 @@ pub(super) async fn core_resource_summaries(
     cluster_context: &str,
     kind: &str,
     namespace: Option<&str>,
+    params: &ListParams,
 ) -> Result<Option<ListedResources>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
@@ -122,7 +123,7 @@ pub(super) async fn core_resource_summaries(
             let list = kubecove_kube::commands::list_projection::list::<
                 _,
                 super::summary_projection::PodProjection,
-            >(namespace_or_all::<Pod>(client, namespace), &list_params())
+            >(namespace_or_all::<Pod>(client, namespace), params)
             .await
             .map_err(AppError::from)?;
             ListedResources::from_list(list, |pod| {
@@ -130,11 +131,12 @@ pub(super) async fn core_resource_summaries(
             })
         }
         "Service" => {
-            list_namespaced_summaries::<Service>(client, cluster_context, namespace, now).await?
+            list_namespaced_summaries::<Service>(client, cluster_context, namespace, params, now)
+                .await?
         }
         "ConfigMap" => {
             let list = namespace_or_all::<ConfigMap>(client, namespace)
-                .list_metadata(&list_params())
+                .list_metadata(params)
                 .await
                 .map_err(AppError::from)?;
             ListedResources::from_list(list, |cm| {
@@ -143,7 +145,7 @@ pub(super) async fn core_resource_summaries(
         }
         "Secret" => {
             let list = namespace_or_all::<Secret>(client, namespace)
-                .list_metadata(&list_params())
+                .list_metadata(params)
                 .await
                 .map_err(AppError::from)?;
             ListedResources::from_list(list, |sec| {
@@ -155,6 +157,7 @@ pub(super) async fn core_resource_summaries(
                 client,
                 cluster_context,
                 namespace,
+                params,
                 now,
             )
             .await?

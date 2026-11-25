@@ -22,26 +22,37 @@ pub async fn review_rbac_access(
     FiniteRead::new("review_rbac_access")
         .label("context", &request.cluster_context)
         .cancellable(&cancellations, cancel_scope, request_id)
-        .run(review_rbac_access_from(request), |result| {
-            vec![diagnostic_field("outcome", format!("{:?}", result.outcome))]
-        })
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
+                review_rbac_access_from(
+                    &access,
+                    &request.cluster_context,
+                    &request.identity,
+                    &request.target,
+                )
+                .await
+            },
+            |result| vec![diagnostic_field("outcome", format!("{:?}", result.outcome))],
+        )
         .await
 }
 
-async fn review_rbac_access_from(
-    request: RbacAccessReviewRequest,
+pub async fn review_rbac_access_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    identity: &RbacAccessReviewIdentity,
+    target: &RbacAccessReviewTarget,
 ) -> Result<RbacAccessReviewResult, AppError> {
-    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
-        .read_client(&request.cluster_context)
-        .await?;
-    let (user, groups) = review_identity(&request.identity)?;
+    let client = access.read_client(cluster_context).await?;
+    let (user, groups) = review_identity(identity)?;
     let review = SubjectAccessReview {
         metadata: k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta::default(),
         spec: SubjectAccessReviewSpec {
             extra: None,
             groups: (!groups.is_empty()).then_some(groups),
-            non_resource_attributes: target_non_resource_attributes(&request.target)?,
-            resource_attributes: target_resource_attributes(&request.target)?,
+            non_resource_attributes: target_non_resource_attributes(target)?,
+            resource_attributes: target_resource_attributes(target)?,
             uid: None,
             user,
         },

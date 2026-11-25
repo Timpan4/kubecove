@@ -23,6 +23,7 @@ rmcp = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 http = { workspace = true }
@@ -36,7 +37,6 @@ base64 = { workspace = true }
 axum = { workspace = true, optional = true }
 
 [dev-dependencies]
-serde_yaml = { workspace = true }
 kubecove-kube = { path = "../kube", features = ["test-support"] }
 kube = { workspace = true }
 tower = { workspace = true }

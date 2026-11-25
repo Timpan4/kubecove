@@ -1,6 +1,4 @@
-use crate::commands::helpers::{
-    assess_kubernetes_health, base_resource_summary, list_params, resource_age_at,
-};
+use crate::commands::helpers::{assess_kubernetes_health, base_resource_summary, resource_age_at};
 use crate::models::{
     AppError, HealthAssessment, HealthAssessmentCompleteness, HealthAssessmentState,
     ResourceHealth, ResourceSummary,
@@ -8,7 +6,7 @@ use crate::models::{
 use chrono::{DateTime, TimeZone, Utc};
 use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::{Api, Client};
+use kube::{Api, Client, api::ListParams};
 use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
@@ -27,6 +25,7 @@ pub(super) async fn list_namespaced_summaries<K>(
     client: Client,
     cluster_context: &str,
     namespace: Option<&str>,
+    params: &ListParams,
     now: DateTime<Utc>,
 ) -> Result<ListedResources, AppError>
 where
@@ -37,7 +36,7 @@ where
         + serde::de::DeserializeOwned,
 {
     let list = namespace_or_all::<K>(client, namespace)
-        .list(&list_params())
+        .list(params)
         .await
         .map_err(AppError::from)?;
     Ok(ListedResources::from_list(list, |object| {

@@ -7,15 +7,18 @@ use crate::{
     kinds::{ResolvedKind, resolve_kind},
 };
 use kubecove_inspection::commands::{
-    dynamic_resource_details_from, resource_events_from, resource_yaml_from,
+    dynamic_resource_details_from, dynamic_resources_summary_with_labels_from,
+    resource_events_from, resource_yaml_from,
     resources::{
-        PreparedResourceDetails, ResourceScopeResponse, dynamic_resource_details_document_from,
+        PreparedResourceDetails, dynamic_resource_details_document_from,
         resource_details_document_from, resource_scope_shared_from,
     },
+    resources_summary_with_labels_from,
 };
 use kubecove_kube::commands::ClusterAccess;
 use kubecove_models::{AppError, AppErrorKind, ResourceSummary, YamlViewMode};
 use serde_json::{Map, Value, json};
+use std::{collections::HashMap, num::NonZeroUsize};
 
 // kubectl stores the complete previous document here; it repeats the spec and can be large.
 const LAST_APPLIED_ANNOTATION: &str = "kubectl.kubernetes.io/last-applied-configuration";
@@ -33,24 +36,99 @@ pub async fn list_resources(
         arguments.api_version.as_deref(),
     )
     .await?;
-    let request = kind.list_request(arguments.namespace);
-    let scope = resource_scope_shared_from(
-        &access,
-        cluster.clone(),
-        vec![request],
-        context.live_store.clone(),
-    )
-    .await?;
     let name_filter = arguments
         .name_contains
         .map(|text| text.to_ascii_lowercase())
         .filter(|text| !text.is_empty());
-    let mut body = page_resource_rows(&scope, arguments.limit, arguments.offset, |row| {
-        resource_row_matches(name_filter.as_deref(), arguments.health, row)
-    })?;
+    let selected = match arguments
+        .label_selector
+        .filter(|selector| !selector.trim().is_empty())
+    {
+        Some(selector) => Some(
+            labelled_rows(
+                &access,
+                &cluster,
+                &kind,
+                arguments.namespace.clone(),
+                &selector,
+            )
+            .await?,
+        ),
+        None => None,
+    };
+    let scope = resource_scope_shared_from(
+        &access,
+        cluster.clone(),
+        vec![kind.list_request(arguments.namespace)],
+        context.live_store.clone(),
+    )
+    .await?;
+    let matches =
+        |row: &ResourceSummary| resource_row_matches(name_filter.as_deref(), arguments.health, row);
+    let mut body = match selected {
+        // The selected rows decide membership and keep their fresh status. Only cached
+        // rows carry Flux ownership enrichment, so copy it from the cached row with the
+        // same uid.
+        Some(mut selected) => {
+            let cached: HashMap<&str, &ResourceSummary> = scope
+                .rows()
+                .filter_map(|row| Some((row.uid.as_deref()?, row)))
+                .collect();
+            for row in &mut selected {
+                if let Some(cached) = row.uid.as_deref().and_then(|uid| cached.get(uid)) {
+                    copy_flux_enrichment(row, cached);
+                }
+            }
+            page_resource_rows(selected.iter(), arguments.limit, arguments.offset, matches)
+        }
+        None => page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches),
+    };
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
+}
+
+/// Flux inventory enrichment sets only these two fields, and only fills an owner the
+/// object's own metadata did not name.
+fn copy_flux_enrichment(row: &mut ResourceSummary, cached: &ResourceSummary) {
+    row.git_ops_ownership_partial |= cached.git_ops_ownership_partial;
+    if row.git_ops_owner.is_none() {
+        row.git_ops_owner.clone_from(&cached.git_ops_owner);
+    }
+}
+
+/// The rows the API server selects, read live because the shared scope holds whole kinds.
+async fn labelled_rows(
+    access: &ClusterAccess,
+    cluster: &str,
+    kind: &ResolvedKind,
+    namespace: Option<String>,
+    selector: &str,
+) -> Result<Vec<ResourceSummary>, AppError> {
+    let namespace = namespace.filter(|_| kind.namespaced());
+    let listed = match kind {
+        ResolvedKind::Builtin(builtin) => {
+            resources_summary_with_labels_from(
+                access,
+                cluster.to_owned(),
+                builtin.kind.to_owned(),
+                namespace,
+                Some(selector),
+            )
+            .await?
+        }
+        ResolvedKind::Custom(custom) => {
+            dynamic_resources_summary_with_labels_from(
+                access,
+                cluster.to_owned(),
+                custom.clone(),
+                namespace,
+                Some(selector),
+            )
+            .await?
+        }
+    };
+    Ok(listed.rows)
 }
 
 /// `name_filter` must already be lowercase. Shared with the backend benchmarks so they
@@ -64,15 +142,15 @@ pub fn resource_row_matches(
         && (health == args::HealthFilter::All || compact::is_unhealthy(row))
 }
 
-pub fn page_resource_rows(
-    scope: &ResourceScopeResponse,
-    limit: Option<usize>,
+pub fn page_resource_rows<'a>(
+    rows: impl Iterator<Item = &'a ResourceSummary>,
+    limit: Option<NonZeroUsize>,
     offset: Option<usize>,
     filter: impl Fn(&ResourceSummary) -> bool,
-) -> Result<Map<String, Value>, AppError> {
-    let mut rows: Vec<_> = scope.rows().filter(|row| filter(row)).collect();
+) -> Map<String, Value> {
+    let mut rows: Vec<_> = rows.filter(|row| filter(row)).collect();
     rows.sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
-    Ok(page(rows, limit, offset)?.into_json("resources", compact::resource))
+    page(rows, limit, offset).into_json("resources", compact::resource)
 }
 
 struct Target {

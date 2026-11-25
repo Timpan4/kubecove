@@ -10,12 +10,14 @@ use kubecove_mcp::bench_support::{
     HealthFilter, describe_resource_body, page_resource_rows, resource_row_matches,
 };
 use serde_json::{Map, Value};
+use std::num::NonZeroUsize;
 use std::sync::{Arc, LazyLock};
 
 static CACHED_ROWS: LazyLock<Arc<Vec<ResourceSummary>>> =
     LazyLock::new(|| Arc::new(resource_cache_fixture().expected_rows().to_vec()));
 
 const FILTERED_NAME: &str = "ledger-1";
+const PAGE_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(10);
 
 // Expected pages are built from the fixture outside the timed section, so a wrong
 // sort, filter, or offset changes the asserted rows.
@@ -45,7 +47,7 @@ fn mcp_warm_resource_scope_small_page_10000(bencher: Bencher) {
     let page = || {
         let scope =
             benchmark_shared_scope_response(vec![Arc::clone(&CACHED_ROWS)], &Default::default());
-        page_resource_rows(&scope, Some(10), Some(20), |_| true).unwrap()
+        page_resource_rows(scope.rows(), PAGE_SIZE, Some(20), |_| true)
     };
     let output = page();
     let expected = sorted_rows(CACHED_ROWS.iter());
@@ -64,10 +66,9 @@ fn mcp_warm_resource_scope_filtered_small_page_10000(bencher: Bencher) {
     let page = || {
         let scope =
             benchmark_shared_scope_response(vec![Arc::clone(&CACHED_ROWS)], &Default::default());
-        page_resource_rows(&scope, Some(10), Some(20), |row| {
+        page_resource_rows(scope.rows(), PAGE_SIZE, Some(20), |row| {
             resource_row_matches(Some(FILTERED_NAME), HealthFilter::Unhealthy, row)
         })
-        .unwrap()
     };
     let expected = sorted_rows(CACHED_ROWS.iter().filter(|row| {
         row.name.contains(FILTERED_NAME)

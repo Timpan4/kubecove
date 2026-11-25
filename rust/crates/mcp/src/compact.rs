@@ -2,10 +2,9 @@
 //! Rows keep the evidence an agent reasons with and drop raw health evidence trees,
 //! managed fields and repeated cluster names.
 
-use kubecove_models::{
-    AppError, AppErrorKind, HealthAssessmentState, ResourceEventSummary, ResourceSummary,
-};
+use kubecove_models::{HealthAssessmentState, ResourceEventSummary, ResourceSummary};
 use serde_json::{Map, Value, json};
+use std::num::NonZeroUsize;
 
 /// Default page size chosen by the product owner on 2026-11-02 (ADR 0028).
 pub const DEFAULT_PAGE_SIZE: usize = 500;
@@ -18,28 +17,20 @@ pub struct Page<T> {
     pub next_offset: Option<usize>,
 }
 
-pub fn page<T>(
-    rows: Vec<T>,
-    limit: Option<usize>,
-    offset: Option<usize>,
-) -> Result<Page<T>, AppError> {
-    let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE);
-    if limit == 0 {
-        return Err(AppError::new(
-            "limit must be at least 1",
-            AppErrorKind::Validation,
-        ));
-    }
+/// `limit` is nonzero by type, so argument parsing rejects `limit: 0` before any tool
+/// reads the cluster.
+pub fn page<T>(rows: Vec<T>, limit: Option<NonZeroUsize>, offset: Option<usize>) -> Page<T> {
+    let limit = limit.map_or(DEFAULT_PAGE_SIZE, NonZeroUsize::get);
     let total = rows.len();
     let offset = offset.unwrap_or(0).min(total);
     let items: Vec<T> = rows.into_iter().skip(offset).take(limit).collect();
     let end = offset + items.len();
-    Ok(Page {
+    Page {
         items,
         total,
         offset,
         next_offset: (end < total).then_some(end),
-    })
+    }
 }
 
 impl<T> Page<T> {

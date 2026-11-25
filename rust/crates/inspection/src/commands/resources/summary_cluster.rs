@@ -1,12 +1,15 @@
 use super::builtin_summary::{BuiltinSummary, KindStatus, builtin_summary};
-use crate::commands::helpers::{Readiness, kubernetes_health, list_params};
+use crate::commands::helpers::{Readiness, kubernetes_health};
 use crate::models::{AppError, ResourceHealth, ResourceSummary};
 use chrono::{DateTime, Utc};
 use k8s_openapi::Resource;
 use k8s_openapi::api::core::v1::{Node, PersistentVolume};
 use k8s_openapi::api::storage::v1::StorageClass;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use kube::{Client, api::Api};
+use kube::{
+    Client,
+    api::{Api, ListParams},
+};
 use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
@@ -96,16 +99,19 @@ pub(super) async fn cluster_resource_summaries(
     client: Client,
     cluster_context: &str,
     kind: &str,
+    params: &ListParams,
 ) -> Result<Option<ListedResources>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
-        "Node" => list_summaries::<Node>(client, cluster_context, now).await?,
-        "StorageClass" => list_summaries::<StorageClass>(client, cluster_context, now).await?,
+        "Node" => list_summaries::<Node>(client, cluster_context, params, now).await?,
+        "StorageClass" => {
+            list_summaries::<StorageClass>(client, cluster_context, params, now).await?
+        }
         "PersistentVolume" => {
-            list_summaries::<PersistentVolume>(client, cluster_context, now).await?
+            list_summaries::<PersistentVolume>(client, cluster_context, params, now).await?
         }
         "CustomResourceDefinition" => {
-            list_summaries::<CustomResourceDefinition>(client, cluster_context, now).await?
+            list_summaries::<CustomResourceDefinition>(client, cluster_context, params, now).await?
         }
         _ => return Ok(None),
     };
@@ -116,6 +122,7 @@ pub(super) async fn cluster_resource_summaries(
 async fn list_summaries<K>(
     client: Client,
     cluster_context: &str,
+    params: &ListParams,
     now: DateTime<Utc>,
 ) -> Result<ListedResources, AppError>
 where
@@ -126,7 +133,7 @@ where
         + serde::de::DeserializeOwned,
 {
     let api: Api<K> = Api::all(client);
-    let list = api.list(&list_params()).await.map_err(AppError::from)?;
+    let list = api.list(params).await.map_err(AppError::from)?;
     Ok(ListedResources::from_list(list, |object| {
         builtin_summary(cluster_context, &object, now)
     }))

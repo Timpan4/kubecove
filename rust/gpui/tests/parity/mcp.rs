@@ -51,13 +51,16 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     "disabled"
                 })
             );
+            // The fixture mirrors the web mock, which the parity contract test pins to the
+            // registry.
             if step["running"] == true {
                 assert_eq!(
                     window.find("setting-row:MCP server").label(),
                     Some(
                         format!(
-                            "Listening at http://127.0.0.1:{}/mcp with 11 read-only tools.",
-                            string(step, "port")
+                            "Listening at http://127.0.0.1:{}/mcp with {} read-only tools.",
+                            string(step, "port"),
+                            kubecove_lib::mcp::TOOL_NAMES.len()
                         )
                         .as_str()
                     )

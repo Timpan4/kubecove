@@ -15,13 +15,28 @@ pub async fn resources_summary_from(
     kind: String,
     namespace: Option<String>,
 ) -> Result<ListedResources, AppError> {
+    resources_summary_with_labels_from(access, cluster_context, kind, namespace, None).await
+}
+
+pub async fn resources_summary_with_labels_from(
+    access: &ClusterAccess,
+    cluster_context: String,
+    kind: String,
+    namespace: Option<String>,
+    label_selector: Option<&str>,
+) -> Result<ListedResources, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
+    let mut params = crate::commands::helpers::list_params();
+    if let Some(selector) = label_selector.map(str::trim).filter(|s| !s.is_empty()) {
+        params = params.labels(selector);
+    }
     let client = access.read_client(&cluster_context).await?;
     if let Some(rows) = core_resource_summaries(
         client.clone(),
         &cluster_context,
         &kind,
         namespace.as_deref(),
+        &params,
     )
     .await?
     {
@@ -32,12 +47,14 @@ pub async fn resources_summary_from(
         &cluster_context,
         &kind,
         namespace.as_deref(),
+        &params,
     )
     .await?
     {
         return Ok(rows);
     }
-    if let Some(rows) = cluster_resource_summaries(client, &cluster_context, &kind).await? {
+    if let Some(rows) = cluster_resource_summaries(client, &cluster_context, &kind, &params).await?
+    {
         return Ok(rows);
     }
 
