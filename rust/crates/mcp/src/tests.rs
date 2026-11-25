@@ -254,6 +254,112 @@ async fn kind_catalog_matches_short_names_and_survives_forbidden_crd_listing() {
     assert_eq!(body["warnings"].as_array().map(Vec::len), Some(1), "{body}");
 }
 
+/// Two Services, of which the API server selects `web` for `app=web`; a
+/// `SubjectAccessReview` that denies; and a Pod log longer than the 256 KiB budget, oldest
+/// line first.
+fn troubleshooting_cluster() -> Arc<FixedClusterAccess> {
+    use std::fmt::Write as _;
+    let service = |name: &str| {
+        json!({"metadata": {"name": name, "namespace": "apps", "uid": name,
+                             "creationTimestamp": "2026-11-01T00:00:00Z"},
+               "spec": {"type": "ClusterIP"}})
+    };
+    let line = "x".repeat(1024);
+    let mut log = String::new();
+    for index in 0..300 {
+        writeln!(log, "{index:04} {line}").unwrap();
+    }
+    let service = tower::service_fn(move |request: Request<Body>| {
+        let query = request.uri().query().unwrap_or("").to_owned();
+        let (status, body) = match request.uri().path() {
+            "/api/v1/namespaces/apps/services" => {
+                let items = if query.contains("labelSelector=app%3Dweb") {
+                    vec![service("web")]
+                } else {
+                    vec![service("web"), service("db")]
+                };
+                let list = json!({"apiVersion": "v1", "kind": "ServiceList",
+                                  "metadata": {"resourceVersion": "1"}, "items": items});
+                (StatusCode::OK, list.to_string())
+            }
+            "/apis/authorization.k8s.io/v1/subjectaccessreviews" => {
+                let review = json!({"apiVersion": "authorization.k8s.io/v1",
+                    "kind": "SubjectAccessReview", "spec": {},
+                    "status": {"allowed": false, "denied": true, "reason": "no RoleBinding"}});
+                (StatusCode::CREATED, review.to_string())
+            }
+            "/api/v1/namespaces/apps/pods/web/log" => (StatusCode::OK, log.clone()),
+            _ => (
+                StatusCode::NOT_FOUND,
+                json!({"apiVersion": "v1", "kind": "Status", "status": "Failure", "reason": "NotFound", "code": 404}).to_string(),
+            ),
+        };
+        let mut response = Response::new(Body::from(body.into_bytes()));
+        *response.status_mut() = status;
+        async move { Ok::<_, Infallible>(response) }
+    });
+    FixedClusterAccess::new(Client::new(service, "default"))
+}
+
+// Failure modes: the selector never reaches the API server, so every row returns; selected
+// rows lose the enrichment unfiltered rows carry; an RBAC denial reads as allowed or as a
+// tool error; a long log returns more than 256 KiB, keeps the oldest lines instead of the
+// newest, or does not say it dropped lines.
+#[tokio::test]
+async fn troubleshooting_tools_filter_explain_and_bound_their_results() {
+    let cluster = troubleshooting_cluster();
+    let endpoint = endpoint(&cluster);
+    let list = |selector: Option<&str>| {
+        let mut arguments = json!({"context": "fixed", "kind": "svc", "namespace": "apps"});
+        if let Some(selector) = selector {
+            arguments["labelSelector"] = selector.into();
+        }
+        call(&endpoint, "list_resources", arguments)
+    };
+    let (_, all) = list(None).await;
+    assert_eq!(all["total"], 2, "{all}");
+    let (_, selected) = list(Some("app=web")).await;
+    assert_eq!(selected["total"], 1, "{selected}");
+    assert_eq!(selected["resources"][0], all["resources"][1]);
+
+    let (_, review) = call(
+        &endpoint,
+        "review_rbac_access",
+        json!({"context": "fixed",
+               "identity": {"kind": "serviceAccount", "name": "web", "namespace": "apps"},
+               "target": {"kind": "resource", "verb": "list", "resource": "secrets",
+                          "namespace": "apps"}}),
+    )
+    .await;
+    assert_eq!(review["outcome"], "denied", "{review}");
+    assert_eq!(review["reason"], "no RoleBinding");
+
+    let (_, logs) = call(
+        &endpoint,
+        "get_pod_logs",
+        json!({"context": "fixed", "namespace": "apps", "pod": "web", "container": "app",
+               "tailLines": 1000}),
+    )
+    .await;
+    let lines: Vec<&str> = logs["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|line| line.as_str().unwrap())
+        .collect();
+    assert_eq!(logs["truncated"], true);
+    assert!(lines.iter().map(|line| line.len()).sum::<usize>() <= 256 * 1024);
+    assert!(
+        lines.last().unwrap().starts_with("0299 "),
+        "the newest line is kept"
+    );
+    assert!(
+        !lines.first().unwrap().starts_with("0000 "),
+        "the oldest line is dropped"
+    );
+    assert_eq!(logs["lineCount"], lines.len());
+}
+
 #[test]
 fn pages_cover_every_row_once_and_end_without_a_next_offset() {
     let rows: Vec<usize> = (0..7).collect();

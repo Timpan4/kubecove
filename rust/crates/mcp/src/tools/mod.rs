@@ -160,7 +160,7 @@ pub async fn run(context: &McpContext, tool: Tool, arguments: Value) -> Result<V
                     }
                     Tool::GetHelmRelease => logs_gitops::get_helm_release(parse(arguments)?).await,
                     Tool::GetResourceTopology => {
-                        topology::get_resource_topology(parse(arguments)?).await
+                        topology::get_resource_topology(context, parse(arguments)?).await
                     }
                     Tool::ReviewRbacAccess => topology::review_rbac_access(parse(arguments)?).await,
                     Tool::ListDeploymentRevisions => {

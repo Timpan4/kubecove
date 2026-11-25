@@ -154,8 +154,9 @@ pub struct TopologyArgs {
     pub namespace: String,
     #[serde(default)]
     pub mode: TopologyMode,
-    /// With `focusName`, return only the resources connected to this kind, such as
-    /// `Ingress` or `Deployment`.
+    /// With `focusName`, return only the resources connected to this resource. The kind
+    /// name as Kubernetes writes it, such as `Ingress` or `Deployment`; plurals and short
+    /// names are not matched.
     pub focus_kind: Option<String>,
     /// With `focusKind`, the name of the resource to trace from.
     pub focus_name: Option<String>,

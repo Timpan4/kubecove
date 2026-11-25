@@ -2,6 +2,7 @@
 
 use super::{access_for, args};
 use crate::compact::{self, page};
+use crate::{handler::McpContext, kinds::custom_kinds};
 use kubecove_inspection::commands::{
     list_deployment_revisions as deployment_revisions, resource_topology_from,
     review_rbac_access_from,
@@ -12,8 +13,12 @@ use kubecove_models::{
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+use std::sync::Arc;
 
-pub async fn get_resource_topology(arguments: args::TopologyArgs) -> Result<Value, AppError> {
+pub async fn get_resource_topology(
+    context: &McpContext,
+    arguments: args::TopologyArgs,
+) -> Result<Value, AppError> {
     let focus = match (arguments.focus_kind, arguments.focus_name) {
         (Some(kind), Some(name)) => Some((kind, name)),
         (None, None) => None,
@@ -29,13 +34,27 @@ pub async fn get_resource_topology(arguments: args::TopologyArgs) -> Result<Valu
         args::TopologyMode::Ownership => "ownership",
         args::TopologyMode::NetworkFlow => "networkFlow",
     };
+    let namespaces = vec![arguments.namespace];
+    // Reuse the custom kinds the live store already found present in this namespace. Else
+    // take the cached kind catalog `list_resources` uses, and let the collection check
+    // which of those kinds have objects here.
+    let (custom_kinds, custom_kinds_are_present) = match context
+        .live_store
+        .cached_present_custom_resource_kinds(access.source_key(), &cluster, &namespaces)
+    {
+        Some(kinds) => (kinds, true),
+        None => (
+            custom_kinds(&access, &context.live_store, &cluster).await?,
+            false,
+        ),
+    };
     let topology = resource_topology_from(
         &access,
         cluster.clone(),
-        vec![arguments.namespace],
+        namespaces,
         Some(mode.to_owned()),
-        None,
-        false,
+        Some(Arc::unwrap_or_clone(custom_kinds)),
+        custom_kinds_are_present,
     )
     .await?;
     let mut body = topology_body(

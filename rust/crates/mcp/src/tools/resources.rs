@@ -18,6 +18,7 @@ use kubecove_inspection::commands::{
 use kubecove_kube::commands::ClusterAccess;
 use kubecove_models::{AppError, AppErrorKind, ResourceSummary, YamlViewMode};
 use serde_json::{Map, Value, json};
+use std::collections::HashSet;
 
 // kubectl stores the complete previous document here; it repeats the spec and can be large.
 const LAST_APPLIED_ANNOTATION: &str = "kubectl.kubernetes.io/last-applied-configuration";
@@ -39,55 +40,77 @@ pub async fn list_resources(
         .name_contains
         .map(|text| text.to_ascii_lowercase())
         .filter(|text| !text.is_empty());
-    let matches =
-        |row: &ResourceSummary| resource_row_matches(name_filter.as_deref(), arguments.health, row);
-    let label_selector = arguments
+    let selected = match arguments
         .label_selector
-        .filter(|selector| !selector.trim().is_empty());
-    // The shared scope cache holds whole kinds, so a selector reads the API directly.
-    let mut body = if let Some(selector) = label_selector {
-        let namespace = arguments.namespace.filter(|_| kind.namespaced());
-        let listed = match &kind {
-            ResolvedKind::Builtin(builtin) => {
-                resources_summary_with_labels_from(
-                    &access,
-                    cluster.clone(),
-                    builtin.kind.to_owned(),
-                    namespace,
-                    Some(&selector),
-                )
-                .await?
-            }
-            ResolvedKind::Custom(custom) => {
-                dynamic_resources_summary_with_labels_from(
-                    &access,
-                    cluster.clone(),
-                    custom.clone(),
-                    namespace,
-                    Some(&selector),
-                )
-                .await?
-            }
-        };
-        page_resource_rows(
-            listed.rows.iter(),
-            arguments.limit,
-            arguments.offset,
-            matches,
-        )?
-    } else {
-        let scope = resource_scope_shared_from(
-            &access,
-            cluster.clone(),
-            vec![kind.list_request(arguments.namespace)],
-            context.live_store.clone(),
-        )
-        .await?;
-        page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches)?
+        .filter(|selector| !selector.trim().is_empty())
+    {
+        Some(selector) => Some(
+            labelled_names(
+                &access,
+                &cluster,
+                &kind,
+                arguments.namespace.clone(),
+                &selector,
+            )
+            .await?,
+        ),
+        None => None,
     };
+    let scope = resource_scope_shared_from(
+        &access,
+        cluster.clone(),
+        vec![kind.list_request(arguments.namespace)],
+        context.live_store.clone(),
+    )
+    .await?;
+    let mut body = page_resource_rows(scope.rows(), arguments.limit, arguments.offset, |row| {
+        selected
+            .as_ref()
+            .is_none_or(|selected| selected.contains(&(row.namespace.clone(), row.name.clone())))
+            && resource_row_matches(name_filter.as_deref(), arguments.health, row)
+    })?;
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
+}
+
+/// The API server evaluates the selector; the rows themselves still come from the shared
+/// scope, so they carry the same ownership enrichment as unfiltered rows.
+async fn labelled_names(
+    access: &ClusterAccess,
+    cluster: &str,
+    kind: &ResolvedKind,
+    namespace: Option<String>,
+    selector: &str,
+) -> Result<HashSet<(Option<String>, String)>, AppError> {
+    let namespace = namespace.filter(|_| kind.namespaced());
+    let listed = match kind {
+        ResolvedKind::Builtin(builtin) => {
+            resources_summary_with_labels_from(
+                access,
+                cluster.to_owned(),
+                builtin.kind.to_owned(),
+                namespace,
+                Some(selector),
+            )
+            .await?
+        }
+        ResolvedKind::Custom(custom) => {
+            dynamic_resources_summary_with_labels_from(
+                access,
+                cluster.to_owned(),
+                custom.clone(),
+                namespace,
+                Some(selector),
+            )
+            .await?
+        }
+    };
+    Ok(listed
+        .rows
+        .into_iter()
+        .map(|row| (row.namespace, row.name))
+        .collect())
 }
 
 /// `name_filter` must already be lowercase. Shared with the backend benchmarks so they

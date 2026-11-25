@@ -40,7 +40,7 @@ The phase 2 tools, added on 2026-11-25, follow the same rules:
 
 | Tool | Backed by |
 | --- | --- |
-| `get_resource_topology` | `list_resource_topology`, for one namespace |
+| `get_resource_topology` | the collection behind `list_resource_topology`, for one namespace, with the custom kind catalog `list_resources` uses |
 | `review_rbac_access` | `review_rbac_access` |
 | `list_deployment_revisions` | `list_deployment_revisions` |
 | `get_helm_release` | `get_helm_release_details` and `get_helm_release_reconciliation` |
