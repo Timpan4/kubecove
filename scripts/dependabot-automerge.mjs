@@ -8,6 +8,10 @@ import { writeFileSync } from "node:fs";
 // Writes use the maintainer token: a bun.nix commit pushed with GITHUB_TOKEN starts no pull
 // request checks, and a merge made with it starts no push workflows on main.
 
+// Jobs behind `needs`, such as Parity's shards and its result job, have no check run until they
+// queue, so green check runs alone do not prove a workflow finished. These are the workflows the
+// job follows; every run of them on the head must have completed.
+export const followedWorkflows = ["CI", "Parity", "CodSpeed"];
 const passed = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 const pendingStatus = new Set(["PENDING", "EXPECTED"]);
 
@@ -35,13 +39,20 @@ function checkState(node) {
   return passed.has(node.conclusion) ? "pass" : "fail";
 }
 
-export function mergeReadiness(checks) {
+export function mergeReadiness(checks, runs) {
   if (checks.length === 0) return { action: "wait", reason: "no checks have reported yet" };
   const failed = checks.filter((check) => check.state === "fail").map((check) => check.name);
   if (failed.length) return { action: "block", reason: `failed: ${failed.join(", ")}` };
+  const running = runs.filter((run) => run.status !== "completed").map((run) => run.name);
+  if (running.length) return { action: "wait", reason: `running: ${running.join(", ")}` };
   const pending = checks.filter((check) => check.state === "pending" && !check.required).map((check) => check.name);
   if (pending.length) return { action: "wait", reason: `pending: ${pending.join(", ")}` };
   return { action: "arm", reason: "every advisory check passed; auto-merge waits for required checks" };
+}
+
+async function readRuns(github, repo, sha) {
+  const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, { ...repo, head_sha: sha, event: "pull_request" });
+  return runs.filter((run) => followedWorkflows.includes(run.name)).map((run) => ({ name: run.name, status: run.status }));
 }
 
 async function readChecks(github, repo, pr) {
@@ -125,7 +136,7 @@ export async function settlePullRequest({ github, writer, context, core, pr, reg
     await commitBunNix({ writer, context, core, pr, branch: current.head.ref, contents: regeneratedBunNix });
     return "committed";
   }
-  const readiness = mergeReadiness(await readChecks(github, repo, pr));
+  const readiness = mergeReadiness(await readChecks(github, repo, pr), await readRuns(github, repo, pr.sha));
   const armed = Boolean(current.auto_merge);
   core.info(`#${pr.number} at ${pr.sha}: ${readiness.action} (${readiness.reason})`);
   if (readiness.action !== "arm") {

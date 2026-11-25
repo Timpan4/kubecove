@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parse } from "yaml";
-import { findPullRequest, mergeReadiness, settlePullRequest } from "./dependabot-automerge.mjs";
+import { findPullRequest, followedWorkflows, mergeReadiness, settlePullRequest } from "./dependabot-automerge.mjs";
 
 // Failure modes: a stale event acts on a newer head; a human, fork or non-main pull request
 // merges; no reported checks reads as all passed; a failed required check or a pending advisory
 // check (Parity) still arms auto-merge; a later push keeps an earlier arming; a stale bun.nix
 // merges; GitHub's "clean status" refusal leaves a ready pull request unmerged; a missing token
-// fails after a partial write; a second page of checks is ignored; the job runs pull request code.
+// fails after a partial write; a second page of checks is ignored; a workflow whose later jobs
+// have not queued reads as finished; the job runs pull request code.
 const repo = { owner: "Timpan4", repo: "kubecove" };
 const head = "a".repeat(40);
 const newer = "b".repeat(40);
@@ -16,12 +17,20 @@ const newer = "b".repeat(40);
 const check = (name, status, conclusion, isRequired = false) => ({ __typename: "CheckRun", name, status, conclusion, isRequired });
 const status = (context, state, isRequired = false) => ({ __typename: "StatusContext", context, state, isRequired });
 
-function harness({ pull = {}, pages = [[]], files = {}, armError } = {}) {
+const completedRuns = ["CI", "Parity", "CodSpeed"].map((name) => ({ name, status: "completed" }));
+
+function harness({ pull = {}, pages = [[]], files = {}, armError, runs = completedRuns } = {}) {
   const writes = [];
   const notices = [];
   const pr = { state: "open", head: { sha: head, ref: "dependabot/bun/x" }, node_id: "PR_1", auto_merge: null, ...pull };
   const github = {
+    paginate: async (method, params) => {
+      assert.equal(method, "runs");
+      assert.deepEqual(params, { ...repo, head_sha: head, event: "pull_request" });
+      return runs;
+    },
     rest: {
+      actions: { listWorkflowRunsForRepo: "runs" },
       pulls: { get: async () => ({ data: pr }) },
       repos: { getContent: async ({ path, ref }) => {
         assert.equal(ref, head);
@@ -51,10 +60,23 @@ function harness({ pull = {}, pages = [[]], files = {}, armError } = {}) {
 
 test("readiness waits for every advisory check and refuses any failure", () => {
   const states = (nodes) => nodes.map((node) => ({ name: node.name, state: node.state, required: node.required ?? false }));
-  assert.equal(mergeReadiness([]).action, "wait");
-  assert.equal(mergeReadiness(states([{ name: "Parity result", state: "pending" }, { name: "Typecheck and test", state: "pass", required: true }])).action, "wait");
-  assert.equal(mergeReadiness(states([{ name: "CodSpeed Performance Analysis", state: "pending", required: true }, { name: "Parity result", state: "pass" }])).action, "arm");
-  assert.equal(mergeReadiness(states([{ name: "Typecheck and test", state: "fail", required: true }, { name: "Parity result", state: "pending" }])).action, "block");
+  assert.equal(mergeReadiness([], completedRuns).action, "wait");
+  assert.equal(mergeReadiness(states([{ name: "Parity result", state: "pending" }, { name: "Typecheck and test", state: "pass", required: true }]), completedRuns).action, "wait");
+  assert.equal(mergeReadiness(states([{ name: "CodSpeed Performance Analysis", state: "pending", required: true }, { name: "Parity result", state: "pass" }]), completedRuns).action, "arm");
+  assert.equal(mergeReadiness(states([{ name: "Typecheck and test", state: "fail", required: true }, { name: "Parity result", state: "pending" }]), completedRuns).action, "block");
+});
+
+test("a followed workflow still running holds the pull request before its later jobs report", async () => {
+  // Parity's build passed, but its shards and result job have not queued yet.
+  const runs = [{ name: "CI", status: "completed" }, { name: "Parity", status: "in_progress" }];
+  const pages = [[check("Typecheck and test", "COMPLETED", "SUCCESS", true), check("Parity build", "COMPLETED", "SUCCESS")]];
+  const waiting = harness({ pages, runs });
+  assert.equal(await waiting.settle(), "wait");
+  assert.deepEqual(waiting.writes, []);
+  const armed = harness({ pages, runs, pull: { auto_merge: { enabled_by: { login: "Timpan4" } } } });
+  assert.equal(await armed.settle(), "disarmed");
+  const unrelated = harness({ pages, runs: [...completedRuns, { name: "E2E", status: "in_progress" }] });
+  assert.equal(await unrelated.settle(), "armed");
 });
 
 test("every non-passing conclusion and status blocks, neutral and skipped pass", async () => {
@@ -170,7 +192,8 @@ test("the privileged job checks out only the default branch and follows existing
   const workflow = parse(readFileSync(new URL("../.github/workflows/dependabot-automerge.yml", import.meta.url), "utf8"));
   assert.deepEqual(workflow.permissions, {});
   const job = workflow.jobs.settle;
-  assert.deepEqual(job.permissions, { checks: "read", contents: "read", "pull-requests": "read", statuses: "read" });
+  assert.deepEqual(job.permissions, { actions: "read", checks: "read", contents: "read", "pull-requests": "read", statuses: "read" });
+  assert.deepEqual(workflow.on.workflow_run.workflows, followedWorkflows);
   const checkout = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.match(checkout.with.ref, /^\$\{\{ github\.event\.repository\.default_branch \}\}$/);
   assert.equal(checkout.with["persist-credentials"], false);

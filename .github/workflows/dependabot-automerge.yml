@@ -29,6 +29,7 @@ jobs:
     # Same budget as Prepare Release PR, which runs the same bun2nix step.
     timeout-minutes: 10
     permissions:
+      actions: read
       checks: read
       contents: read
       pull-requests: read
