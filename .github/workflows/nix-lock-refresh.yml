@@ -1,7 +1,8 @@
 name: Nix lock refresh
 
-# Keeps the Nix build working between releases. Dependabot bumps bun.lock but
-# not bun.nix, and nothing bumps flake.lock. Once a day this workflow
+# Keeps the Nix build working between releases. Nothing else bumps flake.lock,
+# and a bun.lock change merged without Dependabot auto-merge leaves bun.nix
+# stale. Once a day this workflow
 # regenerates bun.nix, updates the flake inputs, builds both packages, and
 # opens or updates one pull request with the result. A failed build opens no
 # pull request; the failed run is the signal.

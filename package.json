@@ -13,7 +13,7 @@
     "test": "bun test",
     "test:svelte": "node --test scripts/svelte-check-tsrs.integration.mjs",
     "test:bench-groups": "node --test scripts/codspeed-frontend-partition.integration.mjs",
-    "test:ci": "node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs",
+    "test:ci": "node --test scripts/ci-workflow-regression.test.mjs scripts/ci-cancel-obsolete.test.mjs scripts/dependabot-automerge.test.mjs",
     "test:release": "node --test scripts/desktop-release-channel.test.mjs scripts/release-workflow-regression.test.mjs",
     "bench": "vitest bench --run",
     "typecheck": "bun scripts/tsrs.ts --noEmit",

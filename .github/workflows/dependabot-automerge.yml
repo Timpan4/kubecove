@@ -1,0 +1,93 @@
+name: Dependabot auto-merge
+
+# Merges Dependabot pull requests, majors included, once every check on the head commit has
+# passed, including Parity, which main does not require. After a bun.lock change it first
+# commits a regenerated bun.nix, which starts the pull request checks again.
+#
+# Dependabot-triggered pull_request runs get no Actions secrets, so this follows them with
+# workflow_run. The job never checks out or runs pull request code: it reads the pull
+# request's bun.lock through the API and runs bun2nix from the default branch's flake.
+# NIX_LOCK_REFRESH_TOKEN makes the writes, because a commit pushed with GITHUB_TOKEN starts
+# no checks and a merge made with it starts no push workflows on main.
+
+on:
+  workflow_run:
+    workflows: [CI, Parity, CodSpeed]
+    types: [requested, completed]
+
+permissions: {}
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    name: Settle Dependabot pull request
+    if: ${{ github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'dependabot/') }}
+    runs-on: ubuntu-latest
+    # Same budget as Prepare Release PR, which runs the same bun2nix step.
+    timeout-minutes: 10
+    permissions:
+      checks: read
+      contents: read
+      pull-requests: read
+      statuses: read
+
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Find the Dependabot pull request
+        id: pr
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { join } = require('node:path');
+            const { findPullRequest } = await import(pathToFileURL(join(process.env.GITHUB_WORKSPACE, 'scripts/dependabot-automerge.mjs')).href);
+            await findPullRequest({ github, context, core });
+
+      - name: Install Nix
+        if: ${{ steps.pr.outputs.bun-lock == 'true' }}
+        uses: cachix/install-nix-action@bb0495a1086c46893eee56f32fd192dfe4a15bb9 # v32.0.0
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ github.token }}
+
+      - name: Regenerate bun.nix from the pull request bun.lock
+        if: ${{ steps.pr.outputs.bun-lock == 'true' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { join } = require('node:path');
+            const { fetchBunLock } = await import(pathToFileURL(join(process.env.GITHUB_WORKSPACE, 'scripts/dependabot-automerge.mjs')).href);
+            await fetchBunLock({ github, context, sha: process.env.PR_SHA, path: join(process.env.GITHUB_WORKSPACE, 'bun.lock') });
+            await exec.exec('nix', ['run', '--inputs-from', '.', 'bun2nix', '--', '-o', 'bun.nix']);
+
+      - name: Commit bun.nix or update auto-merge
+        if: ${{ steps.pr.outputs.number != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+          BUN_LOCK: ${{ steps.pr.outputs.bun-lock }}
+          WRITE_TOKEN: ${{ secrets.NIX_LOCK_REFRESH_TOKEN }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const { join } = require('node:path');
+            const { readFileSync } = require('node:fs');
+            const { settlePullRequest } = await import(pathToFileURL(join(process.env.GITHUB_WORKSPACE, 'scripts/dependabot-automerge.mjs')).href);
+            await settlePullRequest({
+              github, context, core,
+              writer: process.env.WRITE_TOKEN ? getOctokit(process.env.WRITE_TOKEN) : null,
+              pr: { number: Number(process.env.PR_NUMBER), sha: process.env.PR_SHA },
+              regeneratedBunNix: process.env.BUN_LOCK === 'true' ? readFileSync(join(process.env.GITHUB_WORKSPACE, 'bun.nix'), 'utf8') : undefined,
+            });

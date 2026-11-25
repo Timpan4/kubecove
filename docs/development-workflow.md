@@ -375,6 +375,19 @@ PR runs skip Nix builds, including release PRs. Relevant pushes to `main` and
 manual CI runs retain the Nix build gate. The daily Nix lock refresh builds its
 packages before opening a PR, and release tags retain advisory Nix builds.
 
+The `Dependabot auto-merge` workflow squash-merges Dependabot PRs, majors
+included, once every check on the head commit has passed. That includes Parity,
+which main does not require. It runs after CI, Parity and CodSpeed start or
+finish on a Dependabot PR. It arms GitHub auto-merge only when every advisory check has
+passed, so auto-merge then waits only for the required ones. It disarms auto-merge
+whenever a check starts again or fails. When the PR changes `bun.lock`, it first
+commits a `bun.nix` regenerated with the default branch's flake, and that commit
+starts the PR checks again. Writes use `NIX_LOCK_REFRESH_TOKEN`, so the merge
+starts main's push workflows. The job reads the PR's `bun.lock` through the API
+and never checks out PR code. An unresolved review thread still blocks the merge.
+Dependabot stops rebasing a PR after the `bun.nix` commit; comment
+`@dependabot recreate` on a conflicted one.
+
 Nix currently rebuilds without a persistent store cache. Check the repository's
 GitHub cache usage before adding one. A whole-store Nix cache can evict Rust
 caches. Cache storage and billing settings are unchanged by the workflows.
