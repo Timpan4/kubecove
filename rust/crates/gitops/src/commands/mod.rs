@@ -10,6 +10,7 @@ pub(crate) use kubecove_kube::commands::{
 pub(crate) use kubecove_kube::commands::{FIXED_SOURCE_KEY, FixedClusterAccess};
 pub(crate) use kubecove_live::commands::sessions;
 
+pub use argo::argocd_applications_from;
 pub use argo::{
     ArgoConnectionStore, connect_argo_server, detect_argocd, disconnect_argo_server,
     discover_argo_servers, forget_argo_credential, get_argo_application_inspector,
@@ -23,4 +24,7 @@ pub use argo::{
     initialize_server_credential_store,
 };
 pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
-pub use helm::{get_helm_release_details, get_helm_release_reconciliation, list_helm_releases};
+pub use helm::{
+    get_helm_release_details, get_helm_release_reconciliation, helm_releases_from,
+    list_helm_releases,
+};

@@ -3,8 +3,8 @@
 use super::{access_for, args};
 use crate::compact::{self, health_state, insert_some, page};
 use kubecove_gitops::commands::{
-    get_helm_release_details, get_helm_release_reconciliation,
-    list_argocd_applications as argo_applications, list_helm_releases as helm_releases,
+    argocd_applications_from, get_helm_release_details, get_helm_release_reconciliation,
+    helm_releases_from,
 };
 use kubecove_live::commands::{MAX_LOG_READ_BYTES, read_pod_logs};
 use kubecove_models::{
@@ -44,21 +44,14 @@ pub async fn get_pod_logs(arguments: args::PodLogsArgs) -> Result<Value, AppErro
     Ok(Value::Object(body))
 }
 
-fn in_namespace(filter: Option<&str>, namespace: Option<&str>) -> bool {
-    filter.is_none_or(|filter| namespace == Some(filter))
-}
-
 pub async fn list_argocd_applications(arguments: args::GitOpsListArgs) -> Result<Value, AppError> {
-    let (_, cluster) = access_for(arguments.context)?;
+    let (access, cluster) = access_for(arguments.context)?;
     let namespace = arguments
         .namespace
         .filter(|namespace| !namespace.is_empty());
-    let mut applications: Vec<_> = argo_applications(cluster.clone(), None)
+    let mut applications = argocd_applications_from(&access, &cluster, namespace.as_deref())
         .await?
-        .items
-        .into_iter()
-        .filter(|app| in_namespace(namespace.as_deref(), app.namespace.as_deref()))
-        .collect();
+        .items;
     applications
         .sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
     let mut body = page(applications, arguments.limit, arguments.offset)?
@@ -96,16 +89,12 @@ fn application(app: &ArgoApplicationSummary) -> Value {
 }
 
 pub async fn list_helm_releases(arguments: args::GitOpsListArgs) -> Result<Value, AppError> {
-    let (_, cluster) = access_for(arguments.context)?;
+    let (access, cluster) = access_for(arguments.context)?;
     let namespace = arguments
         .namespace
         .filter(|namespace| !namespace.is_empty());
-    let list = helm_releases(cluster.clone(), None).await?;
-    let mut releases: Vec<_> = list
-        .releases
-        .into_iter()
-        .filter(|release| in_namespace(namespace.as_deref(), Some(&release.namespace)))
-        .collect();
+    let list = helm_releases_from(&access, &cluster, namespace.as_deref()).await?;
+    let mut releases = list.releases;
     releases
         .sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
     let mut body = page(releases, arguments.limit, arguments.offset)?
@@ -132,20 +121,23 @@ fn release(release: &HelmReleaseSummary) -> Value {
 /// The latest revision's summary, value keys, manifest resources and live drift. Values
 /// and manifest text never leave: they can hold credentials.
 pub async fn get_helm_release(arguments: args::HelmReleaseArgs) -> Result<Value, AppError> {
-    let (_, cluster) = access_for(arguments.context)?;
-    let list = helm_releases(cluster.clone(), None).await?;
+    let (access, cluster) = access_for(arguments.context)?;
+    // Reading only the release's namespace needs no cluster-wide storage access.
+    let list = helm_releases_from(&access, &cluster, Some(&arguments.namespace)).await?;
     let summary = list
         .releases
         .into_iter()
-        .find(|release| release.namespace == arguments.namespace && release.name == arguments.name)
+        .find(|release| release.name == arguments.name)
         .ok_or_else(|| {
-            AppError::new(
-                format!(
-                    "Helm release {}/{} was not found",
-                    arguments.namespace, arguments.name
-                ),
-                AppErrorKind::NotFound,
-            )
+            let mut message = format!(
+                "Helm release {}/{} was not found",
+                arguments.namespace, arguments.name
+            );
+            for warning in &list.warnings {
+                message.push(' ');
+                message.push_str(warning);
+            }
+            AppError::new(message, AppErrorKind::NotFound)
         })?;
     let details = get_helm_release_details(
         cluster.clone(),
@@ -195,10 +187,12 @@ pub async fn get_helm_release(arguments: args::HelmReleaseArgs) -> Result<Value,
             "unavailable": totals.unavailable,
         }),
     );
-    body.insert(
-        "resources".into(),
-        Value::Array(reconciliation.resources.iter().map(drift).collect()),
-    );
+    let resources = page(
+        reconciliation.resources.iter().collect(),
+        arguments.limit,
+        arguments.offset,
+    )?;
+    body.extend(resources.into_json("resources", drift));
     if !reconciliation.warnings.is_empty() {
         body.insert("warnings".into(), json!(reconciliation.warnings));
     }

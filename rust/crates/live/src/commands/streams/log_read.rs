@@ -2,7 +2,11 @@
 //! It shares the stream's tail clamp, window validation and per-line byte cap, and keeps
 //! the newest lines within a total byte budget (#634).
 
-use super::{clamp_tail_lines, logs::read_log_line, validate_pod_log_stream_request};
+use super::{
+    clamp_tail_lines,
+    logs::{LOG_LINE_TRUNCATION_NOTICE, read_log_line},
+    validate_pod_log_stream_request,
+};
 use crate::commands::ClusterAccess;
 use crate::models::{AppError, AppErrorKind, PodLogStreamRequest};
 use futures_util::io::AsyncBufRead;
@@ -112,8 +116,27 @@ async fn read_newest_lines(
             tail.bytes -= dropped.len();
             tail.truncated = true;
         }
+        if tail.bytes > budget
+            && let Some(newest) = tail.lines.back_mut()
+        {
+            *newest = fit_line(newest, budget);
+            tail.bytes = newest.len();
+            tail.truncated = true;
+        }
     }
     Ok(tail)
+}
+
+/// Shortens one line to `budget` bytes, ending it with the per-line truncation notice.
+fn fit_line(line: &str, budget: usize) -> String {
+    let text = line
+        .strip_suffix(LOG_LINE_TRUNCATION_NOTICE)
+        .unwrap_or(line);
+    let kept = text.floor_char_boundary(budget.saturating_sub(LOG_LINE_TRUNCATION_NOTICE.len()));
+    let mut fitted = String::with_capacity(kept + LOG_LINE_TRUNCATION_NOTICE.len());
+    fitted.push_str(&text[..kept]);
+    fitted.push_str(LOG_LINE_TRUNCATION_NOTICE);
+    fitted
 }
 
 /// Like kubectl, the annotation may name a regular, init or ephemeral container; the
@@ -165,7 +188,8 @@ mod tests {
 
     // Failure modes: the budget keeps the oldest lines instead of the newest; an exact fit
     // reports truncation; line breaks count against the budget inconsistently; a single
-    // line over the budget is lost, leaving an empty result.
+    // line over the budget is lost, or kept whole past the budget, or cut inside a UTF-8
+    // character.
     #[tokio::test]
     async fn keeps_newest_lines_within_budget() {
         let exact = newest("alpha\r\nbeta\n", 9).await;
@@ -180,9 +204,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keeps_newest_line_larger_than_budget() {
-        let read = newest("old\nnewest-line\n", 4).await;
-        assert_eq!(Vec::from(read.lines), ["newest-line"]);
+    async fn shortens_a_newest_line_larger_than_budget() {
+        // read_log_line keeps 256 KiB of this line and appends its notice, which alone
+        // would pass the budget. Two-byte characters put a boundary at every odd offset.
+        let input = format!("old\n{}\n", "é".repeat(MAX_LOG_READ_BYTES));
+        let read = newest(&input, MAX_LOG_READ_BYTES).await;
         assert!(read.truncated);
+        assert_eq!(read.lines.len(), 1);
+        let line = &read.lines[0];
+        assert!(line.starts_with('é'));
+        assert!(line.ends_with(LOG_LINE_TRUNCATION_NOTICE));
+        assert!(line.len() <= MAX_LOG_READ_BYTES);
+        assert_eq!(read.bytes, line.len());
     }
 }

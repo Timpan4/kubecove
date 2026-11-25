@@ -27,7 +27,7 @@ use std::{collections::BTreeMap, io::Read};
 mod list_projection;
 #[cfg(feature = "bench-support")]
 pub use list_projection::benchmark_storage_records;
-pub use list_projection::list_helm_releases;
+pub use list_projection::{helm_releases_from, list_helm_releases};
 
 const HELM_STORAGE_SECRET: &str = "Secret";
 const HELM_STORAGE_CONFIGMAP: &str = "ConfigMap";

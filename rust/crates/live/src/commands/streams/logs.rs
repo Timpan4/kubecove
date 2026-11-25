@@ -92,6 +92,7 @@ pub(super) async fn run_pod_log_stream(
 
 // Product budget approved for a single log line; it excludes the truncation notice.
 pub const MAX_LOG_LINE_BYTES: usize = 256 * 1024;
+pub(super) const LOG_LINE_TRUNCATION_NOTICE: &str = " [truncated at 256 KiB]";
 
 pub(super) async fn read_log_line(
     reader: &mut (impl AsyncBufRead + Unpin),
@@ -136,7 +137,7 @@ pub(super) async fn read_log_line(
     let mut line = String::from_utf8(bytes)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     if truncated {
-        line.push_str(" [truncated at 256 KiB]");
+        line.push_str(LOG_LINE_TRUNCATION_NOTICE);
     }
     Ok(Some(line))
 }

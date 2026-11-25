@@ -333,6 +333,18 @@ async fn troubleshooting_tools_filter_explain_and_bound_their_results() {
     .await;
     assert_eq!(review["outcome"], "denied", "{review}");
     assert_eq!(review["reason"], "no RoleBinding");
+    // `group` for `groups` would review the user without the group.
+    let body = json!({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "review_rbac_access", "arguments": {
+            "context": "fixed",
+            "identity": {"kind": "user", "username": "alice", "group": "dev"},
+            "target": {"kind": "resource", "verb": "list", "resource": "pods"},
+        }},
+    });
+    let (_, bytes) = send(&endpoint, request(&[AUTHORIZED], &body)).await;
+    let message: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(message["result"]["isError"], true, "{message}");
 
     let (_, logs) = call(
         &endpoint,

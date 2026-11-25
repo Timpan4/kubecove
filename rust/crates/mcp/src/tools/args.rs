@@ -3,7 +3,6 @@
 use kubecove_models::{RbacAccessReviewIdentity, RbacAccessReviewTarget};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::Value;
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -160,11 +159,13 @@ pub struct TopologyArgs {
     pub focus_kind: Option<String>,
     /// With `focusKind`, the name of the resource to trace from.
     pub focus_name: Option<String>,
-    /// Maximum nodes to return. Defaults to 500.
+    /// Maximum nodes, and separately edges, to return. Defaults to 500.
     #[schemars(range(min = 1))]
     pub limit: Option<usize>,
     /// Nodes to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
+    /// Edges to skip, from a previous result's `nextEdgeOffset`.
+    pub edge_offset: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -172,16 +173,96 @@ pub struct TopologyArgs {
 pub struct RbacReviewArgs {
     /// Kubeconfig context name. Omit to use the current context.
     pub context: Option<String>,
-    /// Who to check: `{"kind":"serviceAccount","name":"web","namespace":"shop"}`,
-    /// `{"kind":"user","username":"alice","groups":["dev"]}` or
-    /// `{"kind":"group","group":"dev"}`.
-    #[schemars(with = "Value")]
-    pub identity: RbacAccessReviewIdentity,
-    /// What to check: `{"kind":"resource","verb":"list","resource":"pods","apiGroup":"",
-    /// "namespace":"shop"}`, optionally with `subresource` and `name`, or
-    /// `{"kind":"nonResource","verb":"get","nonResourceUrl":"/healthz"}`.
-    #[schemars(with = "Value")]
-    pub target: RbacAccessReviewTarget,
+    /// Who to check.
+    pub identity: ReviewIdentity,
+    /// What to check.
+    pub target: ReviewTarget,
+}
+
+/// The models' review types accept unknown fields, so a misspelled `groups` would review
+/// a different identity. These reject them and publish the tagged schema.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum ReviewIdentity {
+    ServiceAccount {
+        name: String,
+        namespace: String,
+    },
+    User {
+        username: String,
+        #[serde(default)]
+        groups: Vec<String>,
+    },
+    Group {
+        group: String,
+    },
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ReviewTarget {
+    /// A verb on a resource. `apiGroup` is empty for the core group; omit `namespace`
+    /// for a cluster-wide check.
+    Resource {
+        verb: String,
+        resource: String,
+        #[serde(default)]
+        api_group: String,
+        namespace: Option<String>,
+        subresource: Option<String>,
+        name: Option<String>,
+    },
+    /// A verb on a URL path such as `/healthz`.
+    NonResource {
+        verb: String,
+        non_resource_url: String,
+    },
+}
+
+impl From<ReviewIdentity> for RbacAccessReviewIdentity {
+    fn from(identity: ReviewIdentity) -> Self {
+        match identity {
+            ReviewIdentity::ServiceAccount { name, namespace } => {
+                Self::ServiceAccount { name, namespace }
+            }
+            ReviewIdentity::User { username, groups } => Self::User { username, groups },
+            ReviewIdentity::Group { group } => Self::Group { group },
+        }
+    }
+}
+
+impl From<ReviewTarget> for RbacAccessReviewTarget {
+    fn from(target: ReviewTarget) -> Self {
+        match target {
+            ReviewTarget::Resource {
+                verb,
+                resource,
+                api_group,
+                namespace,
+                subresource,
+                name,
+            } => Self::Resource {
+                verb,
+                resource,
+                api_group,
+                namespace,
+                subresource,
+                name,
+            },
+            ReviewTarget::NonResource {
+                verb,
+                non_resource_url,
+            } => Self::NonResource {
+                verb,
+                non_resource_url,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -204,6 +285,11 @@ pub struct HelmReleaseArgs {
     pub namespace: String,
     /// Release name.
     pub name: String,
+    /// Maximum resource rows to return. Defaults to 500.
+    #[schemars(range(min = 1))]
+    pub limit: Option<usize>,
+    /// Resource rows to skip, from a previous result's `nextOffset`.
+    pub offset: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

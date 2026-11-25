@@ -95,9 +95,84 @@ pub async fn list_helm_releases(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<HelmReleaseList, AppError> {
-    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
-        .read_client(&cluster_context)
-        .await?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+    helm_releases_from(&access, &cluster_context, None).await
+}
+
+/// Releases in one namespace, which needs only namespaced storage list permission, or
+/// in every namespace when `namespace` is `None`.
+pub async fn helm_releases_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    namespace: Option<&str>,
+) -> Result<HelmReleaseList, AppError> {
+    let client = access.read_client(cluster_context).await?;
+    match namespace {
+        Some(namespace) => helm_releases_in(client, cluster_context, namespace).await,
+        None => all_helm_releases(client, cluster_context).await,
+    }
+}
+
+async fn helm_releases_in(
+    client: Client,
+    cluster_context: &str,
+    namespace: &str,
+) -> Result<HelmReleaseList, AppError> {
+    crate::commands::helpers::validate_namespace(Some(namespace))?;
+    let namespaces = [namespace.to_owned()];
+    let (secrets, configmaps) = futures_util::join!(
+        Box::pin(list_releases_by_namespace::<Secret>(
+            client.clone(),
+            cluster_context,
+            &namespaces,
+            secret_list_summary,
+        )),
+        Box::pin(list_releases_by_namespace::<ConfigMap>(
+            client,
+            cluster_context,
+            &namespaces,
+            configmap_list_summary,
+        )),
+    );
+    let mut summaries = Vec::new();
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    for (storage_kind, listed) in [
+        (HELM_STORAGE_SECRET, secrets),
+        (HELM_STORAGE_CONFIGMAP, configmaps),
+    ] {
+        match listed {
+            Ok((mut releases, _)) => summaries.append(&mut releases),
+            Err(err) => {
+                warnings.push(format!(
+                    "Helm {storage_kind} storage unavailable: {}.",
+                    storage_reason(&err)
+                ));
+                errors.push(err);
+            }
+        }
+    }
+    if errors.len() == 2 {
+        return Err(storage_errors(errors));
+    }
+    Ok(HelmReleaseList {
+        releases: latest_releases(summaries),
+        warnings,
+    })
+}
+
+fn storage_reason(err: &AppError) -> &str {
+    if err.kind == AppErrorKind::Forbidden {
+        "forbidden by RBAC"
+    } else {
+        &err.message
+    }
+}
+
+async fn all_helm_releases(
+    client: Client,
+    cluster_context: &str,
+) -> Result<HelmReleaseList, AppError> {
     // Both storage kinds and the namespace list are read together. Only a
     // per-namespace fallback waits for the namespaces. The boxes keep this
     // future small while it holds both listings.
@@ -105,13 +180,13 @@ pub async fn list_helm_releases(
     let (secrets, configmaps, (fallback_namespaces, namespaces_discovered)) = futures_util::join!(
         Box::pin(list_releases::<Secret>(
             client.clone(),
-            &cluster_context,
+            cluster_context,
             fallback.clone(),
             secret_list_summary,
         )),
         Box::pin(list_releases::<ConfigMap>(
             client.clone(),
-            &cluster_context,
+            cluster_context,
             fallback.clone(),
             configmap_list_summary,
         )),
@@ -143,13 +218,9 @@ pub async fn list_helm_releases(
                 }
             }
             Err(err) => {
-                let reason = if err.kind == AppErrorKind::Forbidden {
-                    "forbidden by RBAC"
-                } else {
-                    &err.message
-                };
                 warnings.push(format!(
-                    "Helm {storage_kind} storage unavailable: {reason}."
+                    "Helm {storage_kind} storage unavailable: {}.",
+                    storage_reason(&err)
                 ));
                 errors.push(err);
             }

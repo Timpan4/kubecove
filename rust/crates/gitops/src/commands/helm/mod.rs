@@ -21,4 +21,4 @@ pub use storage::{
 };
 
 pub use reconciliation::get_helm_release_reconciliation;
-pub use storage::{get_helm_release_details, list_helm_releases};
+pub use storage::{get_helm_release_details, helm_releases_from, list_helm_releases};

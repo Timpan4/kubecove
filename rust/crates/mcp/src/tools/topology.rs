@@ -4,12 +4,10 @@ use super::{access_for, args};
 use crate::compact::{self, page};
 use crate::{handler::McpContext, kinds::custom_kinds};
 use kubecove_inspection::commands::{
-    list_deployment_revisions as deployment_revisions, resource_topology_from,
-    review_rbac_access_from,
+    deployment_revisions_from, resource_topology_from, review_rbac_access_from,
 };
 use kubecove_models::{
-    AppError, AppErrorKind, RbacAccessReviewOutcome, RbacAccessReviewRequest, ResourceTopology,
-    TopologyRelation,
+    AppError, AppErrorKind, RbacAccessReviewOutcome, ResourceTopology, TopologyRelation,
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -35,25 +33,28 @@ pub async fn get_resource_topology(
         args::TopologyMode::NetworkFlow => "networkFlow",
     };
     let namespaces = vec![arguments.namespace];
-    // Reuse the custom kinds the live store already found present in this namespace. Else
-    // take the cached kind catalog `list_resources` uses, and let the collection check
-    // which of those kinds have objects here.
-    let (custom_kinds, custom_kinds_are_present) = match context
-        .live_store
-        .cached_present_custom_resource_kinds(access.source_key(), &cluster, &namespaces)
-    {
-        Some(kinds) => (kinds, true),
-        None => (
-            custom_kinds(&access, &context.live_store, &cluster).await?,
-            false,
-        ),
+    // Network flow reads no custom kinds. For ownership, reuse the custom kinds the live
+    // store already found present in this namespace, else take the cached kind catalog
+    // `list_resources` uses and let the collection check which have objects here.
+    let (custom_kinds, custom_kinds_are_present) = match arguments.mode {
+        args::TopologyMode::NetworkFlow => (Vec::new(), true),
+        args::TopologyMode::Ownership => match context
+            .live_store
+            .cached_present_custom_resource_kinds(access.source_key(), &cluster, &namespaces)
+        {
+            Some(kinds) => (Arc::unwrap_or_clone(kinds), true),
+            None => (
+                Arc::unwrap_or_clone(custom_kinds(&access, &context.live_store, &cluster).await?),
+                false,
+            ),
+        },
     };
     let topology = resource_topology_from(
         &access,
         cluster.clone(),
         namespaces,
         Some(mode.to_owned()),
-        Some(Arc::unwrap_or_clone(custom_kinds)),
+        Some(custom_kinds),
         custom_kinds_are_present,
     )
     .await?;
@@ -62,21 +63,30 @@ pub async fn get_resource_topology(
         focus
             .as_ref()
             .map(|(kind, name)| (kind.as_str(), name.as_str())),
-        arguments.limit,
-        arguments.offset,
+        TopologyPage {
+            limit: arguments.limit,
+            offset: arguments.offset,
+            edge_offset: arguments.edge_offset,
+        },
     )?;
     body.insert("context".into(), cluster.into());
     Ok(Value::Object(body))
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct TopologyPage {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub edge_offset: Option<usize>,
+}
+
 /// Nodes carry their index in the whole (focused) graph, and edges name nodes by that
-/// index, so an edge may point at a node on another page. A page lists every edge that
-/// touches one of its nodes.
+/// index. Nodes and edges page separately, because one node can have any number of
+/// edges.
 pub fn topology_body(
     topology: ResourceTopology,
     focus: Option<(&str, &str)>,
-    limit: Option<usize>,
-    offset: Option<usize>,
+    paging: TopologyPage,
 ) -> Result<Map<String, Value>, AppError> {
     let ResourceTopology {
         mut nodes,
@@ -107,28 +117,29 @@ pub fn topology_body(
         })
         .collect();
     let indexed: Vec<_> = nodes.iter().enumerate().collect();
-    let node_page = page(indexed, limit, offset)?;
-    let first = node_page.offset;
-    let end = first + node_page.items.len();
-    let mut body = node_page.into_json("nodes", |(position, node)| {
-        let mut row = match compact::resource(&node.summary) {
-            Value::Object(row) => row,
-            _ => Map::new(),
-        };
-        row.insert("index".into(), position.into());
-        if !node.port_hints.is_empty() {
-            row.insert("ports".into(), json!(node.port_hints));
-        }
-        Value::Object(row)
-    });
+    let mut body =
+        page(indexed, paging.limit, paging.offset)?.into_json("nodes", |(position, node)| {
+            let mut row = match compact::resource(&node.summary) {
+                Value::Object(row) => row,
+                _ => Map::new(),
+            };
+            row.insert("index".into(), position.into());
+            if !node.port_hints.is_empty() {
+                row.insert("ports".into(), json!(node.port_hints));
+            }
+            Value::Object(row)
+        });
+    let edges = page(edge_indices, paging.limit, paging.edge_offset)?;
+    body.insert("edgeTotal".into(), edges.total.into());
+    if let Some(next) = edges.next_offset {
+        body.insert("nextEdgeOffset".into(), next.into());
+    }
     body.insert(
         "edges".into(),
         Value::Array(
-            edge_indices
+            edges
+                .items
                 .into_iter()
-                .filter(|(source, target, _)| {
-                    (first..end).contains(source) || (first..end).contains(target)
-                })
                 .map(|(source, target, relation)| {
                     json!({"from": source, "to": target, "relation": relation_name(relation)})
                 })
@@ -198,12 +209,9 @@ pub async fn review_rbac_access(arguments: args::RbacReviewArgs) -> Result<Value
     let (access, cluster) = access_for(arguments.context)?;
     let result = review_rbac_access_from(
         &access,
-        RbacAccessReviewRequest {
-            cluster_context: cluster.clone(),
-            identity: arguments.identity,
-            target: arguments.target,
-            kubeconfig_env_var: None,
-        },
+        &cluster,
+        &arguments.identity.into(),
+        &arguments.target.into(),
     )
     .await?;
     let mut body = Map::new();
@@ -222,9 +230,10 @@ pub async fn review_rbac_access(arguments: args::RbacReviewArgs) -> Result<Value
 pub async fn list_deployment_revisions(
     arguments: args::DeploymentRevisionsArgs,
 ) -> Result<Value, AppError> {
-    let (_, cluster) = access_for(arguments.context)?;
+    let (access, cluster) = access_for(arguments.context)?;
+    let client = access.read_client(&cluster).await?;
     let revisions =
-        deployment_revisions(cluster.clone(), arguments.name, arguments.namespace, None).await?;
+        deployment_revisions_from(client, &arguments.name, &arguments.namespace).await?;
     let rows: Vec<Value> = revisions
         .into_iter()
         .map(|revision| {
@@ -278,31 +287,56 @@ mod tests {
     }
 
     // Failure modes: a focus keeps unrelated resources or drops ones reached through a
-    // reversed edge; edge indices shift when a page or focus removes nodes; an edge to a
-    // node on another page is lost; a focus that matches nothing returns an empty graph
-    // instead of an error.
+    // reversed edge; edge indices shift when a page or focus removes nodes; edges escape
+    // the page limit or are skipped or repeated across edge pages; a focus that matches
+    // nothing returns an empty graph instead of an error.
     #[test]
     fn focus_keeps_the_connected_resources_and_reindexes_edges() {
-        let body = topology_body(topology(), Some(("pod", "a")), None, None).unwrap();
+        let body = topology_body(topology(), Some(("pod", "a")), TopologyPage::default()).unwrap();
         assert_eq!(names(&body), ["web", "web", "a"]);
         assert_eq!(
             body["edges"],
             json!([{"from": 0, "to": 1, "relation": "routesTo"},
                    {"from": 1, "to": 2, "relation": "selects"}])
         );
-        let error = topology_body(topology(), Some(("Pod", "missing")), None, None).unwrap_err();
+        let error = topology_body(
+            topology(),
+            Some(("Pod", "missing")),
+            TopologyPage::default(),
+        )
+        .unwrap_err();
         assert_eq!(error.kind, AppErrorKind::NotFound);
     }
 
     #[test]
-    fn a_page_lists_edges_that_reach_nodes_on_other_pages() {
-        let body = topology_body(topology(), None, Some(1), Some(2)).unwrap();
-        assert_eq!(names(&body), ["a"]);
-        assert_eq!(body["nodes"][0]["index"], 2);
-        assert_eq!(body["nextOffset"], 3);
+    fn nodes_and_edges_page_separately_by_global_index() {
+        let page = |offset, edge_offset| {
+            topology_body(
+                topology(),
+                None,
+                TopologyPage {
+                    limit: Some(1),
+                    offset: Some(offset),
+                    edge_offset: Some(edge_offset),
+                },
+            )
+            .unwrap()
+        };
+        let first = page(2, 0);
+        assert_eq!(names(&first), ["a"]);
+        assert_eq!(first["nodes"][0]["index"], 2);
+        assert_eq!(first["nextOffset"], 3);
+        assert_eq!(first["edgeTotal"], 2);
+        assert_eq!(first["nextEdgeOffset"], 1);
         assert_eq!(
-            body["edges"],
+            first["edges"],
+            json!([{"from": 0, "to": 1, "relation": "routesTo"}])
+        );
+        let second = page(2, 1);
+        assert_eq!(
+            second["edges"],
             json!([{"from": 1, "to": 2, "relation": "selects"}])
         );
+        assert!(second.get("nextEdgeOffset").is_none());
     }
 }

@@ -77,11 +77,23 @@ pub(crate) async fn list_crd_objects<T>(
     api_resource: &ApiResource,
     summary: impl FnMut(&DynamicObject) -> Option<T>,
 ) -> Result<VersionedList<T>, AppError> {
+    list_crd_objects_in(client, api_resource, None, summary).await
+}
+
+/// `list_crd_objects` for one namespace, which needs only namespaced list permission.
+pub(crate) async fn list_crd_objects_in<T>(
+    client: Client,
+    api_resource: &ApiResource,
+    namespace: Option<&str>,
+    summary: impl FnMut(&DynamicObject) -> Option<T>,
+) -> Result<VersionedList<T>, AppError> {
     crate::commands::helpers::validate_api_resource(api_resource)?;
-    let list = Api::<DynamicObject>::all_with(client, api_resource)
-        .list(&list_params())
-        .await
-        .map_err(AppError::from)?;
+    crate::commands::helpers::validate_namespace(namespace)?;
+    let api = match namespace {
+        Some(namespace) => Api::<DynamicObject>::namespaced_with(client, namespace, api_resource),
+        None => Api::<DynamicObject>::all_with(client, api_resource),
+    };
+    let list = api.list(&list_params()).await.map_err(AppError::from)?;
     Ok(VersionedList {
         items: list.items.iter().filter_map(summary).collect(),
         resource_version: list.metadata.resource_version,

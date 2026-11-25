@@ -18,7 +18,7 @@ use kubecove_inspection::commands::{
 use kubecove_kube::commands::ClusterAccess;
 use kubecove_models::{AppError, AppErrorKind, ResourceSummary, YamlViewMode};
 use serde_json::{Map, Value, json};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 // kubectl stores the complete previous document here; it repeats the spec and can be large.
 const LAST_APPLIED_ANNOTATION: &str = "kubectl.kubernetes.io/last-applied-configuration";
@@ -45,7 +45,7 @@ pub async fn list_resources(
         .filter(|selector| !selector.trim().is_empty())
     {
         Some(selector) => Some(
-            labelled_names(
+            labelled_rows(
                 &access,
                 &cluster,
                 &kind,
@@ -63,26 +63,39 @@ pub async fn list_resources(
         context.live_store.clone(),
     )
     .await?;
-    let mut body = page_resource_rows(scope.rows(), arguments.limit, arguments.offset, |row| {
-        selected
-            .as_ref()
-            .is_none_or(|selected| selected.contains(&(row.namespace.clone(), row.name.clone())))
-            && resource_row_matches(name_filter.as_deref(), arguments.health, row)
-    })?;
+    let matches =
+        |row: &ResourceSummary| resource_row_matches(name_filter.as_deref(), arguments.health, row);
+    let mut body = match &selected {
+        // The selected rows decide membership. A cached row with the same uid replaces
+        // its fresh copy, because only cached rows carry Flux ownership enrichment.
+        Some(selected) => {
+            let cached: HashMap<&str, &ResourceSummary> = scope
+                .rows()
+                .filter_map(|row| Some((row.uid.as_deref()?, row)))
+                .collect();
+            let rows = selected.iter().map(|row| {
+                row.uid
+                    .as_deref()
+                    .and_then(|uid| cached.get(uid).copied())
+                    .unwrap_or(row)
+            });
+            page_resource_rows(rows, arguments.limit, arguments.offset, matches)?
+        }
+        None => page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches)?,
+    };
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
 }
 
-/// The API server evaluates the selector; the rows themselves still come from the shared
-/// scope, so they carry the same ownership enrichment as unfiltered rows.
-async fn labelled_names(
+/// The rows the API server selects, read live because the shared scope holds whole kinds.
+async fn labelled_rows(
     access: &ClusterAccess,
     cluster: &str,
     kind: &ResolvedKind,
     namespace: Option<String>,
     selector: &str,
-) -> Result<HashSet<(Option<String>, String)>, AppError> {
+) -> Result<Vec<ResourceSummary>, AppError> {
     let namespace = namespace.filter(|_| kind.namespaced());
     let listed = match kind {
         ResolvedKind::Builtin(builtin) => {
@@ -106,11 +119,7 @@ async fn labelled_names(
             .await?
         }
     };
-    Ok(listed
-        .rows
-        .into_iter()
-        .map(|row| (row.namespace, row.name))
-        .collect())
+    Ok(listed.rows)
 }
 
 /// `name_filter` must already be lowercase. Shared with the backend benchmarks so they

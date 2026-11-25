@@ -21,7 +21,7 @@ pub async fn list_deployment_revisions(
     deployment_revisions_from(client, &name, &namespace).await
 }
 
-async fn deployment_revisions_from(
+pub async fn deployment_revisions_from(
     client: Client,
     deployment_name: &str,
     namespace: &str,

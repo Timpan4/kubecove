@@ -33,12 +33,12 @@ pub use resource_actions::{
     preview_resource_action,
 };
 pub use resources::{
-    apply_yaml, dynamic_resource_details_from, dynamic_resources_summary_from,
-    dynamic_resources_summary_with_labels_from, get_dynamic_resource_details, get_resource_details,
-    get_resource_yaml, lint_kubernetes_yaml, list_deployment_revisions,
-    list_dynamic_resource_snapshot, list_dynamic_resources, list_resource_scope,
-    list_resource_snapshot, list_resource_topology, list_resources, prepare_yaml_apply,
-    resource_details_from, resource_scope_from, resource_topology_from, resource_yaml_from,
-    resources_summary_from, resources_summary_with_labels_from, reveal_secret_data_value,
-    watched_resource_summary,
+    apply_yaml, deployment_revisions_from, dynamic_resource_details_from,
+    dynamic_resources_summary_from, dynamic_resources_summary_with_labels_from,
+    get_dynamic_resource_details, get_resource_details, get_resource_yaml, lint_kubernetes_yaml,
+    list_deployment_revisions, list_dynamic_resource_snapshot, list_dynamic_resources,
+    list_resource_scope, list_resource_snapshot, list_resource_topology, list_resources,
+    prepare_yaml_apply, resource_details_from, resource_scope_from, resource_topology_from,
+    resource_yaml_from, resources_summary_from, resources_summary_with_labels_from,
+    reveal_secret_data_value, watched_resource_summary,
 };

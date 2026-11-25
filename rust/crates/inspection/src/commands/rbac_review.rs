@@ -25,7 +25,13 @@ pub async fn review_rbac_access(
         .run(
             async move {
                 let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
-                review_rbac_access_from(&access, request).await
+                review_rbac_access_from(
+                    &access,
+                    &request.cluster_context,
+                    &request.identity,
+                    &request.target,
+                )
+                .await
             },
             |result| vec![diagnostic_field("outcome", format!("{:?}", result.outcome))],
         )
@@ -34,17 +40,19 @@ pub async fn review_rbac_access(
 
 pub async fn review_rbac_access_from(
     access: &ClusterAccess,
-    request: RbacAccessReviewRequest,
+    cluster_context: &str,
+    identity: &RbacAccessReviewIdentity,
+    target: &RbacAccessReviewTarget,
 ) -> Result<RbacAccessReviewResult, AppError> {
-    let client = access.read_client(&request.cluster_context).await?;
-    let (user, groups) = review_identity(&request.identity)?;
+    let client = access.read_client(cluster_context).await?;
+    let (user, groups) = review_identity(identity)?;
     let review = SubjectAccessReview {
         metadata: k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta::default(),
         spec: SubjectAccessReviewSpec {
             extra: None,
             groups: (!groups.is_empty()).then_some(groups),
-            non_resource_attributes: target_non_resource_attributes(&request.target)?,
-            resource_attributes: target_resource_attributes(&request.target)?,
+            non_resource_attributes: target_non_resource_attributes(target)?,
+            resource_attributes: target_resource_attributes(target)?,
             uid: None,
             user,
         },

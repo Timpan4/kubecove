@@ -1,6 +1,6 @@
 use crate::commands::ClusterAccess;
 use crate::commands::gitops_crd::{
-    find_api_resource, get_crd_object, list_crd_objects, object_age, resource_metadata,
+    find_api_resource, get_crd_object, list_crd_objects_in, object_age, resource_metadata,
     resource_status, resource_yaml,
 };
 use crate::commands::helpers::k8s_creation_timestamp_to_rfc3339;
@@ -100,17 +100,24 @@ pub async fn list_argocd_applications(
     cluster_context: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<VersionedList<ArgoApplicationSummary>, AppError> {
-    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
-        .read_client(&cluster_context)
-        .await?;
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+    argocd_applications_from(&access, &cluster_context, None).await
+}
 
+/// Applications in one namespace, or in every namespace when `namespace` is `None`.
+pub async fn argocd_applications_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    namespace: Option<&str>,
+) -> Result<VersionedList<ArgoApplicationSummary>, AppError> {
+    let client = access.read_client(cluster_context).await?;
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,
         None => return Ok(VersionedList::default()),
     };
 
-    list_crd_objects(client, &ar, |obj| {
-        application_summary_from_object(&cluster_context, obj)
+    list_crd_objects_in(client, &ar, namespace, |obj| {
+        application_summary_from_object(cluster_context, obj)
     })
     .await
 }

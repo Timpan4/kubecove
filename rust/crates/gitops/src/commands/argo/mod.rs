@@ -28,7 +28,9 @@ pub use operations::benchmark_verify_kubernetes_application_identity;
 
 use crate::{commands::gitops_crd, models::AppError};
 
-pub use applications::{get_argocd_application_details, list_argocd_applications};
+pub use applications::{
+    argocd_applications_from, get_argocd_application_details, list_argocd_applications,
+};
 pub use appprojects::{get_argocd_appproject_details, list_argocd_appprojects};
 pub use appsets::{get_argocd_appset_details, list_argocd_appsets};
 pub use comparison::get_argo_resource_comparison;

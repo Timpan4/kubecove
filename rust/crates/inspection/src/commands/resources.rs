@@ -57,7 +57,7 @@ pub use dynamic::{
 pub use kubeconform::collect_kubeconform_bytes;
 #[cfg(feature = "bench-support")]
 pub use revisions::deployment_revisions_from_replica_sets;
-pub use revisions::list_deployment_revisions;
+pub use revisions::{deployment_revisions_from, list_deployment_revisions};
 #[cfg(feature = "bench-support")]
 pub use scope::resource_scope_fetch_plan;
 #[cfg(feature = "bench-support")]
