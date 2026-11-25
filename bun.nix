@@ -1005,9 +1005,9 @@
     url = "https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz";
     hash = "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==";
   };
-  "bits-ui@2.21.0" = fetchurl {
-    url = "https://registry.npmjs.org/bits-ui/-/bits-ui-2.21.0.tgz";
-    hash = "sha512-kfJonux4r+XOnqGCBQaqFfhRUvDbuZQgyjXADfk0/QJGc8LlQchkrGc6rCd+ldo1EixCJEXlM7znKVIUtuf7OQ==";
+  "bits-ui@2.22.0" = fetchurl {
+    url = "https://registry.npmjs.org/bits-ui/-/bits-ui-2.22.0.tgz";
+    hash = "sha512-NTQJBYKGdqd8QrnwZcOcGs90Ybt1aFe3xF+rrq7RXNAJPo01VCfTZctKQ27RVloDyb/pQhw4CvnEoce1JFZ8Mg==";
   };
   "boolbase@1.0.0" = fetchurl {
     url = "https://registry.npmjs.org/boolbase/-/boolbase-1.0.0.tgz";
@@ -1381,9 +1381,9 @@
     url = "https://registry.npmjs.org/expect/-/expect-30.5.2.tgz";
     hash = "sha512-0LNuMvs8/5mRYhnCR4k+lGV7fqPMs6Bnksda4S3zsCUmdxBpAn4zU4NNzXdq1pMKe/H4W5t/zVIDSJ/H3e0vDA==";
   };
-  "fast-check@4.10.3" = fetchurl {
-    url = "https://registry.npmjs.org/fast-check/-/fast-check-4.10.3.tgz";
-    hash = "sha512-SBaU6nhh+sXxb05r2IHAKfxnR/1Pu6MqtHYaewM1BY6V5xzOxOk+4yoWO7WfeeyZG1iArFE6/DO/7iLYMUuOJg==";
+  "fast-check@4.11.0" = fetchurl {
+    url = "https://registry.npmjs.org/fast-check/-/fast-check-4.11.0.tgz";
+    hash = "sha512-V4Uc238rhQOdQlc+Gz7JG6SGBtrWnWL8d/6RyiBeCMcNKMhF6DZ0KkAVHJSyNV5r4lA0PmIpZ6iRpTVoz4qjoA==";
   };
   "fast-fifo@1.3.2" = fetchurl {
     url = "https://registry.npmjs.org/fast-fifo/-/fast-fifo-1.3.2.tgz";
@@ -2141,9 +2141,9 @@
     url = "https://registry.npmjs.org/svelte-toolbelt/-/svelte-toolbelt-0.10.7.tgz";
     hash = "sha512-gjuUVEEpo38UJCeI1ssE3NxG31tYENczPTcTGTXf4338qAQNdR9I1oAEbQY0KQFmbdUojNIhHuRNix7ThwFNxQ==";
   };
-  "svelte@5.58.0" = fetchurl {
-    url = "https://registry.npmjs.org/svelte/-/svelte-5.58.0.tgz";
-    hash = "sha512-rOMKTD9WP2C6ahWDmntey4p+JqUxtup1w9G3KdVuTbNGHi5u97iMw0CIc8a+F5rZtiH7x98kVniDlBRRR5e98w==";
+  "svelte@5.59.1" = fetchurl {
+    url = "https://registry.npmjs.org/svelte/-/svelte-5.59.1.tgz";
+    hash = "sha512-ADG20W/jYSQut/79AavRRfbXQYebFKMVWT/xAbjVVZfZA4XzIoFfcpanEfYTyN+uWQUaPP+nstFx4qVKwEVnQQ==";
   };
   "tabbable@6.5.1" = fetchurl {
     url = "https://registry.npmjs.org/tabbable/-/tabbable-6.5.1.tgz";
