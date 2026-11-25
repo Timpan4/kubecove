@@ -2,6 +2,7 @@
 //! the existing typed commands. Partial permission failures preserve usable rows.
 
 use super::{ListVersions, ScopeResult};
+use futures_util::{StreamExt, stream};
 use kubecove_lib::{
     commands::{self, ClusterAccess, ClusterLiveStore},
     models::{AppError, AppErrorKind, ArgoApplicationSummary, WatchResourceKey, WatchResourceKind},
@@ -126,36 +127,45 @@ pub async fn resources(
     }
     let mut resources = Vec::new();
     let mut versions = ListVersions::new();
-    for (kind, namespace, dynamic) in requests {
-        // Each request lists one watch key, so its version backs exactly the rows
-        // a watch on that key shows. A view that watches every namespace of
-        // several listed ones finds no version under its key and starts without one.
-        let key = WatchResourceKey {
-            resource_kind: kind.clone(),
-            namespace: namespace.clone(),
-        };
-        // As in `live_data.rs`: a built-in kind fails the read unless access is
-        // denied, so `read_retry` retries it; a custom kind only warns.
-        let custom = dynamic.is_some();
-        let result = if let Some(kind) = dynamic {
-            commands::list_dynamic_resource_snapshot(
-                app.cluster.clone(),
-                kind,
-                namespace,
-                None,
-                State::new(&store),
-            )
-            .await
-        } else {
-            commands::list_resource_snapshot(
-                app.cluster.clone(),
-                kind.kind.clone(),
-                namespace,
-                None,
-                State::new(&store),
-            )
-            .await
-        };
+    let cluster = &app.cluster;
+    let store = &store;
+    let reads = requests
+        .into_iter()
+        .map(|(kind, namespace, dynamic)| async move {
+            // Each request lists one watch key, so its version backs exactly the rows
+            // a watch on that key shows. A view that watches every namespace of
+            // several listed ones finds no version under its key and starts without one.
+            let key = WatchResourceKey {
+                resource_kind: kind.clone(),
+                namespace: namespace.clone(),
+            };
+            // As in `live_data.rs`: a built-in kind fails the read unless access is
+            // denied, so `read_retry` retries it; a custom kind only warns.
+            let custom = dynamic.is_some();
+            let result = if let Some(kind) = dynamic {
+                commands::list_dynamic_resource_snapshot(
+                    cluster.clone(),
+                    kind,
+                    namespace,
+                    None,
+                    State::new(store),
+                )
+                .await
+            } else {
+                commands::list_resource_snapshot(
+                    cluster.clone(),
+                    kind.kind.clone(),
+                    namespace,
+                    None,
+                    State::new(store),
+                )
+                .await
+            };
+            (key, custom, result)
+        });
+    let results = stream::iter(reads).buffered(commands::MAX_LIST_CONCURRENCY);
+    futures_util::pin_mut!(results);
+    while let Some((key, custom, result)) = results.next().await {
         match result {
             Ok(snapshot) => {
                 resources.extend(Arc::unwrap_or_clone(snapshot.rows));
@@ -164,7 +174,7 @@ pub async fn resources(
                 }
             }
             Err(error) if custom || error.kind == AppErrorKind::Forbidden => {
-                warnings.push(format!("{}: {}", kind.kind, error.message));
+                warnings.push(format!("{}: {}", key.resource_kind.kind, error.message));
             }
             Err(error) => return Err(error),
         }
