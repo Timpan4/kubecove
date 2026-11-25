@@ -34,6 +34,8 @@ GitHub puts pull-request workflows created by `GITHUB_TOKEN` into an approval-re
 
 If signature verification fails after commit creation, the branch may already contain that commit. Preparation preserves the branch and stops. Reruns check every commit introduced since the checked-out `main` and reject unverified history before appending. Verify the rejected signature or prepare a new signed release branch before rerunning.
 
+Preparation regenerates `bun.nix` from `bun.lock` with the flake's pinned `bun2nix`. Dependabot updates only `bun.lock`, and the daily Nix lock refresh PR may still be open at release time, so without this step a tag can ship a `bun.nix` that breaks every offline Nix build of that tag.
+
 Release PRs use the same change-based frontend, Rust, and CodSpeed checks as other PRs. The Nix build does not run on pull requests. After merge or on manual dispatch, it builds the frontend and desktop app and verifies server dependencies directly from the committed Cargo lockfiles. Tag builds run the release gates for each product described below.
 
 After the merge, GitHub Actions finds the merged `release` PR, creates the matching annotated `app-vX.Y.Z` tag and runs the release workflow. The workflow uploads and verifies the signed GPUI bundles, updater feed, and server archives before pushing container tags to GHCR. GitHub makes the draft release public after the registry push succeeds.

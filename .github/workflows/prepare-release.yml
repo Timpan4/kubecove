@@ -55,6 +55,19 @@ jobs:
           RELEASE_BUMP: ${{ inputs.bump }}
         run: bun scripts/prepare-release-pr.ts "$RELEASE_BUMP"
 
+      - name: Install Nix
+        uses: cachix/install-nix-action@bb0495a1086c46893eee56f32fd192dfe4a15bb9 # v32.0.0
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ github.token }}
+
+      # Dependabot bumps bun.lock without bun.nix, and the daily refresh PR may
+      # still be open. A release tag with a stale bun.nix breaks every Nix build
+      # of that tag, so the release commit carries a bun.nix regenerated from
+      # its own bun.lock.
+      - name: Regenerate bun.nix
+        run: nix run --inputs-from . bun2nix -- -o bun.nix
+
       - name: Commit release branch
         env:
           GH_TOKEN: ${{ secrets.NIX_LOCK_REFRESH_TOKEN }}
@@ -63,7 +76,7 @@ jobs:
           RELEASE_TITLE: ${{ steps.release.outputs.title }}
         run: |
           set -euo pipefail
-          git add package.json bun.lock CHANGELOG.md rust/Cargo.toml rust/Cargo.lock rust/server/Cargo.toml rust/server/Cargo.lock rust/gpui/Cargo.toml rust/gpui/Cargo.lock
+          git add package.json bun.lock bun.nix CHANGELOG.md rust/Cargo.toml rust/Cargo.lock rust/server/Cargo.toml rust/server/Cargo.lock rust/gpui/Cargo.toml rust/gpui/Cargo.lock
           node scripts/commit-release-pr.mjs
 
       - name: Open release PR
