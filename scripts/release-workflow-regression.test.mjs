@@ -74,11 +74,11 @@ test("release preparation commits frontend, backend, GPUI, server and Nix lock m
     assert.ok(staged.includes(path), `Release commit omits ${path}`);
   }
   // A tag whose bun.nix disagrees with bun.lock fails every offline Nix build of it.
-  const names = prepare.steps.map(({ name }) => name);
-  const regenerate = names.indexOf("Regenerate bun.nix");
+  const position = (name) => prepare.steps.indexOf(step(prepare, name));
+  const regenerate = position("Regenerate bun.nix");
   assert.match(step(prepare, "Regenerate bun.nix").run, /^nix run --inputs-from \. bun2nix -- -o bun\.nix$/);
-  assert.ok(names.indexOf("Prepare release files") < regenerate, "bun.nix must be regenerated from the prepared bun.lock");
-  assert.ok(regenerate < names.indexOf("Commit release branch"), "bun.nix must be regenerated before the release commit");
+  assert.ok(position("Prepare release files") < regenerate, "bun.nix must be regenerated from the prepared bun.lock");
+  assert.ok(regenerate < position("Commit release branch"), "bun.nix must be regenerated before the release commit");
 });
 
 test("release preparation does not use manual dispatch for required PR checks", () => {
