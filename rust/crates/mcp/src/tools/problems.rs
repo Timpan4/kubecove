@@ -73,7 +73,7 @@ pub async fn find_problems(
             Reverse(item.latest_signal_at.clone()),
         )
     });
-    let mut body = page(items, arguments.limit, arguments.offset)?.into_json("problems", item);
+    let mut body = page(items, arguments.limit, arguments.offset).into_json("problems", item);
     body.insert("context".into(), cluster.into());
     body.insert("generatedAt".into(), generated_at.into());
     if !warnings.is_empty() {

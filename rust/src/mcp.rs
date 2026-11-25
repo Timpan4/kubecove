@@ -5,8 +5,7 @@ use crate::models::{AppError, AppErrorKind, McpStatus};
 use crate::runtime::State;
 use kubecove_kube::commands::ClusterLiveStore;
 use kubecove_mcp::{
-    EndpointPolicy, McpContext, McpEndpoint, TOOL_NAMES, load_or_create_token, rotate_token,
-    serve_loopback,
+    EndpointPolicy, McpContext, McpEndpoint, load_or_create_token, rotate_token, serve_loopback,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -19,6 +18,9 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
+
+/// The tools the listener serves, for clients that show or check them.
+pub use kubecove_mcp::TOOL_NAMES;
 
 const SETTINGS_FILE_NAME: &str = "mcp-settings.json";
 /// Chosen by the product owner on 2026-11-02 (ADR 0028).

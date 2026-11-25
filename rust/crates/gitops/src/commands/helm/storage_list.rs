@@ -112,15 +112,7 @@ pub async fn helm_releases_from(
         return all_helm_releases(client, cluster_context).await;
     };
     let (summaries, errors) = namespace_storage(client, cluster_context, namespace).await;
-    let warnings = errors
-        .iter()
-        .map(|(storage_kind, err)| {
-            format!(
-                "Helm {storage_kind} storage unavailable: {}.",
-                storage_reason(err)
-            )
-        })
-        .collect();
+    let warnings = storage_warnings(&errors);
     if errors.len() == 2 {
         return Err(storage_errors(
             errors.into_iter().map(|(_, err)| err).collect(),
@@ -132,15 +124,16 @@ pub async fn helm_releases_from(
     })
 }
 
-/// The latest revision of release `name` in `namespace`. A storage kind that could not
-/// be read may hold the release, so a miss then returns that storage error instead of
-/// `NotFound`.
+/// The latest readable revision of release `name` in `namespace`, and a warning for each
+/// storage kind that could not be read, which may hold a newer revision. When nothing
+/// matches, an unread storage kind may hold the release, so that storage error is
+/// returned instead of `NotFound`.
 pub async fn helm_release_from(
     access: &ClusterAccess,
     cluster_context: &str,
     namespace: &str,
     name: &str,
-) -> Result<HelmReleaseSummary, AppError> {
+) -> Result<(HelmReleaseSummary, Vec<String>), AppError> {
     crate::commands::helpers::validate_namespace(Some(namespace))?;
     let client = access.read_client(cluster_context).await?;
     let (summaries, errors) = namespace_storage(client, cluster_context, namespace).await;
@@ -149,7 +142,7 @@ pub async fn helm_release_from(
         .filter(|release| release.name == name)
         .max_by_key(|release| release.revision.unwrap_or(0));
     match found {
-        Some(release) => Ok(release),
+        Some(release) => Ok((release, storage_warnings(&errors))),
         None if errors.is_empty() => Err(AppError::new(
             format!("Helm release {namespace}/{name} was not found"),
             AppErrorKind::NotFound,
@@ -194,6 +187,18 @@ async fn namespace_storage(
         }
     }
     (summaries, errors)
+}
+
+fn storage_warnings(errors: &[(&str, AppError)]) -> Vec<String> {
+    errors
+        .iter()
+        .map(|(storage_kind, err)| {
+            format!(
+                "Helm {storage_kind} storage unavailable: {}.",
+                storage_reason(err)
+            )
+        })
+        .collect()
 }
 
 fn storage_reason(err: &AppError) -> &str {

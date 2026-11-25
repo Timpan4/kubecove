@@ -10,8 +10,11 @@ use kubecove_models::{
     AppError, AppErrorKind, RbacAccessReviewOutcome, ResourceTopology, TopologyRelation,
 };
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
 use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    num::NonZeroUsize,
+};
 
 pub async fn get_resource_topology(
     context: &McpContext,
@@ -27,7 +30,6 @@ pub async fn get_resource_topology(
             ));
         }
     };
-    compact::page_limit(arguments.limit)?;
     let (access, cluster) = access_for(arguments.context)?;
     let mode = match arguments.mode {
         args::TopologyMode::Ownership => "ownership",
@@ -69,6 +71,7 @@ pub async fn get_resource_topology(
     topology.warnings.extend(kinds_warning);
     let mut body = topology_body(
         topology,
+        &cluster,
         focus
             .as_ref()
             .map(|(kind, name)| (kind.as_str(), name.as_str())),
@@ -84,16 +87,18 @@ pub async fn get_resource_topology(
 
 #[derive(Clone, Copy, Default)]
 pub struct TopologyPage {
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     pub offset: Option<usize>,
     pub edge_offset: Option<usize>,
 }
 
-/// Nodes carry their index in the whole (focused) graph, and edges name nodes by that
-/// index. Nodes and edges page separately, because one node can have any number of
-/// edges.
+/// Nodes carry a `ref` (the node id without the context), and edges name nodes by that
+/// ref, so an edge read on a later page still names the right resources when the graph
+/// changed in between. Nodes and edges page separately, because one node can have any
+/// number of edges.
 pub fn topology_body(
     topology: ResourceTopology,
+    cluster: &str,
     focus: Option<(&str, &str)>,
     paging: TopologyPage,
 ) -> Result<Map<String, Value>, AppError> {
@@ -110,35 +115,26 @@ pub fn topology_body(
             .filter_map(|(node, keep)| keep.then_some(node))
             .collect();
     }
-    let positions: HashMap<&str, usize> = nodes
+    let prefix = format!("{cluster}:");
+    let node_ref = |id: &str| id.strip_prefix(prefix.as_str()).unwrap_or(id).to_owned();
+    let kept: HashSet<&str> = nodes.iter().map(|node| node.id.as_str()).collect();
+    let kept_edges: Vec<_> = edges
         .iter()
-        .enumerate()
-        .map(|(position, node)| (node.id.as_str(), position))
+        .filter(|edge| kept.contains(edge.source.as_str()) && kept.contains(edge.target.as_str()))
         .collect();
-    let edge_indices: Vec<(usize, usize, TopologyRelation)> = edges
-        .iter()
-        .filter_map(|edge| {
-            Some((
-                *positions.get(edge.source.as_str())?,
-                *positions.get(edge.target.as_str())?,
-                edge.relation,
-            ))
-        })
-        .collect();
-    let indexed: Vec<_> = nodes.iter().enumerate().collect();
     let mut body =
-        page(indexed, paging.limit, paging.offset)?.into_json("nodes", |(position, node)| {
+        page(nodes.iter().collect(), paging.limit, paging.offset).into_json("nodes", |node| {
             let mut row = match compact::resource(&node.summary) {
                 Value::Object(row) => row,
                 _ => Map::new(),
             };
-            row.insert("index".into(), position.into());
+            row.insert("ref".into(), node_ref(&node.id).into());
             if !node.port_hints.is_empty() {
                 row.insert("ports".into(), json!(node.port_hints));
             }
             Value::Object(row)
         });
-    let edges = page(edge_indices, paging.limit, paging.edge_offset)?;
+    let edges = page(kept_edges, paging.limit, paging.edge_offset);
     body.insert("edgeTotal".into(), edges.total.into());
     if let Some(next) = edges.next_offset {
         body.insert("nextEdgeOffset".into(), next.into());
@@ -149,8 +145,9 @@ pub fn topology_body(
             edges
                 .items
                 .into_iter()
-                .map(|(source, target, relation)| {
-                    json!({"from": source, "to": target, "relation": relation_name(relation)})
+                .map(|edge| {
+                    json!({"from": node_ref(&edge.source), "to": node_ref(&edge.target),
+                           "relation": relation_name(edge.relation)})
                 })
                 .collect(),
         ),
@@ -251,39 +248,68 @@ pub async fn list_deployment_revisions(
             compact::insert_some(&mut row, "revision", revision.revision);
             compact::insert_some(&mut row, "changeCause", revision.change_cause);
             compact::insert_some(&mut row, "createdAt", revision.created_at);
-            row.insert("podTemplate".into(), revision.pod_template_yaml.into());
+            row.extend(template_images(&revision.pod_template_yaml));
             Value::Object(row)
         })
         .collect();
     Ok(json!({"context": cluster, "revisions": rows}))
 }
 
+/// Each revision's container names and images. The rest of the Pod template stays
+/// behind: literal environment values and annotations can hold credentials.
+fn template_images(template_yaml: &str) -> Map<String, Value> {
+    let template: serde_yaml::Value = serde_yaml::from_str(template_yaml).unwrap_or_default();
+    let mut images = Map::new();
+    for field in ["containers", "initContainers"] {
+        let containers: Vec<Value> = template["spec"][field]
+            .as_sequence()
+            .into_iter()
+            .flatten()
+            .map(|container| {
+                json!({"name": container["name"].as_str(), "image": container["image"].as_str()})
+            })
+            .collect();
+        if !containers.is_empty() {
+            images.insert(field.into(), Value::Array(containers));
+        }
+    }
+    images
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // A context name with colons, as EKS ARNs have, must not shorten refs further.
+    const CLUSTER: &str = "arn:aws:eks:shop";
+
     // Ingress -> Service -> Pod a, plus an unrelated Pod b.
     fn topology() -> ResourceTopology {
+        let id = |kind: &str, name: &str| format!("{CLUSTER}:v1:{kind}:shop:{name}");
         let node = |kind: &str, name: &str| {
             json!({
-                "id": format!("ctx/{kind}/shop/{name}"), "kind": kind, "name": name,
+                "id": id(kind, name), "kind": kind, "name": name,
                 "namespace": "shop", "status": null, "health": "healthy", "selectable": true,
-                "summary": {"kind": kind, "cluster": "ctx", "name": name, "namespace": "shop",
+                "summary": {"kind": kind, "cluster": CLUSTER, "name": name, "namespace": "shop",
                             "age": "1m"},
             })
         };
-        let edge = |source: &str, target: &str, relation: &str| {
+        let edge = |source: String, target: String, relation: &str| {
             json!({"id": format!("{source}->{target}"), "source": source, "target": target,
                    "relation": relation})
         };
         serde_json::from_value(json!({
             "nodes": [node("Ingress", "web"), node("Service", "web"), node("Pod", "a"),
                       node("Pod", "b")],
-            "edges": [edge("ctx/Ingress/shop/web", "ctx/Service/shop/web", "routesTo"),
-                      edge("ctx/Service/shop/web", "ctx/Pod/shop/a", "selects")],
+            "edges": [edge(id("Ingress", "web"), id("Service", "web"), "routesTo"),
+                      edge(id("Service", "web"), id("Pod", "a"), "selects")],
             "warnings": [],
         }))
         .unwrap()
+    }
+
+    fn body(focus: Option<(&str, &str)>, paging: TopologyPage) -> Map<String, Value> {
+        topology_body(topology(), CLUSTER, focus, paging).unwrap()
     }
 
     fn names(body: &Map<String, Value>) -> Vec<&str> {
@@ -296,20 +322,25 @@ mod tests {
     }
 
     // Failure modes: a focus keeps unrelated resources or drops ones reached through a
-    // reversed edge; edge indices shift when a page or focus removes nodes; edges escape
-    // the page limit or are skipped or repeated across edge pages; a focus that matches
-    // nothing returns an empty graph instead of an error.
+    // reversed edge; an edge names a node that the focus removed; edges name nodes by
+    // something that shifts between pages; refs keep the context or cut into it; edges
+    // escape the page limit or are skipped or repeated across edge pages; a focus that
+    // matches nothing returns an empty graph instead of an error.
     #[test]
-    fn focus_keeps_the_connected_resources_and_reindexes_edges() {
-        let body = topology_body(topology(), Some(("pod", "a")), TopologyPage::default()).unwrap();
-        assert_eq!(names(&body), ["web", "web", "a"]);
+    fn focus_keeps_the_connected_resources_and_their_edges() {
+        let focused = body(Some(("pod", "a")), TopologyPage::default());
+        assert_eq!(names(&focused), ["web", "web", "a"]);
+        assert_eq!(focused["nodes"][0]["ref"], "v1:Ingress:shop:web");
         assert_eq!(
-            body["edges"],
-            json!([{"from": 0, "to": 1, "relation": "routesTo"},
-                   {"from": 1, "to": 2, "relation": "selects"}])
+            focused["edges"],
+            json!([{"from": "v1:Ingress:shop:web", "to": "v1:Service:shop:web",
+                    "relation": "routesTo"},
+                   {"from": "v1:Service:shop:web", "to": "v1:Pod:shop:a",
+                    "relation": "selects"}])
         );
         let error = topology_body(
             topology(),
+            CLUSTER,
             Some(("Pod", "missing")),
             TopologyPage::default(),
         )
@@ -318,34 +349,43 @@ mod tests {
     }
 
     #[test]
-    fn nodes_and_edges_page_separately_by_global_index() {
+    fn nodes_and_edges_page_separately() {
         let page = |offset, edge_offset| {
-            topology_body(
-                topology(),
+            body(
                 None,
                 TopologyPage {
-                    limit: Some(1),
+                    limit: NonZeroUsize::new(1),
                     offset: Some(offset),
                     edge_offset: Some(edge_offset),
                 },
             )
-            .unwrap()
         };
         let first = page(2, 0);
         assert_eq!(names(&first), ["a"]);
-        assert_eq!(first["nodes"][0]["index"], 2);
         assert_eq!(first["nextOffset"], 3);
         assert_eq!(first["edgeTotal"], 2);
         assert_eq!(first["nextEdgeOffset"], 1);
-        assert_eq!(
-            first["edges"],
-            json!([{"from": 0, "to": 1, "relation": "routesTo"}])
-        );
+        assert_eq!(first["edges"][0]["to"], "v1:Service:shop:web");
         let second = page(2, 1);
-        assert_eq!(
-            second["edges"],
-            json!([{"from": 1, "to": 2, "relation": "selects"}])
-        );
+        assert_eq!(second["edges"][0]["to"], "v1:Pod:shop:a");
         assert!(second.get("nextEdgeOffset").is_none());
+    }
+
+    // Failure modes: an environment value or template annotation reaches the agent; a
+    // container or init container image is dropped; an unparseable template fails the
+    // whole revision list.
+    #[test]
+    fn revisions_keep_images_and_drop_the_rest_of_the_template() {
+        let template = "metadata:\n  annotations:\n    note: annotation-secret\n\
+                        spec:\n  initContainers:\n  - name: migrate\n    image: tools:1\n\
+                        \x20 containers:\n  - name: app\n    image: shop:2\n    env:\n\
+                        \x20   - name: TOKEN\n      value: env-secret\n";
+        let images = Value::Object(template_images(template));
+        assert_eq!(
+            images,
+            json!({"containers": [{"name": "app", "image": "shop:2"}],
+                   "initContainers": [{"name": "migrate", "image": "tools:1"}]})
+        );
+        assert_eq!(template_images("not: [valid"), Map::new());
     }
 }

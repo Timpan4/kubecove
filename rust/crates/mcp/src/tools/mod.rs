@@ -94,7 +94,7 @@ tools! {
         "Get resource topology",
         "How resources in one namespace connect. mode=ownership follows owners and GitOps \
          ownership; mode=networkFlow follows Ingress to Service to Pod. Set focusKind and \
-         focusName to return only what connects to one resource. Edges name nodes by index \
+         focusName to return only what connects to one resource. Edges name nodes by ref \
          and page on their own: keep requesting with edgeOffset=nextEdgeOffset until it is \
          absent, even after nextOffset is gone.";
     ReviewRbacAccess => "review_rbac_access", args::RbacReviewArgs, "Review RBAC access",
@@ -104,7 +104,7 @@ tools! {
     ListDeploymentRevisions => "list_deployment_revisions", args::DeploymentRevisionsArgs,
         "List Deployment revisions",
         "One Deployment's rollout history from its ReplicaSets: revision, change cause, \
-         creation time and Pod template, so a broken rollout can be compared with the last \
+         creation time and container images, so a broken rollout can be compared with the last \
          good one.";
 }
 

@@ -30,6 +30,7 @@ use kubecove_kube::commands::{ClientIntent, ClusterLiveStore, FixedClusterAccess
 use serde_json::{Value, json};
 use std::{
     convert::Infallible,
+    num::NonZeroUsize,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -137,6 +138,21 @@ async fn call(endpoint: &McpEndpoint, name: &str, arguments: Value) -> (String, 
     (text.clone(), serde_json::from_str(&text).unwrap())
 }
 
+/// Calls a tool that must fail and returns its error text.
+async fn call_error(endpoint: &McpEndpoint, name: &str, arguments: Value) -> String {
+    let body = json!({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    });
+    let (_, bytes) = send(endpoint, request(&[AUTHORIZED], &body)).await;
+    let message: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(message["result"]["isError"], true, "{message}");
+    message["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
 #[tokio::test]
 async fn requests_without_the_bearer_token_never_reach_the_tools() {
     let endpoint = endpoint(&cluster());
@@ -198,6 +214,10 @@ async fn tool_list_is_exactly_the_read_only_tools() {
             tool["name"]
         );
         assert_eq!(tool["inputSchema"]["type"], "object", "{}", tool["name"]);
+        let limit = &tool["inputSchema"]["properties"]["limit"];
+        if !limit.is_null() {
+            assert_eq!(limit["minimum"], 1, "{}: {limit}", tool["name"]);
+        }
     }
 }
 
@@ -350,20 +370,23 @@ async fn troubleshooting_tools_filter_explain_and_bound_their_results() {
     assert_eq!(review["outcome"], "denied", "{review}");
     assert_eq!(review["reason"], "no RoleBinding");
     // `group` for `groups` would review the user without the group.
-    let body = json!({
-        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-        "params": {"name": "review_rbac_access", "arguments": review_arguments(
-            json!({"kind": "user", "username": "alice", "group": "dev"}),
-        )},
-    });
-    let (_, bytes) = send(&endpoint, request(&[AUTHORIZED], &body)).await;
-    let message: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(message["result"]["isError"], true, "{message}");
-    let text = message["result"]["content"][0]["text"].as_str().unwrap();
+    let text = call_error(
+        &endpoint,
+        "review_rbac_access",
+        review_arguments(json!({"kind": "user", "username": "alice", "group": "dev"})),
+    )
+    .await;
     assert!(
         text.contains("invalid arguments") && text.contains("unknown field `group`"),
         "{text}"
     );
+    let text = call_error(
+        &endpoint,
+        "list_resources",
+        json!({"context": "fixed", "kind": "svc", "namespace": "apps", "limit": 0}),
+    )
+    .await;
+    assert!(text.contains("invalid arguments"), "{text}");
 
     let (_, logs) = call(
         &endpoint,
@@ -397,17 +420,16 @@ fn pages_cover_every_row_once_and_end_without_a_next_offset() {
     let mut seen = Vec::new();
     let mut offset = Some(0);
     while let Some(start) = offset {
-        let page = page(rows.clone(), Some(3), Some(start)).unwrap();
+        let page = page(rows.clone(), NonZeroUsize::new(3), Some(start));
         assert_eq!(page.total, 7);
         assert_eq!(page.offset, start);
         seen.extend(page.items);
         offset = page.next_offset;
     }
     assert_eq!(seen, rows);
-    let past_end = page(rows.clone(), Some(3), Some(50)).unwrap();
+    let past_end = page(rows, NonZeroUsize::new(3), Some(50));
     assert_eq!(past_end.items, Vec::<usize>::new());
     assert_eq!(past_end.next_offset, None);
-    assert!(page(rows, Some(0), None).is_err());
 }
 
 #[test]

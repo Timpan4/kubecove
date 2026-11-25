@@ -3,6 +3,7 @@
 use kubecove_models::{RbacAccessReviewIdentity, RbacAccessReviewTarget};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -23,8 +24,7 @@ pub struct ListResourceKindsArgs {
     /// Case-insensitive text matched against kind, plural, short names and API group.
     pub query: Option<String>,
     /// Maximum rows to return. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Rows to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
 }
@@ -58,8 +58,7 @@ pub struct ListResourcesArgs {
     #[serde(default)]
     pub health: HealthFilter,
     /// Maximum rows to return. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Rows to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
 }
@@ -90,8 +89,7 @@ pub struct FindProblemsArgs {
     #[serde(default)]
     pub include_resolved: bool,
     /// Maximum rows to return. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Rows to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
 }
@@ -127,8 +125,7 @@ pub struct GitOpsListArgs {
     /// Namespace the Application or release lives in. Omit for all namespaces.
     pub namespace: Option<String>,
     /// Maximum rows to return. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Rows to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
 }
@@ -160,8 +157,7 @@ pub struct TopologyArgs {
     /// With `focusKind`, the name of the resource to trace from.
     pub focus_name: Option<String>,
     /// Maximum nodes, and separately edges, to return. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Nodes to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
     /// Edges to skip, from a previous result's `nextEdgeOffset`. Edges page independently
@@ -287,8 +283,7 @@ pub struct HelmReleaseArgs {
     /// Release name.
     pub name: String,
     /// Maximum resource rows to return. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Resource rows to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
 }
@@ -303,8 +298,7 @@ pub struct MetricsArgs {
     /// Return only this list. Required with `offset`, because each list pages separately.
     pub list: Option<MetricsList>,
     /// Maximum rows to return per list. Defaults to 500.
-    #[schemars(range(min = 1))]
-    pub limit: Option<usize>,
+    pub limit: Option<NonZeroUsize>,
     /// Rows to skip in `list`, from that list's previous `nextOffset`.
     pub offset: Option<usize>,
 }

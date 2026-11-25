@@ -28,7 +28,8 @@ pub struct PodLogRead {
     pub lines: Vec<String>,
     /// Total bytes of `lines`, without line breaks.
     pub bytes: usize,
-    /// Older lines in the tail window were dropped to stay within `MAX_LOG_READ_BYTES`.
+    /// Lines were dropped or shortened to stay within `MAX_LOG_READ_BYTES`: older lines in
+    /// the tail window, or the end of a single newest line larger than the budget.
     pub truncated: bool,
 }
 

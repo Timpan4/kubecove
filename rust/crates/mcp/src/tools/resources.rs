@@ -18,7 +18,7 @@ use kubecove_inspection::commands::{
 use kubecove_kube::commands::ClusterAccess;
 use kubecove_models::{AppError, AppErrorKind, ResourceSummary, YamlViewMode};
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroUsize};
 
 // kubectl stores the complete previous document here; it repeats the spec and can be large.
 const LAST_APPLIED_ANNOTATION: &str = "kubectl.kubernetes.io/last-applied-configuration";
@@ -79,9 +79,9 @@ pub async fn list_resources(
                     copy_flux_enrichment(row, cached);
                 }
             }
-            page_resource_rows(selected.iter(), arguments.limit, arguments.offset, matches)?
+            page_resource_rows(selected.iter(), arguments.limit, arguments.offset, matches)
         }
-        None => page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches)?,
+        None => page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches),
     };
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
@@ -144,13 +144,13 @@ pub fn resource_row_matches(
 
 pub fn page_resource_rows<'a>(
     rows: impl Iterator<Item = &'a ResourceSummary>,
-    limit: Option<usize>,
+    limit: Option<NonZeroUsize>,
     offset: Option<usize>,
     filter: impl Fn(&ResourceSummary) -> bool,
-) -> Result<Map<String, Value>, AppError> {
+) -> Map<String, Value> {
     let mut rows: Vec<_> = rows.filter(|row| filter(row)).collect();
     rows.sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
-    Ok(page(rows, limit, offset)?.into_json("resources", compact::resource))
+    page(rows, limit, offset).into_json("resources", compact::resource)
 }
 
 struct Target {

@@ -38,7 +38,11 @@ pub async fn get_pod_logs(arguments: args::PodLogsArgs) -> Result<Value, AppErro
         body.insert("truncated".into(), true.into());
         body.insert(
             "truncatedReason".into(),
-            format!("older lines dropped to stay within {MAX_LOG_READ_BYTES} bytes").into(),
+            format!(
+                "older lines dropped or the newest line shortened to stay within \
+                 {MAX_LOG_READ_BYTES} bytes"
+            )
+            .into(),
         );
     }
     Ok(Value::Object(body))
@@ -54,7 +58,7 @@ pub async fn list_argocd_applications(arguments: args::GitOpsListArgs) -> Result
         .items;
     applications
         .sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
-    let mut body = page(applications, arguments.limit, arguments.offset)?
+    let mut body = page(applications, arguments.limit, arguments.offset)
         .into_json("applications", |app| application(&app));
     body.insert("context".into(), cluster.into());
     Ok(Value::Object(body))
@@ -97,7 +101,7 @@ pub async fn list_helm_releases(arguments: args::GitOpsListArgs) -> Result<Value
     let mut releases = list.releases;
     releases
         .sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
-    let mut body = page(releases, arguments.limit, arguments.offset)?
+    let mut body = page(releases, arguments.limit, arguments.offset)
         .into_json("releases", |summary| release(&summary));
     body.insert("context".into(), cluster.into());
     if !list.warnings.is_empty() {
@@ -121,13 +125,13 @@ fn release(release: &HelmReleaseSummary) -> Value {
 /// The latest revision's summary, value keys, manifest resources and live drift. Values
 /// and manifest text never leave: they can hold credentials.
 pub async fn get_helm_release(arguments: args::HelmReleaseArgs) -> Result<Value, AppError> {
-    compact::page_limit(arguments.limit)?;
     let (access, cluster) = access_for(arguments.context)?;
     // Reading only the release's namespace needs no cluster-wide storage access. The
     // storage reads use the requested namespace: a summary's namespace comes from the
     // decoded payload, which need not match where the storage object lives.
     let namespace = arguments.namespace.as_str();
-    let summary = helm_release_from(&access, &cluster, namespace, &arguments.name).await?;
+    let (summary, mut warnings) =
+        helm_release_from(&access, &cluster, namespace, &arguments.name).await?;
     let (storage_kind, storage_name) = (&summary.storage_kind, &summary.storage_name);
     let details = helm_release_details_from(
         &access,
@@ -176,10 +180,11 @@ pub async fn get_helm_release(arguments: args::HelmReleaseArgs) -> Result<Value,
         reconciliation.resources.iter().collect(),
         arguments.limit,
         arguments.offset,
-    )?;
+    );
     body.extend(resources.into_json("resources", drift));
-    if !reconciliation.warnings.is_empty() {
-        body.insert("warnings".into(), json!(reconciliation.warnings));
+    warnings.extend(reconciliation.warnings);
+    if !warnings.is_empty() {
+        body.insert("warnings".into(), json!(warnings));
     }
     Ok(Value::Object(body))
 }

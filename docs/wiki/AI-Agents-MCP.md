@@ -17,7 +17,7 @@ KubeCove can serve read-only tools to AI agents such as Claude Code, Codex and C
 | `get_resource_metrics` | CPU and memory usage from the metrics API, highest CPU first. |
 | `get_resource_topology` | How resources in one namespace connect, by ownership or by Ingress to Service to Pod traffic. `focusKind` and `focusName` keep only what connects to one resource. |
 | `review_rbac_access` | Whether a ServiceAccount, user or group may perform one verb, like `kubectl auth can-i`. Explains `Forbidden` errors. |
-| `list_deployment_revisions` | One Deployment's rollout history with change causes and Pod templates. |
+| `list_deployment_revisions` | One Deployment's rollout history with change causes and container images. Never returns the rest of the Pod template. |
 | `list_argocd_applications` | Argo CD Applications with sync status and health. |
 | `list_helm_releases` | Helm releases with chart, revision and status. |
 | `get_helm_release` | One release's value keys, manifest resources and which of them are missing or drifted. Never returns values. |
