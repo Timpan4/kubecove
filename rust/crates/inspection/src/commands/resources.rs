@@ -50,8 +50,8 @@ pub use dynamic::serialize_dynamic_resource_document;
 pub use dynamic::{dynamic_details_from_fetched, dynamic_resource_details_from_object};
 pub use dynamic::{
     dynamic_resource_details_document_from, dynamic_resource_details_from,
-    dynamic_resources_summary_from, get_dynamic_resource_details, list_dynamic_resource_snapshot,
-    list_dynamic_resources,
+    dynamic_resources_summary_from, dynamic_resources_summary_with_labels_from,
+    get_dynamic_resource_details, list_dynamic_resource_snapshot, list_dynamic_resources,
 };
 #[cfg(feature = "bench-support")]
 pub use kubeconform::collect_kubeconform_bytes;
@@ -67,7 +67,10 @@ pub use scope::{
 };
 #[cfg(feature = "bench-support")]
 pub use scope::{benchmark_shared_scope_response, encode_shared_scope_rows};
-pub use summary::{list_resource_snapshot, list_resources, resources_summary_from};
+pub use summary::{
+    list_resource_snapshot, list_resources, resources_summary_from,
+    resources_summary_with_labels_from,
+};
 pub use topology::{list_resource_topology, resource_topology_from};
 #[cfg(feature = "bench-support")]
 pub use topology_collection::network_topology_from_objects_at;

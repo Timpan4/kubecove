@@ -22,18 +22,21 @@ pub async fn review_rbac_access(
     FiniteRead::new("review_rbac_access")
         .label("context", &request.cluster_context)
         .cancellable(&cancellations, cancel_scope, request_id)
-        .run(review_rbac_access_from(request), |result| {
-            vec![diagnostic_field("outcome", format!("{:?}", result.outcome))]
-        })
+        .run(
+            async move {
+                let access = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?;
+                review_rbac_access_from(&access, request).await
+            },
+            |result| vec![diagnostic_field("outcome", format!("{:?}", result.outcome))],
+        )
         .await
 }
 
-async fn review_rbac_access_from(
+pub async fn review_rbac_access_from(
+    access: &ClusterAccess,
     request: RbacAccessReviewRequest,
 ) -> Result<RbacAccessReviewResult, AppError> {
-    let client = ClusterAccess::resolve(request.kubeconfig_env_var.as_deref())?
-        .read_client(&request.cluster_context)
-        .await?;
+    let client = access.read_client(&request.cluster_context).await?;
     let (user, groups) = review_identity(&request.identity)?;
     let review = SubjectAccessReview {
         metadata: k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta::default(),

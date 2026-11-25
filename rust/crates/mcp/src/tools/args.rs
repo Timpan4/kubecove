@@ -1,7 +1,9 @@
 //! Tool arguments. Doc comments become the JSON Schema descriptions agents read.
 
+use kubecove_models::{RbacAccessReviewIdentity, RbacAccessReviewTarget};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -52,6 +54,8 @@ pub struct ListResourcesArgs {
     pub namespace: Option<String>,
     /// Case-insensitive substring of the resource name.
     pub name_contains: Option<String>,
+    /// Kubernetes label selector, such as `app=web,tier!=cache`.
+    pub label_selector: Option<String>,
     #[serde(default)]
     pub health: HealthFilter,
     /// Maximum rows to return. Defaults to 500.
@@ -114,6 +118,91 @@ pub struct PodLogsArgs {
     /// Read the previous, terminated container instance, such as after a crash.
     #[serde(default)]
     pub previous: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GitOpsListArgs {
+    /// Kubeconfig context name. Omit to use the current context.
+    pub context: Option<String>,
+    /// Namespace the Application or release lives in. Omit for all namespaces.
+    pub namespace: Option<String>,
+    /// Maximum rows to return. Defaults to 500.
+    #[schemars(range(min = 1))]
+    pub limit: Option<usize>,
+    /// Rows to skip, from a previous result's `nextOffset`.
+    pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum TopologyMode {
+    /// Owner references and Argo CD, Flux or Helm ownership, such as an Application, a
+    /// Deployment and its Pods.
+    #[default]
+    Ownership,
+    /// Traffic: Ingresses to Services to Pods.
+    NetworkFlow,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TopologyArgs {
+    /// Kubeconfig context name. Omit to use the current context.
+    pub context: Option<String>,
+    /// Namespace to map.
+    pub namespace: String,
+    #[serde(default)]
+    pub mode: TopologyMode,
+    /// With `focusName`, return only the resources connected to this kind, such as
+    /// `Ingress` or `Deployment`.
+    pub focus_kind: Option<String>,
+    /// With `focusKind`, the name of the resource to trace from.
+    pub focus_name: Option<String>,
+    /// Maximum nodes to return. Defaults to 500.
+    #[schemars(range(min = 1))]
+    pub limit: Option<usize>,
+    /// Nodes to skip, from a previous result's `nextOffset`.
+    pub offset: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RbacReviewArgs {
+    /// Kubeconfig context name. Omit to use the current context.
+    pub context: Option<String>,
+    /// Who to check: `{"kind":"serviceAccount","name":"web","namespace":"shop"}`,
+    /// `{"kind":"user","username":"alice","groups":["dev"]}` or
+    /// `{"kind":"group","group":"dev"}`.
+    #[schemars(with = "Value")]
+    pub identity: RbacAccessReviewIdentity,
+    /// What to check: `{"kind":"resource","verb":"list","resource":"pods","apiGroup":"",
+    /// "namespace":"shop"}`, optionally with `subresource` and `name`, or
+    /// `{"kind":"nonResource","verb":"get","nonResourceUrl":"/healthz"}`.
+    #[schemars(with = "Value")]
+    pub target: RbacAccessReviewTarget,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeploymentRevisionsArgs {
+    /// Kubeconfig context name. Omit to use the current context.
+    pub context: Option<String>,
+    /// Deployment namespace.
+    pub namespace: String,
+    /// Deployment name.
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HelmReleaseArgs {
+    /// Kubeconfig context name. Omit to use the current context.
+    pub context: Option<String>,
+    /// Release namespace.
+    pub namespace: String,
+    /// Release name.
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

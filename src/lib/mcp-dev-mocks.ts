@@ -3,7 +3,7 @@ import type { McpStatus } from "./mcp-runtime";
 // Controlled credentials, never a host token. This module does not open sockets.
 export const MCP_FIXTURE_TOKEN = "parity-mcp-credential";
 export const MCP_ROTATED_TOKEN = "parity-mcp-rotated-credential";
-const tools = ["list_contexts", "list_namespaces", "list_resource_kinds", "list_resources", "find_problems", "describe_resource", "get_resource_yaml", "get_pod_logs", "get_resource_metrics", "list_argocd_applications", "list_helm_releases"];
+const tools = ["list_contexts", "list_namespaces", "list_resource_kinds", "list_resources", "find_problems", "describe_resource", "get_resource_yaml", "get_pod_logs", "get_resource_metrics", "list_argocd_applications", "list_helm_releases", "get_helm_release", "get_resource_topology", "review_rbac_access", "list_deployment_revisions"];
 let status: McpStatus = { enabled: false, port: 47615, running: false, url: null, error: null, tools };
 let rotated = false;
 /** The settings file as the host last saw it. Mirrors `McpFixture` in the GPUI tests. */

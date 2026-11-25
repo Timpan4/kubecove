@@ -56,7 +56,7 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     window.find("setting-row:MCP server").label(),
                     Some(
                         format!(
-                            "Listening at http://127.0.0.1:{}/mcp with 11 read-only tools.",
+                            "Listening at http://127.0.0.1:{}/mcp with 15 read-only tools.",
                             string(step, "port")
                         )
                         .as_str()

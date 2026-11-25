@@ -45,7 +45,7 @@ fn mcp_warm_resource_scope_small_page_10000(bencher: Bencher) {
     let page = || {
         let scope =
             benchmark_shared_scope_response(vec![Arc::clone(&CACHED_ROWS)], &Default::default());
-        page_resource_rows(&scope, Some(10), Some(20), |_| true).unwrap()
+        page_resource_rows(scope.rows(), Some(10), Some(20), |_| true).unwrap()
     };
     let output = page();
     let expected = sorted_rows(CACHED_ROWS.iter());
@@ -64,7 +64,7 @@ fn mcp_warm_resource_scope_filtered_small_page_10000(bencher: Bencher) {
     let page = || {
         let scope =
             benchmark_shared_scope_response(vec![Arc::clone(&CACHED_ROWS)], &Default::default());
-        page_resource_rows(&scope, Some(10), Some(20), |row| {
+        page_resource_rows(scope.rows(), Some(10), Some(20), |row| {
             resource_row_matches(Some(FILTERED_NAME), HealthFilter::Unhealthy, row)
         })
         .unwrap()

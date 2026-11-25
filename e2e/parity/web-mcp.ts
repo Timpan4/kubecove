@@ -51,7 +51,7 @@ export const mcpActions = {
 		if (await page.getByRole("textbox", { name: "MCP port", exact: true }).inputValue() !== step.port) throw new Error("Wrong MCP port");
 		if (await page.getByRole("button", { name: "Save", exact: true }).isEnabled() !== step.save) throw new Error("Wrong MCP Save state");
 		if (await page.getByRole("button", { name: "Copy Claude Code command", exact: true }).isEnabled() !== step.command) throw new Error("Wrong MCP command state");
-		if (step.running) await page.getByText(`Listening at http://127.0.0.1:${step.port}/mcp with 11 read-only tools.`, { exact: true }).waitFor();
+		if (step.running) await page.getByText(`Listening at http://127.0.0.1:${step.port}/mcp with 15 read-only tools.`, { exact: true }).waitFor();
 		else if (await page.getByText("Running", { exact: true }).count()) throw new Error("MCP unexpectedly running");
 		if (await page.getByRole("button", { name: "Reload settings", exact: true }).count()) throw new Error("Reload settings shown with loaded settings");
 	},

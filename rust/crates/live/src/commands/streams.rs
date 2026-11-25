@@ -7,7 +7,7 @@ mod logs;
 mod registry;
 mod watch;
 
-pub use log_read::read_pod_logs;
+pub use log_read::{MAX_LOG_READ_BYTES, read_pod_logs};
 
 #[cfg(feature = "bench-support")]
 pub use aggregate_logs::benchmark_log_sources_from_pods;

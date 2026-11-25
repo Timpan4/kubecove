@@ -36,11 +36,26 @@ Tools are declared in one module of the `kubecove-mcp` crate. They are not gener
 
 Connected Argo CD transport is out of scope. It needs a per-session connection and credential that an agent session does not have.
 
+The phase 2 tools, added on 2026-11-25, follow the same rules:
+
+| Tool | Backed by |
+| --- | --- |
+| `get_resource_topology` | `list_resource_topology`, for one namespace |
+| `review_rbac_access` | `review_rbac_access` |
+| `list_deployment_revisions` | `list_deployment_revisions` |
+| `get_helm_release` | `get_helm_release_details` and `get_helm_release_reconciliation` |
+
+`review_rbac_access` sends a `SubjectAccessReview` for an identity and target the agent supplies. Kubernetes evaluates the review and stores nothing, so the cluster is unchanged, but the request is a `create` call: the host's Kubernetes identity needs permission to create `subjectaccessreviews`. A review answers what another identity could do; it never acts as that identity.
+
+`get_helm_release` returns the release summary, the top-level value keys, the manifest's resource list and how each resource compares with the live cluster. It never returns values or the manifest text, which can contain credentials.
+
+Argo CD Application details and Flux resources have no dedicated tool: `describe_resource` and `list_resources` already read them as custom resources, with full status.
+
 ### Compact, bounded results
 
 Tools return JSON text that keeps the evidence an agent reasons with: name, namespace, status, readiness, restarts, age, health state and reasons, owner and GitOps ownership. They drop `managedFields`, full health evidence trees and repeated cluster names.
 
-List-style tools (`list_resource_kinds`, `list_resources`, `find_problems`, and each list of `get_resource_metrics`) accept `limit` and `offset` and report `total` and `nextOffset`. The default page size is 500 rows, chosen by the product owner on 2026-11-02. `get_pod_logs` reuses the existing log stream bounds: a default tail of 200 lines, a maximum of 1,000 lines and the existing per-line byte cap.
+List-style tools (`list_resource_kinds`, `list_resources`, `find_problems`, each list of `get_resource_metrics`, `list_argocd_applications`, `list_helm_releases`, and the nodes of `get_resource_topology`) accept `limit` and `offset` and report `total` and `nextOffset`. The default page size is 500 rows, chosen by the product owner on 2026-11-02. `get_pod_logs` reuses the existing log stream bounds: a default tail of 200 lines, a maximum of 1,000 lines and the existing per-line byte cap. It also returns at most 256 KiB of log lines in total, chosen by the product owner on 2026-11-25 (#634). When the tail is larger, it keeps the newest lines and reports `truncated`. Kubernetes `limitBytes` is not used, because it cuts the end of the tail window, which holds the newest lines. The API server still sends the whole tail window (at most 1,000 lines of at most 256 KiB each), but the host holds only the budget plus one line.
 
 `find_problems` returns active signals first and omits resolved and historical signals unless the agent asks for them.
 
@@ -81,7 +96,7 @@ The trust boundary gains one authenticated, read-only client type per host. Anyo
 
 A workspace change in the desktop rotates the client generation and can cancel an in-flight MCP read; the agent receives a cancellation error and can retry.
 
-Write tools, Connected Argo CD, per-user server identity for MCP (OAuth), stdio transport, topology and RBAC review tools are out of scope. Any write tool needs its own ADR, with confirmation that an agent cannot supply on its own.
+Write tools, Connected Argo CD, per-user server identity for MCP (OAuth) and stdio transport are out of scope. Any write tool needs its own ADR, with confirmation that an agent cannot supply on its own.
 
 ## Verification
 
@@ -93,6 +108,7 @@ Failure modes to cover before release:
 - `/mcp` serves no tools without `--mcp`, and desktop MCP is off until enabled;
 - `--mcp` with `--oidc-kubernetes-credentials` fails at startup;
 - `tools/list` contains only the read-only tools above;
+- `get_pod_logs` keeps the newest lines within 256 KiB and reports `truncated`;
 - Secret details and YAML returned by tools contain no Secret values;
 - `limit`/`offset` paging returns every row exactly once and reports `nextOffset`;
 - the token file is created with mode `0600`, reused across restarts, and rotation rejects the old token;

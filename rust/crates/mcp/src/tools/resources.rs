@@ -7,11 +7,13 @@ use crate::{
     kinds::{ResolvedKind, resolve_kind},
 };
 use kubecove_inspection::commands::{
-    dynamic_resource_details_from, resource_events_from, resource_yaml_from,
+    dynamic_resource_details_from, dynamic_resources_summary_with_labels_from,
+    resource_events_from, resource_yaml_from,
     resources::{
-        PreparedResourceDetails, ResourceScopeResponse, dynamic_resource_details_document_from,
+        PreparedResourceDetails, dynamic_resource_details_document_from,
         resource_details_document_from, resource_scope_shared_from,
     },
+    resources_summary_with_labels_from,
 };
 use kubecove_kube::commands::ClusterAccess;
 use kubecove_models::{AppError, AppErrorKind, ResourceSummary, YamlViewMode};
@@ -33,21 +35,56 @@ pub async fn list_resources(
         arguments.api_version.as_deref(),
     )
     .await?;
-    let request = kind.list_request(arguments.namespace);
-    let scope = resource_scope_shared_from(
-        &access,
-        cluster.clone(),
-        vec![request],
-        context.live_store.clone(),
-    )
-    .await?;
     let name_filter = arguments
         .name_contains
         .map(|text| text.to_ascii_lowercase())
         .filter(|text| !text.is_empty());
-    let mut body = page_resource_rows(&scope, arguments.limit, arguments.offset, |row| {
-        resource_row_matches(name_filter.as_deref(), arguments.health, row)
-    })?;
+    let matches =
+        |row: &ResourceSummary| resource_row_matches(name_filter.as_deref(), arguments.health, row);
+    let label_selector = arguments
+        .label_selector
+        .filter(|selector| !selector.trim().is_empty());
+    // The shared scope cache holds whole kinds, so a selector reads the API directly.
+    let mut body = if let Some(selector) = label_selector {
+        let namespace = arguments.namespace.filter(|_| kind.namespaced());
+        let listed = match &kind {
+            ResolvedKind::Builtin(builtin) => {
+                resources_summary_with_labels_from(
+                    &access,
+                    cluster.clone(),
+                    builtin.kind.to_owned(),
+                    namespace,
+                    Some(&selector),
+                )
+                .await?
+            }
+            ResolvedKind::Custom(custom) => {
+                dynamic_resources_summary_with_labels_from(
+                    &access,
+                    cluster.clone(),
+                    custom.clone(),
+                    namespace,
+                    Some(&selector),
+                )
+                .await?
+            }
+        };
+        page_resource_rows(
+            listed.rows.iter(),
+            arguments.limit,
+            arguments.offset,
+            matches,
+        )?
+    } else {
+        let scope = resource_scope_shared_from(
+            &access,
+            cluster.clone(),
+            vec![kind.list_request(arguments.namespace)],
+            context.live_store.clone(),
+        )
+        .await?;
+        page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches)?
+    };
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
@@ -64,13 +101,13 @@ pub fn resource_row_matches(
         && (health == args::HealthFilter::All || compact::is_unhealthy(row))
 }
 
-pub fn page_resource_rows(
-    scope: &ResourceScopeResponse,
+pub fn page_resource_rows<'a>(
+    rows: impl Iterator<Item = &'a ResourceSummary>,
     limit: Option<usize>,
     offset: Option<usize>,
     filter: impl Fn(&ResourceSummary) -> bool,
 ) -> Result<Map<String, Value>, AppError> {
-    let mut rows: Vec<_> = scope.rows().filter(|row| filter(row)).collect();
+    let mut rows: Vec<_> = rows.filter(|row| filter(row)).collect();
     rows.sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
     Ok(page(rows, limit, offset)?.into_json("resources", compact::resource))
 }

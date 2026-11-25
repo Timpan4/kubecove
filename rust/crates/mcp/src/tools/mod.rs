@@ -6,6 +6,7 @@ mod cluster;
 mod logs_gitops;
 mod problems;
 mod resources;
+mod topology;
 #[cfg(feature = "bench-support")]
 pub use args::HealthFilter;
 #[cfg(feature = "bench-support")]
@@ -71,18 +72,38 @@ tools! {
     GetResourceYaml => "get_resource_yaml", args::ResourceArgs, "Get resource YAML",
         "One resource as YAML without managedFields. Secret values are redacted.";
     GetPodLogs => "get_pod_logs", args::PodLogsArgs, "Get Pod logs",
-        "The last lines of one Pod container's log, with timestamps. Without container it \
-         reads the container kubectl logs would and reports its name. Set previous=true for \
-         the crashed instance of a restarting container.";
+        "The last lines of one Pod container's log, with timestamps, at most 256 KiB in \
+         total. A larger tail keeps the newest lines and sets truncated=true. Without \
+         container it reads the container kubectl logs would and reports its name. Set \
+         previous=true for the crashed instance of a restarting container.";
     GetResourceMetrics => "get_resource_metrics", args::MetricsArgs, "Get resource usage",
         "Current CPU and memory usage of Pods, workloads and Nodes from the metrics API, \
          highest CPU first.";
-    ListArgocdApplications => "list_argocd_applications", args::ContextArgs,
+    ListArgocdApplications => "list_argocd_applications", args::GitOpsListArgs,
         "List Argo CD Applications",
         "Argo CD Applications read from the cluster, with sync status, health, source and \
-         destination.";
-    ListHelmReleases => "list_helm_releases", args::ContextArgs, "List Helm releases",
+         destination. Use describe_resource with kind Application for one Application's \
+         full status and managed resources.";
+    ListHelmReleases => "list_helm_releases", args::GitOpsListArgs, "List Helm releases",
         "Helm releases stored in the cluster, with chart, app version, revision and status.";
+    GetHelmRelease => "get_helm_release", args::HelmReleaseArgs, "Get Helm release",
+        "One Helm release's latest revision: top-level value keys, the manifest's resources \
+         and whether each one is live, missing or drifted from the release labels. Values \
+         and manifest text are never returned.";
+    GetResourceTopology => "get_resource_topology", args::TopologyArgs,
+        "Get resource topology",
+        "How resources in one namespace connect. mode=ownership follows owners and GitOps \
+         ownership; mode=networkFlow follows Ingress to Service to Pod. Set focusKind and \
+         focusName to return only what connects to one resource. Edges name nodes by index.";
+    ReviewRbacAccess => "review_rbac_access", args::RbacReviewArgs, "Review RBAC access",
+        "Asks the API server whether a ServiceAccount, user or group may perform one verb on \
+         a resource or URL, as kubectl auth can-i does. Use it to explain Forbidden errors. \
+         It stores nothing and acts as no one.";
+    ListDeploymentRevisions => "list_deployment_revisions", args::DeploymentRevisionsArgs,
+        "List Deployment revisions",
+        "One Deployment's rollout history from its ReplicaSets: revision, change cause, \
+         creation time and Pod template, so a broken rollout can be compared with the last \
+         good one.";
 }
 
 fn definition<A: JsonSchema + 'static>(
@@ -136,6 +157,14 @@ pub async fn run(context: &McpContext, tool: Tool, arguments: Value) -> Result<V
                     }
                     Tool::ListHelmReleases => {
                         logs_gitops::list_helm_releases(parse(arguments)?).await
+                    }
+                    Tool::GetHelmRelease => logs_gitops::get_helm_release(parse(arguments)?).await,
+                    Tool::GetResourceTopology => {
+                        topology::get_resource_topology(parse(arguments)?).await
+                    }
+                    Tool::ReviewRbacAccess => topology::review_rbac_access(parse(arguments)?).await,
+                    Tool::ListDeploymentRevisions => {
+                        topology::list_deployment_revisions(parse(arguments)?).await
                     }
                 }
             }),

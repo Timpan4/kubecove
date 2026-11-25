@@ -1,12 +1,16 @@
 //! Pod log, Argo CD Application and Helm release tools.
 
 use super::{access_for, args};
-use crate::compact::{health_state, insert_some};
+use crate::compact::{self, health_state, insert_some, page};
 use kubecove_gitops::commands::{
+    get_helm_release_details, get_helm_release_reconciliation,
     list_argocd_applications as argo_applications, list_helm_releases as helm_releases,
 };
-use kubecove_live::commands::read_pod_logs;
-use kubecove_models::{AppError, ArgoApplicationSummary, HelmReleaseSummary, PodLogStreamRequest};
+use kubecove_live::commands::{MAX_LOG_READ_BYTES, read_pod_logs};
+use kubecove_models::{
+    AppError, AppErrorKind, ArgoApplicationSummary, HelmReconciliationResource,
+    HelmReconciliationStatus, HelmReleaseSummary, PodLogStreamRequest,
+};
 use serde_json::{Map, Value, json};
 
 pub async fn get_pod_logs(arguments: args::PodLogsArgs) -> Result<Value, AppError> {
@@ -25,21 +29,42 @@ pub async fn get_pod_logs(arguments: args::PodLogsArgs) -> Result<Value, AppErro
         arguments.previous,
     )
     .await?;
-    Ok(json!({
-        "context": cluster,
-        "container": read.container,
-        "lineCount": read.lines.len(),
-        "lines": read.lines,
-    }))
+    let mut body = Map::new();
+    body.insert("context".into(), cluster.into());
+    body.insert("container".into(), read.container.into());
+    body.insert("lineCount".into(), read.lines.len().into());
+    body.insert("lines".into(), json!(read.lines));
+    if read.truncated {
+        body.insert("truncated".into(), true.into());
+        body.insert(
+            "truncatedReason".into(),
+            format!("older lines dropped to stay within {MAX_LOG_READ_BYTES} bytes").into(),
+        );
+    }
+    Ok(Value::Object(body))
 }
 
-pub async fn list_argocd_applications(arguments: args::ContextArgs) -> Result<Value, AppError> {
+fn in_namespace(filter: Option<&str>, namespace: Option<&str>) -> bool {
+    filter.is_none_or(|filter| namespace == Some(filter))
+}
+
+pub async fn list_argocd_applications(arguments: args::GitOpsListArgs) -> Result<Value, AppError> {
     let (_, cluster) = access_for(arguments.context)?;
-    let applications = argo_applications(cluster.clone(), None).await?;
-    Ok(json!({
-        "context": cluster,
-        "applications": applications.items.iter().map(application).collect::<Vec<_>>(),
-    }))
+    let namespace = arguments
+        .namespace
+        .filter(|namespace| !namespace.is_empty());
+    let mut applications: Vec<_> = argo_applications(cluster.clone(), None)
+        .await?
+        .items
+        .into_iter()
+        .filter(|app| in_namespace(namespace.as_deref(), app.namespace.as_deref()))
+        .collect();
+    applications
+        .sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
+    let mut body = page(applications, arguments.limit, arguments.offset)?
+        .into_json("applications", |app| application(&app));
+    body.insert("context".into(), cluster.into());
+    Ok(Value::Object(body))
 }
 
 fn application(app: &ArgoApplicationSummary) -> Value {
@@ -70,15 +95,22 @@ fn application(app: &ArgoApplicationSummary) -> Value {
     Value::Object(row)
 }
 
-pub async fn list_helm_releases(arguments: args::ContextArgs) -> Result<Value, AppError> {
+pub async fn list_helm_releases(arguments: args::GitOpsListArgs) -> Result<Value, AppError> {
     let (_, cluster) = access_for(arguments.context)?;
+    let namespace = arguments
+        .namespace
+        .filter(|namespace| !namespace.is_empty());
     let list = helm_releases(cluster.clone(), None).await?;
-    let mut body = Map::new();
+    let mut releases: Vec<_> = list
+        .releases
+        .into_iter()
+        .filter(|release| in_namespace(namespace.as_deref(), Some(&release.namespace)))
+        .collect();
+    releases
+        .sort_by(|left, right| (&left.namespace, &left.name).cmp(&(&right.namespace, &right.name)));
+    let mut body = page(releases, arguments.limit, arguments.offset)?
+        .into_json("releases", |summary| release(&summary));
     body.insert("context".into(), cluster.into());
-    body.insert(
-        "releases".into(),
-        Value::Array(list.releases.iter().map(release).collect()),
-    );
     if !list.warnings.is_empty() {
         body.insert("warnings".into(), json!(list.warnings));
     }
@@ -94,5 +126,101 @@ fn release(release: &HelmReleaseSummary) -> Value {
     insert_some(&mut row, "revision", release.revision);
     insert_some(&mut row, "status", release.status.clone());
     insert_some(&mut row, "updatedAt", release.updated_at.clone());
+    Value::Object(row)
+}
+
+/// The latest revision's summary, value keys, manifest resources and live drift. Values
+/// and manifest text never leave: they can hold credentials.
+pub async fn get_helm_release(arguments: args::HelmReleaseArgs) -> Result<Value, AppError> {
+    let (_, cluster) = access_for(arguments.context)?;
+    let list = helm_releases(cluster.clone(), None).await?;
+    let summary = list
+        .releases
+        .into_iter()
+        .find(|release| release.namespace == arguments.namespace && release.name == arguments.name)
+        .ok_or_else(|| {
+            AppError::new(
+                format!(
+                    "Helm release {}/{} was not found",
+                    arguments.namespace, arguments.name
+                ),
+                AppErrorKind::NotFound,
+            )
+        })?;
+    let details = get_helm_release_details(
+        cluster.clone(),
+        summary.namespace.clone(),
+        summary.storage_kind.clone(),
+        summary.storage_name.clone(),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let reconciliation = get_helm_release_reconciliation(
+        cluster.clone(),
+        summary.namespace.clone(),
+        summary.storage_kind,
+        summary.storage_name,
+        None,
+    )
+    .await?;
+    let manifest = &details.manifest_summary;
+    let totals = &reconciliation.totals;
+    let mut body = Map::new();
+    body.insert("context".into(), cluster.into());
+    body.insert("release".into(), release(&details.summary));
+    body.insert(
+        "valueKeys".into(),
+        json!(details.values_summary.top_level_keys),
+    );
+    body.insert(
+        "valueCount".into(),
+        details.values_summary.value_count.into(),
+    );
+    body.insert(
+        "manifestResourceCount".into(),
+        manifest.resource_count.into(),
+    );
+    if manifest.truncated {
+        body.insert("manifestResourcesTruncated".into(), true.into());
+    }
+    body.insert(
+        "totals".into(),
+        json!({
+            "tracked": totals.tracked,
+            "unlabeledLive": totals.unlabeled_live,
+            "missing": totals.missing,
+            "labelOnly": totals.label_only,
+            "unavailable": totals.unavailable,
+        }),
+    );
+    body.insert(
+        "resources".into(),
+        Value::Array(reconciliation.resources.iter().map(drift).collect()),
+    );
+    if !reconciliation.warnings.is_empty() {
+        body.insert("warnings".into(), json!(reconciliation.warnings));
+    }
+    Ok(Value::Object(body))
+}
+
+fn drift(resource: &HelmReconciliationResource) -> Value {
+    let mut row = Map::new();
+    insert_some(&mut row, "kind", resource.kind.clone());
+    insert_some(&mut row, "name", resource.name.clone());
+    insert_some(&mut row, "namespace", resource.namespace.clone());
+    let status = match resource.status {
+        HelmReconciliationStatus::Tracked => "tracked",
+        HelmReconciliationStatus::UnlabeledLive => "unlabeledLive",
+        HelmReconciliationStatus::Missing => "missing",
+        HelmReconciliationStatus::LabelOnly => "labelOnly",
+        HelmReconciliationStatus::Unavailable => "unavailable",
+    };
+    row.insert("status".into(), status.into());
+    row.insert("message".into(), resource.status_message.clone().into());
+    if let Some(live) = &resource.live_resource {
+        row.insert("live".into(), compact::resource(live));
+    }
     Value::Object(row)
 }

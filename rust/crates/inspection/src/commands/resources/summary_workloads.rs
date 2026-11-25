@@ -1,7 +1,7 @@
 use super::builtin_summary::{
     BuiltinSummary, KindStatus, builtin_summary, list_namespaced_summaries, namespace_or_all,
 };
-use crate::commands::helpers::{Readiness, kubernetes_health, list_params};
+use crate::commands::helpers::{Readiness, kubernetes_health};
 use crate::models::{AppError, ResourceHealth};
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::apps::v1::{
@@ -9,7 +9,7 @@ use k8s_openapi::api::apps::v1::{
 };
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::networking::v1::Ingress;
-use kube::Client;
+use kube::{Client, api::ListParams};
 use kubecove_kube::commands::live_store::ListedResources;
 use serde_json::Value;
 
@@ -204,24 +204,38 @@ pub(super) async fn workload_resource_summaries(
     cluster_context: &str,
     kind: &str,
     namespace: Option<&str>,
+    params: &ListParams,
 ) -> Result<Option<ListedResources>, AppError> {
     let now = Utc::now();
     let summaries = match kind {
-        "Deployment" => deployment_summaries(client, cluster_context, namespace, now).await?,
-        "ReplicaSet" => replicaset_summaries(client, cluster_context, namespace, now).await?,
+        "Deployment" => {
+            deployment_summaries(client, cluster_context, namespace, params, now).await?
+        }
+        "ReplicaSet" => {
+            replicaset_summaries(client, cluster_context, namespace, params, now).await?
+        }
         "StatefulSet" => {
-            list_namespaced_summaries::<StatefulSet>(client, cluster_context, namespace, now)
-                .await?
+            list_namespaced_summaries::<StatefulSet>(
+                client,
+                cluster_context,
+                namespace,
+                params,
+                now,
+            )
+            .await?
         }
         "DaemonSet" => {
-            list_namespaced_summaries::<DaemonSet>(client, cluster_context, namespace, now).await?
+            list_namespaced_summaries::<DaemonSet>(client, cluster_context, namespace, params, now)
+                .await?
         }
         "Ingress" => {
-            list_namespaced_summaries::<Ingress>(client, cluster_context, namespace, now).await?
+            list_namespaced_summaries::<Ingress>(client, cluster_context, namespace, params, now)
+                .await?
         }
-        "Job" => job_summaries(client, cluster_context, namespace, now).await?,
+        "Job" => job_summaries(client, cluster_context, namespace, params, now).await?,
         "CronJob" => {
-            list_namespaced_summaries::<CronJob>(client, cluster_context, namespace, now).await?
+            list_namespaced_summaries::<CronJob>(client, cluster_context, namespace, params, now)
+                .await?
         }
         _ => return Ok(None),
     };
@@ -233,15 +247,13 @@ async fn deployment_summaries(
     client: Client,
     cluster_context: &str,
     namespace: Option<&str>,
+    params: &ListParams,
     now: DateTime<Utc>,
 ) -> Result<ListedResources, AppError> {
     let list = kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::DeploymentProjection,
-    >(
-        namespace_or_all::<Deployment>(client, namespace),
-        &list_params(),
-    )
+    >(namespace_or_all::<Deployment>(client, namespace), params)
     .await
     .map_err(AppError::from)?;
     Ok(ListedResources::from_list(list, |deploy| {
@@ -253,15 +265,13 @@ async fn replicaset_summaries(
     client: Client,
     cluster_context: &str,
     namespace: Option<&str>,
+    params: &ListParams,
     now: DateTime<Utc>,
 ) -> Result<ListedResources, AppError> {
     let list = kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::ReplicaSetProjection,
-    >(
-        namespace_or_all::<ReplicaSet>(client, namespace),
-        &list_params(),
-    )
+    >(namespace_or_all::<ReplicaSet>(client, namespace), params)
     .await
     .map_err(AppError::from)?;
     Ok(ListedResources::from_list(list, |rs| {
@@ -273,12 +283,13 @@ async fn job_summaries(
     client: Client,
     cluster_context: &str,
     namespace: Option<&str>,
+    params: &ListParams,
     now: DateTime<Utc>,
 ) -> Result<ListedResources, AppError> {
     let list = kubecove_kube::commands::list_projection::list::<
         _,
         super::summary_projection::JobProjection,
-    >(namespace_or_all::<Job>(client, namespace), &list_params())
+    >(namespace_or_all::<Job>(client, namespace), params)
     .await
     .map_err(AppError::from)?;
     Ok(ListedResources::from_list(list, |job| {

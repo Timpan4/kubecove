@@ -81,7 +81,28 @@ pub async fn dynamic_resources_summary_from(
     resource_kind: DiscoveredResourceKind,
     namespace: Option<String>,
 ) -> Result<ListedResources, AppError> {
+    dynamic_resources_summary_with_labels_from(
+        access,
+        cluster_context,
+        resource_kind,
+        namespace,
+        None,
+    )
+    .await
+}
+
+pub async fn dynamic_resources_summary_with_labels_from(
+    access: &ClusterAccess,
+    cluster_context: String,
+    resource_kind: DiscoveredResourceKind,
+    namespace: Option<String>,
+    label_selector: Option<&str>,
+) -> Result<ListedResources, AppError> {
     crate::commands::helpers::validate_namespace(namespace.as_deref())?;
+    let mut params = list_params();
+    if let Some(selector) = label_selector.map(str::trim).filter(|s| !s.is_empty()) {
+        params = params.labels(selector);
+    }
     let client = access.read_client(&cluster_context).await?;
     let api_resource = api_resource_from_discovered(&resource_kind)?;
     let api: Api<DynamicObject> = if resource_kind.namespaced {
@@ -97,7 +118,7 @@ pub async fn dynamic_resources_summary_from(
     let objects = kubecove_kube::commands::list_projection::list::<
         _,
         kubecove_kube::commands::list_projection::Dynamic,
-    >(api, &list_params())
+    >(api, &params)
     .await
     .map_err(AppError::from)?;
     Ok(ListedResources::from_list(objects, |object| {
