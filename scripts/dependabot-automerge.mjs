@@ -55,13 +55,16 @@ export function mergeReadiness(checks, runs) {
   return { action: "arm", reason: "every advisory check passed; auto-merge waits for required checks" };
 }
 
-async function readRuns(github, repo, sha) {
-  const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, { ...repo, head_sha: sha, event: "pull_request" });
+async function readRuns(github, repo, sha, branch) {
+  const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, { ...repo, head_sha: sha, event: "pull_request", branch });
   // A newer run of the same workflow on the head (a reopen, or one that replaced a cancelled run)
-  // supersedes older ones; a rerun keeps its run id.
+  // supersedes older ones; a rerun keeps its run id. Another pull request from the same commit
+  // has its own branch, so it never stands in for this one.
+  const repository = `${repo.owner}/${repo.repo}`;
   const latest = new Map();
   for (const run of runs) {
-    if (followedWorkflows.includes(run.name) && run.id > (latest.get(run.name)?.id ?? -1)) latest.set(run.name, run);
+    if (!followedWorkflows.includes(run.name) || run.head_branch !== branch || run.head_repository?.full_name !== repository) continue;
+    if (run.id > (latest.get(run.name)?.id ?? -1)) latest.set(run.name, run);
   }
   return [...latest.values()].map((run) => ({ name: run.name, status: run.status, conclusion: run.conclusion }));
 }
@@ -175,7 +178,7 @@ export async function settlePullRequest({ github, writer, context, core, pr, reg
     await commitBunNix({ writer, context, core, pr, branch: current.head.ref, contents: regeneratedBunNix });
     return "committed";
   }
-  const readiness = mergeReadiness(await readChecks(github, repo, pr), await readRuns(github, repo, pr.sha));
+  const readiness = mergeReadiness(await readChecks(github, repo, pr), await readRuns(github, repo, pr.sha, current.head.ref));
   core.info(`#${pr.number} at ${pr.sha}: ${readiness.action} (${readiness.reason})`);
   if (readiness.action !== "arm") {
     if (armed) {

@@ -19,7 +19,8 @@ const newer = "b".repeat(40);
 const check = (name, status, conclusion, isRequired = false) => ({ __typename: "CheckRun", name, status, conclusion, isRequired });
 const status = (context, state, isRequired = false) => ({ __typename: "StatusContext", context, state, isRequired });
 
-const run = (id, name, status, conclusion = null) => ({ id, name, status, conclusion });
+const run = (id, name, status, conclusion = null, head_branch = "dependabot/bun/x", owner = "Timpan4/kubecove") =>
+  ({ id, name, status, conclusion, head_branch, head_repository: { full_name: owner } });
 const completedRuns = ["CI", "Parity", "CodSpeed"].map((name, id) => run(id + 1, name, "completed", "success"));
 
 function harness({ pull = {}, pages = [[]], files = {}, armError, runs = completedRuns } = {}) {
@@ -32,7 +33,7 @@ function harness({ pull = {}, pages = [[]], files = {}, armError, runs = complet
   const github = {
     paginate: async (method, params) => {
       assert.equal(method, "runs");
-      assert.deepEqual(params, { ...repo, head_sha: head, event: "pull_request" });
+      assert.deepEqual(params, { ...repo, head_sha: head, event: "pull_request", branch: "dependabot/bun/x" });
       return runs;
     },
     rest: {
@@ -103,6 +104,11 @@ test("a followed workflow that ended without passing blocks even when it created
   assert.equal(await replaced.settle(), "armed");
   const regressed = harness({ pages, runs: [...others, run(6, "Parity", "completed", "failure"), run(5, "Parity", "completed", "success")] });
   assert.equal(await regressed.settle(), "block");
+  // Another pull request from the same commit runs on its own branch or fork.
+  for (const [branch, owner] of [["copy", "Timpan4/kubecove"], ["dependabot/bun/x", "someone/fork"]]) {
+    const borrowed = harness({ pages, runs: [...others, run(5, "Parity", "completed", "failure"), run(6, "Parity", "completed", "success", branch, owner)] });
+    assert.equal(await borrowed.settle(), "block", `${owner}:${branch}`);
+  }
 });
 
 test("every non-passing conclusion and status blocks, neutral and skipped pass", async () => {
