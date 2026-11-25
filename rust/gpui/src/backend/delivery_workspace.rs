@@ -2,8 +2,9 @@
 //! the existing typed commands. Partial permission failures preserve usable rows.
 
 use super::{ListVersions, ScopeResult};
+use futures_util::{StreamExt, stream};
 use kubecove_lib::{
-    commands::{self, ClusterAccess, ClusterLiveStore, list_projection::bounded_join_all},
+    commands::{self, ClusterAccess, ClusterLiveStore},
     models::{AppError, AppErrorKind, ArgoApplicationSummary, WatchResourceKey, WatchResourceKind},
     runtime::State,
 };
@@ -162,7 +163,9 @@ pub async fn resources(
             };
             (key, custom, result)
         });
-    for (key, custom, result) in bounded_join_all(reads, commands::MAX_LIST_CONCURRENCY).await {
+    let results = stream::iter(reads).buffered(commands::MAX_LIST_CONCURRENCY);
+    futures_util::pin_mut!(results);
+    while let Some((key, custom, result)) = results.next().await {
         match result {
             Ok(snapshot) => {
                 resources.extend(Arc::unwrap_or_clone(snapshot.rows));
