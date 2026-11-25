@@ -63,15 +63,22 @@ function step(job, name) {
   return found;
 }
 
-test("release preparation commits frontend, backend, GPUI and server version metadata", () => {
+test("release preparation commits frontend, backend, GPUI, server and Nix lock metadata", () => {
   const preparation = parse(readFileSync(new URL("../.github/workflows/prepare-release.yml", import.meta.url), "utf8"));
-  const commands = step(job("prepare", preparation), "Commit release branch").run;
+  const prepare = job("prepare", preparation);
+  const commands = step(prepare, "Commit release branch").run;
   const staged = commands.match(/^\s*git add (.+)$/m)[1].split(/\s+/);
-  for (const path of ["package.json", "rust/Cargo.toml",
+  for (const path of ["package.json", "bun.lock", "bun.nix", "rust/Cargo.toml",
     "rust/Cargo.lock", "rust/server/Cargo.toml", "rust/server/Cargo.lock",
     "rust/gpui/Cargo.toml", "rust/gpui/Cargo.lock", "CHANGELOG.md"]) {
     assert.ok(staged.includes(path), `Release commit omits ${path}`);
   }
+  // A tag whose bun.nix disagrees with bun.lock fails every offline Nix build of it.
+  const names = prepare.steps.map(({ name }) => name);
+  const regenerate = names.indexOf("Regenerate bun.nix");
+  assert.match(step(prepare, "Regenerate bun.nix").run, /^nix run --inputs-from \. bun2nix -- -o bun\.nix$/);
+  assert.ok(names.indexOf("Prepare release files") < regenerate, "bun.nix must be regenerated from the prepared bun.lock");
+  assert.ok(regenerate < names.indexOf("Commit release branch"), "bun.nix must be regenerated before the release commit");
 });
 
 test("release preparation does not use manual dispatch for required PR checks", () => {
