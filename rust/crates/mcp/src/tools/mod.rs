@@ -94,7 +94,9 @@ tools! {
         "Get resource topology",
         "How resources in one namespace connect. mode=ownership follows owners and GitOps \
          ownership; mode=networkFlow follows Ingress to Service to Pod. Set focusKind and \
-         focusName to return only what connects to one resource. Edges name nodes by index.";
+         focusName to return only what connects to one resource. Edges name nodes by index \
+         and page on their own: keep requesting with edgeOffset=nextEdgeOffset until it is \
+         absent, even after nextOffset is gone.";
     ReviewRbacAccess => "review_rbac_access", args::RbacReviewArgs, "Review RBAC access",
         "Asks the API server whether a ServiceAccount, user or group may perform one verb on \
          a resource or URL, as kubectl auth can-i does. Use it to explain Forbidden errors. \

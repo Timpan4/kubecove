@@ -27,7 +27,7 @@ use std::{collections::BTreeMap, io::Read};
 mod list_projection;
 #[cfg(feature = "bench-support")]
 pub use list_projection::benchmark_storage_records;
-pub use list_projection::{helm_releases_from, list_helm_releases};
+pub use list_projection::{helm_release_from, helm_releases_from, list_helm_releases};
 
 const HELM_STORAGE_SECRET: &str = "Secret";
 const HELM_STORAGE_CONFIGMAP: &str = "ConfigMap";
@@ -94,16 +94,36 @@ pub async fn get_helm_release_details(
     yaml_view_mode: Option<YamlViewMode>,
     yaml_encoding: Option<YamlEncoding>,
 ) -> Result<HelmReleaseDetails, AppError> {
-    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
-        .read_client(&cluster_context)
-        .await?;
-
-    let (record, metadata, yaml) = release_storage_object(
-        client,
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+    helm_release_details_from(
+        &access,
         &cluster_context,
         &namespace,
         &storage_kind,
         &storage_name,
+        yaml_view_mode,
+        yaml_encoding,
+    )
+    .await
+}
+
+/// `get_helm_release_details` through an access the caller already resolved.
+pub async fn helm_release_details_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    namespace: &str,
+    storage_kind: &str,
+    storage_name: &str,
+    yaml_view_mode: Option<YamlViewMode>,
+    yaml_encoding: Option<YamlEncoding>,
+) -> Result<HelmReleaseDetails, AppError> {
+    let client = access.read_client(cluster_context).await?;
+    let (record, metadata, yaml) = release_storage_object(
+        client,
+        cluster_context,
+        namespace,
+        storage_kind,
+        storage_name,
         yaml_view_mode.unwrap_or_default(),
         yaml_encoding.unwrap_or_default(),
     )

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
+import { mcpMockStatus } from "../../src/lib/mcp-dev-mocks";
 import { loadContract, parseContract, requireActionCoverage, requireRegisteredActions, requireViewCoverage, validateReports } from "./contract";
 import { mergeActionMaps } from "./action-maps";
 import { VIEWS } from "./visual/views";
@@ -11,6 +13,13 @@ describe("equal GPUI and Svelte tests", () => {
 	test("every action is exercised by the shared scenarios", async () => {
 		requireActionCoverage(await loadContract());
 		expect(() => requireActionCoverage(parseContract(contract))).toThrow("typeSettingsField");
+	});
+	// The web driver reads its tool count from the mock, and GPUI from the Rust registry.
+	test("the web MCP mock lists the Rust tool registry", async () => {
+		const registry = await Bun.file(resolve(import.meta.dir, "../../rust/crates/mcp/src/tools/mod.rs")).text();
+		const names = [...registry.matchAll(/^\s*[A-Z]\w* => "([a-z_]+)",/gm)].map((match) => match[1]);
+		expect(names.length).toBeGreaterThan(0);
+		expect(mcpMockStatus().tools).toEqual(names);
 	});
 });
 

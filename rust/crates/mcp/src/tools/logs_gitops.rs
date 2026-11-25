@@ -3,13 +3,13 @@
 use super::{access_for, args};
 use crate::compact::{self, health_state, insert_some, page};
 use kubecove_gitops::commands::{
-    argocd_applications_from, get_helm_release_details, get_helm_release_reconciliation,
-    helm_releases_from,
+    argocd_applications_from, helm_release_details_from, helm_release_from,
+    helm_release_reconciliation_from, helm_releases_from,
 };
 use kubecove_live::commands::{MAX_LOG_READ_BYTES, read_pod_logs};
 use kubecove_models::{
-    AppError, AppErrorKind, ArgoApplicationSummary, HelmReconciliationResource,
-    HelmReconciliationStatus, HelmReleaseSummary, PodLogStreamRequest,
+    AppError, ArgoApplicationSummary, HelmReconciliationResource, HelmReconciliationStatus,
+    HelmReleaseSummary, PodLogStreamRequest,
 };
 use serde_json::{Map, Value, json};
 
@@ -121,42 +121,27 @@ fn release(release: &HelmReleaseSummary) -> Value {
 /// The latest revision's summary, value keys, manifest resources and live drift. Values
 /// and manifest text never leave: they can hold credentials.
 pub async fn get_helm_release(arguments: args::HelmReleaseArgs) -> Result<Value, AppError> {
+    compact::page_limit(arguments.limit)?;
     let (access, cluster) = access_for(arguments.context)?;
-    // Reading only the release's namespace needs no cluster-wide storage access.
-    let list = helm_releases_from(&access, &cluster, Some(&arguments.namespace)).await?;
-    let summary = list
-        .releases
-        .into_iter()
-        .find(|release| release.name == arguments.name)
-        .ok_or_else(|| {
-            let mut message = format!(
-                "Helm release {}/{} was not found",
-                arguments.namespace, arguments.name
-            );
-            for warning in &list.warnings {
-                message.push(' ');
-                message.push_str(warning);
-            }
-            AppError::new(message, AppErrorKind::NotFound)
-        })?;
-    let details = get_helm_release_details(
-        cluster.clone(),
-        summary.namespace.clone(),
-        summary.storage_kind.clone(),
-        summary.storage_name.clone(),
-        None,
+    // Reading only the release's namespace needs no cluster-wide storage access. The
+    // storage reads use the requested namespace: a summary's namespace comes from the
+    // decoded payload, which need not match where the storage object lives.
+    let namespace = arguments.namespace.as_str();
+    let summary = helm_release_from(&access, &cluster, namespace, &arguments.name).await?;
+    let (storage_kind, storage_name) = (&summary.storage_kind, &summary.storage_name);
+    let details = helm_release_details_from(
+        &access,
+        &cluster,
+        namespace,
+        storage_kind,
+        storage_name,
         None,
         None,
     )
     .await?;
-    let reconciliation = get_helm_release_reconciliation(
-        cluster.clone(),
-        summary.namespace.clone(),
-        summary.storage_kind,
-        summary.storage_name,
-        None,
-    )
-    .await?;
+    let reconciliation =
+        helm_release_reconciliation_from(&access, &cluster, namespace, storage_kind, storage_name)
+            .await?;
     let manifest = &details.manifest_summary;
     let totals = &reconciliation.totals;
     let mut body = Map::new();

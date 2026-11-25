@@ -106,19 +106,67 @@ pub async fn helm_releases_from(
     cluster_context: &str,
     namespace: Option<&str>,
 ) -> Result<HelmReleaseList, AppError> {
+    crate::commands::helpers::validate_namespace(namespace)?;
     let client = access.read_client(cluster_context).await?;
-    match namespace {
-        Some(namespace) => helm_releases_in(client, cluster_context, namespace).await,
-        None => all_helm_releases(client, cluster_context).await,
+    let Some(namespace) = namespace else {
+        return all_helm_releases(client, cluster_context).await;
+    };
+    let (summaries, errors) = namespace_storage(client, cluster_context, namespace).await;
+    let warnings = errors
+        .iter()
+        .map(|(storage_kind, err)| {
+            format!(
+                "Helm {storage_kind} storage unavailable: {}.",
+                storage_reason(err)
+            )
+        })
+        .collect();
+    if errors.len() == 2 {
+        return Err(storage_errors(
+            errors.into_iter().map(|(_, err)| err).collect(),
+        ));
+    }
+    Ok(HelmReleaseList {
+        releases: latest_releases(summaries),
+        warnings,
+    })
+}
+
+/// The latest revision of release `name` in `namespace`. A storage kind that could not
+/// be read may hold the release, so a miss then returns that storage error instead of
+/// `NotFound`.
+pub async fn helm_release_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    namespace: &str,
+    name: &str,
+) -> Result<HelmReleaseSummary, AppError> {
+    crate::commands::helpers::validate_namespace(Some(namespace))?;
+    let client = access.read_client(cluster_context).await?;
+    let (summaries, errors) = namespace_storage(client, cluster_context, namespace).await;
+    let found = summaries
+        .into_iter()
+        .filter(|release| release.name == name)
+        .max_by_key(|release| release.revision.unwrap_or(0));
+    match found {
+        Some(release) => Ok(release),
+        None if errors.is_empty() => Err(AppError::new(
+            format!("Helm release {namespace}/{name} was not found"),
+            AppErrorKind::NotFound,
+        )),
+        None => Err(storage_errors(
+            errors.into_iter().map(|(_, err)| err).collect(),
+        )),
     }
 }
 
-async fn helm_releases_in(
+/// Every release revision stored in `namespace`, and the error of each storage kind that
+/// could not be read.
+async fn namespace_storage(
     client: Client,
     cluster_context: &str,
     namespace: &str,
-) -> Result<HelmReleaseList, AppError> {
-    crate::commands::helpers::validate_namespace(Some(namespace))?;
+) -> (Vec<HelmReleaseSummary>, Vec<(&'static str, AppError)>) {
     let namespaces = [namespace.to_owned()];
     let (secrets, configmaps) = futures_util::join!(
         Box::pin(list_releases_by_namespace::<Secret>(
@@ -136,29 +184,16 @@ async fn helm_releases_in(
     );
     let mut summaries = Vec::new();
     let mut errors = Vec::new();
-    let mut warnings = Vec::new();
     for (storage_kind, listed) in [
         (HELM_STORAGE_SECRET, secrets),
         (HELM_STORAGE_CONFIGMAP, configmaps),
     ] {
         match listed {
             Ok((mut releases, _)) => summaries.append(&mut releases),
-            Err(err) => {
-                warnings.push(format!(
-                    "Helm {storage_kind} storage unavailable: {}.",
-                    storage_reason(&err)
-                ));
-                errors.push(err);
-            }
+            Err(err) => errors.push((storage_kind, err)),
         }
     }
-    if errors.len() == 2 {
-        return Err(storage_errors(errors));
-    }
-    Ok(HelmReleaseList {
-        releases: latest_releases(summaries),
-        warnings,
-    })
+    (summaries, errors)
 }
 
 fn storage_reason(err: &AppError) -> &str {

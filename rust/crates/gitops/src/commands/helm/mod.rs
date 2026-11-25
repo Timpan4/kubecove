@@ -20,5 +20,8 @@ pub use storage::{
     benchmark_storage_record_projection, benchmark_storage_records,
 };
 
-pub use reconciliation::get_helm_release_reconciliation;
-pub use storage::{get_helm_release_details, helm_releases_from, list_helm_releases};
+pub use reconciliation::{get_helm_release_reconciliation, helm_release_reconciliation_from};
+pub use storage::{
+    get_helm_release_details, helm_release_details_from, helm_release_from, helm_releases_from,
+    list_helm_releases,
+};

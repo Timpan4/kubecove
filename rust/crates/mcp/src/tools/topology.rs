@@ -27,6 +27,7 @@ pub async fn get_resource_topology(
             ));
         }
     };
+    compact::page_limit(arguments.limit)?;
     let (access, cluster) = access_for(arguments.context)?;
     let mode = match arguments.mode {
         args::TopologyMode::Ownership => "ownership",
@@ -35,7 +36,9 @@ pub async fn get_resource_topology(
     let namespaces = vec![arguments.namespace];
     // Network flow reads no custom kinds. For ownership, reuse the custom kinds the live
     // store already found present in this namespace, else take the cached kind catalog
-    // `list_resources` uses and let the collection check which have objects here.
+    // `list_resources` uses and let the collection check which have objects here. A user
+    // who may not list CustomResourceDefinitions still gets the built-in graph.
+    let mut kinds_warning = None;
     let (custom_kinds, custom_kinds_are_present) = match arguments.mode {
         args::TopologyMode::NetworkFlow => (Vec::new(), true),
         args::TopologyMode::Ownership => match context
@@ -43,13 +46,18 @@ pub async fn get_resource_topology(
             .cached_present_custom_resource_kinds(access.source_key(), &cluster, &namespaces)
         {
             Some(kinds) => (Arc::unwrap_or_clone(kinds), true),
-            None => (
-                Arc::unwrap_or_clone(custom_kinds(&access, &context.live_store, &cluster).await?),
-                false,
-            ),
+            None => match custom_kinds(&access, &context.live_store, &cluster).await {
+                Ok(kinds) => (Arc::unwrap_or_clone(kinds), false),
+                Err(error) if error.kind == AppErrorKind::Forbidden => {
+                    kinds_warning =
+                        Some(format!("custom resources are not shown: {}", error.message));
+                    (Vec::new(), true)
+                }
+                Err(error) => return Err(error),
+            },
         },
     };
-    let topology = resource_topology_from(
+    let mut topology = resource_topology_from(
         &access,
         cluster.clone(),
         namespaces,
@@ -58,6 +66,7 @@ pub async fn get_resource_topology(
         custom_kinds_are_present,
     )
     .await?;
+    topology.warnings.extend(kinds_warning);
     let mut body = topology_body(
         topology,
         focus

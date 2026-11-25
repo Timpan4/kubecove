@@ -65,27 +65,36 @@ pub async fn list_resources(
     .await?;
     let matches =
         |row: &ResourceSummary| resource_row_matches(name_filter.as_deref(), arguments.health, row);
-    let mut body = match &selected {
-        // The selected rows decide membership. A cached row with the same uid replaces
-        // its fresh copy, because only cached rows carry Flux ownership enrichment.
-        Some(selected) => {
+    let mut body = match selected {
+        // The selected rows decide membership and keep their fresh status. Only cached
+        // rows carry Flux ownership enrichment, so copy it from the cached row with the
+        // same uid.
+        Some(mut selected) => {
             let cached: HashMap<&str, &ResourceSummary> = scope
                 .rows()
                 .filter_map(|row| Some((row.uid.as_deref()?, row)))
                 .collect();
-            let rows = selected.iter().map(|row| {
-                row.uid
-                    .as_deref()
-                    .and_then(|uid| cached.get(uid).copied())
-                    .unwrap_or(row)
-            });
-            page_resource_rows(rows, arguments.limit, arguments.offset, matches)?
+            for row in &mut selected {
+                if let Some(cached) = row.uid.as_deref().and_then(|uid| cached.get(uid)) {
+                    copy_flux_enrichment(row, cached);
+                }
+            }
+            page_resource_rows(selected.iter(), arguments.limit, arguments.offset, matches)?
         }
         None => page_resource_rows(scope.rows(), arguments.limit, arguments.offset, matches)?,
     };
     body.insert("context".into(), cluster.into());
     body.insert("kind".into(), kind.kind().into());
     Ok(Value::Object(body))
+}
+
+/// Flux inventory enrichment sets only these two fields, and only fills an owner the
+/// object's own metadata did not name.
+fn copy_flux_enrichment(row: &mut ResourceSummary, cached: &ResourceSummary) {
+    row.git_ops_ownership_partial |= cached.git_ops_ownership_partial;
+    if row.git_ops_owner.is_none() {
+        row.git_ops_owner.clone_from(&cached.git_ops_owner);
+    }
 }
 
 /// The rows the API server selects, read live because the shared scope holds whole kinds.

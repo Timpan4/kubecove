@@ -127,12 +127,17 @@ async fn read_newest_lines(
     Ok(tail)
 }
 
-/// Shortens one line to `budget` bytes, ending it with the per-line truncation notice.
+/// Shortens one line to `budget` bytes, ending it with the per-line truncation notice
+/// when the notice fits. The read's `truncated` flag still reports the cut when it does
+/// not.
 fn fit_line(line: &str, budget: usize) -> String {
     let text = line
         .strip_suffix(LOG_LINE_TRUNCATION_NOTICE)
         .unwrap_or(line);
-    let kept = text.floor_char_boundary(budget.saturating_sub(LOG_LINE_TRUNCATION_NOTICE.len()));
+    let Some(text_budget) = budget.checked_sub(LOG_LINE_TRUNCATION_NOTICE.len()) else {
+        return text[..text.floor_char_boundary(budget)].to_owned();
+    };
+    let kept = text.floor_char_boundary(text_budget);
     let mut fitted = String::with_capacity(kept + LOG_LINE_TRUNCATION_NOTICE.len());
     fitted.push_str(&text[..kept]);
     fitted.push_str(LOG_LINE_TRUNCATION_NOTICE);
@@ -216,5 +221,11 @@ mod tests {
         assert!(line.ends_with(LOG_LINE_TRUNCATION_NOTICE));
         assert!(line.len() <= MAX_LOG_READ_BYTES);
         assert_eq!(read.bytes, line.len());
+
+        // A budget smaller than the notice keeps text only, still within the budget.
+        let small = newest("old\néééé\n", 5).await;
+        assert!(small.truncated);
+        assert_eq!(Vec::from(small.lines), ["éé"]);
+        assert_eq!(small.bytes, 4);
     }
 }

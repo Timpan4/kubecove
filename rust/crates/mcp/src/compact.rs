@@ -10,6 +10,18 @@ use serde_json::{Map, Value, json};
 /// Default page size chosen by the product owner on 2026-11-02 (ADR 0028).
 pub const DEFAULT_PAGE_SIZE: usize = 500;
 
+/// The page size `limit` asks for. Handlers that read a lot before paging call this
+/// first, so a bad limit fails before any cluster read.
+pub fn page_limit(limit: Option<usize>) -> Result<usize, AppError> {
+    match limit.unwrap_or(DEFAULT_PAGE_SIZE) {
+        0 => Err(AppError::new(
+            "limit must be at least 1",
+            AppErrorKind::Validation,
+        )),
+        limit => Ok(limit),
+    }
+}
+
 /// One page of rows and where the next one starts.
 pub struct Page<T> {
     pub items: Vec<T>,
@@ -23,13 +35,7 @@ pub fn page<T>(
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<Page<T>, AppError> {
-    let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE);
-    if limit == 0 {
-        return Err(AppError::new(
-            "limit must be at least 1",
-            AppErrorKind::Validation,
-        ));
-    }
+    let limit = page_limit(limit)?;
     let total = rows.len();
     let offset = offset.unwrap_or(0).min(total);
     let items: Vec<T> = rows.into_iter().skip(offset).take(limit).collect();

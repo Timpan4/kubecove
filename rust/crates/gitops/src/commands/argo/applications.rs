@@ -110,6 +110,8 @@ pub async fn argocd_applications_from(
     cluster_context: &str,
     namespace: Option<&str>,
 ) -> Result<VersionedList<ArgoApplicationSummary>, AppError> {
+    // Validate before discovery, which returns an empty list when Argo CD is absent.
+    crate::commands::helpers::validate_namespace(namespace)?;
     let client = access.read_client(cluster_context).await?;
     let ar = match find_api_resource(&client, "argoproj.io", "Application").await? {
         Some(ar) => ar,

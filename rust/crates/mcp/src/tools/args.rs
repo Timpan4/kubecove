@@ -164,7 +164,8 @@ pub struct TopologyArgs {
     pub limit: Option<usize>,
     /// Nodes to skip, from a previous result's `nextOffset`.
     pub offset: Option<usize>,
-    /// Edges to skip, from a previous result's `nextEdgeOffset`.
+    /// Edges to skip, from a previous result's `nextEdgeOffset`. Edges page independently
+    /// of nodes, so follow `nextEdgeOffset` until it is absent.
     pub edge_offset: Option<usize>,
 }
 

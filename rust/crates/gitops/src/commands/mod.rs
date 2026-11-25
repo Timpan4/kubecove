@@ -25,6 +25,6 @@ pub use argo::{
 };
 pub use flux::{detect_flux, get_flux_resource_details, list_flux_resources};
 pub use helm::{
-    get_helm_release_details, get_helm_release_reconciliation, helm_releases_from,
-    list_helm_releases,
+    get_helm_release_details, get_helm_release_reconciliation, helm_release_details_from,
+    helm_release_from, helm_release_reconciliation_from, helm_releases_from, list_helm_releases,
 };

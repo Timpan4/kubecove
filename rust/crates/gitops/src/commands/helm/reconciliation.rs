@@ -51,22 +51,39 @@ pub async fn get_helm_release_reconciliation(
     storage_name: String,
     kubeconfig_env_var: Option<String>,
 ) -> Result<HelmReleaseReconciliation, AppError> {
-    let client = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?
-        .read_client(&cluster_context)
-        .await?;
-    let record = get_helm_storage_record(
-        client.clone(),
+    let access = ClusterAccess::resolve(kubeconfig_env_var.as_deref())?;
+    helm_release_reconciliation_from(
+        &access,
         &cluster_context,
         &namespace,
         &storage_kind,
         &storage_name,
+    )
+    .await
+}
+
+/// `get_helm_release_reconciliation` through an access the caller already resolved.
+pub async fn helm_release_reconciliation_from(
+    access: &ClusterAccess,
+    cluster_context: &str,
+    namespace: &str,
+    storage_kind: &str,
+    storage_name: &str,
+) -> Result<HelmReleaseReconciliation, AppError> {
+    let client = access.read_client(cluster_context).await?;
+    let record = get_helm_storage_record(
+        client.clone(),
+        cluster_context,
+        namespace,
+        storage_kind,
+        storage_name,
     )
     .await?;
     let (discovered, discovery_warnings) =
         discovered_resources(client.clone(), &record.manifest_resources).await?;
     let (resources, mut warnings, totals) = reconcile_release(
         client,
-        &cluster_context,
+        cluster_context,
         &record.summary,
         &record.manifest_resources,
         &discovered,

@@ -252,6 +252,21 @@ async fn kind_catalog_matches_short_names_and_survives_forbidden_crd_listing() {
     assert_eq!(body["kinds"][0]["kind"], "Service", "{body}");
     assert_eq!(body["kinds"][0]["shortNames"], json!(["svc"]));
     assert_eq!(body["warnings"].as_array().map(Vec::len), Some(1), "{body}");
+
+    let (_, topology) = call(
+        &endpoint,
+        "get_resource_topology",
+        json!({"context": "fixed", "namespace": "apps", "mode": "ownership"}),
+    )
+    .await;
+    let warnings = topology["warnings"].as_array().unwrap();
+    assert!(
+        warnings.iter().any(|warning| warning
+            .as_str()
+            .unwrap()
+            .starts_with("custom resources are not shown")),
+        "{topology}"
+    );
 }
 
 /// Two Services, of which the API server selects `web` for `app=web`; a
@@ -322,13 +337,14 @@ async fn troubleshooting_tools_filter_explain_and_bound_their_results() {
     assert_eq!(selected["total"], 1, "{selected}");
     assert_eq!(selected["resources"][0], all["resources"][1]);
 
+    let review_arguments = |identity: Value| {
+        json!({"context": "fixed", "identity": identity,
+               "target": {"kind": "resource", "verb": "list", "resource": "pods"}})
+    };
     let (_, review) = call(
         &endpoint,
         "review_rbac_access",
-        json!({"context": "fixed",
-               "identity": {"kind": "serviceAccount", "name": "web", "namespace": "apps"},
-               "target": {"kind": "resource", "verb": "list", "resource": "secrets",
-                          "namespace": "apps"}}),
+        review_arguments(json!({"kind": "user", "username": "alice", "groups": ["dev"]})),
     )
     .await;
     assert_eq!(review["outcome"], "denied", "{review}");
@@ -336,15 +352,18 @@ async fn troubleshooting_tools_filter_explain_and_bound_their_results() {
     // `group` for `groups` would review the user without the group.
     let body = json!({
         "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-        "params": {"name": "review_rbac_access", "arguments": {
-            "context": "fixed",
-            "identity": {"kind": "user", "username": "alice", "group": "dev"},
-            "target": {"kind": "resource", "verb": "list", "resource": "pods"},
-        }},
+        "params": {"name": "review_rbac_access", "arguments": review_arguments(
+            json!({"kind": "user", "username": "alice", "group": "dev"}),
+        )},
     });
     let (_, bytes) = send(&endpoint, request(&[AUTHORIZED], &body)).await;
     let message: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(message["result"]["isError"], true, "{message}");
+    let text = message["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains("invalid arguments") && text.contains("unknown field `group`"),
+        "{text}"
+    );
 
     let (_, logs) = call(
         &endpoint,
