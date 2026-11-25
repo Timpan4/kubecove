@@ -13,7 +13,8 @@ name: Dependabot auto-merge
 on:
   workflow_run:
     workflows: [CI, Parity, CodSpeed]
-    types: [requested, completed]
+    # Reruns of a commit fire in_progress but not requested; either one disarms auto-merge.
+    types: [requested, in_progress, completed]
 
 permissions: {}
 

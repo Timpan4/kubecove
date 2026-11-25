@@ -9,8 +9,9 @@ import { writeFileSync } from "node:fs";
 // request checks, and a merge made with it starts no push workflows on main.
 
 // Jobs behind `needs`, such as Parity's shards and its result job, have no check run until they
-// queue, so green check runs alone do not prove a workflow finished. These are the workflows the
-// job follows; every run of them on the head must have completed.
+// queue, and a run that fails to start or waits for approval creates none, so green check runs
+// alone do not prove a workflow passed. The latest run of each followed workflow on the head must
+// have concluded successfully.
 export const followedWorkflows = ["CI", "Parity", "CodSpeed"];
 const passed = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 const pendingStatus = new Set(["PENDING", "EXPECTED"]);
@@ -43,6 +44,8 @@ export function mergeReadiness(checks, runs) {
   if (checks.length === 0) return { action: "wait", reason: "no checks have reported yet" };
   const failed = checks.filter((check) => check.state === "fail").map((check) => check.name);
   if (failed.length) return { action: "block", reason: `failed: ${failed.join(", ")}` };
+  const unsuccessful = runs.filter((run) => run.status === "completed" && run.conclusion !== "success");
+  if (unsuccessful.length) return { action: "block", reason: `concluded: ${unsuccessful.map((run) => `${run.name} ${run.conclusion}`).join(", ")}` };
   const missing = followedWorkflows.filter((name) => !runs.some((run) => run.name === name));
   if (missing.length) return { action: "wait", reason: `not started: ${missing.join(", ")}` };
   const running = runs.filter((run) => run.status !== "completed").map((run) => run.name);
@@ -54,7 +57,13 @@ export function mergeReadiness(checks, runs) {
 
 async function readRuns(github, repo, sha) {
   const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, { ...repo, head_sha: sha, event: "pull_request" });
-  return runs.filter((run) => followedWorkflows.includes(run.name)).map((run) => ({ name: run.name, status: run.status }));
+  // A newer run of the same workflow on the head (a reopen, or one that replaced a cancelled run)
+  // supersedes older ones; a rerun keeps its run id.
+  const latest = new Map();
+  for (const run of runs) {
+    if (followedWorkflows.includes(run.name) && run.id > (latest.get(run.name)?.id ?? -1)) latest.set(run.name, run);
+  }
+  return [...latest.values()].map((run) => ({ name: run.name, status: run.status, conclusion: run.conclusion }));
 }
 
 async function readChecks(github, repo, pr) {
@@ -176,6 +185,16 @@ export async function settlePullRequest({ github, writer, context, core, pr, reg
     return readiness.action;
   }
   if (armed) return "armed";
+  const merge = async () => {
+    await writer.graphql(`mutation($id: ID!, $sha: GitObjectID!) {
+      mergePullRequest(input: { pullRequestId: $id, expectedHeadOid: $sha, mergeMethod: SQUASH }) { clientMutationId }
+    }`, { id: current.node_id, sha: pr.sha });
+    core.notice(`Merged #${pr.number} at ${pr.sha}.`);
+    return "merged";
+  };
+  // GitHub refuses to arm auto-merge on a pull request that can already merge, so a clean one
+  // merges now, as `gh pr merge --auto` does. The refusal still covers a state that changed since.
+  if (current.mergeable_state === "clean") return merge();
   try {
     await writer.graphql(`mutation($id: ID!, $sha: GitObjectID!) {
       enablePullRequestAutoMerge(input: { pullRequestId: $id, expectedHeadOid: $sha, mergeMethod: SQUASH }) { clientMutationId }
@@ -183,12 +202,7 @@ export async function settlePullRequest({ github, writer, context, core, pr, reg
     core.notice(`Armed auto-merge on #${pr.number} at ${pr.sha}.`);
     return "armed";
   } catch (error) {
-    // GitHub refuses to arm auto-merge on a pull request that can already merge.
     if (!/clean status/i.test(error.message)) throw error;
-    await writer.graphql(`mutation($id: ID!, $sha: GitObjectID!) {
-      mergePullRequest(input: { pullRequestId: $id, expectedHeadOid: $sha, mergeMethod: SQUASH }) { clientMutationId }
-    }`, { id: current.node_id, sha: pr.sha });
-    core.notice(`Merged #${pr.number} at ${pr.sha}.`);
-    return "merged";
+    return merge();
   }
 }

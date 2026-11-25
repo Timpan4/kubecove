@@ -19,7 +19,8 @@ const newer = "b".repeat(40);
 const check = (name, status, conclusion, isRequired = false) => ({ __typename: "CheckRun", name, status, conclusion, isRequired });
 const status = (context, state, isRequired = false) => ({ __typename: "StatusContext", context, state, isRequired });
 
-const completedRuns = ["CI", "Parity", "CodSpeed"].map((name) => ({ name, status: "completed" }));
+const run = (id, name, status, conclusion = null) => ({ id, name, status, conclusion });
+const completedRuns = ["CI", "Parity", "CodSpeed"].map((name, id) => run(id + 1, name, "completed", "success"));
 
 function harness({ pull = {}, pages = [[]], files = {}, armError, runs = completedRuns } = {}) {
   const writes = [];
@@ -74,19 +75,34 @@ test("readiness waits for every advisory check and refuses any failure", () => {
 
 test("a followed workflow still running holds the pull request before its later jobs report", async () => {
   // Parity's build passed, but its shards and result job have not queued yet.
-  const runs = [{ name: "CI", status: "completed" }, { name: "Parity", status: "in_progress" }];
+  const runs = [run(1, "CI", "completed", "success"), run(2, "Parity", "in_progress"), run(3, "CodSpeed", "completed", "success")];
   const pages = [[check("Typecheck and test", "COMPLETED", "SUCCESS", true), check("Parity build", "COMPLETED", "SUCCESS")]];
   const waiting = harness({ pages, runs });
   assert.equal(await waiting.settle(), "wait");
   assert.deepEqual(waiting.writes, []);
   const armed = harness({ pages, runs, pull: { auto_merge: { enabled_by: { login: "Timpan4" } } } });
   assert.equal(await armed.settle(), "disarmed");
-  const unrelated = harness({ pages, runs: [...completedRuns, { name: "E2E", status: "in_progress" }] });
+  const unrelated = harness({ pages, runs: [...completedRuns, run(9, "E2E", "in_progress")] });
   assert.equal(await unrelated.settle(), "armed");
   // CI and CodSpeed finished before the runs API lists Parity.
-  const unlisted = harness({ pages, runs: completedRuns.filter((run) => run.name !== "Parity") });
+  const unlisted = harness({ pages, runs: completedRuns.filter(({ name }) => name !== "Parity") });
   assert.equal(await unlisted.settle(), "wait");
   assert.deepEqual(unlisted.writes, []);
+});
+
+test("a followed workflow that ended without passing blocks even when it created no check runs", async () => {
+  const pages = [[check("Typecheck and test", "COMPLETED", "SUCCESS", true)]];
+  const others = completedRuns.filter(({ name }) => name !== "Parity");
+  for (const conclusion of ["action_required", "startup_failure", "cancelled", "failure", "timed_out", "skipped", "neutral"]) {
+    const { settle, writes } = harness({ pages, runs: [...others, run(5, "Parity", "completed", conclusion)] });
+    assert.equal(await settle(), "block", conclusion);
+    assert.deepEqual(writes, []);
+  }
+  // The newest run of a workflow on the head decides, so a run that replaced a cancelled one passes.
+  const replaced = harness({ pages, runs: [...others, run(5, "Parity", "completed", "cancelled"), run(6, "Parity", "completed", "success")] });
+  assert.equal(await replaced.settle(), "armed");
+  const regressed = harness({ pages, runs: [...others, run(6, "Parity", "completed", "failure"), run(5, "Parity", "completed", "success")] });
+  assert.equal(await regressed.settle(), "block");
 });
 
 test("every non-passing conclusion and status blocks, neutral and skipped pass", async () => {
@@ -115,9 +131,13 @@ test("arming pins the verified head, and a pull request that can already merge m
   assert.equal(await armed.settle(), "armed");
   assert.deepEqual(armed.writes, [{ name: "enablePullRequestAutoMerge", id: "PR_1", sha: head }]);
 
-  const clean = harness({ pages: ready, armError: "Pull request Pull request is in clean status" });
+  const clean = harness({ pages: ready, pull: { mergeable_state: "clean" } });
   assert.equal(await clean.settle(), "merged");
-  assert.deepEqual(clean.writes.map(({ name, sha }) => [name, sha]), [["enablePullRequestAutoMerge", head], ["mergePullRequest", head]]);
+  assert.deepEqual(clean.writes.map(({ name, sha }) => [name, sha]), [["mergePullRequest", head]]);
+
+  const turnedClean = harness({ pages: ready, armError: "Pull request Pull request is in clean status" });
+  assert.equal(await turnedClean.settle(), "merged");
+  assert.deepEqual(turnedClean.writes.map(({ name, sha }) => [name, sha]), [["enablePullRequestAutoMerge", head], ["mergePullRequest", head]]);
 
   const refused = harness({ pages: ready, armError: "Pull request is in draft state" });
   await assert.rejects(refused.settle(), /draft state/);

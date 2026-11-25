@@ -377,12 +377,14 @@ packages before opening a PR, and release tags retain advisory Nix builds.
 
 The `Dependabot auto-merge` workflow squash-merges Dependabot PRs, majors
 included, once every check on the head commit has passed. That includes Parity,
-which main does not require. It runs after CI, Parity and CodSpeed start or
-finish on a Dependabot PR. It arms GitHub auto-merge only when those runs have
-finished and every advisory check has passed, so auto-merge then waits only for
-the required ones. Parity's shards have no check run until they queue, so green
-checks alone do not prove Parity finished. It disarms auto-merge
-whenever a check starts again or fails. When the PR changes `bun.lock`, it first
+which main does not require. It runs whenever CI, Parity or CodSpeed is
+requested, starts, or finishes on a Dependabot PR, reruns included. It arms
+GitHub auto-merge only when the latest run of each of those workflows on the
+head has succeeded and every advisory check has passed, so auto-merge then waits
+only for the required ones. A PR that can already merge merges directly. Parity's
+shards have no check run until they queue, and a run that fails to start creates
+none, so green checks alone do not prove Parity passed. It disarms auto-merge
+whenever one of those runs starts again or a check fails. When the PR changes `bun.lock`, it first
 commits a `bun.nix` regenerated with the default branch's flake, and that commit
 starts the PR checks again. Writes use `NIX_LOCK_REFRESH_TOKEN`, so the merge
 starts main's push workflows. The job reads the PR's `bun.lock` through the API
