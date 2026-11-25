@@ -69,7 +69,9 @@ export function resourceBrowserScope(
 				: null,
 		}),
 	);
-	$effect(() => {
+	// A pre effect, so the query options and the table see the new scope in the same flush. Applied after
+	// the DOM update, the table passed through an empty page, and Svelte 5.58.1+ then kept the old rows.
+	$effect.pre(() => {
 		if (appliedScopeKey === incomingScopeKey) return;
 		const pathState = initialPathStateConsumed || options.kindScopeLocked ? null : options.initialPathState;
 		scope.selectedNamespaces = pathState ? [...pathState.selectedNamespaces] : [...options.initialNamespaces];
