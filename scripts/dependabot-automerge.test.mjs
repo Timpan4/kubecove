@@ -223,10 +223,12 @@ test("the privileged job checks out only the default branch and follows existing
   assert.match(workflow, /\n {4}permissions:\n {6}actions: read\n {6}checks: read\n {6}contents: read\n {6}pull-requests: read\n {6}statuses: read\n\n/);
   assert.equal(workflow.match(/^ {4}permissions:/gm).length, 1);
   assert.deepEqual(workflow.match(/^ {4}workflows: \[(.+)\]$/m)[1].split(", "), followedWorkflows);
-  assert.equal(workflow.match(/actions\/checkout@/g).length, 1);
-  assert.match(workflow, /uses: actions\/checkout@\S+ # v[\d.]+\n {8}with:\n {10}ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n {10}persist-credentials: false\n/);
-  const steps = workflow.split(/\n {6}- name: /).slice(1);
-  assert.deepEqual(steps.filter((step) => step.includes("secrets.")).map((step) => step.split("\n")[0]), ["Commit bun.nix or update auto-merge"]);
+  // Every step starts with "- " at the steps indentation, whatever key comes first.
+  const steps = workflow.split(/\n {6}- /).slice(1);
+  const checkouts = steps.filter((step) => step.includes("actions/checkout@"));
+  assert.equal(checkouts.length, 1);
+  assert.match(checkouts[0], /^name: .+\n {8}uses: actions\/checkout@\S+ # v[\d.]+\n {8}with:\n {10}ref: \$\{\{ github\.event\.repository\.default_branch \}\}\n {10}persist-credentials: false\n*$/);
+  assert.deepEqual(steps.filter((step) => step.includes("secrets.")).map((step) => step.split("\n")[0]), ["name: Commit bun.nix or update auto-merge"]);
   for (const name of followedWorkflows) {
     const source = read({ CI: "ci", Parity: "parity", CodSpeed: "codspeed" }[name]);
     assert.match(source, new RegExp(`^name: ${name}$`, "m"));
