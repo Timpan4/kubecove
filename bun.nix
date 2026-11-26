@@ -649,21 +649,21 @@
     url = "https://registry.npmjs.org/@tailwindcss/vite/-/vite-4.3.5.tgz";
     hash = "sha512-BCNiY0a1ZjdOHVqw7kyb7U72BwfMF3dfUuN+tQsLWky/J5JOI/r7abibglXfygrZhVO/3u3V+E25kkKTeMkXaQ==";
   };
-  "@tanstack/query-core@5.108.2" = fetchurl {
-    url = "https://registry.npmjs.org/@tanstack/query-core/-/query-core-5.108.2.tgz";
-    hash = "sha512-0l+0xDKqn71hfJBKaAvFP/X7WYM0TbscEk6nK1pHaWQUWUEA+WJD0VlT8wF+HIJANMV9B/DouPWwDnX3w/l9BA==";
+  "@tanstack/query-core@5.108.3" = fetchurl {
+    url = "https://registry.npmjs.org/@tanstack/query-core/-/query-core-5.108.3.tgz";
+    hash = "sha512-Lh8fyLDlHOdZXfUB+G1M5bKxfQ1Y0/mfydFP+pMjFKweAU4OUiC4MyIBTcW7Ck+Iwt6K3/pzvADrJi2Dc1lwuQ==";
   };
-  "@tanstack/svelte-query@6.4.5" = fetchurl {
-    url = "https://registry.npmjs.org/@tanstack/svelte-query/-/svelte-query-6.4.5.tgz";
-    hash = "sha512-XpBX5fzIJxfNQFD6O/BBZlsty9UrUn+h4Lr7zM/WM+3PBKV/TpPEatJPorLCm0RNoTx0eJwNhPGq90AKN1ykWw==";
+  "@tanstack/svelte-query@6.4.6" = fetchurl {
+    url = "https://registry.npmjs.org/@tanstack/svelte-query/-/svelte-query-6.4.6.tgz";
+    hash = "sha512-Ke6+l9nkZVTnZVy3YGui4rs1sByMi4NGmdLdrDDHr9oX49oo9FoAHoU3+xOiYjcjYwkoooIMmAgLV3nEGtOxxA==";
   };
-  "@tanstack/svelte-virtual@3.13.52" = fetchurl {
-    url = "https://registry.npmjs.org/@tanstack/svelte-virtual/-/svelte-virtual-3.13.52.tgz";
-    hash = "sha512-GBP08+GfuAtrcfCEkhZ8qg7At0m1ty82WTVC92YDjmYuU9yU+XD9LoCGUbrwl5m0V05ySgDS6JzmxqwoVdlt5Q==";
+  "@tanstack/svelte-virtual@3.13.54" = fetchurl {
+    url = "https://registry.npmjs.org/@tanstack/svelte-virtual/-/svelte-virtual-3.13.54.tgz";
+    hash = "sha512-SfOW9uly5+NX9PrtWSJ14lrxVH4TuyB6RwogPK9uXHcXD6pKcwp6syolreQZ0srw8p2MLSa5PHsDbeimmJJ6lA==";
   };
-  "@tanstack/virtual-core@3.19.11" = fetchurl {
-    url = "https://registry.npmjs.org/@tanstack/virtual-core/-/virtual-core-3.19.11.tgz";
-    hash = "sha512-/5iHb0RHBvj8Di59FDs4ESNm45jls33aZAi4zccVXZjc/6ZvwQP6nzEYeT6weXjTf9E6/vrp2JhYWRyO+ZP13A==";
+  "@tanstack/virtual-core@3.19.13" = fetchurl {
+    url = "https://registry.npmjs.org/@tanstack/virtual-core/-/virtual-core-3.19.13.tgz";
+    hash = "sha512-CyCvMm7m5JuvPW6eMPZkZBZk6diySrlUQNNRpQPiEnh2vakyghx82Hw3wW2THFUsl6xJ6uM4lSUaiA2T0oYW8w==";
   };
   "@tsrs/darwin-arm64@0.20.1-ts7.1.0-beta" = fetchurl {
     url = "https://registry.npmjs.org/@tsrs/darwin-arm64/-/darwin-arm64-0.20.1-ts7.1.0-beta.tgz";
