@@ -8,7 +8,8 @@ function isRecord<Value>(value: Value): value is Value & JsonObject {
 }
 
 function text<Value>(value: Value): value is Value & string {
-	return String(value) === value;
+	// Objects first: converting one with a broken `toString` throws.
+	return Object(value) !== value && String(value) === value;
 }
 
 function integer<Value>(value: Value): value is Value & number {
