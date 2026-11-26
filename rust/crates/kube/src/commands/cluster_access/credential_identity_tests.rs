@@ -86,6 +86,17 @@ fn reproduce_quotes_values_and_names_exactly_the_loaded_files() {
         None
     );
     assert_eq!(reproduce("dev", &[], false), None);
+    // PowerShell on Windows sets the list with its own syntax and separator.
+    #[cfg(windows)]
+    assert_eq!(
+        reproduce(
+            "dev",
+            &[PathBuf::from(r"C:\k\a"), PathBuf::from(r"C:\k\b")],
+            true
+        )
+        .as_deref(),
+        Some(r"$env:KUBECONFIG='C:\k\a;C:\k\b'; kubectl --context dev auth whoami")
+    );
 }
 
 #[tokio::test]

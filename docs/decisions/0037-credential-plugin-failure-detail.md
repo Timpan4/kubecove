@@ -43,8 +43,9 @@ The field holds:
 1. decodes stderr as lossy UTF-8;
 2. removes ANSI CSI and OSC sequences, in 7-bit and C1 form, across the whole output before splitting it into lines, because an OSC string can span lines;
 3. removes control characters and bidirectional formatting characters from each line;
-4. applies the shared error-detail redaction patterns, which now live in `kubecove-models` and match `src/lib/error-redaction.ts`;
-5. removes every URL query and fragment, JSON Web Tokens, `refresh_token`, `secret` and `session_token` values, values assigned with `=` or as a JSON key to any key that names a token, password, passphrase, secret, credential, API key, access key or private key, such as `AWS_SECRET_ACCESS_KEY=`, and whole quoted values, closed or not, of those keys.
+4. removes whole quoted values, closed or not and with escaped quotes inside, of any key that names a token, password, passphrase, secret, credential, API key, access key or private key;
+5. applies the shared error-detail redaction patterns, which now live in `kubecove-models` and match `src/lib/error-redaction.ts`;
+6. removes every URL query and fragment, JSON Web Tokens, `refresh_token`, `secret` and `session_token` values, and values assigned with `=` or as a JSON key to those keys, such as `AWS_SECRET_ACCESS_KEY=`. A bare `key:` counts only for keys that do not read as prose: `passphrase` and keys naming a secret, API key, access key or private key.
 
 The line is not shortened. The UI wraps it.
 

@@ -97,7 +97,10 @@ fn assert_described(error: &AppError, plugin: &Failing) {
         reproduce.starts_with("kubectl --kubeconfig "),
         "{reproduce}"
     );
-    assert!(reproduce.contains("config.json"), "{reproduce}");
+    // The absolute file, not a name the terminal would resolve itself.
+    let file = plugin.root.join("config.json");
+    assert!(file.is_absolute());
+    assert!(reproduce.contains(&*file.to_string_lossy()), "{reproduce}");
     assert!(
         reproduce.ends_with(" --context fixture auth whoami"),
         "{reproduce}"

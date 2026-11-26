@@ -66,6 +66,18 @@ fn plugin_line_redacts_tokens_redirects_and_headers() {
             "pass-phrase-secret",
         ),
         (
+            "passphrase: colon-phrase-secret".to_owned(),
+            "colon-phrase-secret",
+        ),
+        (
+            "AWS_SECRET_ACCESS_KEY: aws-colon-secret".to_owned(),
+            "aws-colon-secret",
+        ),
+        (
+            r#"password="a\"b escaped-quote-secret""#.to_owned(),
+            "escaped-quote-secret",
+        ),
+        (
             "AWS_SECRET_ACCESS_KEY=aws-secret-value".to_owned(),
             "aws-secret-value",
         ),

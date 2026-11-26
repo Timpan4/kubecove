@@ -25,16 +25,20 @@ static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
     .map(compile)
 });
 
+/// A whole quoted value of a credential key, closed or not, with escaped
+/// quotes inside. It runs before the patterns above, which stop at the first
+/// space or backslash and would leave the rest of the value behind.
+static QUOTED_VALUE: LazyLock<[(Regex, &str); 1]> = LazyLock::new(|| {
+    [(
+            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*(?:"|$)|'(?:[^'\\]|\\.)*(?:'|$))"#,
+            "${1}\"[REDACTED]\"",
+        )].map(compile)
+});
+
 /// Credential plugins also print OAuth redirects and raw tokens, which the
 /// frontend patterns above do not cover.
 static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 5]> = LazyLock::new(|| {
     [
-        // A whole quoted value, closed or not. The patterns above stop at
-        // the first space inside quotes.
-        (
-            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"[^"]*(?:"|$)|'[^']*(?:'|$))"#,
-            "${1}\"[REDACTED]\"",
-        ),
         // Any URL query or fragment: authorization codes, state and tokens.
         (r"(?i)(\bhttps?://[^\s?#]*)[?#][^\s]*", "${1}?[REDACTED]"),
         (
@@ -46,6 +50,12 @@ static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 5]> = LazyLock::new(|| {
         // `name:` would also match prose such as `credentials: not found`.
         (
             r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*(?:\s*=|["']\s*:)\s*["']?)[^"',\s}&]+"#,
+            "${1}[REDACTED]",
+        ),
+        // The same with a bare `:` for keys that do not read as prose, such as
+        // `passphrase: ` or `AWS_SECRET_ACCESS_KEY: `.
+        (
+            r#"(?i)(\b(?:passphrase|[\w-]*(?:secret|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*)\s*:\s*)[^"',\s}&]+"#,
             "${1}[REDACTED]",
         ),
         // JSON Web Tokens and other base64url segments joined by dots.
@@ -88,7 +98,8 @@ pub(crate) fn plugin_error_line(stderr: &[u8]) -> Option<String> {
         .split(['\n', '\r'])
         .map(printable)
         .rfind(|line| !line.trim().is_empty())?;
-    let redacted = apply(&*PLUGIN_DETAIL, &redact_sensitive_detail(line.trim()));
+    let quoted = apply(&*QUOTED_VALUE, line.trim());
+    let redacted = apply(&*PLUGIN_DETAIL, &redact_sensitive_detail(&quoted));
     Some(redacted)
 }
 
