@@ -1,18 +1,17 @@
-import type { CredentialFailure } from "./types";
+import type { CredentialFailure, JsonObject } from "./types";
 
 // ADR 0037: Rust sends this only for the desktop user's own kubeconfig, with
 // the plugin line already redacted. Any other shape is ignored.
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord<Value>(value: Value): value is Value & JsonObject {
 	return value !== null && Object(value) === value;
 }
 
-function text(value: unknown): value is string {
-	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Error payloads are untrusted JSON.
-	return typeof value === "string";
+function text<Value>(value: Value): value is Value & string {
+	return String(value) === value;
 }
 
-function integer(value: unknown): value is number {
+function integer<Value>(value: Value): value is Value & number {
 	return Number.isInteger(value);
 }
 
