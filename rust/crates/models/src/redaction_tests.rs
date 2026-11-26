@@ -121,6 +121,18 @@ fn plugin_line_redacts_tokens_redirects_and_headers() {
             "callback https://idp.example/it's/cb?code=path-apostrophe-secret".to_owned(),
             "path-apostrophe-secret",
         ),
+        (
+            r#"msg="login failed" err="password=\"go-quoted secret-word\"""#.to_owned(),
+            "secret-word",
+        ),
+        (
+            r#"{\"client_secret\":\"escaped-json secret-tail\"}"#.to_owned(),
+            "secret-tail",
+        ),
+        (
+            r#"{"Cookie":"session=json-cookie-secret"}"#.to_owned(),
+            "json-cookie-secret",
+        ),
     ] {
         let line = plugin_error_line(stderr.as_bytes()).unwrap();
         assert!(!line.contains(secret), "{line}");

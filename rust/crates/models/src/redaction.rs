@@ -31,9 +31,10 @@ static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
 static WHOLE_VALUES: LazyLock<[(Regex, &str); 2]> = LazyLock::new(|| {
     [
         // A quoted value, closed or not, with escaped quotes inside. A lone
-        // backslash can end an unclosed value.
+        // backslash can end an unclosed value. The quotes can themselves be
+        // escaped, as in a quoted log field: `err="password=\"x\""`.
         (
-            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.?)*(?:"|$)|'(?:[^'\\]|\\.?)*(?:'|$))"#,
+            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*\\?["']?\s*[:=]\s*)(?:\\?"(?:[^"\\]|\\.?)*(?:"|$)|\\?'(?:[^'\\]|\\.?)*(?:'|$))"#,
             "${1}\"[REDACTED]\"",
         ),
         // A credential flag's separate value, such as `--client-secret abc`.
@@ -58,7 +59,7 @@ static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
         ),
         // Cookie headers carry session credentials to the end of the line
         // (RFC 6265).
-        (r"(?i)(\b(?:set-)?cookie\s*:\s*)\S.*", "${1}[REDACTED]"),
+        (r#"(?i)(\b(?:set-)?cookie["']?\s*:\s*)\S.*"#, "${1}[REDACTED]"),
         (
             r#"(?i)(["']?(?:refresh[_-]?token|secret|session[_-]?token)["']?\s*[:=]\s*["']?)[^"',\s}&]+"#,
             "${1}[REDACTED]",
