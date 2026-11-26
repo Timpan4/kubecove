@@ -20,12 +20,13 @@ class MockReadError extends Error {
 
 /** The same fixture as `rust/gpui/tests/common/timing.rs`. */
 function mockCredential(context: string, command: boolean): CredentialFailure {
+    const kubeconfig = "/home/user/.kube/config";
     return {
         context,
         user: "oidc",
         command: "kubectl oidc-login get-token",
-        kubeconfig: ["/home/user/.kube/config"],
-        reproduce: command ? `kubectl --kubeconfig /home/user/.kube/config --context ${context} auth whoami` : undefined,
+        kubeconfig: [kubeconfig],
+        reproduce: command ? `kubectl --kubeconfig ${kubeconfig} --context ${context} auth whoami` : undefined,
         exitStatus: 1,
         pluginMessage: "error: oidc: issuer URL did not match the issuer URL returned by provider",
     };

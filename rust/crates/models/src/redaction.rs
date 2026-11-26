@@ -30,14 +30,15 @@ static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
 /// of a value behind.
 static WHOLE_VALUES: LazyLock<[(Regex, &str); 2]> = LazyLock::new(|| {
     [
-        // A quoted value, closed or not, with escaped quotes inside.
+        // A quoted value, closed or not, with escaped quotes inside. A lone
+        // backslash can end an unclosed value.
         (
-            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*(?:"|$)|'(?:[^'\\]|\\.)*(?:'|$))"#,
+            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.?)*(?:"|$)|'(?:[^'\\]|\\.?)*(?:'|$))"#,
             "${1}\"[REDACTED]\"",
         ),
         // A credential flag's separate value, such as `--client-secret abc`.
         (
-            r#"(?i)((?:^|\s)--?[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*\s+)(?:"(?:[^"\\]|\\.)*(?:"|$)|'(?:[^'\\]|\\.)*(?:'|$)|[^\s"'-]\S*)"#,
+            r#"(?i)((?:^|\s)--?[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*\s+)(?:"(?:[^"\\]|\\.?)*(?:"|$)|'(?:[^'\\]|\\.?)*(?:'|$)|[^\s"'-]\S*)"#,
             "${1}[REDACTED]",
         ),
     ]
@@ -49,9 +50,10 @@ static WHOLE_VALUES: LazyLock<[(Regex, &str); 2]> = LazyLock::new(|| {
 static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
     [
         // Any URL query or fragment: authorization codes, state and tokens.
-        // A quote or angle bracket ends the URL, as in `Get "https://…": `.
+        // A double quote or angle bracket ends the URL, as in
+        // `Get "https://…": `. An apostrophe does not, because a URL can hold one.
         (
-            r#"(?i)(\bhttps?://[^\s?#"'<>]*)[?#][^\s"'<>]*"#,
+            r#"(?i)(\bhttps?://[^\s?#"<>]*)[?#][^\s"<>]*"#,
             "${1}?[REDACTED]",
         ),
         // Cookie headers carry session credentials to the end of the line

@@ -91,19 +91,16 @@ fn assert_described(error: &AppError, plugin: &Failing) {
         credential.plugin_message.as_deref(),
         Some("error: issuer did not match id_token [REDACTED]")
     );
-    // The temp directory may need quoting; credential_identity_tests covers it.
-    let reproduce = credential.reproduce.as_deref().expect("copyable command");
-    assert!(
-        reproduce.starts_with("kubectl --kubeconfig "),
-        "{reproduce}"
-    );
-    // The absolute file, not a name the terminal would resolve itself.
+    // The absolute file, not a name the terminal would resolve itself. The
+    // temp directory may need quoting; credential_identity_tests covers it.
     let file = plugin.root.join("config.json");
     assert!(file.is_absolute());
-    assert!(reproduce.contains(&*file.to_string_lossy()), "{reproduce}");
-    assert!(
-        reproduce.ends_with(" --context fixture auth whoami"),
-        "{reproduce}"
+    assert_eq!(
+        credential.reproduce.as_deref(),
+        Some(&*format!(
+            "kubectl --kubeconfig {} --context fixture auth whoami",
+            super::super::credential_identity::quote(&file.to_string_lossy(), cfg!(windows))
+        ))
     );
     assert_eq!(
         credential.kubeconfig,

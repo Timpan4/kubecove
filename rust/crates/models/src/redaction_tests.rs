@@ -105,6 +105,22 @@ fn plugin_line_redacts_tokens_redirects_and_headers() {
             r#"retry with --token "quoted flag-quoted-secret""#.to_owned(),
             "flag-quoted-secret",
         ),
+        (
+            r#"password="first backslash-secret\"#.to_owned(),
+            "backslash-secret",
+        ),
+        (
+            r#"--client-secret "first flag-backslash-secret\"#.to_owned(),
+            "flag-backslash-secret",
+        ),
+        (
+            r#"Get "https://idp.example/cb?a=it's&code=after-apostrophe-secret""#.to_owned(),
+            "after-apostrophe-secret",
+        ),
+        (
+            "callback https://idp.example/it's/cb?code=path-apostrophe-secret".to_owned(),
+            "path-apostrophe-secret",
+        ),
     ] {
         let line = plugin_error_line(stderr.as_bytes()).unwrap();
         assert!(!line.contains(secret), "{line}");

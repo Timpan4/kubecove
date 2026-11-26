@@ -121,7 +121,7 @@ fn reproduce(cluster_context: &str, kubeconfig: &[PathBuf], windows: bool) -> Op
 }
 
 /// Quotes for a POSIX shell, or for PowerShell on Windows.
-fn quote(value: &str, windows: bool) -> String {
+pub(super) fn quote(value: &str, windows: bool) -> String {
     // Characters that neither shell expands, splits or treats as operators.
     if !value.is_empty()
         && value
