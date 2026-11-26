@@ -20,13 +20,13 @@ export function credentialFailureFrom(cause: unknown): CredentialFailure | undef
 	const value = cause.credential;
 	if (!isRecord(value)) return undefined;
 	const { context, command, reproduce, kubeconfig, user, exitStatus, pluginMessage } = value;
-	if (!text(context) || !text(command) || !text(reproduce)) return undefined;
+	if (!text(context) || !text(command)) return undefined;
 	if (!Array.isArray(kubeconfig) || !kubeconfig.every(text)) return undefined;
 	return {
 		context,
 		command,
-		reproduce,
 		kubeconfig,
+		reproduce: text(reproduce) ? reproduce : undefined,
 		user: text(user) ? user : undefined,
 		exitStatus: integer(exitStatus) ? exitStatus : undefined,
 		pluginMessage: text(pluginMessage) ? pluginMessage : undefined,

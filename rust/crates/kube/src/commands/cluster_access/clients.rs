@@ -121,7 +121,7 @@ pub(super) async fn client(
             )),
             allow(unused_mut)
         )]
-        let mut config = source.config_for_context(cluster_context, fallback).await?;
+        let (mut config, origin) = source.config_for_context(cluster_context, fallback).await?;
         // Task locals do not propagate to blocking workers. Capture the bearer
         // layer and cache owner before crossing that boundary.
         let bearer = forwarded_bearer_layer()?;
@@ -139,7 +139,13 @@ pub(super) async fn client(
             .exec
             .as_ref()
             .filter(|_| matches!(scope.source_policy(), super::SourcePolicy::Local))
-            .map(|exec| Arc::new(credential_identity::identity(source, cluster_context, exec)));
+            .map(|exec| {
+                Arc::new(credential_identity::identity(
+                    &origin,
+                    cluster_context,
+                    exec,
+                ))
+            });
         let tag = CredentialTagLayer::new(identity.clone());
         let source_key = source_key.to_owned();
         let cluster_context = cluster_context.to_owned();

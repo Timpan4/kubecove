@@ -39,6 +39,8 @@ export const feedbackActions = {
 	},
 	async copyCredentialCommand(page, step) {
 		await page.evaluate(clipboardRecorder);
+		// An earlier copy of the same command must not satisfy this one.
+		await page.evaluate(() => delete document.documentElement.dataset.copyValue);
 		const alert = page.getByRole("alert").filter({ hasText: step.title });
 		await alert.getByRole("button", { name: "Copy terminal command", exact: true }).click();
 		await alert.getByRole("button", { name: "Copied", exact: true }).waitFor();

@@ -290,7 +290,7 @@ fn mock_credential(context: &str) -> kubecove_lib::models::CredentialFailure {
         user: Some("oidc".to_owned()),
         command: "kubectl oidc-login get-token".to_owned(),
         kubeconfig: vec!["/home/user/.kube/config".to_owned()],
-        reproduce: format!("kubectl --context {context} auth whoami"),
+        reproduce: Some(format!("kubectl --context {context} auth whoami")),
         exit_status: Some(1),
         plugin_message: Some(
             "error: oidc: issuer URL did not match the issuer URL returned by provider".to_owned(),

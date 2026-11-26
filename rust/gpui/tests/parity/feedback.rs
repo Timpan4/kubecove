@@ -113,6 +113,9 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         "copyCredentialCommand" => {
             window.render_frame(cx);
             let button = format!("{}:copy-command", credential_panel(window, step));
+            // Scenarios share one app and expect the same command, so an earlier
+            // copy must not satisfy this one.
+            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(String::new()));
             // The Overview GitOps card can sit below the fold.
             locate::click_in(window, "page", button.clone().into(), cx);
             window.render_frame(cx);

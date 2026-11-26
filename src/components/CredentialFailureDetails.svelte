@@ -4,24 +4,31 @@
 	import { credentialDetails } from "@/lib/credential-failure";
 	import type { CredentialFailure } from "@/lib/types";
 
+	// FriendlyError keys this component by the command, so copy state never
+	// carries over to another failure.
 	let { failure }: { failure: CredentialFailure } = $props();
 
 	let copied = $state(false);
 	let copyFailed = $state(false);
+	let reset: number | undefined;
 	const details = $derived(credentialDetails(failure));
 
-	async function copyCommand() {
+	async function copyCommand(command: string) {
+		window.clearTimeout(reset);
 		try {
-			await navigator.clipboard.writeText(failure.reproduce);
+			await navigator.clipboard.writeText(command);
 			copied = true;
 			copyFailed = false;
-			window.setTimeout(() => {
+			reset = window.setTimeout(() => {
 				copied = false;
 			}, 1200);
 		} catch {
+			copied = false;
 			copyFailed = true;
 		}
 	}
+
+	$effect(() => () => window.clearTimeout(reset));
 </script>
 
 {#if failure.pluginMessage}
@@ -30,20 +37,29 @@
 		aria-label="Plugin output"
 	>{failure.pluginMessage}</p>
 {/if}
-<div class="flex items-center gap-2">
-	<Button type="button" variant="outline" size="xs" onclick={copyCommand}>
-		{#if copied}
-			<Check data-icon="inline-start" />
-			Copied
-		{:else}
-			<Copy data-icon="inline-start" />
-			Copy terminal command
+{#if failure.reproduce}
+	{@const command = failure.reproduce}
+	<div class="flex items-center gap-2">
+		<Button type="button" variant="outline" size="xs" onclick={() => copyCommand(command)}>
+			{#if copied}
+				<Check data-icon="inline-start" />
+				Copied
+			{:else}
+				<Copy data-icon="inline-start" />
+				Copy terminal command
+			{/if}
+		</Button>
+		{#if copyFailed}
+			<span class="text-[0.6875rem] text-muted-foreground">Copy failed. Select the command below.</span>
 		{/if}
-	</Button>
+	</div>
 	{#if copyFailed}
-		<span class="text-[0.6875rem] text-muted-foreground">Copy failed</span>
+		<code
+			class="block select-all rounded bg-muted px-2 py-1.5 font-mono text-[0.6875rem] text-foreground [overflow-wrap:anywhere]"
+			aria-label="Terminal command"
+		>{command}</code>
 	{/if}
-</div>
+{/if}
 <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[0.6875rem]" aria-label="Sign-in details">
 	{#each details as [label, value], index (index)}
 		<dt class="text-muted-foreground">{label}</dt>

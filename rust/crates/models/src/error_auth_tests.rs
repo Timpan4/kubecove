@@ -116,14 +116,35 @@ fn identity() -> CredentialIdentity {
         user: Some("oidc".into()),
         command: "kubectl oidc-login get-token".into(),
         kubeconfig: vec!["/home/user/.kube/config".into()],
-        reproduce: "kubectl --context SG1 auth whoami".into(),
+        reproduce: Some("kubectl --context SG1 auth whoami".into()),
+    }
+}
+
+#[derive(Debug)]
+struct Layered(Box<dyn Error + Send + Sync>);
+
+impl std::fmt::Display for Layered {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("layer failed")
+    }
+}
+
+impl Error for Layered {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&*self.0)
     }
 }
 
 fn assert_safe(auth: AuthError, wrapped: bool, tagged: bool) {
     let source: Box<dyn Error + Send + Sync> = Box::new(auth);
-    let source = if tagged {
+    let source: Box<dyn Error + Send + Sync> = if tagged {
         Box::new(CredentialPluginError::new(Arc::new(identity()), source))
+    } else {
+        source
+    };
+    // Another layer between the tag and kube, as a client layer would add.
+    let source: Box<dyn Error + Send + Sync> = if wrapped && tagged {
+        Box::new(Layered(source))
     } else {
         source
     };

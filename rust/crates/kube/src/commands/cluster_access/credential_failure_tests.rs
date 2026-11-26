@@ -68,9 +68,17 @@ exit 3
 
 impl Drop for Failing {
     fn drop(&mut self) {
-        fs::remove_dir_all(&self.root).unwrap();
+        // A second panic while a failed assertion unwinds would abort the run.
+        let _ = fs::remove_dir_all(&self.root);
     }
 }
+
+const PRIVATE: [&str; 4] = [
+    "fixture-stdout-secret",
+    "fixture-argument",
+    "fixture-environment",
+    "eyJ",
+];
 
 fn assert_described(error: &AppError, plugin: &Failing) {
     assert_eq!(error.kind, AppErrorKind::CredentialUnavailable);
@@ -83,12 +91,13 @@ fn assert_described(error: &AppError, plugin: &Failing) {
         credential.plugin_message.as_deref(),
         Some("error: issuer did not match id_token [REDACTED]")
     );
-    assert!(
-        credential
-            .reproduce
-            .ends_with("kubectl --context fixture auth whoami")
+    assert_eq!(
+        credential.reproduce,
+        Some(format!(
+            "kubectl --kubeconfig {} --context fixture auth whoami",
+            plugin.root.join("config.json").display()
+        ))
     );
-    assert!(credential.reproduce.contains("KUBECONFIG="));
     assert_eq!(
         credential.kubeconfig,
         [plugin
@@ -98,12 +107,7 @@ fn assert_described(error: &AppError, plugin: &Failing) {
             .into_owned()]
     );
     let json = serde_json::to_string(error).unwrap();
-    for private in [
-        "fixture-stdout-secret",
-        "fixture-argument",
-        "fixture-environment",
-        "eyJ",
-    ] {
+    for private in PRIVATE {
         assert!(!json.contains(private), "{json}");
     }
 }
@@ -125,6 +129,13 @@ async fn local_build_failure_names_plugin_and_server_sessions_do_not() {
         .unwrap();
     assert_eq!(error.kind, AppErrorKind::CredentialUnavailable);
     assert!(error.credential.is_none());
+    let json = serde_json::to_string(&error).unwrap();
+    for private in PRIVATE
+        .iter()
+        .chain(&["issuer did not match", "opening browser", "plugin.sh"])
+    {
+        assert!(!json.contains(private), "{json}");
+    }
 }
 
 #[tokio::test]

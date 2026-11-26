@@ -35,11 +35,12 @@ pub(super) struct Feedback {
 }
 
 /// An error panel's Copy detail button, or its credential plugin's Copy
-/// terminal command button.
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// terminal command button with the command it copied, so a panel that
+/// now shows another command does not claim it was copied.
+#[derive(Clone, PartialEq, Eq)]
 pub(super) enum CopyKey {
     Detail(&'static str),
-    Command(&'static str),
+    Command(&'static str, SharedString),
 }
 
 /// The RBAC handoff a failed read can offer.
@@ -60,7 +61,7 @@ impl Feedback {
     pub(super) fn disclosure(&self) -> Disclosure {
         Disclosure {
             expanded: self.expanded.clone(),
-            copied: self.copy,
+            copied: self.copy.clone(),
         }
     }
 }
@@ -154,8 +155,8 @@ impl Inspector {
 
     /// Copies a failed credential plugin's terminal command (ADR 0037).
     pub(super) fn copy_command(&mut self, id: &'static str, text: String, cx: &mut Context<Self>) {
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.finish_detail_copy(CopyKey::Command(id), Ok(()), cx);
+        cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+        self.finish_detail_copy(CopyKey::Command(id, text.into()), Ok(()), cx);
     }
 
     /// The error panel for a failed read that kept its `AppError`, so its
@@ -313,11 +314,15 @@ impl Inspector {
         let copied_for = |key: CopyKey| {
             disclosure
                 .copied
+                .as_ref()
                 .filter(|(copied, _)| *copied == key)
-                .map(|(_, ok)| ok)
+                .map(|(_, ok)| *ok)
         };
         let copied = copied_for(CopyKey::Detail(id));
-        let command_copied = copied_for(CopyKey::Command(id));
+        let command_copied = context
+            .credential
+            .and_then(|failure| failure.reproduce.clone())
+            .and_then(|command| copied_for(CopyKey::Command(id, command.into())));
         // Shown, read aloud and copied, so credentials are removed as the web's
         // `messageFromFriendlyError` does.
         let technical = redact_sensitive_detail(message);

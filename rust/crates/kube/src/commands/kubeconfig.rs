@@ -41,6 +41,20 @@ pub struct KubeconfigSourceWarning {
     pub message: String,
 }
 
+/// A merged kubeconfig and the files it was read from, in merge order.
+pub(crate) struct LoadedKubeconfig {
+    pub(crate) kubeconfig: Kubeconfig,
+    pub(crate) warnings: Vec<KubeconfigSourceWarning>,
+    pub(crate) files: Vec<PathBuf>,
+}
+
+/// The files and user entry behind a context's config, for naming a failed
+/// sign-in (ADR 0037).
+pub(crate) struct KubeconfigOrigin {
+    pub(crate) files: Vec<PathBuf>,
+    pub(crate) user: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KubeconfigSourcesSummary {
@@ -191,37 +205,37 @@ impl KubeconfigSource {
     }
 
     pub(crate) fn read_kubeconfig(&self) -> Result<Kubeconfig, AppError> {
-        let (kubeconfig, _) = self.read_configured_kubeconfig(Fallback::Allow)?;
-        Ok(kubeconfig)
+        Ok(self.read_configured_kubeconfig(Fallback::Allow)?.kubeconfig)
     }
 
     pub(crate) async fn config_for_context(
         &self,
         cluster_context: &str,
         fallback: Fallback,
-    ) -> Result<Config, AppError> {
+    ) -> Result<(Config, KubeconfigOrigin), AppError> {
         let options = KubeConfigOptions {
             context: Some(cluster_context.to_string()),
             ..Default::default()
         };
-
-        let mut config = match self.configured_paths() {
-            Some(_) => {
-                let (kubeconfig, _) = self.read_configured_kubeconfig(fallback)?;
-                Config::from_custom_kubeconfig(kubeconfig, &options)
-                    .await
-                    .map_err(AppError::from)
-            }
-            None => Config::from_kubeconfig(&options)
-                .await
-                .map_err(AppError::from),
-        }?;
+        let loaded = self.read_configured_kubeconfig(fallback)?;
+        let origin = KubeconfigOrigin {
+            user: loaded
+                .kubeconfig
+                .contexts
+                .iter()
+                .find(|named| named.name == cluster_context)
+                .and_then(|named| named.context.as_ref()?.user.clone()),
+            files: loaded.files,
+        };
+        let mut config = Config::from_custom_kubeconfig(loaded.kubeconfig, &options)
+            .await
+            .map_err(AppError::from)?;
         // The signed-in user's token replaces the kubeconfig's identity, and
         // the server's own credentials must never stand in for it.
         if super::helpers::forwarded_bearer::forwarded_bearer_enabled() {
             config.auth_info = AuthInfo::default();
         }
-        Ok(config)
+        Ok((config, origin))
     }
 
     // The kubeconfig files that back this source, in the same order
@@ -244,10 +258,7 @@ impl KubeconfigSource {
             }
             return paths;
         }
-        standard_kubeconfig_paths()
-            .into_iter()
-            .map(|configured| configured.path)
-            .collect()
+        standard_kubeconfig_files()
     }
 
     fn custom_env_value_paths(&self) -> Option<Vec<PathBuf>> {
@@ -279,24 +290,23 @@ impl KubeconfigSource {
         (!paths.is_empty()).then_some(paths)
     }
 
-    fn read_configured_kubeconfig(
-        &self,
-        fallback: Fallback,
-    ) -> Result<(Kubeconfig, Vec<KubeconfigSourceWarning>), AppError> {
+    fn read_configured_kubeconfig(&self, fallback: Fallback) -> Result<LoadedKubeconfig, AppError> {
         let Some(paths) = self.configured_paths() else {
-            return Kubeconfig::read()
-                .map(|kubeconfig| (kubeconfig, Vec::new()))
-                .map_err(AppError::from);
+            return Ok(LoadedKubeconfig {
+                kubeconfig: Kubeconfig::read()?,
+                warnings: Vec::new(),
+                files: standard_kubeconfig_files(),
+            });
         };
 
         let mut merged = Kubeconfig::default();
-        let mut loaded = 0usize;
+        let mut files = Vec::new();
         let mut warnings = Vec::new();
         for configured in paths {
             match Kubeconfig::read_from(&configured.path) {
                 Ok(next) => {
                     merged = merge_kubeconfigs(merged, next, &self.env_var)?;
-                    loaded += 1;
+                    files.push(configured.path);
                 }
                 Err(_) => {
                     if let Some(warning) = configured.warning() {
@@ -306,14 +316,18 @@ impl KubeconfigSource {
             }
         }
 
-        if loaded > 0 {
+        if !files.is_empty() {
             // ADR 0035: the startup cluster rule also holds for every later read, so a
             // pinned file rewritten while the app runs cannot reach a remote cluster.
             #[cfg(feature = "pinned-kubeconfig")]
             if crate::e2e::is_enabled() {
                 crate::e2e::validate_reread(&merged)?;
             }
-            return Ok((merged, warnings));
+            return Ok(LoadedKubeconfig {
+                kubeconfig: merged,
+                warnings,
+                files,
+            });
         }
 
         #[cfg(feature = "pinned-kubeconfig")]
@@ -339,7 +353,11 @@ impl KubeconfigSource {
         }
 
         read_default_kubeconfig_without_env()
-            .map(|kubeconfig| (kubeconfig, warnings))
+            .map(|(kubeconfig, files)| LoadedKubeconfig {
+                kubeconfig,
+                warnings,
+                files,
+            })
             .map_err(|err| {
                 AppError::new(
                     format!("no usable kubeconfig sources and default discovery failed: {err}"),
@@ -603,7 +621,7 @@ fn kubeconfig_sources_summary() -> Result<KubeconfigSourcesSummary, AppError> {
                     message: err.message,
                 }]
             },
-            |(_, warnings)| warnings,
+            |loaded| loaded.warnings,
         );
 
     Ok(KubeconfigSourcesSummary {
@@ -670,11 +688,20 @@ pub(crate) fn default_kubeconfig_path() -> Option<PathBuf> {
         .map(|home| home.join(".kube").join("config"))
 }
 
-fn read_default_kubeconfig_without_env() -> Result<Kubeconfig, kube::config::KubeconfigError> {
+fn read_default_kubeconfig_without_env()
+-> Result<(Kubeconfig, Vec<PathBuf>), kube::config::KubeconfigError> {
     if let Some(path) = default_kubeconfig_path().filter(|path| path.exists()) {
-        return Kubeconfig::read_from(path);
+        return Ok((Kubeconfig::read_from(&path)?, vec![path]));
     }
-    Kubeconfig::read()
+    Ok((Kubeconfig::read()?, standard_kubeconfig_files()))
+}
+
+/// The files `Kubeconfig::read` merges: the `KUBECONFIG` list, else the default file.
+fn standard_kubeconfig_files() -> Vec<PathBuf> {
+    standard_kubeconfig_paths()
+        .into_iter()
+        .map(|configured| configured.path)
+        .collect()
 }
 
 #[derive(Debug, Clone)]

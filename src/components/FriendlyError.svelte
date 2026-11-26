@@ -88,7 +88,9 @@
 			<p>{presentation.next}</p>
 		{/if}
 		{#if credential}
-			<CredentialFailureDetails failure={credential} />
+			{#key credential.reproduce}
+				<CredentialFailureDetails failure={credential} />
+			{/key}
 		{/if}
 		{#if requiredPermission}
 			<Button type="button" variant="outline" size="xs" onclick={inspectRequiredPermission}>

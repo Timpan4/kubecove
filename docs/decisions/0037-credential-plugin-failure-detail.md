@@ -32,18 +32,19 @@ The field holds:
 | --- | --- | --- |
 | `context` | The requested context name | As given. |
 | `user` | The context's kubeconfig user entry name | Read from the kubeconfig. |
-| `command` | The plugin program and its leading subcommand words | The program's file name, then each following argument that is a lowercase word of letters, digits and hyphens. The first other argument ends it, because flags, values and paths can carry secrets. |
-| `kubeconfig` | The kubeconfig files KubeCove read | File paths only, never contents. |
-| `reproduce` | A terminal command for the user to copy | `kubectl --context <context> auth whoami`, with `KUBECONFIG` set when KubeCove read files other than the default kubeconfig. Values are quoted for a POSIX shell, or for PowerShell on Windows. |
+| `command` | The plugin program and its known subcommand words | The program's file name. When the program and its first arguments match a fixed table of common plugins, such as `kubectl oidc-login get-token` or `aws eks get-token`, those words follow it. An argument's spelling cannot tell a subcommand from a positional secret, so no other argument is shown. |
+| `kubeconfig` | The kubeconfig files the client was built from, in merge order | File paths only, never contents. Files that failed to load, and the default file kept only to invalidate cached clients, are left out. |
+| `reproduce` | A terminal command for the user to copy | `kubectl --context <context> auth whoami` for the default kubeconfig, `--kubeconfig <file>` for one other file, or `KUBECONFIG` set to the list for several. Values are quoted for a POSIX shell, or for PowerShell on Windows, where typographic single quotes are escaped too. Absent when the files cannot be named exactly, such as a file name that holds the path-list separator, so the copied command never falls back to the terminal's own kubeconfig. |
 | `exitStatus` | The plugin's exit code | Absent when the plugin was killed or did not start. |
 | `pluginMessage` | The plugin's stderr | See below. |
 
 `pluginMessage` is the last non-empty stderr line after Rust:
 
-1. decodes it as lossy UTF-8;
-2. removes ANSI escape sequences, control characters and bidirectional formatting characters;
-3. applies the shared error-detail redaction patterns, which now live in `kubecove-models` and match `src/lib/error-redaction.ts`;
-4. removes every URL query and fragment, JSON Web Tokens, and `refresh_token`, `secret` and `session_token` values.
+1. decodes stderr as lossy UTF-8;
+2. removes ANSI CSI and OSC sequences, in 7-bit and C1 form, across the whole output before splitting it into lines, because an OSC string can span lines;
+3. removes control characters and bidirectional formatting characters from each line;
+4. applies the shared error-detail redaction patterns, which now live in `kubecove-models` and match `src/lib/error-redaction.ts`;
+5. removes every URL query and fragment, JSON Web Tokens, `refresh_token`, `secret` and `session_token` values, and whole quoted values, closed or not, of keys that name a token, password, passphrase, secret or API key.
 
 The line is not shortened. The UI wraps it.
 
@@ -57,7 +58,7 @@ Both clients show the same panel when the field is present: "Could not sign in t
 
 Users see the plugin's own reason for a failed sign-in and the exact kubeconfig entry to fix, without leaving KubeCove.
 
-A plugin can still print a secret in a form the patterns do not recognize. The redaction removes the forms seen in common plugins and OAuth flows. The plugin line is shown only to the desktop user who owns the kubeconfig and could run the plugin themselves.
+A plugin can still print a secret in a form the patterns do not recognize, such as a bare opaque token on its last line. The redaction removes the forms seen in common plugins and OAuth flows. The plugin line is shown only to the desktop user who owns the kubeconfig and could run the plugin themselves.
 
 Errors that the clients combine across workspace contexts keep only their combined message and lose the field. The Svelte and GPUI clients behave the same way there.
 

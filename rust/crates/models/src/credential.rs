@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt, sync::Arc};
 
 /// What a context's credential plugin is, known when its client is built.
-/// Holds no plugin arguments beyond leading subcommand words, no environment
+/// Holds no plugin arguments beyond known subcommand words, no environment
 /// and no output.
 #[derive(Clone, PartialEq, Eq)]
 pub struct CredentialIdentity {
@@ -13,7 +13,7 @@ pub struct CredentialIdentity {
     pub user: Option<String>,
     pub command: String,
     pub kubeconfig: Vec<String>,
-    pub reproduce: String,
+    pub reproduce: Option<String>,
 }
 
 /// A failed credential plugin, as the frontend shows it.
@@ -25,8 +25,10 @@ pub struct CredentialFailure {
     pub user: Option<String>,
     pub command: String,
     pub kubeconfig: Vec<String>,
-    /// A terminal command that runs the same sign-in through kubectl.
-    pub reproduce: String,
+    /// A terminal command that runs the same sign-in through kubectl. Absent
+    /// when the kubeconfig files cannot be named exactly in a shell command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reproduce: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit_status: Option<i32>,
     /// The plugin's last stderr line, redacted in Rust before serialization.

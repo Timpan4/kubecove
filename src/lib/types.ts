@@ -520,7 +520,8 @@ export interface CredentialFailure {
 	user?: string;
 	command: string;
 	kubeconfig: string[];
-	reproduce: string;
+	/** Absent when the kubeconfig files cannot be named exactly in a shell. */
+	reproduce?: string;
 	exitStatus?: number;
 	pluginMessage?: string;
 }

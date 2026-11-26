@@ -27,8 +27,14 @@ static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
 
 /// Credential plugins also print OAuth redirects and raw tokens, which the
 /// frontend patterns above do not cover.
-static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 3]> = LazyLock::new(|| {
+static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 4]> = LazyLock::new(|| {
     [
+        // A whole quoted value, closed or not. The patterns above stop at
+        // the first space inside quotes.
+        (
+            r#"(?i)(\b[\w-]*(?:token|password|passphrase|secret|api[-_]?key)["']?\s*[:=]\s*)(?:"[^"]*(?:"|$)|'[^']*(?:'|$))"#,
+            "${1}\"[REDACTED]\"",
+        ),
         // Any URL query or fragment: authorization codes, state and tokens.
         (r"(?i)(\bhttps?://[^\s?#]*)[?#][^\s]*", "${1}?[REDACTED]"),
         (
@@ -68,25 +74,33 @@ pub fn redact_sensitive_detail(detail: &str) -> String {
 /// terminal escapes, control or bidirectional formatting characters, and with
 /// credentials removed. Plugins print their final error last.
 pub(crate) fn plugin_error_line(stderr: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(stderr);
+    // Escapes go first: an OSC string can span lines. A carriage return
+    // starts over, as progress output overwrites itself in a terminal.
+    let text = strip_escapes(&String::from_utf8_lossy(stderr));
     let line = text
-        .lines()
-        .map(|line| printable(&strip_escapes(line)))
+        .split(['\n', '\r'])
+        .map(printable)
         .rfind(|line| !line.trim().is_empty())?;
     let redacted = apply(&*PLUGIN_DETAIL, &redact_sensitive_detail(line.trim()));
     Some(redacted)
 }
 
-/// Removes ANSI CSI and OSC sequences, which can hide or rewrite text.
-fn strip_escapes(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut chars = line.chars().peekable();
+/// Removes ANSI CSI and OSC sequences, in their 7-bit and C1 forms, which
+/// can hide or rewrite text.
+fn strip_escapes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch != '\u{1b}' {
-            out.push(ch);
-            continue;
-        }
-        match chars.next() {
+        let introducer = match ch {
+            '\u{1b}' => chars.next(),
+            '\u{9b}' => Some('['),
+            '\u{9d}' => Some(']'),
+            _ => {
+                out.push(ch);
+                continue;
+            }
+        };
+        match introducer {
             Some('[') => {
                 // CSI ends at the first byte in 0x40..=0x7e.
                 for next in chars.by_ref() {
@@ -96,9 +110,9 @@ fn strip_escapes(line: &str) -> String {
                 }
             }
             Some(']') => {
-                // OSC ends at BEL or ESC \.
+                // OSC ends at BEL, ST or ESC \.
                 while let Some(next) = chars.next() {
-                    if next == '\u{7}' {
+                    if matches!(next, '\u{7}' | '\u{9c}') {
                         break;
                     }
                     if next == '\u{1b}' && chars.peek() == Some(&'\\') {

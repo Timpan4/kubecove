@@ -17,7 +17,6 @@ pub(super) fn section(
     copied: Option<bool>,
     cx: &mut Context<Inspector>,
 ) -> AnyElement {
-    let reproduce = failure.reproduce.clone();
     let (icon, label) = if copied == Some(true) {
         ("check", "Copied")
     } else {
@@ -44,24 +43,27 @@ pub(super) fn section(
                     .text_color(Tokens::destructive()),
             )
         })
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(
-                    xs_button(icon, label, false)
-                        .id(SharedString::from(format!("{id}:copy-command")))
-                        .test_support()
-                        .aria_label(label)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.copy_command(id, reproduce.clone(), cx);
-                        })),
-                )
-                .when(copied == Some(false), |row| {
-                    row.child(ui::muted(ui::xs("Copy failed")))
-                }),
-        )
+        // Absent when the kubeconfig files cannot be named exactly in a shell.
+        .when_some(failure.reproduce.clone(), |section, reproduce| {
+            section.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        xs_button(icon, label, false)
+                            .id(SharedString::from(format!("{id}:copy-command")))
+                            .test_support()
+                            .aria_label(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.copy_command(id, reproduce.clone(), cx);
+                            })),
+                    )
+                    .when(copied == Some(false), |row| {
+                        row.child(ui::muted(ui::xs("Copy failed")))
+                    }),
+            )
+        })
         .child(details(id, failure))
         .into_any_element()
 }
