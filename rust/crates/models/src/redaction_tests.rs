@@ -89,6 +89,22 @@ fn plugin_line_redacts_tokens_redirects_and_headers() {
             "Author\u{202e}ization: Basic \x1b[1mdXNlcjpwYXNz\x1b[0m".to_owned(),
             "dXNlcjpwYXNz",
         ),
+        (
+            "request Cookie: _oauth2_proxy=cookie-header-secret; other=1".to_owned(),
+            "cookie-header-secret",
+        ),
+        (
+            "response Set-Cookie: session=set-cookie-secret; Path=/".to_owned(),
+            "set-cookie-secret",
+        ),
+        (
+            "unknown flag in --client-secret flag-secret-value".to_owned(),
+            "flag-secret-value",
+        ),
+        (
+            r#"retry with --token "quoted flag-quoted-secret""#.to_owned(),
+            "flag-quoted-secret",
+        ),
     ] {
         let line = plugin_error_line(stderr.as_bytes()).unwrap();
         assert!(!line.contains(secret), "{line}");
@@ -103,4 +119,11 @@ fn plugin_line_keeps_issuer_urls_without_queries() {
     )
     .unwrap();
     assert!(line.contains("https://old.example/realms/a"), "{line}");
+    // A quote ends the URL, so the text after a quoted URL survives.
+    let line =
+        plugin_error_line(br#"Get "https://idp.example/x?code=c": dial tcp: refused"#).unwrap();
+    assert_eq!(
+        line,
+        r#"Get "https://idp.example/x?[REDACTED]": dial tcp: refused"#
+    );
 }

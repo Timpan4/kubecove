@@ -25,22 +25,38 @@ static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
     .map(compile)
 });
 
-/// A whole quoted value of a credential key, closed or not, with escaped
-/// quotes inside. It runs before the patterns above, which stop at the first
-/// space or backslash and would leave the rest of the value behind.
-static QUOTED_VALUE: LazyLock<[(Regex, &str); 1]> = LazyLock::new(|| {
-    [(
+/// Whole values of credential keys and flags. They run before the patterns
+/// above, which stop at the first space or backslash and would leave the rest
+/// of a value behind.
+static WHOLE_VALUES: LazyLock<[(Regex, &str); 2]> = LazyLock::new(|| {
+    [
+        // A quoted value, closed or not, with escaped quotes inside.
+        (
             r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*(?:"|$)|'(?:[^'\\]|\\.)*(?:'|$))"#,
             "${1}\"[REDACTED]\"",
-        )].map(compile)
+        ),
+        // A credential flag's separate value, such as `--client-secret abc`.
+        (
+            r#"(?i)((?:^|\s)--?[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*\s+)(?:"(?:[^"\\]|\\.)*(?:"|$)|'(?:[^'\\]|\\.)*(?:'|$)|[^\s"'-]\S*)"#,
+            "${1}[REDACTED]",
+        ),
+    ]
+    .map(compile)
 });
 
 /// Credential plugins also print OAuth redirects and raw tokens, which the
 /// frontend patterns above do not cover.
-static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 5]> = LazyLock::new(|| {
+static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
     [
         // Any URL query or fragment: authorization codes, state and tokens.
-        (r"(?i)(\bhttps?://[^\s?#]*)[?#][^\s]*", "${1}?[REDACTED]"),
+        // A quote or angle bracket ends the URL, as in `Get "https://…": `.
+        (
+            r#"(?i)(\bhttps?://[^\s?#"'<>]*)[?#][^\s"'<>]*"#,
+            "${1}?[REDACTED]",
+        ),
+        // Cookie headers carry session credentials to the end of the line
+        // (RFC 6265).
+        (r"(?i)(\b(?:set-)?cookie\s*:\s*)\S.*", "${1}[REDACTED]"),
         (
             r#"(?i)(["']?(?:refresh[_-]?token|secret|session[_-]?token)["']?\s*[:=]\s*["']?)[^"',\s}&]+"#,
             "${1}[REDACTED]",
@@ -98,8 +114,8 @@ pub(crate) fn plugin_error_line(stderr: &[u8]) -> Option<String> {
         .split(['\n', '\r'])
         .map(printable)
         .rfind(|line| !line.trim().is_empty())?;
-    let quoted = apply(&*QUOTED_VALUE, line.trim());
-    let redacted = apply(&*PLUGIN_DETAIL, &redact_sensitive_detail(&quoted));
+    let whole = apply(&*WHOLE_VALUES, line.trim());
+    let redacted = apply(&*PLUGIN_DETAIL, &redact_sensitive_detail(&whole));
     Some(redacted)
 }
 
