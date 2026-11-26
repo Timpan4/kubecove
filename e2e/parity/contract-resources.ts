@@ -39,6 +39,8 @@ export const resourcesSteps = {
 			summary: item.summary !== undefined ? string(item.summary) : undefined,
 		});
 	},
+	expectCredentialFailure: (item) => ({ title: string(item.title), summary: string(item.summary), pluginMessage: string(item.pluginMessage), command: string(item.command) }),
+	copyCredentialCommand: (item) => ({ title: string(item.title), expected: string(item.expected) }),
 	inspectRequiredPermission: noPayload,
 	returnToSource: noPayload,
 	dismissCopyToast: noPayload,

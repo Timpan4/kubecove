@@ -5,6 +5,7 @@ mod cluster;
 mod context_filter;
 mod controls;
 mod copyable;
+mod credential_panel;
 mod custom_resources;
 mod delivery_summary;
 mod delivery_ui;

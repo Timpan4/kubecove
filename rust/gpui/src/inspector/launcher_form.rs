@@ -285,9 +285,8 @@ impl Inspector {
                     .gap(px(8.))
                     .px(px(8.))
                     .py(px(6.))
-                    .child(self.friendly_failure(
+                    .child(self.app_error_failure(
                         "launcher-namespace-error",
-                        None,
                         error,
                         super::friendly_error::Context {
                             operation: Some(super::friendly_error::Operation::Resources),
@@ -296,7 +295,6 @@ impl Inspector {
                             compact: true,
                             ..Default::default()
                         },
-                        None,
                         cx,
                     ))
                     .child(

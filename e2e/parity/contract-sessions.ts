@@ -11,6 +11,7 @@ export const sessionsSteps = {
 		if (control.kind !== undefined) timing.kind = string(control.kind);
 		if (control.namespace !== undefined) timing.namespace = string(control.namespace);
 		if (control.count !== undefined) timing.count = count(control.count);
+		if (control.credentialPlugin !== undefined) timing.credentialPlugin = boolean(control.credentialPlugin);
 		return { control: timing };
 	},
 	expectLiveSessionCount: (item) => ({ count: count(item.count) }),

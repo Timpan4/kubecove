@@ -2,7 +2,10 @@
 //! native error panel shows the same title, summary and next step as the web.
 //! Pure logic only: `feedback.rs` renders the result.
 
-use kubecove_lib::models::{AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
+use kubecove_lib::models::{
+    AppErrorKind, CredentialFailure, RbacAccessReviewTarget, ResourceSummary,
+    redact_sensitive_detail,
+};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -62,6 +65,9 @@ pub(crate) struct Context<'a> {
     pub target: Option<&'a str>,
     pub partial: bool,
     pub compact: bool,
+    /// The failed local credential plugin (ADR 0037), which replaces the
+    /// classified copy as `credential-failure.ts` does.
+    pub credential: Option<&'a CredentialFailure>,
 }
 
 #[derive(Debug)]
@@ -227,41 +233,35 @@ fn partial_title(context: &Context<'_>, fallback: &str) -> String {
         .unwrap_or_else(|| format!("Some {} could not load", subject(context)))
 }
 
-/// `SENSITIVE_DETAIL_PATTERNS` in `src/lib/error-redaction.ts`, applied in the same order.
-static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
-    [
-        (
-            r"(?i)(\bauthorization\s*:\s*(?:basic|bearer)\s+)[^\s,;]+",
-            "${1}[REDACTED]",
-        ),
-        (r"(?i)(\b(?:x-api-key|api-key)\s*:\s*)[^\s,;]+", "${1}[REDACTED]"),
-        (r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/-]+=*", "${1}[REDACTED]"),
-        (r"(?i)(https?://)[^/\s:@]+:[^/\s@]+@", "${1}[REDACTED]@"),
-        (
-            r"(?i)([?&](?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|x-amz-credential|x-amz-security-token|x-amz-signature|sig|signature|(?:x[-_])?api[-_]?key)=)[^&#\s]+",
-            "${1}[REDACTED]",
-        ),
-        (
-            r#"(?i)(["']?(?:access[_-]?token|id[_-]?token|token|password|client[_-]?secret|(?:x[-_])?api[-_]?key)["']?\s*[:=]\s*["']?)[^"',\s}]+"#,
-            "${1}[REDACTED]",
-        ),
-    ]
-    .map(|(pattern, replacement)| {
-        (
-            Regex::new(pattern).expect("redaction pattern compiles"),
-            replacement,
-        )
-    })
-});
+/// `CREDENTIAL_NEXT_STEP` in `src/lib/credential-failure.ts`.
+pub(crate) const CREDENTIAL_NEXT_STEP: &str =
+    "Run the sign-in command in a terminal to see its full output, fix the sign-in, then retry.";
 
-/// `redactSensitiveErrorDetail`: hides credentials, URL user info and token
-/// parameters in error text before it is shown or copied.
-pub(crate) fn redact_detail(detail: &str) -> String {
-    SENSITIVE_DETAIL
-        .iter()
-        .fold(detail.to_owned(), |text, (pattern, replacement)| {
-            pattern.replace_all(&text, *replacement).into_owned()
-        })
+/// `credentialSummary` in `src/lib/credential-failure.ts`.
+fn credential_summary(failure: &CredentialFailure) -> String {
+    match failure.exit_status {
+        Some(status) => format!(
+            "The sign-in command {} exited with status {status}.",
+            failure.command
+        ),
+        None => format!("The sign-in command {} failed.", failure.command),
+    }
+}
+
+/// `credentialDetails` in `src/lib/credential-failure.ts`.
+pub(crate) fn credential_details(failure: &CredentialFailure) -> Vec<(&'static str, String)> {
+    let mut rows = vec![("Context", failure.context.clone())];
+    if let Some(user) = &failure.user {
+        rows.push(("User", user.clone()));
+    }
+    rows.push(("Command", failure.command.clone()));
+    rows.extend(
+        failure
+            .kubeconfig
+            .iter()
+            .map(|path| ("Kubeconfig", path.clone())),
+    );
+    rows
 }
 
 /// `friendlyError`: builds the title, summary and next step for a failure.
@@ -271,6 +271,16 @@ pub(crate) fn present(
     context: &Context<'_>,
 ) -> Presentation {
     let bucket = bucket(kind, message);
+    if let Some(failure) = context.credential {
+        return Presentation {
+            bucket: Bucket::Authentication,
+            title: format!("Could not sign in to {}", failure.context),
+            summary: credential_summary(failure),
+            still_works: None,
+            next: Some(CREDENTIAL_NEXT_STEP),
+            warning: context.partial,
+        };
+    }
     let subject = subject(context);
     let target = target_suffix(context);
     let warning = context.partial;
@@ -292,7 +302,7 @@ pub(crate) fn present(
                 .fallback_title
                 .unwrap_or("This operation is unavailable")
                 .to_owned(),
-            summary: redact_detail(message),
+            summary: redact_sensitive_detail(message),
             ..plain(String::new(), String::new())
         },
         Bucket::Authentication => with_next(

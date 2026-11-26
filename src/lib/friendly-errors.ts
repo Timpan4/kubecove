@@ -1,3 +1,9 @@
+import {
+	CREDENTIAL_NEXT_STEP,
+	credentialFailureFrom,
+	credentialSummary,
+	credentialTitle,
+} from "./credential-failure";
 import { messageFromError } from "./error-redaction";
 import type { RbacAccessReviewTarget } from "./rbac-types";
 import type { JsonObject } from "./types";
@@ -218,6 +224,17 @@ export function friendlyError(
 		FriendlyErrorPresentation,
 		"bucket" | "technicalDetail" | "copyText" | "tone"
 	>;
+
+	const credential = credentialFailureFrom(cause);
+	if (credential) {
+		return {
+			...base,
+			bucket: "authentication",
+			title: credentialTitle(credential),
+			summary: credentialSummary(credential),
+			next: CREDENTIAL_NEXT_STEP,
+		};
+	}
 
 	switch (bucket) {
 		case "unsupportedOperation":

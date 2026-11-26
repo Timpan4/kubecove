@@ -1,4 +1,5 @@
 import type { MockArgs } from "./tauri-dev-mock-contract";
+import type { CredentialFailure } from "./types";
 
 export type TimingControl = {
     operation: "hold" | "dirty" | "contend" | "release" | "fail" | "failOnce" | "expectRequests" | "expectPending" | "expectNoRetry" | "expectNoError";
@@ -7,10 +8,25 @@ export type TimingControl = {
     namespace?: string;
     kind?: string;
     count?: number;
+    /** Attaches the shared fixture credential plugin failure (ADR 0037). */
+    credentialPlugin?: boolean;
 };
 
 class MockReadError extends Error {
-    constructor(readonly kind: string) { super(`Scripted read: ${kind}`); }
+    constructor(readonly kind: string, readonly credential?: CredentialFailure) { super(`Scripted read: ${kind}`); }
+}
+
+/** The same fixture as `rust/gpui/tests/common/timing.rs`. */
+function mockCredential(context: string): CredentialFailure {
+    return {
+        context,
+        user: "oidc",
+        command: "kubectl oidc-login get-token",
+        kubeconfig: ["/home/user/.kube/config"],
+        reproduce: `kubectl --context ${context} auth whoami`,
+        exitStatus: 1,
+        pluginMessage: "error: oidc: issuer URL did not match the issuer URL returned by provider",
+    };
 }
 
 type Load = {
@@ -58,8 +74,8 @@ export class MockTiming {
             case "failOnce":
                 rule.held = false;
                 rule.failedAt = rule.requests;
-                rule.failure = control.operation === "fail" ? new MockReadError(control.kind ?? "transport") : undefined;
-                for (const [key, load] of rule.loads) if (control.namespace === undefined || JSON.parse(key)[0] === control.namespace) load.reject(new MockReadError(control.kind ?? "transport"));
+                rule.failure = control.operation === "fail" ? new MockReadError(control.kind ?? "transport", control.credentialPlugin ? mockCredential(control.context) : undefined) : undefined;
+                for (const [key, load] of rule.loads) if (control.namespace === undefined || JSON.parse(key)[0] === control.namespace) load.reject(new MockReadError(control.kind ?? "transport", control.credentialPlugin ? mockCredential(control.context) : undefined));
                 break;
             case "expectNoError": break;
             case "expectNoRetry":

@@ -2,7 +2,10 @@
 //! (ADR 0009). Finite clients belong to the rotating generation; confirmed
 //! operations and live clients use their own non-rotating caches.
 
-use super::ClientIntent;
+use super::{
+    ClientIntent,
+    credential_identity::{self, CredentialTagLayer},
+};
 use crate::commands::helpers::{client_cache::ClientGeneration, session_scope::SessionScope};
 use crate::{
     commands::{
@@ -18,7 +21,7 @@ use crate::{
     models::{AppError, AppErrorKind},
 };
 use kube::{Client, client::ClientBuilder};
-use std::{future::Future, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 /// How long a request in flight may wait on a stalled server. The desktop
@@ -130,6 +133,14 @@ pub(super) async fn client(
         if matches!(scope.source_policy(), super::SourcePolicy::Local) {
             super::plugin_path::apply(&mut config).await;
         }
+        // Plugin detail reaches only the desktop user's own kubeconfig (ADR 0037).
+        let identity = config
+            .auth_info
+            .exec
+            .as_ref()
+            .filter(|_| matches!(scope.source_policy(), super::SourcePolicy::Local))
+            .map(|exec| Arc::new(credential_identity::identity(source, cluster_context, exec)));
+        let tag = CredentialTagLayer::new(identity.clone());
         let source_key = source_key.to_owned();
         let cluster_context = cluster_context.to_owned();
         tokio::task::spawn_blocking(move || {
@@ -140,7 +151,13 @@ pub(super) async fn client(
             {
                 return Err(AppError::cancelled());
             }
-            let builder = ClientBuilder::try_from(config).map_err(AppError::from)?;
+            // The first plugin run happens here; later refreshes go through `tag`.
+            let builder = ClientBuilder::try_from(config)
+                .map_err(|error| match &identity {
+                    Some(identity) => AppError::from(error).with_credential_identity(identity),
+                    None => AppError::from(error),
+                })?
+                .with_layer(&tag);
             // The stall limit is per request, not a socket read timeout, so
             // idle pooled connections survive between bursts of reads.
             let stall = ReadStallLayer::new(REQUEST_READ_TIMEOUT);
@@ -189,6 +206,10 @@ where
 #[cfg(test)]
 #[path = "exec_tests.rs"]
 mod exec_tests;
+
+#[cfg(test)]
+#[path = "credential_failure_tests.rs"]
+mod credential_failure_tests;
 
 #[cfg(test)]
 mod tests {

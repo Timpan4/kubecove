@@ -511,6 +511,18 @@ export type StreamMessage =
 export interface AppError {
 	message: string;
 	kind: string;
+	credential?: CredentialFailure;
+}
+
+/** A failed local credential plugin (ADR 0037). Rust redacts `pluginMessage`. */
+export interface CredentialFailure {
+	context: string;
+	user?: string;
+	command: string;
+	kubeconfig: string[];
+	reproduce: string;
+	exitStatus?: number;
+	pluginMessage?: string;
 }
 
 export const SUPPORTED_KINDS = [

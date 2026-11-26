@@ -14,6 +14,8 @@
 	} from "@/lib/friendly-errors";
 	import { openRbacVerifier } from "@/features/rbac/handoff";
 	import { cnfast } from "@/lib/utils";
+	import { credentialFailureFrom } from "@/lib/credential-failure";
+	import CredentialFailureDetails from "./CredentialFailureDetails.svelte";
 
 	let {
 		error,
@@ -34,6 +36,7 @@
 	const presentation = $derived(friendlyError(error, context));
 	const compact = $derived(mode === "compact");
 	const requiredPermission = $derived(requiredPermissionForFriendlyError(error, context));
+	const credential = $derived(credentialFailureFrom(error));
 	const alertClass = $derived(
 		cnfast(
 			presentation.tone === "warning"
@@ -83,6 +86,9 @@
 		{/if}
 		{#if !compact && presentation.next}
 			<p>{presentation.next}</p>
+		{/if}
+		{#if credential}
+			<CredentialFailureDetails failure={credential} />
 		{/if}
 		{#if requiredPermission}
 			<Button type="button" variant="outline" size="xs" onclick={inspectRequiredPermission}>

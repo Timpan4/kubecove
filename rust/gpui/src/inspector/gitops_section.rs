@@ -146,22 +146,19 @@ impl Inspector {
             _ if phase.shown() => pending("Detecting...").into_any_element(),
             None => div().into_any_element(),
             _ if !phase.ready() => div().into_any_element(),
-            Some(Err(error)) => div()
-                .id("gitops-error")
-                .role(gpui_kit::Role::Alert)
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .p(px(12.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(Tokens::destructive().opacity(0.4))
-                .child(
-                    ui::semibold(ui::xs("Failed to load GitOps inventory"))
-                        .text_color(Tokens::destructive()),
-                )
-                .child(ui::muted(ui::xs(error.message.clone())))
-                .into_any_element(),
+            // `OverviewGitOps.svelte`'s compact `FriendlyError`.
+            Some(Err(error)) => self.app_error_failure(
+                "gitops-error",
+                error,
+                super::friendly_error::Context {
+                    operation: Some(super::friendly_error::Operation::ProviderDetection),
+                    fallback_title: Some("Failed to load GitOps inventory"),
+                    partial: true,
+                    compact: true,
+                    ..Default::default()
+                },
+                cx,
+            ),
             Some(Ok(inventory)) if !inventory.detected() => {
                 ui::muted(ui::xs("Not detected")).into_any_element()
             }

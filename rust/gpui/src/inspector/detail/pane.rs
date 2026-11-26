@@ -257,6 +257,7 @@ impl Inspector {
                         friendly_error::Context {
                             operation: Some(friendly_error::Operation::Details),
                             fallback_title: Some("Failed to load details"),
+                            credential: failed.error.credential.as_deref(),
                             ..Default::default()
                         },
                         permission,

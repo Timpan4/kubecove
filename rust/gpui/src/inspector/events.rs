@@ -4,7 +4,6 @@
 
 use super::Inspector;
 use super::detail::Detail;
-use super::friendly_error::redact_detail;
 use super::live_data::COALESCE;
 use super::windowed::{Windowed, row_id};
 use crate::incident::{self, EventFilter, SignalTone};
@@ -15,6 +14,7 @@ use gpui_kit::{
     AppContext, Context, Div, Entity, FontWeight, Hsla, SharedString, Subscription, Task, Window,
     div, prelude::*, px,
 };
+use kubecove_lib::models::redact_sensitive_detail;
 use kubecove_lib::models::{AppError, ResourceEventSummary};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -95,7 +95,7 @@ impl EventsState {
     }
 
     fn set_failed(&mut self, error: String) {
-        let error = redact_detail(&error);
+        let error = redact_sensitive_detail(&error);
         if matches!(self.load, EventsLoad::Ready(_)) {
             self.refresh_error = Some(error);
         } else {

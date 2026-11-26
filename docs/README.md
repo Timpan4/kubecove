@@ -13,6 +13,7 @@ User-facing procedures start in the [public Wiki](https://github.com/Timpan4/kub
 
 ## Engineering
 
+- [Credential plugin failure detail](decisions/0037-credential-plugin-failure-detail.md): what a failed kubeconfig sign-in plugin shows the desktop user, how its stderr line is redacted, and what never leaves Rust.
 - [Install GPUI from Tauri](decisions/0036-tauri-gpui-upgrade-bridge.md) covers side-by-side installation and workspace migration.
 - [GPUI E2E flavor and agent automation](decisions/0035-gpui-e2e-flavor-and-agent-automation.md): the native client's test build, its pinned kubeconfig, and the MCP endpoint agents use to read and operate its window.
 - [GPUI release bundles and updates](decisions/0034-gpui-release-bundles-and-updates.md): the native client's AppImage, app bundle and installer, its signed update manifest, and how it verifies and installs an update.

@@ -85,6 +85,43 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                 );
             }
         }
+        "expectCredentialFailure" => {
+            window.render_frame(cx);
+            let panel = credential_panel(window, step);
+            let alert = window.find(panel.clone());
+            assert!(
+                alert
+                    .description()
+                    .unwrap_or_default()
+                    .contains(string(step, "summary")),
+                "credential summary missing"
+            );
+            assert_eq!(
+                window.find(format!("{panel}:plugin-output")).description(),
+                Some(string(step, "pluginMessage"))
+            );
+            let details = window.find(format!("{panel}:sign-in-details"));
+            assert!(
+                details
+                    .description()
+                    .unwrap_or_default()
+                    .lines()
+                    .any(|row| row == format!("Command {}", string(step, "command"))),
+                "sign-in details name the command"
+            );
+        }
+        "copyCredentialCommand" => {
+            window.render_frame(cx);
+            let button = format!("{}:copy-command", credential_panel(window, step));
+            // The Overview GitOps card can sit below the fold.
+            locate::click_in(window, "page", button.clone().into(), cx);
+            window.render_frame(cx);
+            assert_eq!(window.find(button).label(), Some("Copied"));
+            assert_eq!(
+                cx.read_from_clipboard().and_then(|item| item.text()),
+                Some(string(step, "expected").to_owned())
+            );
+        }
         "inspectRequiredPermission" => {
             window.render_frame(cx);
             window.click("detail-error:permission", cx);
@@ -121,4 +158,17 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
         _ => return false,
     }
     true
+}
+
+/// The ID of the one alert titled by the step, whose credential section's
+/// elements share its ID as their prefix.
+fn credential_panel(window: &mut gpui_kit::Window, step: &Value) -> String {
+    let title = string(step, "title");
+    let mut alerts = window.find_all_by_label(title);
+    alerts.retain(|element| element.role() == Some(gpui_kit::Role::Alert));
+    assert_eq!(alerts.len(), 1, "one alert titled {title:?}");
+    match super::locate::id(&alerts[0]) {
+        gpui_kit::ElementId::Name(name) => name.to_string(),
+        other => panic!("credential alert has a named ID, not {other:?}"),
+    }
 }
