@@ -133,11 +133,28 @@ fn plugin_line_redacts_tokens_redirects_and_headers() {
             r#"{"Cookie":"session=json-cookie-secret"}"#.to_owned(),
             "json-cookie-secret",
         ),
+        (
+            r#"body="{\"Cookie\":\"session=escaped-json-cookie-secret\"}""#.to_owned(),
+            "escaped-json-cookie-secret",
+        ),
+        (
+            r#"err="exec: --token \"esc flag-escaped-secret\" failed""#.to_owned(),
+            "flag-escaped-secret",
+        ),
     ] {
         let line = plugin_error_line(stderr.as_bytes()).unwrap();
         assert!(!line.contains(secret), "{line}");
         assert!(line.contains("[REDACTED]"), "{line}");
     }
+}
+
+#[test]
+fn escaped_quoted_values_end_at_their_closing_quote() {
+    let line = plugin_error_line(br#"err="password=\"go-quoted secret-word\"" code=1"#).unwrap();
+    assert_eq!(line, r#"err="password="[REDACTED]"" code=1"#);
+    let line =
+        plugin_error_line(br#"err="exec: --token \"esc flag-secret\" failed" code=1"#).unwrap();
+    assert_eq!(line, r#"err="exec: --token [REDACTED] failed" code=1"#);
 }
 
 #[test]
