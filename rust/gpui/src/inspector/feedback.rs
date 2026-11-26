@@ -319,10 +319,17 @@ impl Inspector {
                 .map(|(_, ok)| *ok)
         };
         let copied = copied_for(CopyKey::Detail(id));
-        let command_copied = context
+        let reproduce = context
             .credential
-            .and_then(|failure| failure.reproduce.clone())
-            .and_then(|command| copied_for(CopyKey::Command(id, command.into())));
+            .and_then(|failure| failure.reproduce.as_deref());
+        let command_copied = match &disclosure.copied {
+            Some((CopyKey::Command(copied, command), ok))
+                if *copied == id && Some(command.as_ref()) == reproduce =>
+            {
+                Some(*ok)
+            }
+            _ => None,
+        };
         // Shown, read aloud and copied, so credentials are removed as the web's
         // `messageFromFriendlyError` does.
         let technical = redact_sensitive_detail(message);

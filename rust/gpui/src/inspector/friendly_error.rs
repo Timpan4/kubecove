@@ -233,9 +233,15 @@ fn partial_title(context: &Context<'_>, fallback: &str) -> String {
         .unwrap_or_else(|| format!("Some {} could not load", subject(context)))
 }
 
-/// `CREDENTIAL_NEXT_STEP` in `src/lib/credential-failure.ts`.
-pub(crate) const CREDENTIAL_NEXT_STEP: &str =
-    "Run the sign-in command in a terminal to see its full output, fix the sign-in, then retry.";
+/// `credentialNextStep` in `src/lib/credential-failure.ts`. Without a copyable
+/// command, a partial one would read a different kubeconfig.
+const fn credential_next_step(failure: &CredentialFailure) -> &'static str {
+    if failure.reproduce.is_some() {
+        "Run the sign-in command in a terminal to see its full output, fix the sign-in, then retry."
+    } else {
+        "Check this context's user entry in the kubeconfig files below, fix the sign-in, then retry."
+    }
+}
 
 /// `credentialSummary` in `src/lib/credential-failure.ts`.
 fn credential_summary(failure: &CredentialFailure) -> String {
@@ -277,7 +283,7 @@ pub(crate) fn present(
             title: format!("Could not sign in to {}", failure.context),
             summary: credential_summary(failure),
             still_works: None,
-            next: Some(CREDENTIAL_NEXT_STEP),
+            next: Some(credential_next_step(failure)),
             warning: context.partial,
         };
     }

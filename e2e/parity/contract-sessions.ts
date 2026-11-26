@@ -12,6 +12,7 @@ export const sessionsSteps = {
 		if (control.namespace !== undefined) timing.namespace = string(control.namespace);
 		if (control.count !== undefined) timing.count = count(control.count);
 		if (control.credentialPlugin !== undefined) timing.credentialPlugin = boolean(control.credentialPlugin);
+		if (control.credentialCommand !== undefined) timing.credentialCommand = boolean(control.credentialCommand);
 		return { control: timing };
 	},
 	expectLiveSessionCount: (item) => ({ count: count(item.count) }),

@@ -34,8 +34,16 @@ export function credentialFailureFrom(cause: unknown): CredentialFailure | undef
 	};
 }
 
-export const CREDENTIAL_NEXT_STEP =
+const CREDENTIAL_NEXT_STEP =
 	"Run the sign-in command in a terminal to see its full output, fix the sign-in, then retry.";
+
+// Without a copyable command, a partial one would read a different kubeconfig.
+const CREDENTIAL_NEXT_STEP_WITHOUT_COMMAND =
+	"Check this context's user entry in the kubeconfig files below, fix the sign-in, then retry.";
+
+export function credentialNextStep(failure: CredentialFailure): string {
+	return failure.reproduce ? CREDENTIAL_NEXT_STEP : CREDENTIAL_NEXT_STEP_WITHOUT_COMMAND;
+}
 
 export function credentialTitle(failure: CredentialFailure): string {
 	return `Could not sign in to ${failure.context}`;

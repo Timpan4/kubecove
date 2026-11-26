@@ -27,18 +27,25 @@ static SENSITIVE_DETAIL: LazyLock<[(Regex, &str); 6]> = LazyLock::new(|| {
 
 /// Credential plugins also print OAuth redirects and raw tokens, which the
 /// frontend patterns above do not cover.
-static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 4]> = LazyLock::new(|| {
+static PLUGIN_DETAIL: LazyLock<[(Regex, &str); 5]> = LazyLock::new(|| {
     [
         // A whole quoted value, closed or not. The patterns above stop at
         // the first space inside quotes.
         (
-            r#"(?i)(\b[\w-]*(?:token|password|passphrase|secret|api[-_]?key)["']?\s*[:=]\s*)(?:"[^"]*(?:"|$)|'[^']*(?:'|$))"#,
+            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*["']?\s*[:=]\s*)(?:"[^"]*(?:"|$)|'[^']*(?:'|$))"#,
             "${1}\"[REDACTED]\"",
         ),
         // Any URL query or fragment: authorization codes, state and tokens.
         (r"(?i)(\bhttps?://[^\s?#]*)[?#][^\s]*", "${1}?[REDACTED]"),
         (
             r#"(?i)(["']?(?:refresh[_-]?token|secret|session[_-]?token)["']?\s*[:=]\s*["']?)[^"',\s}&]+"#,
+            "${1}[REDACTED]",
+        ),
+        // Any key that names a credential, such as `passphrase=` or
+        // `AWS_SECRET_ACCESS_KEY=`, assigned with `=` or as a JSON key. A bare
+        // `name:` would also match prose such as `credentials: not found`.
+        (
+            r#"(?i)(\b[\w-]*(?:token|passw(?:or)?d|passphrase|secret|credential|api[-_]?key|access[-_]?key|private[-_]?key)[\w-]*(?:\s*=|["']\s*:)\s*["']?)[^"',\s}&]+"#,
             "${1}[REDACTED]",
         ),
         // JSON Web Tokens and other base64url segments joined by dots.

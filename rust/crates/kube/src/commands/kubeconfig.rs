@@ -679,7 +679,7 @@ fn append_unique_paths(existing: Vec<String>, additions: Vec<String>) -> Vec<Str
     paths
 }
 
-pub(crate) fn default_kubeconfig_path() -> Option<PathBuf> {
+fn default_kubeconfig_path() -> Option<PathBuf> {
     if let Some(home) = env::var_os("HOME") {
         return Some(PathBuf::from(home).join(".kube").join("config"));
     }

@@ -109,6 +109,11 @@ pub(super) fn act(window: &mut gpui_kit::Window, cx: &mut gpui_kit::App, step: &
                     .any(|row| row == format!("Command {}", string(step, "command"))),
                 "sign-in details name the command"
             );
+            assert_eq!(
+                window.try_find(format!("{panel}:copy-command")).is_some(),
+                step["copyCommand"] != false,
+                "Copy terminal command button"
+            );
         }
         "copyCredentialCommand" => {
             window.render_frame(cx);

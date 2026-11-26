@@ -10,6 +10,8 @@ export type TimingControl = {
     count?: number;
     /** Attaches the shared fixture credential plugin failure (ADR 0037). */
     credentialPlugin?: boolean;
+    /** `false` leaves out the copyable command, as when the files cannot be named. */
+    credentialCommand?: boolean;
 };
 
 class MockReadError extends Error {
@@ -17,13 +19,13 @@ class MockReadError extends Error {
 }
 
 /** The same fixture as `rust/gpui/tests/common/timing.rs`. */
-function mockCredential(context: string): CredentialFailure {
+function mockCredential(context: string, command: boolean): CredentialFailure {
     return {
         context,
         user: "oidc",
         command: "kubectl oidc-login get-token",
         kubeconfig: ["/home/user/.kube/config"],
-        reproduce: `kubectl --context ${context} auth whoami`,
+        reproduce: command ? `kubectl --kubeconfig /home/user/.kube/config --context ${context} auth whoami` : undefined,
         exitStatus: 1,
         pluginMessage: "error: oidc: issuer URL did not match the issuer URL returned by provider",
     };
@@ -74,7 +76,7 @@ export class MockTiming {
             case "failOnce": {
                 rule.held = false;
                 rule.failedAt = rule.requests;
-                const error = new MockReadError(control.kind ?? "transport", control.credentialPlugin ? mockCredential(control.context) : undefined);
+                const error = new MockReadError(control.kind ?? "transport", control.credentialPlugin ? mockCredential(control.context, control.credentialCommand !== false) : undefined);
                 rule.failure = control.operation === "fail" ? error : undefined;
                 for (const [key, load] of rule.loads) if (control.namespace === undefined || JSON.parse(key)[0] === control.namespace) load.reject(error);
                 break;

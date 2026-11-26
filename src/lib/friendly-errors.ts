@@ -1,6 +1,6 @@
 import {
-	CREDENTIAL_NEXT_STEP,
 	credentialFailureFrom,
+	credentialNextStep,
 	credentialSummary,
 	credentialTitle,
 } from "./credential-failure";
@@ -232,7 +232,7 @@ export function friendlyError(
 			bucket: "authentication",
 			title: credentialTitle(credential),
 			summary: credentialSummary(credential),
-			next: CREDENTIAL_NEXT_STEP,
+			next: credentialNextStep(credential),
 		};
 	}
 

@@ -91,12 +91,16 @@ fn assert_described(error: &AppError, plugin: &Failing) {
         credential.plugin_message.as_deref(),
         Some("error: issuer did not match id_token [REDACTED]")
     );
-    assert_eq!(
-        credential.reproduce,
-        Some(format!(
-            "kubectl --kubeconfig {} --context fixture auth whoami",
-            plugin.root.join("config.json").display()
-        ))
+    // The temp directory may need quoting; credential_identity_tests covers it.
+    let reproduce = credential.reproduce.as_deref().expect("copyable command");
+    assert!(
+        reproduce.starts_with("kubectl --kubeconfig "),
+        "{reproduce}"
+    );
+    assert!(reproduce.contains("config.json"), "{reproduce}");
+    assert!(
+        reproduce.ends_with(" --context fixture auth whoami"),
+        "{reproduce}"
     );
     assert_eq!(
         credential.kubeconfig,

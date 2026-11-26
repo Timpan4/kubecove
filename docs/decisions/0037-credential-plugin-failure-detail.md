@@ -33,8 +33,8 @@ The field holds:
 | `context` | The requested context name | As given. |
 | `user` | The context's kubeconfig user entry name | Read from the kubeconfig. |
 | `command` | The plugin program and its known subcommand words | The program's file name. When the program and its first arguments match a fixed table of common plugins, such as `kubectl oidc-login get-token` or `aws eks get-token`, those words follow it. An argument's spelling cannot tell a subcommand from a positional secret, so no other argument is shown. |
-| `kubeconfig` | The kubeconfig files the client was built from, in merge order | File paths only, never contents. Files that failed to load, and the default file kept only to invalidate cached clients, are left out. |
-| `reproduce` | A terminal command for the user to copy | `kubectl --context <context> auth whoami` for the default kubeconfig, `--kubeconfig <file>` for one other file, or `KUBECONFIG` set to the list for several. Values are quoted for a POSIX shell, or for PowerShell on Windows, where typographic single quotes are escaped too. Absent when the files cannot be named exactly, such as a file name that holds the path-list separator, so the copied command never falls back to the terminal's own kubeconfig. |
+| `kubeconfig` | The kubeconfig files the client was built from, in merge order | Absolute file paths only, never contents. Files that failed to load, and the default file kept only to invalidate cached clients, are left out. |
+| `reproduce` | A terminal command for the user to copy | `kubectl --kubeconfig <file> --context <context> auth whoami` for one file, the default included, or `KUBECONFIG` set to the list for several, so the terminal's own `KUBECONFIG` cannot pick another user. Relative paths are made absolute against KubeCove's working directory. Values are quoted for a POSIX shell, or for PowerShell on Windows, where typographic single quotes are escaped too. Absent when the files cannot be named exactly, such as a file name that holds the path-list separator, so the copied command never falls back to the terminal's own kubeconfig. |
 | `exitStatus` | The plugin's exit code | Absent when the plugin was killed or did not start. |
 | `pluginMessage` | The plugin's stderr | See below. |
 
@@ -44,7 +44,7 @@ The field holds:
 2. removes ANSI CSI and OSC sequences, in 7-bit and C1 form, across the whole output before splitting it into lines, because an OSC string can span lines;
 3. removes control characters and bidirectional formatting characters from each line;
 4. applies the shared error-detail redaction patterns, which now live in `kubecove-models` and match `src/lib/error-redaction.ts`;
-5. removes every URL query and fragment, JSON Web Tokens, `refresh_token`, `secret` and `session_token` values, and whole quoted values, closed or not, of keys that name a token, password, passphrase, secret or API key.
+5. removes every URL query and fragment, JSON Web Tokens, `refresh_token`, `secret` and `session_token` values, values assigned with `=` or as a JSON key to any key that names a token, password, passphrase, secret, credential, API key, access key or private key, such as `AWS_SECRET_ACCESS_KEY=`, and whole quoted values, closed or not, of those keys.
 
 The line is not shortened. The UI wraps it.
 
@@ -52,7 +52,7 @@ Stdout, the plugin's other arguments and its environment never leave Rust. `Debu
 
 The first plugin run happens while `kube-rs` builds the client, so the client builder attaches the data there. A token refresh during a request fails later, inside the client's service stack. A client layer wraps only errors whose source chain holds an authentication error, so `AppError::from` can describe a refresh failure too. Other errors pass through unchanged.
 
-Both clients show the same panel when the field is present: "Could not sign in to `<context>`", the exit status, the plugin line, a Copy terminal command button and the sign-in details. Errors without the field look as before.
+Both clients show the same panel when the field is present: "Could not sign in to `<context>`", the exit status, the plugin line, a Copy terminal command button and the sign-in details. Without `reproduce`, the panel has no copy button and its next step points at the context's user entry in the listed kubeconfig files. Errors without the field look as before.
 
 ## Consequences
 

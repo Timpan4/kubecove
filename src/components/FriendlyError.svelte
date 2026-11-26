@@ -88,7 +88,7 @@
 			<p>{presentation.next}</p>
 		{/if}
 		{#if credential}
-			{#key credential.reproduce}
+			{#key credential}
 				<CredentialFailureDetails failure={credential} />
 			{/key}
 		{/if}

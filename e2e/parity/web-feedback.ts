@@ -36,6 +36,8 @@ export const feedbackActions = {
 		await alert.getByText(step.summary, { exact: true }).waitFor();
 		await alert.getByLabel("Plugin output", { exact: true }).getByText(step.pluginMessage, { exact: true }).waitFor();
 		await alert.getByLabel("Sign-in details", { exact: true }).getByText(step.command, { exact: true }).waitFor();
+		const copyButtons = await alert.getByRole("button", { name: "Copy terminal command", exact: true }).count();
+		if (copyButtons !== (step.copyCommand === false ? 0 : 1)) throw new Error(`Found ${copyButtons} Copy terminal command buttons`);
 	},
 	async copyCredentialCommand(page, step) {
 		await page.evaluate(clipboardRecorder);

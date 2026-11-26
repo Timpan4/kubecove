@@ -4,31 +4,40 @@
 	import { credentialDetails } from "@/lib/credential-failure";
 	import type { CredentialFailure } from "@/lib/types";
 
-	// FriendlyError keys this component by the command, so copy state never
-	// carries over to another failure.
+	// FriendlyError keys this component by the failure, so copy state never
+	// carries over to another one.
 	let { failure }: { failure: CredentialFailure } = $props();
 
 	let copied = $state(false);
 	let copyFailed = $state(false);
 	let reset: number | undefined;
+	// Only the latest write, while mounted, may set the result.
+	let latest = 0;
+	let mounted = true;
 	const details = $derived(credentialDetails(failure));
 
 	async function copyCommand(command: string) {
 		window.clearTimeout(reset);
+		const request = ++latest;
 		try {
 			await navigator.clipboard.writeText(command);
+			if (request !== latest || !mounted) return;
 			copied = true;
 			copyFailed = false;
 			reset = window.setTimeout(() => {
 				copied = false;
 			}, 1200);
 		} catch {
+			if (request !== latest || !mounted) return;
 			copied = false;
 			copyFailed = true;
 		}
 	}
 
-	$effect(() => () => window.clearTimeout(reset));
+	$effect(() => () => {
+		mounted = false;
+		window.clearTimeout(reset);
+	});
 </script>
 
 {#if failure.pluginMessage}

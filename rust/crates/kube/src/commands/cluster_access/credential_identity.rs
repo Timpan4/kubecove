@@ -3,7 +3,7 @@
 //! environment or output.
 
 use crate::{
-    commands::kubeconfig::{KubeconfigOrigin, default_kubeconfig_path},
+    commands::kubeconfig::KubeconfigOrigin,
     models::{CredentialIdentity, CredentialPluginError, is_auth_error},
 };
 use http::Request;
@@ -42,21 +42,24 @@ pub(super) fn identity(
     cluster_context: &str,
     exec: &ExecConfig,
 ) -> CredentialIdentity {
+    // A relative entry resolves against KubeCove's working directory, not the
+    // terminal's. `absolute` keeps symlinks as written.
+    let absolute = origin
+        .files
+        .iter()
+        .map(std::path::absolute)
+        .collect::<Result<Vec<_>, _>>()
+        .ok();
+    let files = absolute.as_deref().unwrap_or(&origin.files);
     CredentialIdentity {
         context: cluster_context.to_owned(),
         user: origin.user.clone(),
         command: command(exec),
-        kubeconfig: origin
-            .files
+        kubeconfig: files
             .iter()
             .map(|path| path.to_string_lossy().into_owned())
             .collect(),
-        reproduce: reproduce(
-            cluster_context,
-            &origin.files,
-            default_kubeconfig_path().as_deref(),
-            cfg!(windows),
-        ),
+        reproduce: absolute.and_then(|files| reproduce(cluster_context, &files, cfg!(windows))),
     }
 }
 
@@ -91,26 +94,21 @@ fn command(exec: &ExecConfig) -> String {
 }
 
 /// `kubectl auth whoami` runs the context's sign-in and reports the signed-in
-/// identity, and every authenticated user may call it. `None` when the
-/// kubeconfig files cannot be named exactly in a shell command.
-fn reproduce(
-    cluster_context: &str,
-    kubeconfig: &[PathBuf],
-    default: Option<&Path>,
-    windows: bool,
-) -> Option<String> {
+/// identity, and every authenticated user may call it. The files are always
+/// named, even the default one, because the terminal's own `KUBECONFIG` could
+/// select another user for the same context. `None` when they cannot be named
+/// exactly in a shell command.
+fn reproduce(cluster_context: &str, kubeconfig: &[PathBuf], windows: bool) -> Option<String> {
     let context = quote(cluster_context, windows);
     match kubeconfig {
         [] => None,
-        [only] if Some(only.as_path()) == default => {
-            Some(format!("kubectl --context {context} auth whoami"))
-        }
         [only] => Some(format!(
             "kubectl --kubeconfig {} --context {context} auth whoami",
             quote(only.to_str()?, windows)
         )),
         _ => {
-            // `join_paths` fails when a name holds the path-list separator.
+            // `join_paths` fails on a name it cannot list: one holding `:` on
+            // Unix, or `"` on Windows.
             let joined = std::env::join_paths(kubeconfig).ok()?;
             let joined = quote(joined.to_str()?, windows);
             Some(if windows {

@@ -122,6 +122,7 @@ impl Timing {
                     if control["credentialPlugin"] == true {
                         error.credential = Some(Box::new(mock_credential(
                             control["context"].as_str().unwrap(),
+                            control["credentialCommand"] != false,
                         )));
                     }
                     Some(error)
@@ -284,13 +285,15 @@ impl Fixture {
 }
 
 /// `mockCredential` in `src/lib/tauri-dev-mock-timing.ts`.
-fn mock_credential(context: &str) -> kubecove_lib::models::CredentialFailure {
+fn mock_credential(context: &str, command: bool) -> kubecove_lib::models::CredentialFailure {
     kubecove_lib::models::CredentialFailure {
         context: context.to_owned(),
         user: Some("oidc".to_owned()),
         command: "kubectl oidc-login get-token".to_owned(),
         kubeconfig: vec!["/home/user/.kube/config".to_owned()],
-        reproduce: Some(format!("kubectl --context {context} auth whoami")),
+        reproduce: command.then(|| {
+            format!("kubectl --kubeconfig /home/user/.kube/config --context {context} auth whoami")
+        }),
         exit_status: Some(1),
         plugin_message: Some(
             "error: oidc: issuer URL did not match the issuer URL returned by provider".to_owned(),

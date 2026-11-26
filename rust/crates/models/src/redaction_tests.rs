@@ -62,6 +62,18 @@ fn plugin_line_redacts_tokens_redirects_and_headers() {
             "secret-unterminated",
         ),
         (
+            "passphrase=pass-phrase-secret".to_owned(),
+            "pass-phrase-secret",
+        ),
+        (
+            "AWS_SECRET_ACCESS_KEY=aws-secret-value".to_owned(),
+            "aws-secret-value",
+        ),
+        (
+            r#"{"sessionToken": "first aws-session-secret"}"#.to_owned(),
+            "aws-session-secret",
+        ),
+        (
             "Author\u{202e}ization: Basic \x1b[1mdXNlcjpwYXNz\x1b[0m".to_owned(),
             "dXNlcjpwYXNz",
         ),

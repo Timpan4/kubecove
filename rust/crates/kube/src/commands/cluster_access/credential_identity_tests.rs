@@ -52,37 +52,39 @@ fn command_shows_known_subcommands_and_never_other_arguments() {
 #[test]
 fn reproduce_quotes_values_and_names_exactly_the_loaded_files() {
     let default = PathBuf::from("/home/u/.kube/config");
-    let reproduce = |context, files: &[PathBuf], windows| {
-        super::reproduce(context, files, Some(&default), windows)
-    };
+    let one = std::slice::from_ref(&default);
+    // The default file is named too, so the terminal's KUBECONFIG cannot
+    // pick another user for the context.
     assert_eq!(
-        reproduce("SG1", std::slice::from_ref(&default), false).as_deref(),
-        Some("kubectl --context SG1 auth whoami")
+        reproduce("SG1", one, false).as_deref(),
+        Some("kubectl --kubeconfig /home/u/.kube/config --context SG1 auth whoami")
     );
     assert_eq!(
-        reproduce("it's $(x)", std::slice::from_ref(&default), false).as_deref(),
-        Some(r"kubectl --context 'it'\''s $(x)' auth whoami")
+        reproduce("it's $(x)", one, false).as_deref(),
+        Some(r"kubectl --kubeconfig /home/u/.kube/config --context 'it'\''s $(x)' auth whoami")
     );
     // PowerShell ends single-quoted strings at typographic quotes too.
-    assert_eq!(
-        reproduce("team’s ‘x’ it's", std::slice::from_ref(&default), true).as_deref(),
-        Some("kubectl --context 'team’’s ‘‘x’’ it''s' auth whoami")
-    );
     let other = PathBuf::from("/srv/team’s config");
     assert_eq!(
-        reproduce("arn:aws:eks", std::slice::from_ref(&other), true).as_deref(),
-        Some("kubectl --kubeconfig '/srv/team’’s config' --context 'arn:aws:eks' auth whoami")
-    );
-    assert_eq!(
-        reproduce("dev", &[other.clone(), default.clone()], false).as_deref(),
+        reproduce("team’s ‘x’ it's", std::slice::from_ref(&other), true).as_deref(),
         Some(
-            "KUBECONFIG='/srv/team’s config:/home/u/.kube/config' kubectl --context dev auth whoami"
+            "kubectl --kubeconfig '/srv/team’’s config' --context 'team’’s ‘‘x’’ it''s' auth whoami"
         )
     );
-    // A name holding the list separator cannot be joined, and no files
-    // cannot be named: neither falls back to the terminal's kubeconfig.
-    let separator = PathBuf::from(if cfg!(windows) { "a;b" } else { "a:b" });
-    assert_eq!(reproduce("dev", &[separator, default.clone()], false), None);
+    let list = if cfg!(windows) { ';' } else { ':' };
+    assert_eq!(
+        reproduce("dev", &[other.clone(), default.clone()], false),
+        Some(format!(
+            "KUBECONFIG='/srv/team’s config{list}/home/u/.kube/config' kubectl --context dev auth whoami"
+        ))
+    );
+    // A name the platform cannot list, and no files at all, give no command
+    // rather than one that falls back to the terminal's kubeconfig.
+    let unlistable = PathBuf::from(if cfg!(windows) { "a\"b" } else { "a:b" });
+    assert_eq!(
+        reproduce("dev", &[unlistable, default.clone()], false),
+        None
+    );
     assert_eq!(reproduce("dev", &[], false), None);
 }
 
@@ -94,7 +96,7 @@ async fn tag_layer_wraps_only_authentication_failures() {
         user: None,
         command: "kubectl".into(),
         kubeconfig: Vec::new(),
-        reproduce: Some("kubectl --context SG1 auth whoami".into()),
+        reproduce: Some("kubectl --kubeconfig /k --context SG1 auth whoami".into()),
     });
     let fail = |error: BoxError| {
         let error = Arc::new(std::sync::Mutex::new(Some(error)));
