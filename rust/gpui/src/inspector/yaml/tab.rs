@@ -519,6 +519,7 @@ pub(in crate::inspector) fn yaml_tab(
                     operation: Some(Operation::YamlDryRun),
                     fallback_title: Some("YAML lint failed"),
                     target: Some(path.as_str()),
+                    credential: error.credential.as_deref(),
                     ..ErrorContext::default()
                 },
                 None,
@@ -544,6 +545,7 @@ pub(in crate::inspector) fn yaml_tab(
                         operation: Some(Operation::YamlDryRun),
                         fallback_title: Some("Dry run failed"),
                         target: Some(path.as_str()),
+                        credential: error.credential.as_deref(),
                         ..ErrorContext::default()
                     },
                     None,

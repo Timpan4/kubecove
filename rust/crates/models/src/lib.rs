@@ -2,6 +2,7 @@ mod argo;
 mod cancellation;
 mod cluster;
 mod command_contract;
+mod credential;
 mod diagnostics;
 mod discovery;
 mod error;
@@ -15,6 +16,7 @@ mod metrics;
 mod namespace;
 mod operations;
 mod rbac;
+mod redaction;
 mod resource;
 mod resource_actions;
 mod sessions;
@@ -35,13 +37,14 @@ pub use argo::{
 pub use cancellation::{CancelBackendRequestsResult, CancelWorkspaceRequestsResult};
 pub use cluster::ClusterContext;
 pub use command_contract::{CommandArgs, CommandTransport, DECLARED_COMMANDS, DeclaredCommand};
+pub use credential::{CredentialFailure, CredentialIdentity, CredentialPluginError};
 pub use diagnostics::{
     BackendCacheDiagnosticSnapshot, BackendDiagnosticEvent, BackendDiagnosticField,
     BackendDiagnosticStatus,
 };
 pub use discovery::DiscoveredResourceKind;
 pub use error::{AppError, AppErrorKind};
-pub use error::{WorkspaceRequestCancelled, kube_error_kind};
+pub use error::{WorkspaceRequestCancelled, is_auth_error, kube_error_kind};
 pub use events::ResourceEventSummary;
 pub use flux::{
     FluxDetectionSummary, FluxInventoryResource, FluxResourceDetails, FluxResourceKind,
@@ -76,6 +79,7 @@ pub use rbac::{
     RbacRequestMode, RbacRiskIndicator, RbacRiskLevel, RbacRoleSummary, RbacRuleSummary,
     RbacSubjectSummary, ServiceAccountSummary,
 };
+pub use redaction::redact_sensitive_detail;
 pub use resource::{
     DeploymentRevision, GitOpsOwnerSummary, KubernetesYamlLintDiagnostic, KubernetesYamlLintResult,
     KubernetesYamlLintSeverity, KubernetesYamlLintStatusNote, OwnerReferenceSummary,

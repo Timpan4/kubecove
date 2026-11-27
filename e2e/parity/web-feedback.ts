@@ -30,6 +30,25 @@ export const feedbackActions = {
 		if (step.next !== undefined) await alert.getByText(step.next, { exact: true }).waitFor();
 		if (step.summary !== undefined) await alert.getByText(step.summary, { exact: true }).waitFor();
 	},
+	async expectCredentialFailure(page, step) {
+		const alert = page.getByRole("alert").filter({ hasText: step.title });
+		await alert.getByText(step.title, { exact: true }).waitFor();
+		await alert.getByText(step.summary, { exact: true }).waitFor();
+		await alert.getByLabel("Plugin output", { exact: true }).getByText(step.pluginMessage, { exact: true }).waitFor();
+		await alert.getByLabel("Sign-in details", { exact: true }).getByText(step.command, { exact: true }).waitFor();
+		const copyButtons = await alert.getByRole("button", { name: "Copy terminal command", exact: true }).count();
+		if (copyButtons !== (step.copyCommand === false ? 0 : 1)) throw new Error(`Found ${copyButtons} Copy terminal command buttons`);
+	},
+	async copyCredentialCommand(page, step) {
+		await page.evaluate(clipboardRecorder);
+		// An earlier copy of the same command must not satisfy this one.
+		await page.evaluate(() => delete document.documentElement.dataset.copyValue);
+		const alert = page.getByRole("alert").filter({ hasText: step.title });
+		await alert.getByRole("button", { name: "Copy terminal command", exact: true }).click();
+		await alert.getByRole("button", { name: "Copied", exact: true }).waitFor();
+		const copied = await page.evaluate(() => document.documentElement.dataset.copyValue);
+		if (copied !== step.expected) throw new Error(`Copied ${JSON.stringify(copied)}, expected ${JSON.stringify(step.expected)}`);
+	},
 	async inspectRequiredPermission(page) {
 		await page.getByRole("alert").getByRole("button", { name: "Inspect required permission", exact: true }).click();
 	},

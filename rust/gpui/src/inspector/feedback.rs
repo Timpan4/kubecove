@@ -16,20 +16,31 @@ use crate::{
 use gpui_kit::{
     AnyElement, ClipboardItem, Context, SharedString, Task, Window, div, prelude::*, px,
 };
-use kubecove_lib::models::{AppError, AppErrorKind, RbacAccessReviewTarget, ResourceSummary};
+use kubecove_lib::models::{
+    AppError, AppErrorKind, RbacAccessReviewTarget, ResourceSummary, redact_sensitive_detail,
+};
 use std::{collections::HashSet, time::Duration};
 
 #[derive(Default)]
 pub(super) struct Feedback {
     /// Error panels whose technical detail is open.
     expanded: HashSet<&'static str>,
-    /// The panel whose Copy detail button shows the last result, and whether
-    /// the copy succeeded.
-    copy: Option<(&'static str, bool)>,
+    /// The copy button that shows the last result, and whether the copy
+    /// succeeded.
+    copy: Option<(CopyKey, bool)>,
     copy_task: Option<Task<()>>,
     /// The persistent copy notification. It stays until dismissed or replaced.
     toast: Option<String>,
     origin: Option<Origin>,
+}
+
+/// An error panel's Copy detail button, or its credential plugin's Copy
+/// terminal command button with the command it copied, so a panel that
+/// now shows another command does not claim it was copied.
+#[derive(Clone, PartialEq, Eq)]
+pub(super) enum CopyKey {
+    Detail(&'static str),
+    Command(&'static str, SharedString),
 }
 
 /// The RBAC handoff a failed read can offer.
@@ -43,14 +54,14 @@ pub(super) struct Permission {
 #[derive(Clone, Default)]
 pub(super) struct Disclosure {
     expanded: HashSet<&'static str>,
-    copied: Option<(&'static str, bool)>,
+    copied: Option<(CopyKey, bool)>,
 }
 
 impl Feedback {
     pub(super) fn disclosure(&self) -> Disclosure {
         Disclosure {
             expanded: self.expanded.clone(),
-            copied: self.copy,
+            copied: self.copy.clone(),
         }
     }
 }
@@ -100,6 +111,7 @@ impl Inspector {
             ErrorContext {
                 operation: Some(operation),
                 fallback_title: Some(title),
+                credential: error.credential.as_deref(),
                 ..Default::default()
             },
             None,
@@ -125,6 +137,7 @@ impl Inspector {
                 fallback_title: Some(title),
                 partial: true,
                 compact: true,
+                credential: error.credential.as_deref(),
                 ..Default::default()
             },
             None,
@@ -137,16 +150,44 @@ impl Inspector {
     /// the failed label is reached only through `finish_detail_copy`.
     pub(super) fn copy_detail(&mut self, id: &'static str, text: String, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.finish_detail_copy(id, Ok(()), cx);
+        self.finish_detail_copy(CopyKey::Detail(id), Ok(()), cx);
+    }
+
+    /// Copies a failed credential plugin's terminal command (ADR 0037).
+    pub(super) fn copy_command(&mut self, id: &'static str, text: String, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+        self.finish_detail_copy(CopyKey::Command(id, text.into()), Ok(()), cx);
+    }
+
+    /// The error panel for a failed read that kept its `AppError`, so its
+    /// kind and any credential plugin failure reach the panel.
+    pub(super) fn app_error_failure(
+        &self,
+        id: &'static str,
+        error: &AppError,
+        context: ErrorContext<'_>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.friendly_failure(
+            id,
+            Some(error.kind),
+            &error.message,
+            ErrorContext {
+                credential: error.credential.as_deref(),
+                ..context
+            },
+            None,
+            cx,
+        )
     }
 
     fn finish_detail_copy(
         &mut self,
-        id: &'static str,
+        key: CopyKey,
         result: Result<(), String>,
         cx: &mut Context<Self>,
     ) {
-        self.feedback.copy = Some((id, result.is_ok()));
+        self.feedback.copy = Some((key, result.is_ok()));
         self.feedback.copy_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(1200))
@@ -246,6 +287,7 @@ impl Inspector {
             ErrorContext {
                 operation: Some(friendly_error::Operation::Details),
                 fallback_title: Some(title),
+                credential: error.credential.as_deref(),
                 ..Default::default()
             },
             None,
@@ -269,13 +311,28 @@ impl Inspector {
         let compact = context.compact;
         let permission = permission.filter(|_| presentation.bucket == Bucket::ForbiddenRbac);
         let expanded = disclosure.expanded.contains(id);
-        let copied = disclosure
-            .copied
-            .filter(|(key, _)| *key == id)
-            .map(|(_, ok)| ok);
+        let copied_for = |key: CopyKey| {
+            disclosure
+                .copied
+                .as_ref()
+                .filter(|(copied, _)| *copied == key)
+                .map(|(_, ok)| *ok)
+        };
+        let copied = copied_for(CopyKey::Detail(id));
+        let reproduce = context
+            .credential
+            .and_then(|failure| failure.reproduce.as_deref());
+        let command_copied = match &disclosure.copied {
+            Some((CopyKey::Command(copied, command), ok))
+                if *copied == id && Some(command.as_ref()) == reproduce =>
+            {
+                Some(*ok)
+            }
+            _ => None,
+        };
         // Shown, read aloud and copied, so credentials are removed as the web's
         // `messageFromFriendlyError` does.
-        let technical = friendly_error::redact_detail(message);
+        let technical = redact_sensitive_detail(message);
         let copy_text = technical.clone();
         let description = description(&presentation, compact);
         let border = if presentation.warning {
@@ -300,6 +357,14 @@ impl Inspector {
             )
             .when_some(presentation.next.filter(|_| !compact), |panel, text| {
                 panel.child(ui::muted(ui::xs(text)).mt(px(8.)))
+            })
+            .when_some(context.credential, |panel, failure| {
+                panel.child(super::credential_panel::section(
+                    id,
+                    failure,
+                    command_copied,
+                    cx,
+                ))
             })
             // The web panel's `space-y-2` items: `size="xs"` buttons as wide as their
             // label, and the `<details>` summary row at `text-xs font-medium`.

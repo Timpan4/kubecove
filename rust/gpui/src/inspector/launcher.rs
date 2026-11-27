@@ -14,7 +14,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::{
     AnyElement, Context, Div, Entity, SharedString, Stateful, Window, div, prelude::*, px,
 };
-use kubecove_lib::models::ResourceSummary;
+use kubecove_lib::models::{AppError, ResourceSummary};
 
 pub(super) struct LauncherState {
     pub(super) transfer: super::launcher_transfer::TransferState,
@@ -38,7 +38,7 @@ pub(super) struct LauncherState {
     /// The kubeconfig source and context read that fills `context_choices`.
     pub(super) contexts: Fetch<ContextsRead>,
     /// Namespace discovery for the form's effective context.
-    pub(super) discovery: Fetch<Vec<String>>,
+    pub(super) discovery: Fetch<Vec<String>, AppError>,
     /// Kubeconfig source and context reads kept while fresh, as the web's query cache keeps them.
     pub(super) kubeconfig: super::kubeconfig_reads::KubeconfigReads,
 }
@@ -282,7 +282,7 @@ impl Inspector {
                     Ok(namespaces) => {
                         Fetch::Ready(namespaces.into_iter().map(|ns| ns.name).collect())
                     }
-                    Err(error) => Fetch::Failed(error.message),
+                    Err(error) => Fetch::Failed(error),
                 };
                 cx.notify();
             });

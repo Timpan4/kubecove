@@ -2,7 +2,6 @@
 use super::super::{
     Inspector,
     controls::{Variant, button},
-    friendly_error::redact_detail,
 };
 use super::connection::{ConnectStep, Preference};
 use crate::targets::TestSupportExt;
@@ -15,6 +14,7 @@ use gpui_kit::{
     px,
 };
 use kubecove_lib::models::ArgoConfirmedTarget;
+use kubecove_lib::models::redact_sensitive_detail;
 
 impl Inspector {
     pub(super) fn open_argo_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -171,7 +171,11 @@ impl Inspector {
                     ),
             );
         }
-        if let Some(error) = state.discovery_error.as_deref().map(redact_detail) {
+        if let Some(error) = state
+            .discovery_error
+            .as_deref()
+            .map(redact_sensitive_detail)
+        {
             panel = panel
                 .child(
                     ui::xs(error.clone())
@@ -437,15 +441,18 @@ impl Inspector {
             );
         }
         // Error text can quote a request URL or header with a credential, as on the web.
-        panel.when_some(state.step.error().map(redact_detail), |p, error| {
-            p.child(
-                ui::xs(error.clone())
-                    .id("argo-connection-error")
-                    .test_support()
-                    .aria_label(error)
-                    .text_color(Tokens::destructive()),
-            )
-        })
+        panel.when_some(
+            state.step.error().map(redact_sensitive_detail),
+            |p, error| {
+                p.child(
+                    ui::xs(error.clone())
+                        .id("argo-connection-error")
+                        .test_support()
+                        .aria_label(error)
+                        .text_color(Tokens::destructive()),
+                )
+            },
+        )
     }
 }
 

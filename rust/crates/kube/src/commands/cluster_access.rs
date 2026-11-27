@@ -5,6 +5,7 @@
 //! to the default kubeconfig.
 
 mod clients;
+mod credential_identity;
 #[cfg(feature = "test-support")]
 mod fixed;
 mod plugin_path;

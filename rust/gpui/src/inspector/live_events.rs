@@ -3,13 +3,12 @@ use super::{
     Inspector,
     detail::Detail,
     events::EventsLoad,
-    friendly_error::redact_detail,
     live_data::{RECOVERY, WatchInput, receive_or_tick},
 };
 use crate::backend::WatchTarget;
 use futures_util::future::{Either, select};
 use gpui_kit::{Context, Window};
-use kubecove_lib::models::{StreamMessage, StreamStatus};
+use kubecove_lib::models::{StreamMessage, StreamStatus, redact_sensitive_detail};
 use tokio::sync::mpsc;
 
 impl Inspector {
@@ -43,7 +42,8 @@ impl Inspector {
                     Err(error) => {
                         let _ = this.update(cx, |this, cx| {
                             if let Detail::Ready(detail) = &mut this.detail {
-                                detail.events.watch_error = Some(redact_detail(&error.message));
+                                detail.events.watch_error =
+                                    Some(redact_sensitive_detail(&error.message));
                             }
                             cx.notify();
                         });
@@ -102,8 +102,8 @@ impl Inspector {
                                     _ => {}
                                 }
                             }
-                            let error =
-                                error.map(|item| item.map(|message| redact_detail(&message)));
+                            let error = error
+                                .map(|item| item.map(|message| redact_sensitive_detail(&message)));
                             (stream, needs_catch_up, refresh, error, ended)
                         })
                         .await;

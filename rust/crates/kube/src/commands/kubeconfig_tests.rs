@@ -164,9 +164,10 @@ isolated_test!(
         .expect("source");
 
         let missing_key = source.key();
-        let (_, warnings) = source
+        let warnings = source
             .read_configured_kubeconfig(Fallback::Allow)
-            .expect("app fallback");
+            .expect("app fallback")
+            .warnings;
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].source, "env");
         assert!(warnings[0].message.contains(DEFAULT_KUBECONFIG_ENV_VAR));
@@ -260,17 +261,22 @@ isolated_test!(unset_env_and_app_paths_merge_platform_default_in_order, {
     );
 
     fs::write(&default_path, "not: [valid").expect("write malformed default kubeconfig");
-    let (_, warnings) = source
+    let loaded = source
         .read_configured_kubeconfig(Fallback::Allow)
         .expect("app fallback");
+    // Only files that loaded name the source; the default stays in the
+    // cache-invalidation list.
+    assert_eq!(loaded.files, vec![app_path.clone()]);
+    let warnings = loaded.warnings;
     assert_eq!(warnings.len(), 1);
     assert_eq!(warnings[0].source, "default");
     assert!(warnings[0].path.is_none());
 
     fs::remove_file(&default_path).expect("remove default kubeconfig");
-    let (_, warnings) = source
+    let warnings = source
         .read_configured_kubeconfig(Fallback::Allow)
-        .expect("app fallback");
+        .expect("app fallback")
+        .warnings;
     assert!(warnings.is_empty());
 
     let _ = fs::remove_dir_all(home);
@@ -295,19 +301,21 @@ isolated_test!(missing_app_path_warns_and_falls_back_when_default_exists, {
     )
     .expect("source");
 
-    let (kubeconfig, warnings) = source
+    let loaded = source
         .read_configured_kubeconfig(Fallback::Allow)
         .expect("default fallback");
 
     assert_eq!(
-        kubeconfig.current_context.as_deref(),
+        loaded.kubeconfig.current_context.as_deref(),
         Some("default-context")
     );
     assert!(
-        warnings
+        loaded
+            .warnings
             .iter()
             .any(|warning| warning.path.as_deref() == Some(missing.to_string_lossy().as_ref()))
     );
+    assert_eq!(loaded.files, vec![default_path.clone()]);
 
     let _ = fs::remove_dir_all(home);
     let _ = fs::remove_file(default_source);

@@ -1,3 +1,4 @@
+use crate::credential::{CredentialFailure, CredentialIdentity, CredentialPluginError};
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt, sync::Arc};
 
@@ -87,6 +88,9 @@ impl fmt::Display for AppErrorKind {
 pub struct AppError {
     pub message: String,
     pub kind: AppErrorKind,
+    /// Set only for the desktop user's own credential plugin (ADR 0037).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<Box<CredentialFailure>>,
     // Sources stay in Rust, including when errors are cloned into read caches.
     #[serde(skip)]
     source: Option<Arc<dyn Error + Send + Sync>>,
@@ -97,8 +101,24 @@ impl AppError {
         Self {
             message: message.into(),
             kind,
+            credential: None,
             source: None,
         }
+    }
+
+    /// Describes a credential failure raised while building a client, before
+    /// any request could carry a [`CredentialPluginError`].
+    #[must_use]
+    pub fn with_credential_identity(mut self, identity: &CredentialIdentity) -> Self {
+        if self.credential.is_none()
+            && let Some(auth) = self
+                .source
+                .as_deref()
+                .and_then(|source| auth_error(source as &(dyn Error + 'static)))
+        {
+            self.credential = Some(Box::new(identity.failure(auth)));
+        }
+        self
     }
 
     #[must_use]
@@ -139,12 +159,30 @@ impl Error for AppError {
 impl From<kube::Error> for AppError {
     fn from(error: kube::Error) -> Self {
         if let Some(auth) = auth_error(&error) {
-            return Self::new(auth_message(auth), AppErrorKind::CredentialUnavailable)
-                .with_source(error);
+            let credential = credential_identity(&error).map(|identity| identity.failure(auth));
+            let mut app_error = Self::new(auth_message(auth), AppErrorKind::CredentialUnavailable);
+            app_error.credential = credential.map(Box::new);
+            return app_error.with_source(error);
         }
         let kind = kube_error_kind(&error);
         Self::new(error.to_string(), kind).with_source(error)
     }
+}
+
+fn credential_identity<'a>(error: &'a (dyn Error + 'static)) -> Option<&'a CredentialIdentity> {
+    let mut current = Some(error);
+    while let Some(source) = current {
+        if let Some(tagged) = source.downcast_ref::<CredentialPluginError>() {
+            return Some(tagged.identity());
+        }
+        current = source.source();
+    }
+    None
+}
+
+/// Whether a client error's chain holds a Kubernetes authentication failure.
+pub fn is_auth_error(error: &(dyn Error + 'static)) -> bool {
+    auth_error(error).is_some()
 }
 
 fn auth_error<'a>(error: &'a (dyn Error + 'static)) -> Option<&'a kube::client::AuthError> {
